@@ -1,45 +1,41 @@
-import asyncio
-from collections.abc import Generator
-from typing import Any
-from unittest.mock import Mock, patch
-
-import pytest
 import pytest_asyncio
-from _pytest.fixtures import FixtureRequest
-from tortoise import generate_config
-from tortoise.contrib.test import finalizer, initializer
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core import config
-from app.core.db.databases import TORTOISE_APP_MODELS
+from app.core.db import databases
+from app.main import app
+from app.models.base import Base
 
-TEST_BASE_URL = "http://test"
-TEST_DB_LABEL = "models"
-TEST_DB_TZ = "Asia/Seoul"
+TEST_DATABASE_URL = f"mysql+asyncmy://{config.DB_USER}:{config.DB_PASSWORD}@{config.DB_HOST}:{config.DB_PORT}/test"
 
-
-def get_test_db_config() -> dict[str, Any]:
-    tortoise_config = generate_config(
-        db_url=f"mysql://{config.DB_USER}:{config.DB_PASSWORD}@{config.DB_HOST}:{config.DB_PORT}/test",
-        app_modules={TEST_DB_LABEL: TORTOISE_APP_MODELS},
-        connection_label=TEST_DB_LABEL,
-        testing=True,
-    )
-    tortoise_config["timezone"] = TEST_DB_TZ
-
-    return tortoise_config
+test_engine = create_async_engine(TEST_DATABASE_URL)
+TestSessionLocal = async_sessionmaker(test_engine, expire_on_commit=False)
 
 
-@pytest.fixture(scope="session", autouse=True)
-def initialize(request: FixtureRequest) -> Generator[None, None]:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    with patch("tortoise.contrib.test.getDBConfig", Mock(return_value=get_test_db_config())):
-        initializer(modules=TORTOISE_APP_MODELS)
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def prepare_database():
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
     yield
-    finalizer()
-    loop.close()
+    await test_engine.dispose()
 
 
-@pytest_asyncio.fixture(autouse=True, scope="session")  # type: ignore[type-var]
-def event_loop() -> None:
-    pass
+@pytest_asyncio.fixture(autouse=True)
+async def override_get_db():
+    async def _get_db():
+        async with TestSessionLocal() as session:
+            yield session
+
+    app.dependency_overrides[databases.get_db] = _get_db
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def clean_tables():
+    yield
+    async with TestSessionLocal() as session:
+        for table in reversed(Base.metadata.sorted_tables):
+            await session.execute(table.delete())
+        await session.commit()

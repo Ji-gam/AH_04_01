@@ -12,3 +12,10 @@ wheels/
 .coverage
 *.coverage
 .coverage.*
+
+# frontend
+node_modules/
+frontend/dist/
+
+# oh-my-claudecode local state
+.omc/
