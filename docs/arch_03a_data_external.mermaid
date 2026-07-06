@@ -1,0 +1,32 @@
+flowchart TB
+
+    CoreSvc["Core REST API"]
+    ChatSvc["Chat API"]
+
+    subgraph DATA["🗄️ Data Layer"]
+        RDS[("Amazon RDS (MySQL)<br/>사용자·복약·목표 원본 데이터")]
+        RedisDB[("Redis<br/>Cache + Streams(큐) + Pub/Sub")]
+        Chroma[("ChromaDB (Server Mode)<br/>Collections: DUR / 질병가이드 / 뉴스")]
+        S3[("Object Storage (S3)<br/>원본 처방전·알약 사진, 카드뉴스 이미지")]
+    end
+
+    subgraph EXTERNAL["🌍 External APIs"]
+        LLM["LLM API<br/>(OpenAI/Claude, LangChain 경유)"]
+        OCR["CLOVA OCR<br/>(처방전/알약 인식)"]
+        CLIP["PyTorch CLIP Worker<br/>(이미지 임베딩·분류)"]
+        TTS["TTS API<br/>(음성 출력, T-ACC-1)"]
+        HealthKit["Samsung Health / Apple Health<br/>⚠ PWA 환경에서는 직접 연동 불가<br/>(네이티브 SDK 필요 — Phase4 별도 검토)"]
+    end
+
+    CoreSvc --> RDS
+    CoreSvc --> RedisDB
+    CoreSvc --> S3
+    CoreSvc -->|OCR 요청| OCR
+    CoreSvc -->|이미지 분류 요청| CLIP
+    CoreSvc -.연동 방식 별도 검토 필요.-> HealthKit
+
+    ChatSvc --> RDS
+    ChatSvc --> TTS
+
+    classDef warn fill:#ffe9e9,stroke:#e03131,color:#c92a2a;
+    class HealthKit warn;

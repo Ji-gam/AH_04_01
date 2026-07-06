@@ -1,0 +1,44 @@
+flowchart TB
+
+    ChatSvc["Chat API"]
+    CoreSvc["Core REST API"]
+    SafetySvc["Safety Prompt & Emergency Filter Service"]
+    Fallback["⚠고정 Fallback 메시지<br/>(119/응급실/1393 안내)<br/>LLM이 생성하지 않음"]
+
+    subgraph RAG["🔎 RAG Pipeline — Squad B 소유"]
+        Ingest["Ingestion/Chunking<br/>(DUR·질병가이드·뉴스 원문)"]
+        EmbedWorker["Embedding Worker"]
+        Retriever["Retriever<br/>(메타데이터 필터 + Context Binder)"]
+    end
+
+    SummaryWorker["Summary Worker<br/>(세션 종료 후 대화 비동기 요약)"]
+
+    RedisDB[("Redis<br/>현재 대화 스레드 + Streams + Pub/Sub")]
+    ChatSummaryDB[("RDS: chat_summaries<br/>(대화 영속 요약, User Health Context 일부)")]
+    Chroma[("ChromaDB (Server Mode)")]
+    LLM["LLM API<br/>(개발: 저비용 모델 / 배포: Claude, LangChain으로 교체)"]
+    RecognitionSvc["Recognition Service (공통모듈)<br/>T-MED-2/T-DOC-2 안전정보·가이드<br/>⚠ Tier 2: 현재는 규칙기반 stub 리턴"]
+
+    NewsWorkerRef["News Collector<br/>(섹션 2-B 참고)"]
+
+    ChatSvc --> SafetySvc
+    SafetySvc -->|응급 감지| Fallback --> ChatSvc
+    SafetySvc -->|응급 아님| Retriever
+    Retriever --> RedisDB
+    Retriever --> ChatSummaryDB
+    Retriever --> Chroma
+    Retriever --> LLM
+
+    CoreSvc --> RecognitionSvc
+    RecognitionSvc -.RAG 완성 후 연결 예정.-> Retriever
+
+    Ingest --> EmbedWorker --> Chroma
+    CoreSvc -.문서/뉴스 원문 전달.-> Ingest
+    NewsWorkerRef -.수집된 뉴스 전달.-> Ingest
+
+    RedisDB -->|세션 종료 이벤트| SummaryWorker
+    SummaryWorker -->|LLM 요약 요청| LLM
+    SummaryWorker -->|요약 저장| ChatSummaryDB
+
+    classDef warn fill:#ffe9e9,stroke:#e03131,color:#c92a2a;
+    class Fallback,RecognitionSvc warn;

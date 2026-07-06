@@ -1,0 +1,497 @@
+openapi: 3.0.3
+info:
+  title: ReMedi API — Phase 1 (Core)
+  version: "0.2.0"
+  description: >
+    Phase 1(코어) 범위의 API 명세. Auth / 문서인식(공통모듈) / 복약 / Chat(RAG) / Push구독을 포함한다.
+    인증은 JWT(Access/Refresh Token, `Authorization: Bearer` 헤더)로 처리하며(2026-07, httpOnly 쿠키에서 변경),
+    인증이 필요한 엔드포인트는 security: bearerAuth로 표기한다.
+  x-changelog:
+    - version: "0.1.0"
+      date: "2026-07"
+      changes: "초안 — Phase 1 Core 범위 (Auth/문서인식/복약/Chat/Push구독), 인증은 httpOnly 쿠키 기반"
+    - version: "0.2.0"
+      date: "2026-07-06"
+      changes: "인증 방식을 httpOnly 쿠키에서 JWT(Authorization: Bearer)로 전환 — securitySchemes, AuthTokenResult, /auth/refresh, /auth/logout 갱신"
+
+servers:
+  - url: https://api.remedi.app/v1
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error_code: { type: string, example: "AUTH_001" }
+        message: { type: string, example: "인증 정보가 유효하지 않습니다." }
+
+    # ---------- Auth ----------
+    SignupRequest:
+      type: object
+      required: [email, password, nickname, name, phone, birth_date, gender, email_verified_token, phone_verified_token]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        nickname: { type: string }
+        name: { type: string }
+        phone: { type: string, example: "010-1234-5678" }
+        birth_date: { type: string, format: date }
+        gender: { type: string, enum: [M, F] }
+        email_verified_token: { type: string, description: "이메일 인증 완료 후 발급된 임시 토큰" }
+        phone_verified_token: { type: string, description: "휴대폰 인증 완료 후 발급된 임시 토큰" }
+
+    AuthTokenResult:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        message: { type: string, example: "로그인 성공" }
+        access_token: { type: string, description: "JWT Access Token — 이후 요청의 Authorization: Bearer 헤더에 실어 보낸다" }
+        refresh_token: { type: string, description: "JWT Refresh Token — /auth/refresh 호출 시 사용" }
+        token_type: { type: string, example: "bearer" }
+
+    GoogleLoginRequest:
+      type: object
+      required: [id_token]
+      properties:
+        id_token: { type: string }
+
+    GoogleLoginResult:
+      allOf:
+        - $ref: '#/components/schemas/AuthTokenResult'
+        - type: object
+          properties:
+            requires_additional_info:
+              type: boolean
+              description: "휴대폰번호 등 필수정보 누락 시 true"
+
+    # ---------- 문서 인식 (공통모듈: T-MED-1 + T-DOC-1) ----------
+    RecognitionJobCreateResult:
+      type: object
+      properties:
+        job_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, processing, done, failed] }
+
+    RecognitionCandidate:
+      type: object
+      properties:
+        drug_name: { type: string }
+        match_rate: { type: number, format: float, example: 0.92 }
+        drug_code: { type: string }
+
+    RecognitionResult:
+      type: object
+      properties:
+        job_id: { type: string, format: uuid }
+        status: { type: string, enum: [pending, processing, done, failed] }
+        source_type: { type: string, enum: [pill_photo, prescription, medical_record, medication_guide] }
+        candidates:
+          type: array
+          items: { $ref: '#/components/schemas/RecognitionCandidate' }
+          description: "여러 개면 사용자가 최종 선택 필요 (T-MED-1 성공요건)"
+        extracted_fields:
+          type: object
+          description: "처방전/진료기록인 경우 추출된 약품/투약정보/진단명 (수정 가능한 폼으로 프론트에 전달)"
+          additionalProperties: true
+
+    RecognitionConfirmRequest:
+      type: object
+      required: [confirmed_fields]
+      properties:
+        selected_candidate_drug_code:
+          type: string
+          description: "T-MED-1: 후보 중 사용자가 최종 선택한 약품 코드"
+        confirmed_fields:
+          type: object
+          description: "T-DOC-1: 사용자가 검토/수정한 최종 필드 (이 값 그대로 DB 반영)"
+          additionalProperties: true
+
+    GuideCard:
+      type: object
+      description: >
+        T-DOC-2: 문서 등록 확정 직후 별도 요청 없이 노출되는 약물·음식 시너지/부작용 안내 카드.
+        Tier 2 전략(decision_log.md 참고) — RAG 완성 전까지는 recognition_service가
+        규칙기반 stub으로 이 스키마와 동일한 형태를 리턴하고, RAG 완성 후 내부 구현만 교체된다
+        (이 응답 스키마 자체는 변하지 않음).
+      properties:
+        title: { type: string, example: "이 약과 자몽주스" }
+        content: { type: string }
+        severity: { type: string, enum: [info, caution, warning] }
+        disclaimer: { type: string, description: "T-LLM-1: 항상 동반되는 면책 문구" }
+
+    RecognitionConfirmResult:
+      type: object
+      properties:
+        status: { type: string, example: "confirmed" }
+        guide_cards:
+          type: array
+          items: { $ref: '#/components/schemas/GuideCard' }
+          description: "T-DOC-2 결과. source_type이 prescription/medical_record/medication_guide일 때만 채워짐"
+
+    # ---------- 복약 ----------
+    MedicationSchedule:
+      type: object
+      properties:
+        medication_id: { type: string, format: uuid }
+        drug_name: { type: string }
+        times: { type: array, items: { type: string, example: "08:00" } }
+        source_job_id: { type: string, format: uuid, nullable: true }
+
+    MedicationScheduleCreateRequest:
+      type: object
+      required: [drug_code, times]
+      properties:
+        drug_code: { type: string }
+        times: { type: array, items: { type: string } }
+
+    # ---------- Chat (RAG) ----------
+    ChatSessionCreateResult:
+      type: object
+      properties:
+        session_id: { type: string, format: uuid }
+
+    ChatMessageRequest:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        input_type: { type: string, enum: [text, voice], default: text }
+
+    ChatMessageChunk:
+      type: object
+      description: >
+        실제 응답은 text/plain 청크 스트림으로 전송됨 (OpenAPI로 스트림 자체는 표현 불가).
+        이 스키마는 각 청크의 논리적 구조를 문서화하기 위함.
+      properties:
+        type: { type: string, enum: [token, emergency_fallback, done] }
+        content: { type: string }
+        disclaimer: { type: string, description: "T-LLM-1: 응답에 항상 동반되는 면책 문구" }
+
+    ChatHistoryItem:
+      type: object
+      properties:
+        role: { type: string, enum: [user, assistant] }
+        content: { type: string }
+        created_at: { type: string, format: date-time }
+
+    # ---------- Push 구독 ----------
+    PushSubscriptionRequest:
+      type: object
+      required: [endpoint, keys]
+      properties:
+        endpoint: { type: string, description: "브라우저 Push 서비스 endpoint URL" }
+        keys:
+          type: object
+          required: [p256dh, auth]
+          properties:
+            p256dh: { type: string }
+            auth: { type: string }
+
+paths:
+  # ================= Auth =================
+  /auth/email/verify-request:
+    post:
+      tags: [Auth]
+      summary: 이메일 인증번호 발송 (T-AUTH-1)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties: { email: { type: string, format: email } }
+      responses:
+        '200': { description: 발송 성공 }
+        '409': { description: 이미 가입된 이메일 }
+
+  /auth/email/verify-confirm:
+    post:
+      tags: [Auth]
+      summary: 이메일 인증번호 확인 (T-AUTH-1)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string }
+                code: { type: string }
+      responses:
+        '200':
+          description: 인증 성공, 임시 토큰 발급
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { email_verified_token: { type: string } }
+
+  /auth/nickname/check:
+    get:
+      tags: [Auth]
+      summary: 닉네임 중복확인 (T-AUTH-1)
+      parameters:
+        - in: query
+          name: nickname
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: 사용 가능 여부
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { available: { type: boolean } }
+
+  /auth/signup:
+    post:
+      tags: [Auth]
+      summary: 이메일 회원가입 완료 (T-AUTH-1)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignupRequest' }
+      responses:
+        '201':
+          description: 가입 완료, 응답 바디로 Access/Refresh 토큰 발급, 즉시 홈 진입 가능
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokenResult' }
+        '400': { description: 인증 미완료 상태로 가입 시도 }
+        '409': { description: 닉네임 중복 }
+
+  /auth/google:
+    post:
+      tags: [Auth]
+      summary: Google 소셜 로그인/가입 (T-AUTH-2)
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GoogleLoginRequest' }
+      responses:
+        '200':
+          description: 로그인/가입 처리 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GoogleLoginResult' }
+        '401': { description: 위조/만료된 ID Token }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Access Token 갱신 (T-AUTH-3)
+      description: 요청 바디의 Refresh Token으로 재발급. 재발급 시 이전 Refresh Token은 즉시 폐기.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties: { refresh_token: { type: string } }
+      responses:
+        '200':
+          description: "갱신 성공, 새 Access/Refresh 토큰 반환"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthTokenResult' }
+        '401': { description: Refresh Token도 만료 — 재로그인 필요 }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 로그아웃 (T-AUTH-4)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                push_subscription_endpoint: { type: string, description: "현재 기기 구독 해지용" }
+      responses:
+        '200': { description: "서버 처리 실패해도 클라이언트는 저장된 토큰 삭제로 로그아웃 완료 처리" }
+
+  # ================= 문서 인식 (공통모듈) =================
+  /recognition/jobs:
+    post:
+      tags: [Recognition]
+      summary: 알약/처방전/진료기록 인식 요청 (T-MED-1, T-DOC-1 통합)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, source_type]
+              properties:
+                file: { type: string, format: binary }
+                source_type:
+                  type: string
+                  enum: [pill_photo, prescription, medical_record, medication_guide]
+      responses:
+        '202':
+          description: 인식 작업 접수 (비동기 처리)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecognitionJobCreateResult' }
+
+  /recognition/jobs/{job_id}:
+    get:
+      tags: [Recognition]
+      summary: 인식 결과 조회
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 인식 결과 (후보 리스트 또는 추출 필드)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecognitionResult' }
+        '404': { description: 존재하지 않는 job_id }
+
+  /recognition/jobs/{job_id}/confirm:
+    post:
+      tags: [Recognition]
+      summary: 사용자 최종 확인 → DB 반영 (T-MED-1 최종선택 / T-DOC-1 사용자컨펌)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RecognitionConfirmRequest' }
+      responses:
+        '200':
+          description: "확정 완료 — 복약스케줄/과거력에 자동 반영됨. 문서 인식 건은 T-DOC-2 가이드 카드도 함께 반환"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecognitionConfirmResult' }
+
+  # ================= 복약 =================
+  /medications:
+    get:
+      tags: [Medications]
+      summary: 등록된 복약 스케줄 목록
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/MedicationSchedule' }
+    post:
+      tags: [Medications]
+      summary: "복약 스케줄 수동 등록 (T-MED-1: 시간 선택만으로 완료)"
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/MedicationScheduleCreateRequest' }
+      responses:
+        '201':
+          description: 등록 완료
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MedicationSchedule' }
+
+  # ================= Chat (RAG) — T-LLM-2 =================
+  /chat/sessions:
+    post:
+      tags: [Chat]
+      summary: 새 대화 세션 시작
+      security: [{ bearerAuth: [] }]
+      responses:
+        '201':
+          description: 세션 생성됨 (Redis에 빈 스레드 생성)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatSessionCreateResult' }
+
+  /chat/sessions/{session_id}/messages:
+    get:
+      tags: [Chat]
+      summary: 현재 세션의 대화 이력 조회 (Redis 우선, 없으면 빈 배열)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: 대화 이력
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ChatHistoryItem' }
+
+    post:
+      tags: [Chat]
+      summary: 메시지 전송 및 스트리밍 응답 수신 (T-LLM-2)
+      description: >
+        처리 순서: (1) SafetySvc 응급 키워드 필터 → 감지 시 emergency_fallback 청크만 반환 후 종료.
+        (2) 감지 안 되면 User Health Context + RAG Retriever로 컨텍스트 구성 → LLM 스트리밍 호출.
+        응답은 `text/plain` 청크 스트림이며, 각 청크는 ChatMessageChunk 구조를 따른다.
+        스트림 종료 시 반드시 disclaimer(T-LLM-1)가 포함된 done 청크로 마무리된다.
+        비로그인 정책: 이 엔드포인트는 JWT 인증(bearerAuth)이 필수이므로 비로그인 사용자는 애초에 호출할 수 없다
+        (프론트는 UI만 노출하고 전송 시 로그인 모달로 유도, 백엔드는 이 인증 요구사항으로 이중 차단).
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: session_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatMessageRequest' }
+      responses:
+        '200':
+          description: 스트리밍 응답 시작 (text/plain, 청크 단위 전송)
+          content:
+            text/plain:
+              schema:
+                type: string
+                description: "줄바꿈으로 구분된 JSON 청크들 (ChatMessageChunk 참고)"
+
+  # ================= Push 구독 =================
+  /notifications/push-subscription:
+    post:
+      tags: [Notifications]
+      summary: Web Push 구독 등록 (Service Worker → 서버)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PushSubscriptionRequest' }
+      responses:
+        '201': { description: 구독 등록 완료 }
+    delete:
+      tags: [Notifications]
+      summary: Web Push 구독 해지
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint]
+              properties: { endpoint: { type: string } }
+      responses:
+        '204': { description: 해지 완료 }

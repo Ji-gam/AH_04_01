@@ -1,0 +1,43 @@
+flowchart TB
+
+    subgraph CLIENT["🖥️ Client (Web / PWA)"]
+        WebApp["ReMedi Web App<br/>(React + Vite, SPA)<br/>React Router: 홈/복약관리/정보/LLM상담/설정 5개 탭"]
+        SW["Service Worker<br/>(Push 수신·표시, 오프라인 캐싱)"]
+        Manifest["Web App Manifest<br/>(display: standalone — iOS 푸시 필수조건)"]
+
+        WebApp --- SW
+        WebApp --- Manifest
+    end
+
+    subgraph EDGE["☁️ AWS EC2 (Docker Compose)"]
+        NGINX["NGINX<br/>Reverse Proxy / TLS / Rate Limit<br/>+ 정적 빌드(SPA) 서빙"]
+
+        subgraph API["⚙️ FastAPI Backend"]
+            AuthSvc["Auth API<br/>(JWT Access/Refresh, Google OAuth)"]
+            CoreSvc["Core REST API<br/>(복약/목표/추적/알림 CRUD)"]
+            ChatSvc["Chat API<br/>⚠StreamingResponse만 사용<br/>(WebSocket/SSE 금지)"]
+            SafetySvc["Safety Prompt & Emergency Filter Service<br/>(T-LLM-1, T-LLM-5, 응급키워드 감지)"]
+            PushSub["Push Subscription API<br/>(VAPID 구독 등록/해지)"]
+            AdminCRUD["🛠️ SQLAdmin<br/>(/admin, DB 모델 자동 CRUD<br/>⚠별도 프론트 신규제작 금지)"]
+        end
+    end
+
+    WebApp -->|"HTTPS<br/>httpOnly Secure Cookie"| NGINX
+    NGINX --> AuthSvc
+    NGINX --> CoreSvc
+    NGINX --> ChatSvc
+    NGINX --> PushSub
+    NGINX -.운영자 직접 접속.-> AdminCRUD
+
+    SW -.구독 endpoint 등록.-> PushSub
+
+    %% 참고: iOS는 Manifest(display:standalone) + 홈화면 추가 상태에서만
+    %% Service Worker가 푸시를 수신함. Safari 탭 상태에서는 수신 불가.
+
+    %% 인증: JWT는 httpOnly Secure 쿠키로 발급 (fetch 시 credentials:'include')
+    %% 프론트엔드 JS는 토큰에 직접 접근하지 않음 (XSS 방어)
+
+    %% RAG/Data/External 연결은 섹션 2-A/2-B, 3-A/3-B 참고
+
+    classDef warn fill:#ffe9e9,stroke:#e03131,color:#c92a2a;
+    class ChatSvc,AdminCRUD warn;

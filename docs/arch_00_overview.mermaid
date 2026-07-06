@@ -1,0 +1,27 @@
+flowchart TB
+
+    Client["🖥️ ReMedi Web (PWA)<br/>React + Vite / Service Worker<br/>홈·복약관리·정보·LLM상담·설정 5탭"]
+    Edge["NGINX<br/>Reverse Proxy / TLS"]
+    API["⚙️ FastAPI Backend<br/>(Auth / Core / Chat / Safety / SQLAdmin)"]
+    RAG["🔎 RAG Pipeline<br/>(Squad B 소유)"]
+    Workers["🔁 Background Workers<br/>(Notification / Content / News / Report)"]
+    Data["🗄️ Data Layer<br/>(RDS / Redis / ChromaDB / S3)"]
+    External["🌍 External APIs<br/>(LLM / OCR / CLIP / TTS / Web Push)"]
+    Ops["🛠️ CI/CD & Observability"]
+
+    Client -->|HTTPS| Edge
+    Edge --> API
+
+    API --> RAG
+    API --> Workers
+    API --> Data
+    API --> External
+
+    RAG --> Data
+    RAG --> External
+
+    Workers --> Data
+    Workers --> External
+
+    Ops -.배포/모니터링.-> API
+    Ops -.배포/모니터링.-> Workers

@@ -1,0 +1,35 @@
+flowchart TB
+
+    NotiWorker["Notification Worker"]
+    ContentWorker["Content-Gen Worker"]
+    ReportWorker["Report Worker"]
+    WORKERS_ALL["Background Workers 전체"]
+    CoreSvc["Core REST API"]
+    ChatSvc["Chat API"]
+
+    RDS[("Amazon RDS (MySQL)<br/>— 섹션 3-A 참고")]
+    S3[("Object Storage (S3)<br/>— 섹션 3-A 참고")]
+    ContentCache[("MySQL: content_cache<br/>Tier1 — 섹션 2-B 참고")]
+    WebPushSvc["Web Push 서비스<br/>(VAPID) — 섹션 2-B 참고"]
+
+    subgraph OPS["🛠️ CI/CD & Observability"]
+        GHActions["GitHub Actions<br/>(GitFlow 기반 CI/CD)"]
+        Prom["Prometheus + Grafana"]
+        Sentry["Sentry<br/>(에러 트래킹)"]
+        Slack["Slack<br/>(장애/배포 알림)"]
+    end
+
+    NotiWorker --> RDS
+    NotiWorker -->|발송| WebPushSvc
+    ContentWorker --> S3
+    ContentWorker --> ContentCache
+    ReportWorker --> RDS
+
+    GHActions --> CoreSvc
+    GHActions --> WORKERS_ALL
+    CoreSvc --> Prom
+    ChatSvc --> Prom
+    WORKERS_ALL --> Prom
+    Prom --> Slack
+    CoreSvc --> Sentry
+    ChatSvc --> Sentry

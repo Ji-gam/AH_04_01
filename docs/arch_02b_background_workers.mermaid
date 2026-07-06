@@ -1,0 +1,33 @@
+flowchart TB
+
+    Scheduler["Scheduler<br/>(APScheduler — cron, 단일)"]
+
+    subgraph WORKERS["🔁 Background Workers (Redis Streams Consumer)"]
+        NotiWorker["Notification Worker<br/>(T-NTFY-1~6, Web Push 발송)"]
+        ContentWorker["Content-Gen Worker<br/>(T-LLM-3 건강팁, T-LLM-4 카드뉴스)<br/>⚠당일 캐시 재사용 필수"]
+        NewsWorker["News Collector<br/>(T-LLM-6 뉴스 수집·매칭)"]
+        ReportWorker["Report Worker<br/>(T-GOAL-3 주간/월간 리포트)"]
+    end
+
+    RedisDB[("Redis<br/>Streams(큐) — 섹션 2-A 참고")]
+    ContentCache[("MySQL: content_cache<br/>Tier1 — 당일 캐시 재사용")]
+    WebPushSvc["브라우저 Push 서비스<br/>(Chrome→FCM, Safari→Apple Push<br/>— web-push 표준으로 추상화)"]
+    NewsSrc["언론사/의료포털 뉴스 API·RSS"]
+    LLMRef["LLM API<br/>(섹션 2-A 참고)"]
+    IngestRef["Ingestion/Chunking<br/>(섹션 2-A 참고)"]
+
+    RedisDB --> NotiWorker
+    RedisDB --> ContentWorker
+    RedisDB --> ReportWorker
+    Scheduler --> NewsWorker
+    Scheduler --> ContentWorker
+    Scheduler --> ReportWorker
+
+    NotiWorker -->|"web-push lib, VAPID"| WebPushSvc
+    ContentWorker --> LLMRef
+    ContentWorker --> ContentCache
+    NewsWorker -->|수집| NewsSrc
+    NewsWorker -.수집된 뉴스 전달.-> IngestRef
+
+    classDef warn fill:#ffe9e9,stroke:#e03131,color:#c92a2a;
+    class ContentWorker warn;
