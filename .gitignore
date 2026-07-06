@@ -1,0 +1,25 @@
+.env
+__pycache__/
+*.db
+
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# 환경변수 (실제 값은 커밋 금지, .env.example 참고)
+.env
+.env.*
+!.env.example
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
