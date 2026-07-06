@@ -1,5 +1,5 @@
 [project]
-name = "ai-health-final"
+name = "ai-health-example"
 version = "0.1.0"
 description = "AI 헬스케어 파이널 프로젝트 예시용"
 readme = "README.md"
@@ -10,7 +10,9 @@ dependencies = [
     "pydantic-settings>=2.12.0",
     "python-dateutil>=2.9.0.post0",
     "redis>=7.1.0",
+    "slowapi>=0.1.10",
     "tomlkit>=0.14.0",
+    "tzdata>=2026.2",
 ]
 
 [dependency-groups]
@@ -30,6 +32,7 @@ app = [
     "orjson>=3.11.5",
     "passlib[bcrypt]>=1.7.4",
     "pyjwt>=2.10.1",
+    "slowapi>=0.1.9",
     "tortoise-orm>=0.25.3",
     "uvicorn>=0.40.0",
 ]

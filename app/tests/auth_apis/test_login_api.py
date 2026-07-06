@@ -15,6 +15,7 @@ class TestLoginAPI(TestCase):
             "gender": "FEMALE",
             "birth_date": "1995-05-05",
             "phone_number": "01011112222",
+            "agreed_terms": True,
         }
         login_data = {"email": "login_test@example.com", "password": "Password123!"}
 

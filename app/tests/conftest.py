@@ -43,3 +43,15 @@ def initialize(request: FixtureRequest) -> Generator[None, None]:
 @pytest_asyncio.fixture(autouse=True, scope="session")  # type: ignore[type-var]
 def event_loop() -> None:
     pass
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """[핀포인트 추가] signup/login에 건 속도제한(slowapi)이 테스트마다 초기화되지 않으면,
+    뒤에 도는 테스트들이 앞선 테스트들의 호출 횟수를 이어받아 429로 막혀버립니다.
+    매 테스트 시작 전에 카운터를 리셋해서 테스트끼리 서로 영향 안 주게 합니다."""
+    from app.apis.v1.auth_routers import limiter as auth_limiter
+
+    auth_limiter.reset()
+    yield
+    auth_limiter.reset()

@@ -1,0 +1,8 @@
+/* [starter] 공유 구역 전역 스타일. Vanilla CSS 기준. */
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+}
