@@ -13,3 +13,5 @@ wheels/
 *.coverage
 .coverage.*
 .agents
+.antigravity
+.github/workflows
