@@ -12,12 +12,12 @@ RUN apt-get update && apt-get install -y \
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 
 # 2. 의존성 패키지 관리 파일을 컨테이너 내부에 복사합니다.
-COPY pyproject.toml uv.lock ./
+COPY pyproject.toml uv.lock alembic.ini ./
 
 # 3. pyproject.toml에 명시된 의존성 패키지 중에서 'app' 그룹만 설치합니다.
 RUN uv sync --group app --no-dev --frozen
 
-# 4. 로컬 소스 코드를 컨테이너 내부로 복사합니다.
+# 4. 로컬 소스 코드를 컨테이너 내부로 복사합니다. (alembic.ini의 script_location이 가리키는 app/core/db/migrations 포함)
 COPY ./app ./app
 
 # 5. 해당 이미지를 활용하여 도커컨테이너 실행시 실행되는 명령어입니다.
