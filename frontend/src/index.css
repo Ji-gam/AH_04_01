@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* 예전 index.html/style.css의 네온 다크 테마를 CSS 변수로 이어받았습니다.
+   나중에 디자인을 바꾸고 싶으면 이 변수들만 고치면 전체 톤이 같이 바뀝니다. */
+:root {
+  --bg-primary: #0a0b10;
+  --panel-bg: rgba(18, 20, 38, 0.45);
+  --panel-border: rgba(255, 255, 255, 0.08);
+  --text-primary: #f1f3f9;
+  --text-secondary: #9aa0b9;
+  --text-muted: #5e647f;
+  --accent-cyan: #00f2fe;
+  --accent-blue: #4facfe;
+  --accent-green: #00ff87;
+  --accent-pink: #ff007f;
+}
+
+body {
+  background: radial-gradient(circle at 50% 50%, #151932 0%, #07080d 100%);
+  color: var(--text-primary);
+  min-height: 100vh;
+}

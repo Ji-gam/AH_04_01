@@ -1,0 +1,13 @@
+# ⚠️ 초안(Draft) - v3 명세 반영하면서 python-jose(JWT), python-multipart(파일업로드),
+# email-validator(이메일 형식검증)이 새로 추가되었습니다.
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic
+pymysql
+python-dotenv
+argon2-cffi
+httpx
+python-jose[cryptography]
+python-multipart
+email-validator
