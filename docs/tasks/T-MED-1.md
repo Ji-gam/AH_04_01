@@ -155,13 +155,18 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
   - `0004_merge_notification_and_medications.py`: `down_revision` 타입 힌트가 튜플 값과 안 맞던
     신규 mypy 에러 수정(`Union[str, None]` → `Union[str, Sequence[str], None]`).
   - 재검증: `ruff check`/`ruff format --check`/`mypy` 모두 위 파일들 기준 전부 통과, `pytest` 34/34 유지.
+- **마이그레이션 파일명 정리(사용자 확인 후 진행)**: `3d9e8983a475_create_medications_and_schedules_tables.py`가
+  `dev`/`main`에는 아직 반영되지 않고 이 PR 브랜치에만 존재함을 GitHub에서 확인 → 리비전 ID를 안전하게
+  바꿀 수 있다고 판단해 `0004_create_medications_and_schedules_tables.py`(revision `0004`)로 정리하고,
+  기존 `0004_merge_notification_and_medications.py`(병합 리비전)는 `0005`로 한 칸 밀어 재정렬
+  (`down_revision=("0003","0004")`). 운영 DB `alembic_version`도 `0005`로 갱신, `alembic heads`가
+  단일 head(`0005`)로 정상 수렴함을 확인. 새 파일들은 `ruff format`까지 맞춰 커밋해 이 파일로 인한
+  CI 실패는 해소됨.
 - **허용 경로 밖(수정하지 않음 — 공유 파일 변경 필요, 사용자 확인 후 보류)**:
   - `app/apis/v1/__init__.py`, `app/models/__init__.py`, `app/models/medication_model.py`: import 정렬
     (I001). `app/models/medication_model.py`는 `ruff format --check`도 미통과.
   - `app/core/validators/__init__.py`: `from .common import *` 등 wildcard import (F403) — 이번
     변경과 전혀 무관한 기존 파일.
-  - `app/core/db/migrations/versions/3d9e8983a475_create_medications_and_schedules_tables.py`:
-    `ruff format --check` 미통과(기존 파일, 다른 에이전트 작성).
   - **결론**: 위 5개 파일을 고치지 않는 한 CI의 "Lint & Type Check"는 계속 실패한다. 전부 기계적인
     import 정렬/포맷 수준(로직 변경 없음)이라 리스크는 낮지만, T-MED-1 Task Contract의 허용 경로에
     없어 임의로 수정하지 않았다. 담당자 또는 사용자가 별도로 처리하거나, 허용 범위 확장을 명시적으로
