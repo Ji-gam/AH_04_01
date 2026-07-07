@@ -1,8 +1,12 @@
 from collections.abc import AsyncIterator
+from typing import cast
 
 from app.models.chat import MessageRole
+from app.repositories.chat_repository import ChatRepository
 from app.services.chat_service import ChatService
+from app.services.retriever_stub import Retriever
 from app.services.safety_service import DISCLAIMER_TEXT, EMERGENCY_FALLBACK_MESSAGE
+from app.services.user_health_context_service import UserHealthContextService
 
 
 class FakeChatRepository:
@@ -32,10 +36,11 @@ async def fake_llm_stream(message: str, context: dict, chunks: list[str]):
 
 
 def _build_service(repository: FakeChatRepository) -> ChatService:
+    # Fake들은 실제 클래스와 시그니처만 맞춘 덕타이핑 객체라 mypy 통과용으로 cast한다.
     return ChatService(
-        repository=repository,
-        health_context_service=FakeUserHealthContextService(),
-        retriever=FakeRetriever(),
+        repository=cast(ChatRepository, repository),
+        health_context_service=cast(UserHealthContextService, FakeUserHealthContextService()),
+        retriever=cast(Retriever, FakeRetriever()),
         llm_stream=fake_llm_stream,
     )
 

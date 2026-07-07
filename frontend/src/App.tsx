@@ -7,6 +7,7 @@ import { createBrowserRouter } from "react-router-dom";
 
 import Layout from "./components/common/Layout";
 import RequireAuth from "./components/common/RequireAuth";
+import AlarmPage from "./pages/AlarmPage/AlarmPage";
 import ChatPage from "./pages/ChatPage/ChatPage";
 import HomePage from "./pages/HomePage/HomePage";
 import InfoPage from "./pages/InfoPage/InfoPage";
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
         element: <Layout />,
         children: [
           { path: "/", element: <HomePage /> },
+          { path: "/alarms", element: <AlarmPage /> },
           { path: "/track", element: <TrackPage /> },
           { path: "/medication", element: <MedicationPage /> },
           { path: "/chat", element: <ChatPage /> },

@@ -31,6 +31,34 @@ export interface ChatSessionCreateResult {
   session_id: string;
 }
 
+// 백엔드 app/dtos/notifications.py와 1:1로 수동 동기화.
+export type FrequencyType = "DAILY" | "WEEKLY";
+export type DayOfWeek = "일" | "월" | "화" | "수" | "목" | "금" | "토";
+
+export interface NotificationScheduleResult {
+  id: number;
+  medication_name: string;
+  frequency_type: FrequencyType;
+  target_day_of_week: DayOfWeek | null;
+  alarm_time: string; // "HH:MM:SS"
+  is_active: boolean;
+}
+
+export interface NotificationScheduleCreateRequest {
+  medication_name: string;
+  frequency_type: FrequencyType;
+  target_day_of_week?: DayOfWeek | null;
+  alarm_time: string;
+}
+
+export interface NotificationScheduleUpdateRequest {
+  medication_name?: string;
+  frequency_type?: FrequencyType;
+  target_day_of_week?: DayOfWeek | null;
+  alarm_time?: string;
+  is_active?: boolean;
+}
+
 // ChatMessageChunk 스키마 (api_spec_core_v1.yaml). text/plain 스트림의 각 줄이 이 형태의 JSON이다.
 export interface ChatMessageChunk {
   type: "token" | "emergency_fallback" | "done";
