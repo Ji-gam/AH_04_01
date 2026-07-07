@@ -1,13 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import { notificationApi } from "../../api/notificationApi";
-import type {
-  NotificationScheduleResult,
-  NotificationScheduleUpdateRequest,
-} from "../../api/types";
+import type { NotificationScheduleResult } from "../../api/types";
 
 import AlarmCalendar from "./components/AlarmCalendar";
-import AlarmForm from "./components/AlarmForm";
+import AlarmForm, { type AlarmFormSubmit } from "./components/AlarmForm";
 import { isScheduleDueOnDate, toDateString } from "./dateUtils";
 import { alarmTheme as t } from "./theme";
 
@@ -22,6 +19,28 @@ function isDueToday(schedule: NotificationScheduleResult): boolean {
 
 function dayLabel(schedule: NotificationScheduleResult): string {
   return schedule.frequency_type === "DAILY" ? "매일" : `매주 ${schedule.target_day_of_week}요일`;
+}
+
+/** 하루 복용 횟수의 임상 표기. 4회 이상은 표기 없이 횟수만 보여준다. */
+const DOSE_NOTATION: Record<number, string> = { 1: "qd", 2: "bid", 3: "tid", 4: "qid" };
+
+function doseLabel(count: number): string {
+  const notation = DOSE_NOTATION[count];
+  return notation ? `하루 ${count}회 (${notation})` : `하루 ${count}회`;
+}
+
+/** 같은 약을 하루 몇 번 먹는지 — 약 이름+반복 조건이 같은 알림 개수를 센다. */
+function buildDoseCounts(schedules: NotificationScheduleResult[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const s of schedules) {
+    const key = `${s.medication_name}|${s.frequency_type}|${s.target_day_of_week ?? ""}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function doseCountOf(counts: Map<string, number>, s: NotificationScheduleResult): number {
+  return counts.get(`${s.medication_name}|${s.frequency_type}|${s.target_day_of_week ?? ""}`) ?? 1;
 }
 
 export default function AlarmPage() {
@@ -101,50 +120,79 @@ export default function AlarmPage() {
     }
   };
 
-  const handleCreate = (data: NotificationScheduleUpdateRequest) => {
+  // 하루 2회(bid)/3회(tid)면 시각별로 알림을 한 건씩 등록한다 (백엔드는 알림 1건 = 시각 1개).
+  const handleCreate = (data: AlarmFormSubmit) => {
     setIsSaving(true);
     setFormError(undefined);
-    notificationApi
-      .create({
-        medication_name: data.medication_name!,
-        frequency_type: data.frequency_type!,
-        target_day_of_week: data.target_day_of_week,
-        alarm_time: data.alarm_time!,
-      })
+    Promise.all(
+      data.alarm_times.map((time) =>
+        notificationApi.create({
+          medication_name: data.medication_name,
+          frequency_type: data.frequency_type,
+          target_day_of_week: data.target_day_of_week,
+          alarm_time: time,
+        }),
+      ),
+    )
       .then(() => {
         setShowAddForm(false);
         loadSchedules();
       })
-      .catch(() => setFormError("저장에 실패했습니다. 입력값을 확인해주세요."))
+      .catch((e: Error) => {
+        setFormError(`저장에 실패했습니다. (${e.message})`);
+        // 여러 건 중 일부만 저장됐을 수 있으니 목록은 새로 불러온다.
+        loadSchedules();
+      })
       .finally(() => setIsSaving(false));
   };
 
-  const handleUpdate = (data: NotificationScheduleUpdateRequest) => {
+  const handleUpdate = (data: AlarmFormSubmit) => {
     if (!editingSchedule) return;
     setIsSaving(true);
     setFormError(undefined);
     notificationApi
-      .update(editingSchedule.id, data)
+      .update(editingSchedule.id, {
+        medication_name: data.medication_name,
+        frequency_type: data.frequency_type,
+        target_day_of_week: data.target_day_of_week,
+        alarm_time: data.alarm_times[0],
+      })
       .then(() => {
         setEditingSchedule(null);
         loadSchedules();
       })
-      .catch(() => setFormError("수정에 실패했습니다. 입력값을 확인해주세요."))
+      .catch((e: Error) => setFormError(`수정에 실패했습니다. (${e.message})`))
       .finally(() => setIsSaving(false));
   };
 
   const handleToggleActive = (schedule: NotificationScheduleResult) => {
-    notificationApi.update(schedule.id, { is_active: !schedule.is_active }).then(loadSchedules);
+    notificationApi
+      .update(schedule.id, { is_active: !schedule.is_active })
+      .then(loadSchedules)
+      .catch((e: Error) => setError(`알림 상태 변경에 실패했습니다. (${e.message})`));
+  };
+
+  // 수정 폼은 페이지 상단에 열리므로, 스크롤을 내린 상태에서도 폼이 보이도록 위로 올린다.
+  const startEdit = (schedule: NotificationScheduleResult) => {
+    setEditingSchedule(schedule);
+    setShowAddForm(false);
+    setFormError(undefined);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleDelete = (schedule: NotificationScheduleResult) => {
     if (!window.confirm(`"${schedule.medication_name}" 알림을 삭제할까요?`)) return;
-    notificationApi.remove(schedule.id).then(loadSchedules);
+    notificationApi
+      .remove(schedule.id)
+      .then(loadSchedules)
+      .catch((e: Error) => setError(`알림 삭제에 실패했습니다. (${e.message})`));
   };
 
   const selectedDaySchedules = schedules
     .filter((s) => isScheduleDueOnDate(s, selectedDate))
     .sort((a, b) => a.alarm_time.localeCompare(b.alarm_time));
+
+  const doseCounts = buildDoseCounts(schedules);
 
   const sectionTitle = isSelectedToday
     ? "오늘의 복약 시간표"
@@ -197,6 +245,7 @@ export default function AlarmPage() {
 
         {editingSchedule && (
           <AlarmForm
+            key={editingSchedule.id}
             initial={editingSchedule}
             isSaving={isSaving}
             errorMessage={formError}
@@ -260,7 +309,10 @@ export default function AlarmPage() {
                   {s.alarm_time.slice(0, 5)}
                 </span>{" "}
                 <span style={{ fontSize: 14, color: t.text }}>{s.medication_name}</span>
-                <p style={{ fontSize: 12, color: t.textMuted, margin: "2px 0 0" }}>{dayLabel(s)}</p>
+                <p style={{ fontSize: 12, color: t.textMuted, margin: "2px 0 0" }}>
+                  {dayLabel(s)}
+                  {doseCountOf(doseCounts, s) > 1 && ` · ${doseLabel(doseCountOf(doseCounts, s))}`}
+                </p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <label
@@ -282,10 +334,7 @@ export default function AlarmPage() {
                 <button
                   type="button"
                   aria-label="알림 수정"
-                  onClick={() => {
-                    setEditingSchedule(s);
-                    setShowAddForm(false);
-                  }}
+                  onClick={() => startEdit(s)}
                   style={{
                     border: "none",
                     background: "none",
@@ -320,26 +369,59 @@ export default function AlarmPage() {
           <p style={{ color: t.textMuted, fontSize: 14 }}>등록된 알림이 없습니다.</p>
         )}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {schedules.map((s) => (
-            <div
-              key={s.id}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 13,
-                color: t.text,
-                padding: "8px 4px",
-                borderBottom: `1px solid ${t.border}`,
-              }}
-            >
-              <span>
-                {s.alarm_time.slice(0, 5)} · {s.medication_name} · {dayLabel(s)}
-              </span>
-              <span style={{ color: s.is_active ? t.success : t.textMuted }}>
-                {s.is_active ? "켜짐" : "꺼짐"}
-              </span>
-            </div>
-          ))}
+          {[...schedules]
+            .sort((a, b) => a.alarm_time.localeCompare(b.alarm_time))
+            .map((s) => (
+              <div
+                key={s.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 13,
+                  color: t.text,
+                  padding: "8px 4px",
+                  borderBottom: `1px solid ${t.border}`,
+                }}
+              >
+                <span>
+                  {s.alarm_time.slice(0, 5)} · {s.medication_name} · {dayLabel(s)}
+                  {doseCountOf(doseCounts, s) > 1 && ` · ${doseLabel(doseCountOf(doseCounts, s))}`}
+                </span>
+                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ color: s.is_active ? t.success : t.textMuted }}>
+                    {s.is_active ? "켜짐" : "꺼짐"}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="알림 수정"
+                    onClick={() => startEdit(s)}
+                    style={{
+                      border: "none",
+                      background: "none",
+                      color: t.textMuted,
+                      cursor: "pointer",
+                      fontSize: 13,
+                    }}
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="알림 삭제"
+                    onClick={() => handleDelete(s)}
+                    style={{
+                      border: "none",
+                      background: "none",
+                      color: t.textMuted,
+                      cursor: "pointer",
+                      fontSize: 13,
+                    }}
+                  >
+                    🗑️
+                  </button>
+                </span>
+              </div>
+            ))}
         </div>
       </div>
     </div>
