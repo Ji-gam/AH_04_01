@@ -6,14 +6,10 @@ import type {
   NotificationScheduleUpdateRequest,
 } from "../../api/types";
 
+import AlarmCalendar from "./components/AlarmCalendar";
 import AlarmForm from "./components/AlarmForm";
+import { isScheduleDueOnDate, toDateString } from "./dateUtils";
 import { alarmTheme as t } from "./theme";
-
-const KOREAN_DAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
-
-function getTodayKoreanDay(): string {
-  return KOREAN_DAYS[new Date().getDay()];
-}
 
 function getCurrentHHMM(): string {
   const now = new Date();
@@ -21,8 +17,7 @@ function getCurrentHHMM(): string {
 }
 
 function isDueToday(schedule: NotificationScheduleResult): boolean {
-  if (schedule.frequency_type === "DAILY") return true;
-  return schedule.target_day_of_week === getTodayKoreanDay();
+  return isScheduleDueOnDate(schedule, new Date());
 }
 
 function dayLabel(schedule: NotificationScheduleResult): string {
@@ -38,6 +33,31 @@ export default function AlarmPage() {
   const [editingSchedule, setEditingSchedule] = useState<NotificationScheduleResult | null>(null);
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
+
+  const today = new Date();
+  const [selectedDateStr, setSelectedDateStr] = useState(toDateString(today));
+  const [visibleYear, setVisibleYear] = useState(today.getFullYear());
+  const [visibleMonth, setVisibleMonth] = useState(today.getMonth());
+  const selectedDate = new Date(`${selectedDateStr}T00:00:00`);
+  const isSelectedToday = selectedDateStr === toDateString(today);
+
+  const handlePrevMonth = () => {
+    if (visibleMonth === 0) {
+      setVisibleYear((y) => y - 1);
+      setVisibleMonth(11);
+    } else {
+      setVisibleMonth((m) => m - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (visibleMonth === 11) {
+      setVisibleYear((y) => y + 1);
+      setVisibleMonth(0);
+    } else {
+      setVisibleMonth((m) => m + 1);
+    }
+  };
 
   const loadSchedules = () => {
     setLoading(true);
@@ -122,9 +142,13 @@ export default function AlarmPage() {
     notificationApi.remove(schedule.id).then(loadSchedules);
   };
 
-  const todaySchedules = schedules
-    .filter(isDueToday)
+  const selectedDaySchedules = schedules
+    .filter((s) => isScheduleDueOnDate(s, selectedDate))
     .sort((a, b) => a.alarm_time.localeCompare(b.alarm_time));
+
+  const sectionTitle = isSelectedToday
+    ? "오늘의 복약 시간표"
+    : `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일 복약 시간표`;
 
   return (
     <div style={{ background: t.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
@@ -181,12 +205,22 @@ export default function AlarmPage() {
           />
         )}
 
-        <h2 style={{ fontSize: 15, color: t.text, marginBottom: 10 }}>오늘의 복약 시간표</h2>
+        <AlarmCalendar
+          year={visibleYear}
+          month={visibleMonth}
+          selectedDateStr={selectedDateStr}
+          schedules={schedules}
+          onSelectDate={setSelectedDateStr}
+          onPrevMonth={handlePrevMonth}
+          onNextMonth={handleNextMonth}
+        />
+
+        <h2 style={{ fontSize: 15, color: t.text, marginBottom: 10 }}>{sectionTitle}</h2>
 
         {loading && <p style={{ color: t.textMuted, fontSize: 14 }}>불러오는 중...</p>}
         {error && <p style={{ color: t.danger, fontSize: 14 }}>{error}</p>}
 
-        {!loading && !error && todaySchedules.length === 0 && (
+        {!loading && !error && selectedDaySchedules.length === 0 && (
           <div
             style={{
               background: t.cardBg,
@@ -199,12 +233,14 @@ export default function AlarmPage() {
             }}
           >
             <p style={{ fontSize: 28, margin: 0 }}>🌸</p>
-            <p style={{ fontSize: 14, margin: "8px 0 0" }}>오늘 등록된 알림이 없어요.</p>
+            <p style={{ fontSize: 14, margin: "8px 0 0" }}>
+              {isSelectedToday ? "오늘 등록된 알림이 없어요." : "이 날짜에 등록된 알림이 없어요."}
+            </p>
           </div>
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
-          {todaySchedules.map((s) => (
+          {selectedDaySchedules.map((s) => (
             <div
               key={s.id}
               style={{
