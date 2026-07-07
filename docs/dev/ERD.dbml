@@ -1,9 +1,10 @@
 // AH_04_01 ERD — dbdiagram.io (https://dbdiagram.io)에 그대로 붙여넣어 보면 됩니다.
 //
-// 문서 버전: v1.1 · 최종 수정: 2026-07-07
+// 문서 버전: v1.2 · 최종 수정: 2026-07-07
 // 변경 이력:
 //   - v1.0 (2026-07-07): User/Profile 분리 반영한 최초 작성
-//   - v1.1 (2026-07-07): notification_schedules 테이블 추가 (T-NTFY, 복약 알림)
+//   - v1.1 (2026-07-07): T-LLM-2 chat_sessions/chat_messages 테이블 추가
+//   - v1.2 (2026-07-07): notification_schedules 테이블 추가 (T-NTFY, 복약 알림)
 //
 // 규칙 (docs/CODING_RULES_v1.0.md 6번):
 //   DB를 CRUD하는 작업(모델 추가/변경, 마이그레이션 작성)을 할 때마다 이 파일도 같은 커밋/PR에서
@@ -40,6 +41,25 @@ Table profiles {
   본인도 하나의 Profile로 취급한다 (회원가입 시 relation=SELF로 자동 생성).
   새 도메인 테이블(복약, 일정, 채팅 등)은 user_id가 아니라 이 profiles.id를 참조 키로 쓴다.
   '''
+}
+
+Table chat_sessions {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+
+  Note: 'T-LLM-2 챗봇 대화 세션. profile_id 기준으로 스코핑한다.'
+}
+
+Table chat_messages {
+  id bigint [pk, increment]
+  session_id bigint [not null, ref: > chat_sessions.id]
+  role varchar(10) [not null, note: 'USER | ASSISTANT']
+  content text [not null]
+  created_at datetime [not null]
+
+  Note: '응급 Fallback 메시지는 저장하지 않는다.'
 }
 
 Table notification_schedules {
