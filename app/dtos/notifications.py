@@ -28,17 +28,19 @@ class NotificationScheduleCreateRequest(BaseModel):
 class NotificationScheduleUpdateRequest(BaseModel):
     """전달한 필드만 갱신한다(부분 수정)."""
 
-    medication_name: Annotated[str | None, Field(None, min_length=1, max_length=100, description="약 이름")]
+    medication_name: Annotated[
+        str | None, Field(None, min_length=1, max_length=100, description="약 이름", examples=["타이레놀"])
+    ]
     frequency_type: Annotated[FrequencyType | None, Field(None, description="'DAILY' 또는 'WEEKLY'")]
     target_day_of_week: Annotated[DayOfWeek | None, Field(None, description="frequency_type이 WEEKLY일 때만 값 사용")]
-    alarm_time: Annotated[time | None, Field(None, description="복용 시각. HH:MM:SS")]
+    alarm_time: Annotated[time | None, Field(None, description="복용 시각. HH:MM:SS", examples=["08:30:00"])]
     is_active: Annotated[bool | None, Field(None, description="알림 on/off")]
 
 
 class NotificationScheduleResponse(BaseSerializerModel):
-    id: Annotated[int, Field(description="알림 일정 PK")]
-    medication_name: Annotated[str, Field(description="약 이름")]
+    id: Annotated[int, Field(description="알림 일정 PK", examples=[1])]
+    medication_name: Annotated[str, Field(description="약 이름", examples=["타이레놀"])]
     frequency_type: Annotated[FrequencyType, Field(description="'DAILY' 또는 'WEEKLY'")]
     target_day_of_week: Annotated[DayOfWeek | None, Field(description="WEEKLY일 때만 값 존재")]
-    alarm_time: Annotated[time, Field(description="복용 시각")]
-    is_active: Annotated[bool, Field(description="알림 on/off")]
+    alarm_time: Annotated[time, Field(description="복용 시각. HH:MM:SS", examples=["08:30:00"])]
+    is_active: Annotated[bool, Field(description="알림 on/off", examples=[True])]
