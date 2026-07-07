@@ -17,6 +17,37 @@ if (import.meta.env.DEV) {
   (window as unknown as { __getToken: () => string | null }).__getToken = () => accessToken;
 }
 
+interface PydanticValidationError {
+  loc: (string | number)[];
+  msg: string;
+}
+
+/**
+ * FastAPI 에러 응답의 `detail`은 두 가지 형태로 온다:
+ * 1) HTTPException(detail="...") → 문자열
+ * 2) Pydantic 유효성 검증 실패(422) → [{loc, msg, type, input}, ...] 배열
+ * 배열을 그대로 Error에 넘기면 "[object Object]"로 찍힌다 — 반드시 문자열로 변환해야 한다.
+ */
+function extractErrorMessage(body: unknown, status: number): string {
+  const detail = (body as { detail?: unknown } | undefined)?.detail;
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    return detail
+      .map((e: PydanticValidationError) => {
+        const field = e.loc?.[e.loc.length - 1];
+        return field ? `${field}: ${e.msg}` : e.msg;
+      })
+      .join(", ");
+  }
+  const message = (body as { message?: unknown } | undefined)?.message;
+  if (typeof message === "string") {
+    return message;
+  }
+  return `API 오류 (${status})`;
+}
+
 /** JSON이 아닌 응답(스트리밍 등)이 필요할 때 쓰는 저수준 fetch — chatApi.ts 참고. */
 export async function apiFetchRaw(path: string, options: RequestInit = {}): Promise<Response> {
   const res = await fetch(`/api/v1${path}`, {
@@ -31,7 +62,7 @@ export async function apiFetchRaw(path: string, options: RequestInit = {}): Prom
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message ?? `API 오류 (${res.status})`);
+    throw new Error(extractErrorMessage(body, res.status));
   }
   return res;
 }
