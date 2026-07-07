@@ -1,11 +1,12 @@
 # AH_04_01 아키텍처 결정 로그
 
-> **문서 버전**: v1.3 · **최종 수정**: 2026-07-07
+> **문서 버전**: v1.4 · **최종 수정**: 2026-07-07
 > **변경 이력**
 > - v1.0 (2026-07-07): `remedi_mweb_co`의 decision_log를 이식하며 `AH_04_01`로 이관하는 과정에서 새로 확정/변경된 내용을 반영. 이전 버전과의 핵심 차이는 아래 "AH_04_01 이관 시 변경된 결정" 참고.
 > - v1.1 (2026-07-07): 하네스 문서 정리(FRONTEND_ARCHITECTURE.md 흡수, docs/dev·docs/plan 재구성, 고아 mermaid 삭제) 기록 추가. `sample_code_*` 경로 참조를 `docs/dev/`로 갱신
 > - v1.2 (2026-07-07): `CLAUDE.md`를 슬림화하며 "문서 버전 관리 방식의 배경" 절 추가(원래 CLAUDE.md에 있던 파일명-고정 정책의 이유를 이곳으로 이전)
 > - v1.3 (2026-07-07): `CODING_RULES.md`를 슬림화하며 레이어 우선 구조 채택 이유(중복이었음)와 에러 처리 규칙 9번의 배경(422 사고 실화)을 이 문서로 이전
+> - v1.4 (2026-07-07): T-LLM-2 LLM 모델 결정("확정된 기술 결정" 표에 행 추가) — `docs/dev/sample_code_chat`의 stub 주석에 있던 "개발: 저비용 모델 / 배포: Claude"는 실제로 이 문서에 기록된 적 없는 미확정 문구였음을 확인, 이번에 정식으로 확정
 
 ## AH_04_01 이관 시 변경된 결정 (2026-07-07)
 
@@ -46,6 +47,7 @@
 | 마이그레이션 | **Alembic** | 위 표 참고 |
 | Vector DB | ChromaDB (Server Mode) | RAG 완성 시점에 실제 도입 |
 | 응급 키워드 감지 | 규칙 기반 사전 필터 (LLM 호출 전) | `docs/dev/sample_code_chat/app/services/safety_service.py` 패턴 참고 |
+| LLM (T-LLM-2, 2026-07-07 확정) | **OpenAI `gpt-4o-mini`**, `OPENAI_API_KEY` 미설정 시 stub 폴백 | `app/services/llm_stub.py`. 배포 환경 모델 재검토는 별도 결정 사항 — 이번 결정은 dev/로컬 범위 |
 | CI/CD | `ruff check`/`ruff format --check` + `pytest` (로컬은 `scripts/ci/*.sh`) | GitHub Actions 등록은 아직 (`CONTRIBUTING.md` 8번 참고) |
 | 환경변수/설정 관리 | `envs/` 2계층(예시+실값) + 루트 `.env` 심볼릭 링크, `pydantic-settings`로 타입 검증 | `CODING_RULES.md` 2-2/2-3 참고 |
 

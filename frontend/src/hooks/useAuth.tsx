@@ -39,7 +39,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchMe]);
   const logout = useCallback(() => { setAccessToken(null); setUser(null); }, []);
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: user !== null, isLoading, login, completeSocialSignup, logout }}>
+    <AuthContext.Provider
+      value={{ user, isAuthenticated: user !== null, isLoading, login, completeSocialSignup, logout }}
+    >
       {children}
     </AuthContext.Provider>
   );
