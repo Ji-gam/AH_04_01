@@ -33,6 +33,7 @@ services:
       - ws
     volumes:
       - mysql_data:/var/lib/mysql  # 컨테이너가 삭제돼도 데이터는 호스트 파일시스템에 남음
+      - ./infra/mysql/init-test-db.sh:/docker-entrypoint-initdb.d/init-test-db.sh  # pytest용 test DB 자동 생성(볼륨 최초 초기화 시 1회)
     command: # 한글 저장을 위한 문자셋 설정 (필수!)
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
