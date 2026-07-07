@@ -1,4 +1,4 @@
-import { Link, Outlet } from "react-router-dom";
+﻿import { Link, Outlet } from "react-router-dom";
 
 import { useAuth } from "../../hooks/useAuth";
 
@@ -16,6 +16,7 @@ export default function Layout() {
         <Link to="/more">더보기</Link>
         <span style={{ marginLeft: "auto" }}>
           {user?.name}님{" "}
+          <Link to="/account-settings">계정 설정</Link>{" "}
           <button type="button" onClick={logout}>
             로그아웃
           </button>

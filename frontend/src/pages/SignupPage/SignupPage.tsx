@@ -1,90 +1,56 @@
-import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 
-import { authApi } from "../../api/authApi";
-import type { SignupPayload } from "../../api/types";
+const BACKEND_BASE_URL = "http://127.0.0.1:8000";
 
-const initialForm: SignupPayload = {
-  email: "",
-  password: "",
-  name: "",
-  gender: "MALE",
-  birth_date: "",
-  phone_number: "",
+const socialButtonStyle = {
+  textAlign: "center" as const,
+  padding: "8px",
+  border: "1px solid #ccc",
+  textDecoration: "none",
+  color: "#000",
+  display: "block",
 };
 
-/** 백엔드 SignUpRequest(app/dtos/auth.py)와 1:1 필드. 디자인 없이 "가입이 실제로 되는지"만 증명. */
+/** 회원가입 진입 화면. 소셜 3사 아이콘 + "이메일로 가입하기" 중 고르게 한다.
+ * (참고 앱: SNS 아이콘 나열 + "또는" + "이메일로 가입하기" 구조와 동일) */
 export default function SignupPage() {
-  const navigate = useNavigate();
-  const [form, setForm] = useState<SignupPayload>(initialForm);
-  const [error, setError] = useState<string | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  function update<K extends keyof SignupPayload>(key: K, value: SignupPayload[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setIsSubmitting(true);
-    try {
-      await authApi.signup(form);
-      navigate("/login", { replace: true });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "회원가입에 실패했습니다.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
   return (
-    <div style={{ maxWidth: 320, margin: "40px auto" }}>
-      <h1>회원가입</h1>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <input
-          type="email"
-          placeholder="이메일"
-          value={form.email}
-          onChange={(e) => update("email", e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          placeholder="비밀번호 (대/소문자·숫자·특수문자 포함 8자 이상)"
-          value={form.password}
-          onChange={(e) => update("password", e.target.value)}
-          required
-        />
-        <input
-          type="text"
-          placeholder="이름"
-          value={form.name}
-          onChange={(e) => update("name", e.target.value)}
-          required
-        />
-        <select value={form.gender} onChange={(e) => update("gender", e.target.value as SignupPayload["gender"])}>
-          <option value="MALE">남성</option>
-          <option value="FEMALE">여성</option>
-        </select>
-        <input
-          type="date"
-          value={form.birth_date}
-          onChange={(e) => update("birth_date", e.target.value)}
-          required
-        />
-        <input
-          type="tel"
-          placeholder="휴대폰번호 (01012345678)"
-          value={form.phone_number}
-          onChange={(e) => update("phone_number", e.target.value)}
-          required
-        />
-        {error && <p style={{ color: "red" }}>{error}</p>}
-        <button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "가입 중..." : "회원가입"}
-        </button>
-      </form>
+    <div style={{ maxWidth: 320, margin: "80px auto" }}>
+      <h1 style={{ textAlign: "center" }}>회원가입</h1>
+      <p style={{ textAlign: "center", color: "#888", fontSize: 14 }}>간편하게 SNS로 가입하세요.</p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px", margin: "16px 0" }}>
+        {/* [T-AUTH-7] axios/fetch 호출이 아니라 진짜 페이지 이동이어야 한다(OAuth 리다이렉트) */}
+        <a href={`${BACKEND_BASE_URL}/api/v1/auth/google/login`} style={socialButtonStyle}>
+          구글로 가입하기
+        </a>
+        <a href={`${BACKEND_BASE_URL}/api/v1/auth/naver/login`} style={socialButtonStyle}>
+          네이버로 가입하기
+        </a>
+        <a href={`${BACKEND_BASE_URL}/api/v1/auth/kakao/login`} style={socialButtonStyle}>
+          카카오로 가입하기
+        </a>
+      </div>
+
+      <p style={{ textAlign: "center", color: "#888", margin: "16px 0 8px" }}>또는</p>
+      <Link
+        to="/signup/email"
+        style={{
+          display: "block",
+          textAlign: "center",
+          padding: "8px",
+          border: "1px solid #ccc",
+          borderRadius: "4px",
+          textDecoration: "none",
+          color: "#000",
+        }}
+      >
+        이메일로 가입하기
+      </Link>
+
+      <p style={{ textAlign: "center", marginTop: 16 }}>
+        이미 계정이 있으신가요? <Link to="/login">로그인</Link>
+      </p>
     </div>
   );
 }
