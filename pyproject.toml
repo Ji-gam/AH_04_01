@@ -64,6 +64,8 @@ testpaths = ["app/tests"]
 # 기본 라인 길이 설정
 line-length = 120
 target-version = "py312"
+# docs/dev/sample_code_* 는 팀원 참고용 예시 코드(실제 실행 대상 아님) — lint 대상에서 제외
+extend-exclude = ["docs/dev/sample_code_chat", "docs/dev/sample_code_recog"]
 
 [tool.ruff.lint]
 # 사용할 린트 규칙들 선택
@@ -82,6 +84,7 @@ ignore = ["UP046", "E501"]
 # 특정 파일에서 무시할 규칙들
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+"app/core/validators/__init__.py" = ["F403"]
 "app/core/db/migrations/**" = ["ALL"]
 
 [tool.ruff.format]
@@ -90,3 +93,8 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.mypy]
+# docs/dev/sample_code_* 가 실제 app/ 패키지와 같은 이름("app")을 써서
+# 전체 스캔 시 "Duplicate module named app" 오류로 mypy 자체가 멈춘다.
+exclude = ["docs/dev/sample_code_chat", "docs/dev/sample_code_recog"]
