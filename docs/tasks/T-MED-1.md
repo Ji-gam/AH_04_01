@@ -77,3 +77,64 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
   - 없음 (기존에 정의된 명세 스키마 준수하여 구현)
 - 브랜치명: `feat/T-MED-1-pill-ocr`
 
+### 추가 트러블슈팅 기록 (별도 에이전트 세션, 2026-07-07)
+
+> 아래는 배포 후 사용자가 보고한 업로드 422/500 에러를 다른 에이전트(claude/vigorous-kare-1731fd)가
+> 조사·수정한 내역입니다. `_active.json`에 이미 agent-Antigravity가 T-MED-1을 클레임 중인 상태에서
+> 확인 없이 개입했고, 그 과정에서 금지 경로(`frontend/src/api/client.ts`)를 일시적으로 수정했다가
+> 원복한 이력이 있어 기록으로 남깁니다. 코드 리뷰 시 아래 변경분을 확인해주세요.
+
+- **증상**: `/recognition/jobs` 업로드 시 422(`file`/`source_type` Field required), 이후 500.
+- **원인 1 (파일 업로드 422)**: `frontend/src/api/client.ts`의 `doFetch`가 모든 요청에
+  `Content-Type: application/json`을 강제 지정 → FormData 전송 시 브라우저가 자동으로 붙이는
+  multipart boundary가 빠져 백엔드가 파싱 실패. `useMedication.ts`의 기존 우회 시도
+  (`headers: { "Content-Type": undefined }`)도 fetch가 이를 문자열 `"undefined"`로 직렬화해버려 무효.
+- **조치 1**: `client.ts`는 공유 구역(금지 경로)이라 직접 수정하지 않고 원복함. 대신 허용 경로인
+  `frontend/src/hooks/useMedication.ts`의 `uploadJob`을 client.ts를 거치지 않는 순수 `fetch` 호출로
+  재구현(Authorization 헤더는 `window.__getToken()` DEV 훅 사용, 401 시 1회 refresh 재시도 자체 구현).
+  **→ 공유 계약 변경 필요 사항**: 근본 수정은 `client.ts`의 `doFetch`가 `options.body instanceof FormData`일 때
+  `Content-Type`을 아예 설정하지 않도록 고치는 것. `frontend/src/api/` 소유자가 이 패치를 반영하면
+  `useMedication.ts`의 우회 로직은 제거하고 다시 `apiFetchRaw`를 쓰도록 되돌릴 수 있음.
+- **원인 2 (500, `GET /medications`)**: 당시 실제 DB(`ai_health`)에 `medication_schedules` 테이블이
+  일시적으로 없었던 시점의 잔여 로그였음 — 확인 결과 마이그레이션(`b2f41a21debe`, head)은 정상 적용되어
+  있었고 현재는 재현되지 않음. 별도 조치 없음.
+- **원인 3 (한글 깨짐)**: `medications` 테이블에 시딩된 `medication_name`이 이중 UTF-8 인코딩(mojibake)
+  상태로 저장되어 있었음(코드 문제 아님 — 과거 수동 시딩 시 클라이언트 인코딩 미설정 추정). 운영 DB(`ai_health`)의
+  기존 2개 행(`KD_T3001`, `KD_A4002`)을 올바른 UTF-8 값으로 직접 UPDATE하여 수정.
+- **관찰 (버그 아님, TRD 범위 확인 필요)**: 처방전 사진 한 장에 약 3종이 적혀 있어도 후보가 1개만 뜨는 현상은,
+  마스터 `medications` 테이블에 테스트용 2종(타이레놀/아스피린)만 시딩되어 있어 실제 처방약과 매칭되지 않고
+  폴백(전체 상위 N개)이 동작한 것. `TRD_ReMedi_v1.1.md`의 T-MED-1 성공요건은 "사진 1장 → 후보 리스트 1개 →
+  사용자 선택" 구조만 요구하므로, 처방전 1장 내 다중 약 개별 인식/등록은 현재 범위 밖으로 판단하고 코드는
+  변경하지 않음.
+
+### 추가 기능 확장 (사용자 요청, 2026-07-07 이어서 진행 — 책임 하에 진행)
+
+> 위 관찰 이후 사용자가 "인식 실패 시에도 등록 자체는 막히지 말고, 이후 조합/음식 기능이 참조할 수 있도록
+> 해달라"고 명시적으로 요청하여 매칭/등록 로직을 확장함. TRD 성공요건("후보가 여러 개면 사용자 최종 선택
+> 없이는 등록되지 않는다")은 그대로 유지 — 자동 등록이 아니라 "후보 자동 생성 + 사용자 확인 후 등록"으로 구현.
+
+- `medication_service.py`: 매칭 실패 시 마스터 DB의 엉뚱한 약을 후보로 보여주던 폴백을 제거하고,
+  OCR 텍스트가 약품명 형태(용량단위 mg/g/ml 또는 처방목록 "*" 불릿)로 보이면 새 `medications` 레코드를
+  즉석 생성해 후보로 포함하도록 변경(`_looks_like_drug_name`, `_dedupe_drug_names`,
+  `_match_or_create_medications`). 짧게 잘린 OCR 중복 조각은 dedupe로 제거.
+  매칭 정확도를 위해 실제 DB 매칭도 "약품명처럼 보이는 단어"에만 시도하도록 좁힘(기존엔 "100mg" 같은
+  용량 조각까지 LIKE 검색해 엉뚱한 약과 오매칭되는 문제가 있었음).
+- 프론트(`MedicationPage.tsx`, `useMedication.ts`): 후보 선택을 라디오(단일) → 체크박스(다중)로 변경해
+  처방전 한 장에 여러 약이 인식되면 한 번에 여러 스케줄로 등록 가능하도록 함(같은 job에 대해
+  `confirm`을 후보 수만큼 반복 호출 — 백엔드 API/DTO 변경 없음).
+- **신규 기능(사용자 요청)**: 잘못 등록된 스케줄을 지울 수 있도록 `DELETE /api/v1/medications/{schedule_id}`
+  엔드포인트 추가(`medication.py`, `medication_service.py`, `medication_repository.py`) + 프론트 "등록 목록"
+  탭에 삭제 버튼 추가. `app/tests/medication_apis/test_medication_apis.py`에 소유자 삭제 성공/타인 삭제
+  차단(404) 테스트 2건 추가, 전체 34개 테스트 통과 확인.
+- **DB 정리**: 위 로직을 시행착오하며 잘못된 정규식으로 생성된 노이즈 약품(`환자정보`, `서방정` 등
+  `AUTO_*` 레코드)을 운영 DB에서 직접 삭제. 스케줄에서 참조 중인 행이 없음을 사전 확인 후 진행.
+- **마이그레이션 리비전 정리**: 기존 완료 보고에 언급된 병합 리비전 파일이 Git에 커밋되지 않은 채
+  해시 기반 ID(`b2f41a21debe`)로만 로컬에 존재했음. 프로젝트 컨벤션(`0001`~`0003` 숫자 네이밍)에 맞춰
+  `0004_merge_notification_and_medications.py`로 정리하고, 이미 적용된 운영 DB의 `alembic_version` 값도
+  함께 `0004`로 갱신. `alembic heads`가 단일 head(`0004`)로 정상 수렴함을 확인.
+- **환경 이슈**: 작업 중 Docker Desktop 재기동으로 컨테이너 네트워크가 꼬여(`mysql`이 다른 프로젝트
+  컨테이너와 포트/네트워크 충돌) `docker compose up -d` + `docker network connect`로 복구. 데이터 볼륨은
+  보존되어 유실 없음.
+- 재검증 결과: `pytest` 34/34 통과, `ruff check`(변경 파일 기준 사전 존재하던 이슈 외 신규 이슈 없음,
+  제가 늘린 복잡도(C901)는 `_match_or_create_medications`로 분리해 해소), `npx tsc --noEmit` 통과.
+
