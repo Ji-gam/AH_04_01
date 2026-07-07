@@ -21,7 +21,9 @@ interface Props {
 export default function AlarmForm({ initial, isSaving, errorMessage, onCancel, onSubmit }: Props) {
   const [medicationName, setMedicationName] = useState(initial?.medication_name ?? "");
   const [alarmTime, setAlarmTime] = useState(initial?.alarm_time?.slice(0, 5) ?? "08:00");
-  const [frequencyType, setFrequencyType] = useState<FrequencyType>(initial?.frequency_type ?? "DAILY");
+  const [frequencyType, setFrequencyType] = useState<FrequencyType>(
+    initial?.frequency_type ?? "DAILY",
+  );
   const [targetDay, setTargetDay] = useState<DayOfWeek>(initial?.target_day_of_week ?? "월");
 
   const canSave = medicationName.trim().length > 0;
@@ -47,7 +49,9 @@ export default function AlarmForm({ initial, isSaving, errorMessage, onCancel, o
         boxShadow: "0 4px 14px rgba(255, 111, 145, 0.12)",
       }}
     >
-      <label style={{ display: "block", fontSize: 13, color: t.textMuted, marginBottom: 4 }}>약 이름</label>
+      <label style={{ display: "block", fontSize: 13, color: t.textMuted, marginBottom: 4 }}>
+        약 이름
+      </label>
       <input
         value={medicationName}
         onChange={(e) => setMedicationName(e.target.value)}
@@ -64,7 +68,9 @@ export default function AlarmForm({ initial, isSaving, errorMessage, onCancel, o
         }}
       />
 
-      <label style={{ display: "block", fontSize: 13, color: t.textMuted, marginBottom: 4 }}>복용 시각</label>
+      <label style={{ display: "block", fontSize: 13, color: t.textMuted, marginBottom: 4 }}>
+        복용 시각
+      </label>
       <input
         type="time"
         value={alarmTime}
@@ -79,7 +85,9 @@ export default function AlarmForm({ initial, isSaving, errorMessage, onCancel, o
         }}
       />
 
-      <label style={{ display: "block", fontSize: 13, color: t.textMuted, marginBottom: 6 }}>반복</label>
+      <label style={{ display: "block", fontSize: 13, color: t.textMuted, marginBottom: 6 }}>
+        반복
+      </label>
       <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
         {(["DAILY", "WEEKLY"] as const).map((f) => (
           <button
@@ -125,7 +133,9 @@ export default function AlarmForm({ initial, isSaving, errorMessage, onCancel, o
         </div>
       )}
 
-      {errorMessage && <p style={{ color: t.danger, fontSize: 13, marginBottom: 10 }}>⚠ {errorMessage}</p>}
+      {errorMessage && (
+        <p style={{ color: t.danger, fontSize: 13, marginBottom: 10 }}>⚠ {errorMessage}</p>
+      )}
 
       <div style={{ display: "flex", gap: 8 }}>
         <button

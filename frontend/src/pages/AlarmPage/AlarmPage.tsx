@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
 import { notificationApi } from "../../api/notificationApi";
-import type { NotificationScheduleResult, NotificationScheduleUpdateRequest } from "../../api/types";
+import type {
+  NotificationScheduleResult,
+  NotificationScheduleUpdateRequest,
+} from "../../api/types";
+
 import AlarmForm from "./components/AlarmForm";
 import { alarmTheme as t } from "./theme";
 
@@ -118,13 +122,24 @@ export default function AlarmPage() {
     notificationApi.remove(schedule.id).then(loadSchedules);
   };
 
-  const todaySchedules = schedules.filter(isDueToday).sort((a, b) => a.alarm_time.localeCompare(b.alarm_time));
+  const todaySchedules = schedules
+    .filter(isDueToday)
+    .sort((a, b) => a.alarm_time.localeCompare(b.alarm_time));
 
   return (
     <div style={{ background: t.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: t.primary, margin: 0 }}>💗 복약 알림</h1>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 20,
+          }}
+        >
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: t.primary, margin: 0 }}>
+            💗 복약 알림
+          </h1>
           <button
             type="button"
             onClick={() => {
@@ -148,7 +163,12 @@ export default function AlarmPage() {
         </div>
 
         {showAddForm && (
-          <AlarmForm isSaving={isSaving} errorMessage={formError} onCancel={() => setShowAddForm(false)} onSubmit={handleCreate} />
+          <AlarmForm
+            isSaving={isSaving}
+            errorMessage={formError}
+            onCancel={() => setShowAddForm(false)}
+            onSubmit={handleCreate}
+          />
         )}
 
         {editingSchedule && (
@@ -200,13 +220,27 @@ export default function AlarmPage() {
               }}
             >
               <div>
-                <span style={{ fontSize: 16, fontWeight: 700, color: t.primary }}>{s.alarm_time.slice(0, 5)}</span>{" "}
+                <span style={{ fontSize: 16, fontWeight: 700, color: t.primary }}>
+                  {s.alarm_time.slice(0, 5)}
+                </span>{" "}
                 <span style={{ fontSize: 14, color: t.text }}>{s.medication_name}</span>
                 <p style={{ fontSize: 12, color: t.textMuted, margin: "2px 0 0" }}>{dayLabel(s)}</p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: t.textMuted }}>
-                  <input type="checkbox" checked={s.is_active} onChange={() => handleToggleActive(s)} />
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    fontSize: 12,
+                    color: t.textMuted,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={s.is_active}
+                    onChange={() => handleToggleActive(s)}
+                  />
                   알림
                 </label>
                 <button
@@ -216,7 +250,13 @@ export default function AlarmPage() {
                     setEditingSchedule(s);
                     setShowAddForm(false);
                   }}
-                  style={{ border: "none", background: "none", color: t.textMuted, cursor: "pointer", fontSize: 14 }}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    color: t.textMuted,
+                    cursor: "pointer",
+                    fontSize: 14,
+                  }}
                 >
                   ✏️
                 </button>
@@ -224,7 +264,13 @@ export default function AlarmPage() {
                   type="button"
                   aria-label="알림 삭제"
                   onClick={() => handleDelete(s)}
-                  style={{ border: "none", background: "none", color: t.textMuted, cursor: "pointer", fontSize: 14 }}
+                  style={{
+                    border: "none",
+                    background: "none",
+                    color: t.textMuted,
+                    cursor: "pointer",
+                    fontSize: 14,
+                  }}
                 >
                   🗑️
                 </button>
@@ -234,7 +280,9 @@ export default function AlarmPage() {
         </div>
 
         <h2 style={{ fontSize: 15, color: t.text, marginBottom: 10 }}>등록된 전체 알림</h2>
-        {!loading && schedules.length === 0 && <p style={{ color: t.textMuted, fontSize: 14 }}>등록된 알림이 없습니다.</p>}
+        {!loading && schedules.length === 0 && (
+          <p style={{ color: t.textMuted, fontSize: 14 }}>등록된 알림이 없습니다.</p>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {schedules.map((s) => (
             <div
@@ -251,7 +299,9 @@ export default function AlarmPage() {
               <span>
                 {s.alarm_time.slice(0, 5)} · {s.medication_name} · {dayLabel(s)}
               </span>
-              <span style={{ color: s.is_active ? t.success : t.textMuted }}>{s.is_active ? "켜짐" : "꺼짐"}</span>
+              <span style={{ color: s.is_active ? t.success : t.textMuted }}>
+                {s.is_active ? "켜짐" : "꺼짐"}
+              </span>
             </div>
           ))}
         </div>
