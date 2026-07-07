@@ -8,7 +8,14 @@ export default function Layout() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>
-      <nav style={{ display: "flex", gap: "12px", padding: "8px 12px", borderBottom: "1px solid #ccc" }}>
+      <nav
+        style={{
+          display: "flex",
+          gap: "12px",
+          padding: "8px 12px",
+          borderBottom: "1px solid #ccc",
+        }}
+      >
         <Link to="/">홈</Link>
         <Link to="/track">트랙커</Link>
         <Link to="/chat">상담</Link>

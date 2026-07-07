@@ -29,7 +29,10 @@ export default function LoginPage() {
   return (
     <div style={{ maxWidth: 320, margin: "80px auto" }}>
       <h1>로그인</h1>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+      >
         <input
           type="email"
           placeholder="이메일"

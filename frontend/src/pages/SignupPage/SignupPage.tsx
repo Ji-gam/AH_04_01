@@ -41,7 +41,10 @@ export default function SignupPage() {
   return (
     <div style={{ maxWidth: 320, margin: "40px auto" }}>
       <h1>회원가입</h1>
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{ display: "flex", flexDirection: "column", gap: "8px" }}
+      >
         <input
           type="email"
           placeholder="이메일"
@@ -63,7 +66,10 @@ export default function SignupPage() {
           onChange={(e) => update("name", e.target.value)}
           required
         />
-        <select value={form.gender} onChange={(e) => update("gender", e.target.value as SignupPayload["gender"])}>
+        <select
+          value={form.gender}
+          onChange={(e) => update("gender", e.target.value as SignupPayload["gender"])}
+        >
           <option value="MALE">남성</option>
           <option value="FEMALE">여성</option>
         </select>
