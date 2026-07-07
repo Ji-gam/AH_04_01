@@ -47,6 +47,21 @@ export function useMedication() {
     }
   };
 
+  const deleteSchedule = async (scheduleId: number) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      // DELETE는 204 No Content라 apiFetch(항상 res.json() 호출)를 쓰면 파싱 에러가 난다.
+      await apiFetchRaw(`/medications/${scheduleId}`, { method: "DELETE" });
+      await fetchSchedules();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "복약 일정을 삭제하는데 실패했습니다.");
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const createManualSchedule = async (drugCode: string, times: string[]) => {
     setIsLoading(true);
     setError(null);
@@ -75,6 +90,9 @@ export function useMedication() {
     }
   };
 
+  // FormData 업로드는 client.ts(공유 구역, 수정 금지)의 apiFetch/apiFetchRaw를 거치면
+  // Content-Type: application/json이 강제되어 multipart boundary가 빠지는 문제가 있다.
+  // client.ts를 고치지 않고 이 훅 안에서만 순수 fetch로 우회 처리한다.
   const uploadJob = async (file: File, sourceType: string): Promise<string> => {
     setIsLoading(true);
     setError(null);
@@ -83,28 +101,37 @@ export function useMedication() {
       formData.append("file", file);
       formData.append("source_type", sourceType);
 
-      // apiFetchRaw를 사용하여 multipart/form-data 헤더 적용 (Content-Type 자동 설정되도록 헤더 비움)
-      const res = await apiFetchRaw("/recognition/jobs", {
-        method: "POST",
-        body: formData,
-        headers: {}, // Content-Type을 null로 덮어쓰기하여 브라우저가 바운더리 포함 자동지정하도록 유도
-      });
-      
-      // Content-Type 비우기 위해 아래처럼 raw 헤더 오버라이드
-      // apiFetchRaw 내부에서 Content-Type이 "application/json"으로 강제 지정될 수 있으므로 직접 fetch 사용
-      const token = (window as unknown as { __getToken?: () => string | null }).__getToken?.() || "";
-      const rawRes = await fetch("/api/v1/recognition/jobs", {
-        method: "POST",
-        body: formData,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      
-      if (!rawRes.ok) {
-        const body = await rawRes.json().catch(() => ({}));
-        throw new Error(body.detail || "작업 업로드 실패");
+      const getToken = () =>
+        (window as unknown as { __getToken?: () => string | null }).__getToken?.() || null;
+
+      const doUpload = () => {
+        const token = getToken();
+        return fetch("/api/v1/recognition/jobs", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+      };
+
+      let res = await doUpload();
+      if (res.status === 401) {
+        const refreshRes = await fetch("/api/v1/auth/token/refresh", { credentials: "include" });
+        if (refreshRes.ok) {
+          const body = (await refreshRes.json()) as { access_token?: string };
+          if (body.access_token) {
+            (window as unknown as { __setToken?: (t: string) => void }).__setToken?.(body.access_token);
+            res = await doUpload();
+          }
+        }
       }
-      
-      const data = await rawRes.json();
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || "파일 업로드에 실패했습니다.");
+      }
+
+      const data = await res.json();
       return data.job_id;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "파일 업로드에 실패했습니다.");
@@ -148,6 +175,7 @@ export function useMedication() {
     error,
     fetchSchedules,
     createManualSchedule,
+    deleteSchedule,
     searchMedications,
     uploadJob,
     getJobStatus,

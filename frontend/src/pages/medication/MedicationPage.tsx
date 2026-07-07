@@ -8,6 +8,7 @@ export default function MedicationPage() {
     error,
     fetchSchedules,
     createManualSchedule,
+    deleteSchedule,
     searchMedications,
     uploadJob,
     getJobStatus,
@@ -22,8 +23,8 @@ export default function MedicationPage() {
   const [candidates, setCandidates] = useState<RecognitionCandidate[]>([]);
   const [extractedFields, setExtractedFields] = useState<any>(null);
   
-  // 사용자 확정 폼 입력 값
-  const [selectedDrugCode, setSelectedDrugCode] = useState<string>("");
+  // 사용자 확정 폼 입력 값 (처방전 한 장에 여러 약이 인식될 수 있어 다중 선택 지원)
+  const [selectedDrugCodes, setSelectedDrugCodes] = useState<string[]>([]);
   const [confirmedTimes, setConfirmedTimes] = useState<string>("09:00, 13:00, 19:00");
   const [guideCards, setGuideCards] = useState<any[]>([]);
 
@@ -50,9 +51,8 @@ export default function MedicationPage() {
           if (res.status === "done") {
             setCandidates(res.candidates);
             setExtractedFields(res.extracted_fields);
-            if (res.candidates.length > 0) {
-              setSelectedDrugCode(res.candidates[0].drug_code);
-            }
+            // 인식된 약이 여러 개일 수 있으므로 기본으로 전부 선택해두고, 사용자가 해제할 수 있게 한다.
+            setSelectedDrugCodes(res.candidates.map((c) => c.drug_code));
             if (res.extracted_fields?.times) {
               setConfirmedTimes(res.extracted_fields.times.join(", "));
             }
@@ -87,14 +87,18 @@ export default function MedicationPage() {
     }
   };
 
-  // 최종 등록 핸들러 (5~8번 및 9~10번 흐름)
+  // 최종 등록 핸들러 (5~8번 및 9~10번 흐름) — 선택된 약을 각각 스케줄로 등록한다.
   const handleConfirmSubmit = async () => {
-    if (!currentJobId) return;
+    if (!currentJobId || selectedDrugCodes.length === 0) return;
     try {
       const timesArray = confirmedTimes.split(",").map(t => t.trim()).filter(Boolean);
-      const res = await confirmJob(currentJobId, selectedDrugCode || null, { times: timesArray });
-      setGuideCards(res.guide_cards);
-      alert("스케줄 등록 및 확정이 완료되었습니다!");
+      const allGuideCards: any[] = [];
+      for (const drugCode of selectedDrugCodes) {
+        const res = await confirmJob(currentJobId, drugCode, { times: timesArray });
+        allGuideCards.push(...res.guide_cards);
+      }
+      setGuideCards(allGuideCards);
+      alert(`${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`);
       setCurrentJobId(null);
       setJobStatus(null);
     } catch (err) {
@@ -117,6 +121,16 @@ export default function MedicationPage() {
       alert("수동 복약 일정이 성공적으로 등록되었습니다!");
       setSearchQuery("");
       setSearchResults([]);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // 스케줄 삭제 핸들러 (잘못 등록된 항목 취소용)
+  const handleDeleteSchedule = async (scheduleId: number) => {
+    if (!window.confirm("이 복약 스케줄을 삭제하시겠습니까?")) return;
+    try {
+      await deleteSchedule(scheduleId);
     } catch (err) {
       console.error(err);
     }
@@ -200,17 +214,25 @@ export default function MedicationPage() {
               </p>
               
               <div style={{ display: "flex", flexDirection: "column", gap: "10px", margin: "10px 0" }}>
-                <label><strong>의약품 후보 선택 (DoD 검증용):</strong></label>
+                <label><strong>의약품 후보 선택 (처방전에 여러 약이 있으면 전부 선택 가능):</strong></label>
                 {candidates.map((c) => (
                   <label key={c.drug_code} style={{ display: "block", cursor: "pointer" }}>
                     <input
-                      type="radio"
-                      name="candidate_select"
+                      type="checkbox"
                       value={c.drug_code}
-                      checked={selectedDrugCode === c.drug_code}
-                      onChange={() => setSelectedDrugCode(c.drug_code)}
+                      checked={selectedDrugCodes.includes(c.drug_code)}
+                      onChange={(e) =>
+                        setSelectedDrugCodes((prev) =>
+                          e.target.checked
+                            ? [...prev, c.drug_code]
+                            : prev.filter((code) => code !== c.drug_code)
+                        )
+                      }
                     />
                     {c.drug_name} (매칭률: {(c.match_rate * 100).toFixed(0)}%)
+                    {c.match_rate < 0.6 && (
+                      <span style={{ color: "#b26a00", fontSize: "11px" }}> — 마스터 DB 미등록, 신규 인식</span>
+                    )}
                   </label>
                 ))}
               </div>
@@ -226,8 +248,12 @@ export default function MedicationPage() {
                 />
               </div>
 
-              <button onClick={handleConfirmSubmit} style={{ width: "100%", padding: "10px", backgroundColor: "#4caf50", color: "#fff", border: "none" }}>
-                최종 복약 스케줄 등록 확정
+              <button
+                onClick={handleConfirmSubmit}
+                disabled={selectedDrugCodes.length === 0}
+                style={{ width: "100%", padding: "10px", backgroundColor: "#4caf50", color: "#fff", border: "none" }}
+              >
+                선택한 {selectedDrugCodes.length}개 약품 복약 스케줄 등록 확정
               </button>
             </div>
           )}
@@ -274,16 +300,35 @@ export default function MedicationPage() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
               {schedules.map((s) => (
-                <div key={s.id} style={{ border: "1px solid #ccc", padding: "10px", borderRadius: "4px" }}>
-                  <strong>{s.drug_name}</strong>
-                  <p style={{ margin: "5px 0 0 0", fontSize: "14px" }}>
-                    복용 시간: {s.times.join(", ")}
-                  </p>
-                  {s.source_job_id && (
-                    <span style={{ fontSize: "11px", color: "green" }}>
-                      ✓ OCR 인식을 통해 자동 등록됨
-                    </span>
-                  )}
+                <div
+                  key={s.id}
+                  style={{
+                    border: "1px solid #ccc",
+                    padding: "10px",
+                    borderRadius: "4px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                  }}
+                >
+                  <div>
+                    <strong>{s.drug_name}</strong>
+                    <p style={{ margin: "5px 0 0 0", fontSize: "14px" }}>
+                      복용 시간: {s.times.join(", ")}
+                    </p>
+                    {s.source_job_id && (
+                      <span style={{ fontSize: "11px", color: "green" }}>
+                        ✓ OCR 인식을 통해 자동 등록됨
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => handleDeleteSchedule(s.id)}
+                    disabled={isLoading}
+                    style={{ backgroundColor: "#e53935", color: "#fff", border: "none", padding: "5px 10px", borderRadius: "4px", cursor: "pointer" }}
+                  >
+                    삭제
+                  </button>
                 </div>
               ))}
             </div>
