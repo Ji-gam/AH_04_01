@@ -13,6 +13,9 @@ export default function Layout() {
         <Link to="/track">트랙커</Link>
         <Link to="/chat">상담</Link>
         <Link to="/info">정보</Link>
+        <Link to="/alarms" style={{ color: "#FF6F91", fontWeight: 600 }}>
+          복약알림
+        </Link>
         <Link to="/more">더보기</Link>
         <span style={{ marginLeft: "auto" }}>
           {user?.name}님{" "}
