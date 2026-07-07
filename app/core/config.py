@@ -36,3 +36,7 @@ class Config(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 14 * 24 * 60
     JWT_LEEWAY: int = 5
+
+    # T-LLM-2: 설정 안 하면 app/services/llm_stub.py가 고정 문자열 stub으로 폴백한다.
+    OPENAI_API_KEY: str | None = None
+    OPENAI_MODEL: str = "gpt-4o-mini"

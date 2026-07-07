@@ -4,7 +4,7 @@ T-LLM-2: 응급 감지 → (아니면) 컨텍스트 조회 → RAG 검색 → LL
 SQLAlchemy(AsyncSession) 기반으로 옮긴 것 — 흐름 구조 자체는 동일하다.
 """
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,8 @@ from app.services.llm_stub import stream_llm_reply
 from app.services.retriever_stub import Retriever
 from app.services.user_health_context_service import UserHealthContextService
 
+LlmStream = Callable[[str, dict, list[str]], AsyncIterator[str]]
+
 
 class ChatService:
     def __init__(
@@ -22,10 +24,12 @@ class ChatService:
         repository: ChatRepository | None = None,
         health_context_service: UserHealthContextService | None = None,
         retriever: Retriever | None = None,
+        llm_stream: LlmStream | None = None,
     ) -> None:
         self._repository = repository or ChatRepository()
         self._health_context_service = health_context_service or UserHealthContextService()
         self._retriever = retriever or Retriever()
+        self._llm_stream = llm_stream or stream_llm_reply
 
     async def create_session(self, session: AsyncSession, profile_id: int):
         return await self._repository.create_session(session, profile_id)
@@ -51,7 +55,7 @@ class ChatService:
         chunks = self._retriever.search(message, context)
 
         full_response = ""
-        for token in stream_llm_reply(message, context, chunks):
+        async for token in self._llm_stream(message, context, chunks):
             full_response += token
             yield {"type": "token", "content": token}
 

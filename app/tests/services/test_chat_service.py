@@ -26,11 +26,17 @@ class FakeRetriever:
         return ["fake-chunk-1"]
 
 
+async def fake_llm_stream(message: str, context: dict, chunks: list[str]):
+    for char in "fake-llm-reply":
+        yield char
+
+
 def _build_service(repository: FakeChatRepository) -> ChatService:
     return ChatService(
         repository=repository,
         health_context_service=FakeUserHealthContextService(),
         retriever=FakeRetriever(),
+        llm_stream=fake_llm_stream,
     )
 
 
