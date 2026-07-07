@@ -1,6 +1,7 @@
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.medication_model import Medication, MedicationSchedule, MedicationRecognitionJob
+
+from app.models.medication_model import Medication, MedicationRecognitionJob, MedicationSchedule
 
 
 class MedicationRepository:
@@ -48,6 +49,16 @@ class MedicationRepository:
             select(MedicationSchedule).where(MedicationSchedule.profile_id == profile_id)
         )
         return list(result.scalars().all())
+
+    async def get_schedule_by_id(self, session: AsyncSession, schedule_id: int) -> MedicationSchedule | None:
+        result = await session.execute(
+            select(MedicationSchedule).where(MedicationSchedule.id == schedule_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def delete_schedule(self, session: AsyncSession, schedule: MedicationSchedule) -> None:
+        await session.delete(schedule)
+        await session.commit()
 
     async def create_recognition_job(
         self, session: AsyncSession, job: MedicationRecognitionJob

@@ -144,6 +144,42 @@ async def test_manual_schedule_registration_and_search():
         assert create_res.json()["times"] == ["09:00", "21:00"]
 
 
+async def test_delete_schedule_removes_it_from_list():
+    await _seed_dummy_medications()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "delete_test@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 잘못 등록된 스케줄을 만들고
+        manual_req = {"drug_code": "KD_A4002", "times": ["09:00"]}
+        create_res = await client.post("/api/v1/medications", headers=headers, json=manual_req)
+        schedule_id = create_res.json()["id"]
+
+        # 삭제하면
+        delete_res = await client.delete(f"/api/v1/medications/{schedule_id}", headers=headers)
+        assert delete_res.status_code == status.HTTP_204_NO_CONTENT
+
+        # 목록에서 사라져야 한다
+        list_res = await client.get("/api/v1/medications", headers=headers)
+        assert all(s["id"] != schedule_id for s in list_res.json())
+
+
+async def test_delete_schedule_of_another_profile_is_forbidden():
+    await _seed_dummy_medications()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token1 = await _signup_and_login(client, "owner@example.com")
+        token2 = await _signup_and_login(client, "intruder@example.com")
+
+        headers1 = {"Authorization": f"Bearer {token1}"}
+        manual_req = {"drug_code": "KD_A4002", "times": ["09:00"]}
+        create_res = await client.post("/api/v1/medications", headers=headers1, json=manual_req)
+        schedule_id = create_res.json()["id"]
+
+        headers2 = {"Authorization": f"Bearer {token2}"}
+        delete_res = await client.delete(f"/api/v1/medications/{schedule_id}", headers=headers2)
+        assert delete_res.status_code == status.HTTP_404_NOT_FOUND
+
+
 async def test_cross_profile_job_access_is_forbidden():
     await _seed_dummy_medications()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

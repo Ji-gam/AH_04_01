@@ -1,26 +1,114 @@
-import os
-import uuid
-import time
 import base64
+import os
+import re
+import time
+import uuid
+
 import httpx
-from fastapi import HTTPException, status, BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import AsyncSessionLocal
-from app.models.medication_model import MedicationSchedule, MedicationRecognitionJob, Medication
-from app.repositories.medication_repository import MedicationRepository
 from app.dtos.medication_dto import (
-    RecognitionJobCreateResult,
-    RecognitionResult,
+    GuideCard,
+    MedicationScheduleCreateRequest,
+    MedicationScheduleResponse,
     RecognitionCandidate,
     RecognitionConfirmResult,
-    MedicationScheduleResponse,
-    MedicationScheduleCreateRequest,
-    GuideCard
+    RecognitionJobCreateResult,
+    RecognitionResult,
 )
+from app.models.medication_model import Medication, MedicationRecognitionJob, MedicationSchedule
+from app.repositories.medication_repository import MedicationRepository
 
 CLOVA_OCR_SECRET_KEY = os.getenv("CLOVA_OCR_SECRET_KEY")
 CLOVA_OCR_INVOKE_URL = os.getenv("CLOVA_OCR_INVOKE_URL")
+
+# 약품명 후보로 볼 만한 OCR 텍스트 블록 판별 기준.
+# "정"/"캡슐" 같은 제형 접미사만으로는 "환자정보", "서방정"(잘린 조각) 등 일반 텍스트도
+# 걸려버려서, 반드시 (a) 용량 숫자+단위(mg/g/ml)가 붙어 있거나 (b) 처방전 약품 목록에서
+# 흔히 쓰이는 "*" 불릿 표시가 있는 경우만 후보로 인정한다.
+_KOREAN_TOKEN_PATTERN = re.compile(r"[가-힣]{2,}")
+_DOSAGE_PATTERN = re.compile(r"\d+(mg|g|ml)", re.IGNORECASE)
+_MIN_DRUG_NAME_LEN = 5
+
+
+def _looks_like_drug_name(word: str) -> bool:
+    stripped = word.lstrip("*").strip()
+    if len(stripped) < _MIN_DRUG_NAME_LEN:
+        return False
+    if not _KOREAN_TOKEN_PATTERN.search(stripped):
+        return False
+    return bool(_DOSAGE_PATTERN.search(stripped)) or word.strip().startswith("*")
+
+
+def _dedupe_drug_names(names: set[str]) -> list[str]:
+    """짧게 잘린 OCR 조각(예: '레마이드정')이 온전한 이름('레마이드정100mg')의 부분 문자열이면
+    짧은 쪽을 버리고, 온전한 형태만 후보로 남긴다."""
+    ordered = sorted(names, key=len, reverse=True)
+    kept: list[str] = []
+    for name in ordered:
+        if not any(name != k and name in k for k in kept):
+            kept.append(name)
+    return kept
+
+
+async def _match_or_create_medications(
+    db_session: AsyncSession,
+    repo: MedicationRepository,
+    raw_text_list: list[str]
+) -> tuple[list[Medication], set[int]]:
+    """OCR 텍스트에서 약품명으로 보이는 조각을 마스터 DB와 매칭하고, 없으면 새로 생성한다.
+    반환값: (매칭/생성된 약품 목록, 이번에 새로 생성된 약품의 id 집합)"""
+    matched_meds: list[Medication] = []
+    auto_created_ids: set[int] = set()
+    seen_ids: set[int] = set()
+
+    if raw_text_list:
+        # 짧은 숫자/용량 조각("100mg" 등)까지 LIKE 검색에 넣으면 우연히 다른 약의 용량과
+        # 겹쳐 엉뚱한 약이 매칭되므로(예: "100mg"이 "아스피린정 100mg"에 우연히 포함),
+        # 약품명처럼 보이는 온전한 단어에 대해서만 실제 DB 매칭을 시도한다.
+        for word in raw_text_list:
+            if not _looks_like_drug_name(word):
+                continue
+            stripped = word.lstrip("*").strip()
+            meds = await repo.search_medication_by_name(db_session, stripped)
+            for med in meds:
+                if med.id not in seen_ids:
+                    seen_ids.add(med.id)
+                    matched_meds.append(med)
+
+        # 마스터 DB에 없는 약이어도, OCR 텍스트가 약품명 형태(용량단위 또는 "*" 불릿 표시)로
+        # 보이면 등록이 막히지 않도록 새 마스터 레코드를 즉석에서 생성해 후보로 포함시킨다.
+        # "*"는 정규화 과정에서 제거하고, 잘려서 중복된 짧은 조각은 dedupe로 걸러낸다.
+        drug_like_words = {
+            w.lstrip("*").strip() for w in raw_text_list if _looks_like_drug_name(w)
+        }
+        for name in _dedupe_drug_names(drug_like_words):
+            existing = await repo.search_medication_by_name(db_session, name)
+            exact = next((m for m in existing if m.medication_name == name), None)
+            if exact:
+                if exact.id not in seen_ids:
+                    seen_ids.add(exact.id)
+                    matched_meds.append(exact)
+                continue
+
+            new_med = Medication(
+                medication_name=name,
+                standard_code=f"AUTO_{uuid.uuid4().hex[:10].upper()}"
+            )
+            new_med = await repo.create_medication(db_session, new_med)
+            seen_ids.add(new_med.id)
+            auto_created_ids.add(new_med.id)
+            matched_meds.append(new_med)
+
+    # 그래도 후보가 하나도 없으면(약품명으로 보이는 텍스트조차 없었던 경우)
+    # 마스터 DB 상위 몇 개를 참고용으로 보여준다 — 이 경우엔 수동 검색으로의 전환을 기대한다.
+    if not matched_meds:
+        all_meds = await repo.search_medication_by_name(db_session, "")
+        matched_meds = all_meds[:3]
+
+    return matched_meds, auto_created_ids
 
 
 async def _execute_ocr_logic(
@@ -31,12 +119,12 @@ async def _execute_ocr_logic(
     file_name: str
 ):
     repo = MedicationRepository()
-    
+
     # 1. 상태를 processing으로 변경
     await repo.update_recognition_job(db_session, job_id, "processing")
-    
+
     raw_text_list = []
-    
+
     # 2. CLOVA OCR API 호출 (설정되어 있고 실제 호출 성공 시)
     if CLOVA_OCR_SECRET_KEY and CLOVA_OCR_INVOKE_URL and not CLOVA_OCR_SECRET_KEY.startswith("your_"):
         try:
@@ -44,7 +132,7 @@ async def _execute_ocr_logic(
             file_format = file_name.split(".")[-1].lower()
             if file_format not in ["jpg", "jpeg", "png", "pdf"]:
                 file_format = "jpg"
-                
+
             payload = {
                 "images": [
                     {
@@ -57,12 +145,12 @@ async def _execute_ocr_logic(
                 "timestamp": int(time.time() * 1000),
                 "version": "V2"
             }
-            
+
             headers = {
                 "X-OCR-SECRET": CLOVA_OCR_SECRET_KEY,
                 "Content-Type": "application/json"
             }
-            
+
             async with httpx.AsyncClient() as client:
                 response = await client.post(CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
                 if response.status_code == 200:
@@ -87,25 +175,13 @@ async def _execute_ocr_logic(
         "ocr_raw_text": " ".join(raw_text_list) if raw_text_list else "MOCK OCR TEXT 타이레놀"
     }
 
-    matched_meds = []
-    if raw_text_list:
-        seen_ids = set()
-        for word in raw_text_list:
-            if len(word) < 2:
-                continue
-            meds = await repo.search_medication_by_name(db_session, word)
-            for med in meds:
-                if med.id not in seen_ids:
-                    seen_ids.add(med.id)
-                    matched_meds.append(med)
-
-    # 검색된 약품이 없다면 더미 데이터베이스를 매칭하여 후보 제공
-    if not matched_meds:
-        all_meds = await repo.search_medication_by_name(db_session, "")
-        matched_meds = all_meds[:3]
+    matched_meds, auto_created_ids = await _match_or_create_medications(db_session, repo, raw_text_list)
 
     for med in matched_meds:
-        match_rate = 1.0 if "타이레놀" in med.medication_name else 0.85
+        if med.id in auto_created_ids:
+            match_rate = 0.5  # 마스터 DB에 없어 새로 생성된 미검증 약품
+        else:
+            match_rate = 1.0 if "타이레놀" in med.medication_name else 0.85
         candidates.append({
             "drug_name": med.medication_name,
             "match_rate": match_rate,
@@ -280,6 +356,20 @@ class MedicationService:
             )
             for s in schedules
         ]
+
+    async def delete_schedule(
+        self,
+        session: AsyncSession,
+        profile_id: int,
+        schedule_id: int
+    ) -> None:
+        schedule = await self._repository.get_schedule_by_id(session, schedule_id)
+        if not schedule or schedule.profile_id != profile_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="해당 복약 스케줄을 찾을 수 없습니다."
+            )
+        await self._repository.delete_schedule(session, schedule)
 
     async def create_manual_schedule(
         self,

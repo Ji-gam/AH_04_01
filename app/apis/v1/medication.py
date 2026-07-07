@@ -1,19 +1,20 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends, File, UploadFile, Form, BackgroundTasks, Query
+
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
-from app.models.profiles import Profile
-from app.services.medication_service import MedicationService
 from app.dtos.medication_dto import (
-    RecognitionJobCreateResult,
-    RecognitionResult,
+    MedicationScheduleCreateRequest,
+    MedicationScheduleResponse,
     RecognitionConfirmRequest,
     RecognitionConfirmResult,
-    MedicationScheduleResponse,
-    MedicationScheduleCreateRequest
+    RecognitionJobCreateResult,
+    RecognitionResult,
 )
+from app.models.profiles import Profile
+from app.services.medication_service import MedicationService
 
 medication_router = APIRouter(tags=["Medications"])
 
@@ -109,6 +110,21 @@ async def create_manual_schedule(
 ) -> MedicationScheduleResponse:
     service = MedicationService()
     return await service.create_manual_schedule(session, profile.id, body)
+
+
+@medication_router.delete(
+    "/medications/{schedule_id}",
+    status_code=204,
+    summary="복약 스케줄 삭제",
+    description="잘못 등록되었거나 더 이상 필요 없는 복약 스케줄을 삭제합니다."
+)
+async def delete_medication_schedule(
+    schedule_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)]
+) -> None:
+    service = MedicationService()
+    await service.delete_schedule(session, profile.id, schedule_id)
 
 
 @medication_router.get(
