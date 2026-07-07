@@ -1,7 +1,17 @@
 // api_spec_core_v1_v1.1.yaml과 1:1로 수동 동기화 (FRONTEND_ARCHITECTURE.md 4번 — React Query/자동생성 대신 수동 패턴).
-// 백엔드 /auth/login 응답: access_token만 body로 오고, refresh_token은 httpOnly 쿠키로 내려온다.
+// 백엔드 /auth/login, /auth/token/refresh 응답: access_token만 body로 오고, refresh_token은 httpOnly 쿠키로 내려온다.
 export interface AuthTokenResult {
   access_token: string;
+}
+
+// 백엔드 /auth/signup 요청 바디 (app/dtos/auth.py의 SignUpRequest와 1:1).
+export interface SignupPayload {
+  email: string;
+  password: string;
+  name: string;
+  gender: "MALE" | "FEMALE";
+  birth_date: string; // YYYY-MM-DD
+  phone_number: string;
 }
 
 // 백엔드 /users/me 응답. profile_id는 User(계정)와 분리된 Profile(개인정보)의 PK — 앞으로 만들
