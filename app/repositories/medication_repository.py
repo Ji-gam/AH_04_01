@@ -14,9 +14,7 @@ class MedicationRepository:
         return result.scalar_one_or_none()
 
     async def search_medication_by_name(self, session: AsyncSession, name: str) -> list[Medication]:
-        result = await session.execute(
-            select(Medication).where(Medication.medication_name.like(f"%{name}%")).limit(10)
-        )
+        result = await session.execute(select(Medication).where(Medication.medication_name.like(f"%{name}%")).limit(10))
         return list(result.scalars().all())
 
     async def search_medications_by_appearance(
@@ -45,15 +43,11 @@ class MedicationRepository:
         return schedule
 
     async def list_schedules_by_profile(self, session: AsyncSession, profile_id: int) -> list[MedicationSchedule]:
-        result = await session.execute(
-            select(MedicationSchedule).where(MedicationSchedule.profile_id == profile_id)
-        )
+        result = await session.execute(select(MedicationSchedule).where(MedicationSchedule.profile_id == profile_id))
         return list(result.scalars().all())
 
     async def get_schedule_by_id(self, session: AsyncSession, schedule_id: int) -> MedicationSchedule | None:
-        result = await session.execute(
-            select(MedicationSchedule).where(MedicationSchedule.id == schedule_id)
-        )
+        result = await session.execute(select(MedicationSchedule).where(MedicationSchedule.id == schedule_id))
         return result.scalar_one_or_none()
 
     async def delete_schedule(self, session: AsyncSession, schedule: MedicationSchedule) -> None:

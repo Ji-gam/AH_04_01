@@ -138,3 +138,32 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
 - 재검증 결과: `pytest` 34/34 통과, `ruff check`(변경 파일 기준 사전 존재하던 이슈 외 신규 이슈 없음,
   제가 늘린 복잡도(C901)는 `_match_or_create_medications`로 분리해 해소), `npx tsc --noEmit` 통과.
 
+### CI 실패 대응 (Lint & Type Check, 2026-07-07 재추가 커밋 이후)
+
+> PR #16의 "Lint & Type Check" 워크플로우가 `uv run ruff check .`(리포 전체 대상)에서 실패해 로컬에서
+> 동일 커맨드를 재현. 허용 경로 안 파일과 밖 파일을 분리해서 안 파일만 수정함.
+
+- **허용 경로 안에서 수정(완료)**:
+  - `medication.py`: 전 엔드포인트에 있던 `profile`/`session` 파라미터의 `= None` 기본값(암시적
+    Optional, mypy 에러 12건의 원인 — 제가 만든 게 아니라 기존 패턴이었지만 제 소유 파일이라 정리)을
+    제거하고, `File(...)`를 다른 `Depends()`처럼 `Annotated`로 옮겨 B008(ruff bugbear) 경고 해소.
+    파라미터 순서 조정(기본값 없는 파라미터가 있는 파라미터보다 앞에 오도록)은 Python 문법상 필요해서
+    같이 반영.
+  - `medication_service.py`: `candidates.sort(key=...)`의 mypy 타입 에러(기존부터 있던 문제)를
+    `cast(float, ...)`로 해소.
+  - `medication_dto.py`: 안 쓰이는 `Field` import 제거(F401, 기존부터 있던 문제).
+  - `0004_merge_notification_and_medications.py`: `down_revision` 타입 힌트가 튜플 값과 안 맞던
+    신규 mypy 에러 수정(`Union[str, None]` → `Union[str, Sequence[str], None]`).
+  - 재검증: `ruff check`/`ruff format --check`/`mypy` 모두 위 파일들 기준 전부 통과, `pytest` 34/34 유지.
+- **허용 경로 밖(수정하지 않음 — 공유 파일 변경 필요, 사용자 확인 후 보류)**:
+  - `app/apis/v1/__init__.py`, `app/models/__init__.py`, `app/models/medication_model.py`: import 정렬
+    (I001). `app/models/medication_model.py`는 `ruff format --check`도 미통과.
+  - `app/core/validators/__init__.py`: `from .common import *` 등 wildcard import (F403) — 이번
+    변경과 전혀 무관한 기존 파일.
+  - `app/core/db/migrations/versions/3d9e8983a475_create_medications_and_schedules_tables.py`:
+    `ruff format --check` 미통과(기존 파일, 다른 에이전트 작성).
+  - **결론**: 위 5개 파일을 고치지 않는 한 CI의 "Lint & Type Check"는 계속 실패한다. 전부 기계적인
+    import 정렬/포맷 수준(로직 변경 없음)이라 리스크는 낮지만, T-MED-1 Task Contract의 허용 경로에
+    없어 임의로 수정하지 않았다. 담당자 또는 사용자가 별도로 처리하거나, 허용 범위 확장을 명시적으로
+    승인해야 CI가 통과한다.
+

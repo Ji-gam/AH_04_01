@@ -3,6 +3,7 @@ import os
 import re
 import time
 import uuid
+from typing import cast
 
 import httpx
 from fastapi import BackgroundTasks, HTTPException, status
@@ -54,9 +55,7 @@ def _dedupe_drug_names(names: set[str]) -> list[str]:
 
 
 async def _match_or_create_medications(
-    db_session: AsyncSession,
-    repo: MedicationRepository,
-    raw_text_list: list[str]
+    db_session: AsyncSession, repo: MedicationRepository, raw_text_list: list[str]
 ) -> tuple[list[Medication], set[int]]:
     """OCR 텍스트에서 약품명으로 보이는 조각을 마스터 DB와 매칭하고, 없으면 새로 생성한다.
     반환값: (매칭/생성된 약품 목록, 이번에 새로 생성된 약품의 id 집합)"""
@@ -81,9 +80,7 @@ async def _match_or_create_medications(
         # 마스터 DB에 없는 약이어도, OCR 텍스트가 약품명 형태(용량단위 또는 "*" 불릿 표시)로
         # 보이면 등록이 막히지 않도록 새 마스터 레코드를 즉석에서 생성해 후보로 포함시킨다.
         # "*"는 정규화 과정에서 제거하고, 잘려서 중복된 짧은 조각은 dedupe로 걸러낸다.
-        drug_like_words = {
-            w.lstrip("*").strip() for w in raw_text_list if _looks_like_drug_name(w)
-        }
+        drug_like_words = {w.lstrip("*").strip() for w in raw_text_list if _looks_like_drug_name(w)}
         for name in _dedupe_drug_names(drug_like_words):
             existing = await repo.search_medication_by_name(db_session, name)
             exact = next((m for m in existing if m.medication_name == name), None)
@@ -93,10 +90,7 @@ async def _match_or_create_medications(
                     matched_meds.append(exact)
                 continue
 
-            new_med = Medication(
-                medication_name=name,
-                standard_code=f"AUTO_{uuid.uuid4().hex[:10].upper()}"
-            )
+            new_med = Medication(medication_name=name, standard_code=f"AUTO_{uuid.uuid4().hex[:10].upper()}")
             new_med = await repo.create_medication(db_session, new_med)
             seen_ids.add(new_med.id)
             auto_created_ids.add(new_med.id)
@@ -112,11 +106,7 @@ async def _match_or_create_medications(
 
 
 async def _execute_ocr_logic(
-    db_session: AsyncSession,
-    job_id: str,
-    source_type: str,
-    file_bytes: bytes,
-    file_name: str
+    db_session: AsyncSession, job_id: str, source_type: str, file_bytes: bytes, file_name: str
 ):
     repo = MedicationRepository()
 
@@ -134,22 +124,13 @@ async def _execute_ocr_logic(
                 file_format = "jpg"
 
             payload = {
-                "images": [
-                    {
-                        "format": file_format,
-                        "name": "medication_doc",
-                        "data": base64_data
-                    }
-                ],
+                "images": [{"format": file_format, "name": "medication_doc", "data": base64_data}],
                 "requestId": str(uuid.uuid4()),
                 "timestamp": int(time.time() * 1000),
-                "version": "V2"
+                "version": "V2",
             }
 
-            headers = {
-                "X-OCR-SECRET": CLOVA_OCR_SECRET_KEY,
-                "Content-Type": "application/json"
-            }
+            headers = {"X-OCR-SECRET": CLOVA_OCR_SECRET_KEY, "Content-Type": "application/json"}
 
             async with httpx.AsyncClient() as client:
                 response = await client.post(CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
@@ -172,7 +153,7 @@ async def _execute_ocr_logic(
         "times": ["09:00", "13:00", "19:00"],
         "duration": "3일",
         "instruction": "식후 30분 복용",
-        "ocr_raw_text": " ".join(raw_text_list) if raw_text_list else "MOCK OCR TEXT 타이레놀"
+        "ocr_raw_text": " ".join(raw_text_list) if raw_text_list else "MOCK OCR TEXT 타이레놀",
     }
 
     matched_meds, auto_created_ids = await _match_or_create_medications(db_session, repo, raw_text_list)
@@ -182,31 +163,25 @@ async def _execute_ocr_logic(
             match_rate = 0.5  # 마스터 DB에 없어 새로 생성된 미검증 약품
         else:
             match_rate = 1.0 if "타이레놀" in med.medication_name else 0.85
-        candidates.append({
-            "drug_name": med.medication_name,
-            "match_rate": match_rate,
-            "drug_code": med.standard_code or f"CODE_{med.id}"
-        })
+        candidates.append(
+            {
+                "drug_name": med.medication_name,
+                "match_rate": match_rate,
+                "drug_code": med.standard_code or f"CODE_{med.id}",
+            }
+        )
 
-    candidates.sort(key=lambda x: x["match_rate"], reverse=True)
+    candidates.sort(key=lambda x: cast(float, x["match_rate"]), reverse=True)
 
     # 4. 최종 상태 업데이트
     status = "done" if candidates else "failed"
     await repo.update_recognition_job(
-        db_session,
-        job_id,
-        status=status,
-        candidates=candidates,
-        extracted_fields=extracted_fields
+        db_session, job_id, status=status, candidates=candidates, extracted_fields=extracted_fields
     )
 
 
 async def run_ocr_task(
-    job_id: str,
-    source_type: str,
-    file_bytes: bytes,
-    file_name: str = "image.jpg",
-    session: AsyncSession | None = None
+    job_id: str, source_type: str, file_bytes: bytes, file_name: str = "image.jpg", session: AsyncSession | None = None
 ):
     """
     비동기 OCR 및 약품 매칭 백그라운드 태스크.
@@ -231,13 +206,10 @@ class MedicationService:
         source_type: str,
         file_bytes: bytes,
         file_name: str,
-        background_tasks: BackgroundTasks
+        background_tasks: BackgroundTasks,
     ) -> RecognitionJobCreateResult:
         if source_type not in ["pill_photo", "prescription", "medical_record", "medication_guide"]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="유효하지 않은 source_type 입니다."
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효하지 않은 source_type 입니다.")
 
         job_id = str(uuid.uuid4())
         job = MedicationRecognitionJob(
@@ -246,7 +218,7 @@ class MedicationService:
             status="pending",
             source_type=source_type,
             candidates=[],
-            extracted_fields={}
+            extracted_fields={},
         )
         await self._repository.create_recognition_job(session, job)
 
@@ -255,25 +227,13 @@ class MedicationService:
 
         return RecognitionJobCreateResult(job_id=job_id, status="pending")
 
-    async def get_recognition_job(
-        self,
-        session: AsyncSession,
-        job_id: str,
-        profile_id: int
-    ) -> RecognitionResult:
+    async def get_recognition_job(self, session: AsyncSession, job_id: str, profile_id: int) -> RecognitionResult:
         job = await self._repository.get_recognition_job(session, job_id)
         if not job or job.profile_id != profile_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="해당 작업(Job)을 찾을 수 없습니다."
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 작업(Job)을 찾을 수 없습니다.")
 
         candidates = [
-            RecognitionCandidate(
-                drug_name=c["drug_name"],
-                match_rate=c["match_rate"],
-                drug_code=c["drug_code"]
-            )
+            RecognitionCandidate(drug_name=c["drug_name"], match_rate=c["match_rate"], drug_code=c["drug_code"])
             for c in (job.candidates or [])
         ]
 
@@ -282,7 +242,7 @@ class MedicationService:
             status=job.status,
             source_type=job.source_type,
             candidates=candidates,
-            extracted_fields=job.extracted_fields
+            extracted_fields=job.extracted_fields,
         )
 
     async def confirm_recognition_job(
@@ -291,14 +251,11 @@ class MedicationService:
         job_id: str,
         profile_id: int,
         selected_candidate_drug_code: str | None,
-        confirmed_fields: dict | None
+        confirmed_fields: dict | None,
     ) -> RecognitionConfirmResult:
         job = await self._repository.get_recognition_job(session, job_id)
         if not job or job.profile_id != profile_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="해당 작업(Job)을 찾을 수 없습니다."
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 작업(Job)을 찾을 수 없습니다.")
 
         # 최종 약물 확정 및 등록 처리
         if selected_candidate_drug_code:
@@ -320,10 +277,7 @@ class MedicationService:
                     times = job.extracted_fields["times"]
 
                 schedule = MedicationSchedule(
-                    profile_id=profile_id,
-                    medication_id=med.id,
-                    times=times,
-                    source_job_id=job_id
+                    profile_id=profile_id, medication_id=med.id, times=times, source_job_id=job_id
                 )
                 await self._repository.create_schedule(session, schedule)
 
@@ -334,17 +288,13 @@ class MedicationService:
                 GuideCard(
                     title="복약 주의사항 안내",
                     content="등록하신 약품의 부작용 및 상호작용 정보(DUR)는 추후 연동될 예정입니다.",
-                    severity="info"
+                    severity="info",
                 )
             )
 
         return RecognitionConfirmResult(status="confirmed", guide_cards=guide_cards)
 
-    async def list_schedules(
-        self,
-        session: AsyncSession,
-        profile_id: int
-    ) -> list[MedicationScheduleResponse]:
+    async def list_schedules(self, session: AsyncSession, profile_id: int) -> list[MedicationScheduleResponse]:
         schedules = await self._repository.list_schedules_by_profile(session, profile_id)
         return [
             MedicationScheduleResponse(
@@ -352,50 +302,29 @@ class MedicationService:
                 medication_id=s.medication_id,
                 drug_name=s.medication.medication_name,
                 times=s.times,
-                source_job_id=s.source_job_id
+                source_job_id=s.source_job_id,
             )
             for s in schedules
         ]
 
-    async def delete_schedule(
-        self,
-        session: AsyncSession,
-        profile_id: int,
-        schedule_id: int
-    ) -> None:
+    async def delete_schedule(self, session: AsyncSession, profile_id: int, schedule_id: int) -> None:
         schedule = await self._repository.get_schedule_by_id(session, schedule_id)
         if not schedule or schedule.profile_id != profile_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="해당 복약 스케줄을 찾을 수 없습니다."
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 복약 스케줄을 찾을 수 없습니다.")
         await self._repository.delete_schedule(session, schedule)
 
     async def create_manual_schedule(
-        self,
-        session: AsyncSession,
-        profile_id: int,
-        req: MedicationScheduleCreateRequest
+        self, session: AsyncSession, profile_id: int, req: MedicationScheduleCreateRequest
     ) -> MedicationScheduleResponse:
         med = await self._repository.get_medication_by_code(session, req.drug_code)
         if not med:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="해당 약품 정보를 찾을 수 없습니다."
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 약품 정보를 찾을 수 없습니다.")
 
-        schedule = MedicationSchedule(
-            profile_id=profile_id,
-            medication_id=med.id,
-            times=req.times
-        )
+        schedule = MedicationSchedule(profile_id=profile_id, medication_id=med.id, times=req.times)
         await self._repository.create_schedule(session, schedule)
 
         return MedicationScheduleResponse(
-            id=schedule.id,
-            medication_id=schedule.medication_id,
-            drug_name=med.medication_name,
-            times=schedule.times
+            id=schedule.id, medication_id=schedule.medication_id, drug_name=med.medication_name, times=schedule.times
         )
 
     async def search_medications(self, session: AsyncSession, query: str) -> list[dict]:
@@ -405,7 +334,7 @@ class MedicationService:
                 "id": m.id,
                 "standard_code": m.standard_code,
                 "medication_name": m.medication_name,
-                "form_type": m.form_type
+                "form_type": m.form_type,
             }
             for m in meds
         ]

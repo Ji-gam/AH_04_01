@@ -1,13 +1,13 @@
 import asyncio
 import io
-import json
+
 from httpx import ASGITransport, AsyncClient
 from starlette import status
 
 from app.main import app
-from app.tests.conftest import TestSessionLocal
 from app.models.medication_model import Medication
 from app.repositories.medication_repository import MedicationRepository
+from app.tests.conftest import TestSessionLocal
 
 
 async def _signup_and_login(client: AsyncClient, email: str) -> str:
@@ -44,7 +44,7 @@ async def _seed_dummy_medications():
                     shape="원형",
                     color="하양",
                     letters="TYLENOL",
-                )
+                ),
             )
         med2 = await repo.get_medication_by_code(session, "KD_A4002")
         if not med2:
@@ -61,7 +61,7 @@ async def _seed_dummy_medications():
                     shape="원형",
                     color="하양",
                     letters="ASPIRIN",
-                )
+                ),
             )
 
 
@@ -78,7 +78,7 @@ async def test_recognition_job_creation_and_completion():
 
         response = await client.post("/api/v1/recognition/jobs", headers=headers, files=files, data=data)
         assert response.status_code == status.HTTP_202_ACCEPTED
-        
+
         job_id = response.json()["job_id"]
         assert job_id is not None
         assert response.json()["status"] == "pending"
@@ -92,20 +92,18 @@ async def test_recognition_job_creation_and_completion():
         result_data = get_response.json()
         assert result_data["status"] == "done"
         assert len(result_data["candidates"]) > 0
-        
+
         # 첫 번째 후보 확인
         top_candidate = result_data["candidates"][0]
         assert "타이레놀정 500mg" in top_candidate["drug_name"]
-        
+
         # 3. 사용자 확정 -> 복약 스케줄 등록
         confirm_data = {
             "selected_candidate_drug_code": top_candidate["drug_code"],
-            "confirmed_fields": {"times": ["08:00", "12:00", "20:00"]}
+            "confirmed_fields": {"times": ["08:00", "12:00", "20:00"]},
         }
         confirm_response = await client.post(
-            f"/api/v1/recognition/jobs/{job_id}/confirm",
-            headers=headers,
-            json=confirm_data
+            f"/api/v1/recognition/jobs/{job_id}/confirm", headers=headers, json=confirm_data
         )
         assert confirm_response.status_code == status.HTTP_200_OK
         assert confirm_response.json()["status"] == "confirmed"
@@ -134,10 +132,7 @@ async def test_manual_schedule_registration_and_search():
         assert "아스피린" in search_data[0]["medication_name"]
 
         # 2. 수동 복약 등록
-        manual_req = {
-            "drug_code": "KD_A4002",
-            "times": ["09:00", "21:00"]
-        }
+        manual_req = {"drug_code": "KD_A4002", "times": ["09:00", "21:00"]}
         create_res = await client.post("/api/v1/medications", headers=headers, json=manual_req)
         assert create_res.status_code == status.HTTP_201_CREATED
         assert create_res.json()["drug_name"] == "아스피린정 100mg"
