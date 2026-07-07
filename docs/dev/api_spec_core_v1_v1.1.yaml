@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ReMedi API — Phase 1 (Core)
-  version: "0.2.0"
+  version: "0.3.0"
   description: >
     Phase 1(코어) 범위의 API 명세. Auth / 문서인식(공통모듈) / 복약 / Chat(RAG) / Push구독을 포함한다.
     인증은 JWT(Access/Refresh Token, `Authorization: Bearer` 헤더)로 처리하며(2026-07, httpOnly 쿠키에서 변경),
@@ -13,6 +13,9 @@ info:
     - version: "0.2.0"
       date: "2026-07-06"
       changes: "인증 방식을 httpOnly 쿠키에서 JWT(Authorization: Bearer)로 전환 — securitySchemes, AuthTokenResult, /auth/refresh, /auth/logout 갱신"
+    - version: "0.3.0"
+      date: "2026-07-07"
+      changes: "복약 알림 일정(T-NTFY) CRUD 추가 — /notifications/schedules, NotificationSchedule* 스키마"
 
 servers:
   - url: https://api.remedi.app/v1
@@ -191,6 +194,39 @@ components:
           properties:
             p256dh: { type: string }
             auth: { type: string }
+
+    # ---------- 복약 알림 일정 (T-NTFY) ----------
+    NotificationScheduleCreateRequest:
+      type: object
+      required: [medication_name, alarm_time]
+      properties:
+        medication_name: { type: string, maxLength: 100, example: "타이레놀" }
+        frequency_type: { type: string, enum: [DAILY, WEEKLY], default: DAILY }
+        target_day_of_week:
+          type: string
+          enum: [일, 월, 화, 수, 목, 금, 토]
+          description: "frequency_type이 WEEKLY일 때만 필수"
+        alarm_time: { type: string, format: time, example: "08:30:00" }
+
+    NotificationScheduleUpdateRequest:
+      type: object
+      description: "전달한 필드만 갱신한다(부분 수정)."
+      properties:
+        medication_name: { type: string, maxLength: 100 }
+        frequency_type: { type: string, enum: [DAILY, WEEKLY] }
+        target_day_of_week: { type: string, enum: [일, 월, 화, 수, 목, 금, 토] }
+        alarm_time: { type: string, format: time }
+        is_active: { type: boolean }
+
+    NotificationScheduleResult:
+      type: object
+      properties:
+        id: { type: integer }
+        medication_name: { type: string }
+        frequency_type: { type: string, enum: [DAILY, WEEKLY] }
+        target_day_of_week: { type: string, enum: [일, 월, 화, 수, 목, 금, 토], nullable: true }
+        alarm_time: { type: string, format: time }
+        is_active: { type: boolean }
 
 paths:
   # ================= Auth =================
@@ -495,3 +531,72 @@ paths:
               properties: { endpoint: { type: string } }
       responses:
         '204': { description: 해지 완료 }
+
+  # ================= 복약 알림 일정 (T-NTFY) =================
+  /notifications/schedules:
+    get:
+      tags: [Notifications]
+      summary: 복약 알림 일정 목록 조회 (T-NTFY)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: 로그인한 프로필의 복약 알림 일정 목록
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/NotificationScheduleResult' }
+        '401': { description: 인증되지 않음 }
+    post:
+      tags: [Notifications]
+      summary: 복약 알림 일정 등록 (T-NTFY)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationScheduleCreateRequest' }
+      responses:
+        '201':
+          description: 등록 완료
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationScheduleResult' }
+        '401': { description: 인증되지 않음 }
+        '422': { description: frequency_type이 WEEKLY인데 target_day_of_week가 없는 등 입력값이 유효하지 않음 }
+
+  /notifications/schedules/{schedule_id}:
+    patch:
+      tags: [Notifications]
+      summary: 복약 알림 일정 수정 (T-NTFY)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationScheduleUpdateRequest' }
+      responses:
+        '200':
+          description: 수정 완료(전달한 필드만 부분 수정)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationScheduleResult' }
+        '401': { description: 인증되지 않음 }
+        '404': { description: 본인 소유가 아니거나 존재하지 않는 일정 }
+        '422': { description: frequency_type이 WEEKLY인데 target_day_of_week가 없는 등 입력값이 유효하지 않음 }
+    delete:
+      tags: [Notifications]
+      summary: 복약 알림 일정 삭제 (T-NTFY)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: schedule_id
+          required: true
+          schema: { type: integer }
+      responses:
+        '204': { description: 삭제 완료 }
+        '401': { description: 인증되지 않음 }
+        '404': { description: 본인 소유가 아니거나 존재하지 않는 일정 }

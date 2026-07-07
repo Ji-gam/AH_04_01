@@ -16,6 +16,7 @@ wheels/
 # frontend
 node_modules/
 frontend/dist/
+*.tsbuildinfo
 
 # oh-my-claudecode local state
 .omc/
