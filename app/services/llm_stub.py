@@ -30,7 +30,8 @@ async def stream_llm_reply(message: str, context: dict, chunks: list[str]) -> As
         return
 
     system_prompt = (
-        "당신은 ReMedi의 건강 상담 챗봇입니다. 사용자 질문에 간결하고 안전하게 답변하세요.\n"
+        "당신은 ReMedi의 건강 상담 챗봇입니다. 아래 사용자 건강 컨텍스트(진단병력·가족력·"
+        "복약정보)를 참고해 개인화된 답변을 간결하고 안전하게 제공하세요.\n"
         f"참고 문서: {chunks}\n"
         f"사용자 건강 컨텍스트: {context}"
     )
