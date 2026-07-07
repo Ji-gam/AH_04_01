@@ -62,9 +62,38 @@ Table chat_messages {
 }
 
 // 새 도메인 테이블을 추가하면 여기 아래에 테이블을 추가하고, profiles로의 FK를 명시하세요.
-// 예시:
-// Table medications {
-//   id bigint [pk, increment]
-//   profile_id bigint [not null, ref: > profiles.id]
-//   ...
-// }
+Table medications {
+  id bigint [pk, increment]
+  standard_code varchar(50)
+  medication_name varchar(150) [not null]
+  form_type varchar(30)
+  dosage_guideline text
+  side_effects text
+  precautions text
+  storage_method text
+  shape varchar(30)
+  color varchar(30)
+  letters varchar(50)
+}
+
+Table medication_schedules {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  medication_id bigint [not null, ref: > medications.id]
+  times json [not null]
+  source_job_id varchar(36)
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table medication_recognition_jobs {
+  id varchar(36) [pk]
+  profile_id bigint [not null, ref: > profiles.id]
+  status varchar(20) [not null]
+  source_type varchar(20) [not null]
+  candidates json
+  extracted_fields json
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+

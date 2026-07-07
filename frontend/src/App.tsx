@@ -14,6 +14,7 @@ import LoginPage from "./pages/LoginPage/LoginPage";
 import MorePage from "./pages/MorePage/MorePage";
 import SignupPage from "./pages/SignupPage/SignupPage";
 import TrackPage from "./pages/TrackPage/TrackPage";
+import MedicationPage from "./pages/medication/MedicationPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -26,6 +27,7 @@ export const router = createBrowserRouter([
         children: [
           { path: "/", element: <HomePage /> },
           { path: "/track", element: <TrackPage /> },
+          { path: "/medication", element: <MedicationPage /> },
           { path: "/chat", element: <ChatPage /> },
           { path: "/info", element: <InfoPage /> },
           { path: "/more", element: <MorePage /> },
