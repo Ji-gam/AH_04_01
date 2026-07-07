@@ -1,6 +1,8 @@
 from datetime import datetime
-from sqlalchemy import BigInteger, ForeignKey, String, Text, JSON, DateTime, func
+
+from sqlalchemy import JSON, BigInteger, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.models.base import Base
 
 
@@ -31,7 +33,9 @@ class MedicationSchedule(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     profile_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
-    medication_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("medications.id", ondelete="CASCADE"), nullable=False)
+    medication_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("medications.id", ondelete="CASCADE"), nullable=False
+    )
     times: Mapped[list[str]] = mapped_column(JSON, nullable=False)  # 복용 시간 목록 (e.g. ["08:30", "19:00"])
     source_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)  # 인식을 통해 등록된 경우 job_id 연계
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -50,9 +54,15 @@ class MedicationRecognitionJob(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)  # UUID v4
     profile_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending, processing, done, failed
-    source_type: Mapped[str] = mapped_column(String(20), nullable=False)  # pill_photo, prescription, medical_record, medication_guide
-    candidates: Mapped[list[dict] | None] = mapped_column(JSON, nullable=True)  # 후보군 리스트 [{'drug_name': ..., 'match_rate': ..., 'drug_code': ...}]
+    status: Mapped[str] = mapped_column(
+        String(20), default="pending", nullable=False
+    )  # pending, processing, done, failed
+    source_type: Mapped[str] = mapped_column(
+        String(20), nullable=False
+    )  # pill_photo, prescription, medical_record, medication_guide
+    candidates: Mapped[list[dict] | None] = mapped_column(
+        JSON, nullable=True
+    )  # 후보군 리스트 [{'drug_name': ..., 'match_rate': ..., 'drug_code': ...}]
     extracted_fields: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # 추출된 텍스트 필드 정보들
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

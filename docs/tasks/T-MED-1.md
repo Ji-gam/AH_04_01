@@ -162,13 +162,30 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
   (`down_revision=("0003","0004")`). 운영 DB `alembic_version`도 `0005`로 갱신, `alembic heads`가
   단일 head(`0005`)로 정상 수렴함을 확인. 새 파일들은 `ruff format`까지 맞춰 커밋해 이 파일로 인한
   CI 실패는 해소됨.
-- **허용 경로 밖(수정하지 않음 — 공유 파일 변경 필요, 사용자 확인 후 보류)**:
-  - `app/apis/v1/__init__.py`, `app/models/__init__.py`, `app/models/medication_model.py`: import 정렬
-    (I001). `app/models/medication_model.py`는 `ruff format --check`도 미통과.
-  - `app/core/validators/__init__.py`: `from .common import *` 등 wildcard import (F403) — 이번
-    변경과 전혀 무관한 기존 파일.
-  - **결론**: 위 5개 파일을 고치지 않는 한 CI의 "Lint & Type Check"는 계속 실패한다. 전부 기계적인
-    import 정렬/포맷 수준(로직 변경 없음)이라 리스크는 낮지만, T-MED-1 Task Contract의 허용 경로에
-    없어 임의로 수정하지 않았다. 담당자 또는 사용자가 별도로 처리하거나, 허용 범위 확장을 명시적으로
-    승인해야 CI가 통과한다.
+### 허용 경로 밖 파일 3건 — 사용자 명시적 승인 후 수정 (2026-07-08)
+
+> 위에서 "허용 경로 밖이라 수정하지 않는다"고 보고했던 항목을, 사용자가 "4개를 수정하되 반드시 문서에
+> 작성하고 커밋에도 작성해둘 것"이라고 명시적으로 승인하여 진행함. AGENTS.md 0-4번("공유 구역은 Task
+> Contract에 명시적으로 허용되지 않는 한 절대 수정하지 않는다")의 예외로, 이 승인을 근거로 삼음.
+
+- **컨테이너 기반 검증의 함정 발견**: 지금까지 로컬 검증에 쓰던 `docker exec fastapi ...`는
+  `docker-compose.yml`이 `./app`만 마운트하고 리포 루트 `pyproject.toml`은 마운트하지 않아, 이미지
+  빌드 시점(7/7)의 **오래된 `pyproject.toml`**을 기준으로 lint를 돌리고 있었다. 그래서
+  `app/core/validators/__init__.py`의 F403(wildcard import)이 실제로는 이미 `per-file-ignores`로
+  무시되도록 설정돼 있었는데도 에러로 잘못 보고됐었다(→ 실제로는 문제없는 파일이었음, 4번째 항목에서
+  제외). 반대로 호스트에 설치된 `uv run ruff check .`(CI와 완전히 동일한 커맨드)로 재검증하니
+  `ai_worker/tasks/medication_task.py`(허용 경로 안 파일)에서 진짜 lint/format/mypy 에러가 새로
+  발견됐다. 이후 검증은 `uv run` 기준으로 전환.
+- **`ai_worker/tasks/medication_task.py` 삭제**: import 정렬/복잡도(C901)/공백/mypy 에러가 있었으나,
+  내용을 보니 이미 위 "도커 컨테이너 기동 이슈 조치" 항목에서 `medication_service.py`로 이관하기 전의
+  **옛 버전 그대로 남아있던 죽은 코드**였다(리포 전체에서 이 모듈을 import하는 코드 없음 확인). lint를
+  고쳐서 유지하는 대신, 실제 사용되지 않는 중복 로직이라 삭제. 참고: `docs/tasks/T-MED-1-clova-ocr-benchmark.md`
+  설계안은 이 파일 위치를 OCR 진입점으로 제안했었지만, 실제 구현은 컨테이너 마운트 제약 때문에
+  `medication_service.py`로 통합된 상태이며 이 결정은 이미 기록되어 있음.
+- **`app/apis/v1/__init__.py`**: `ruff check --fix`로 import 순서만 정렬(I001). 로직 변경 없음.
+- **`app/models/__init__.py`**: 동일하게 import 순서만 정렬(I001). 로직 변경 없음.
+- **`app/models/medication_model.py`**: import 순서 정렬(I001) + `ruff format` 적용(줄바꿈/공백 스타일).
+  로직·스키마 변경 없음(컬럼/테이블 정의 그대로).
+- **검증**: `uv run ruff check .` / `uv run ruff format --check .` / `uv run mypy .` 리포 전체 기준
+  전부 통과(88개 파일). `pytest` 34/34 유지.
 
