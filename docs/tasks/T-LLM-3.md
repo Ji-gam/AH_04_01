@@ -9,11 +9,13 @@
 - 출력/노출: 규격화된 팁 카드(JSON 기반)
 
 ### 이번 라운드 범위
-백엔드(모델/서비스/API) + 오프라인 생성·시드 스크립트까지. 프론트 "정보" 탭 UI, 가족 프로필 스위처(T-AUTH-5/6 의존), 챗봇의 콘텐츠 추천 기능은 이번 PR 범위 밖 — 별도 후속 작업.
+백엔드(모델/서비스/API) + 오프라인 생성·시드 스크립트 + 프론트 "정보" 탭 UI까지(2026-07-08, 범위 확장 — 아래 설계 변경 3 참고). 가족 프로필 스위처(T-AUTH-5/6 의존), 챗봇의 콘텐츠 추천 기능은 이번 PR 범위 밖 — 별도 후속 작업.
 
 **설계 변경 1 (2026-07-08, 구현 중 확정)**: 최초 계획은 캐시 미스 시 요청 안에서 온디맨드로 LLM을 호출하는 것이었으나, 사용자 요청마다 LLM 호출이 발생하는 구조의 지연/비용 문제가 지적되어 **라이브 생성을 완전히 제거**했다. 대신 `generate_health_content.py`(오프라인, LLM 호출 → JSON 픽스처 생성) → 커밋 → `seed_health_content.py`(픽스처를 로컬 DB에 시드)로 흐름을 바꿨다. `GET /contents/me`는 캐시에 있는 것만 읽고, 없는 조합은 조용히 스킵한다(생성하지 않음).
 
-**설계 변경 2 (2026-07-08, 구현 중 확정)**: "정보" 탭은 로그인 여부와 무관하게 볼 수 있어야 한다는 요구사항이 확인되어, `GET /contents/me`를 인증 필수(`get_current_profile`)에서 **공개 엔드포인트**(`get_current_profile_optional`, `app/dependencies/security.py`에 신규 추가 — 금지 경로였으나 이 목적을 위해 예외로 허용받음, [공통모듈 변경])로 전환했다. 비로그인이거나 프로필에 등록된 질환이 없으면 전체 질환의 콘텐츠를 누적 피드로 반환하고(질환 등록 유도 배너는 프론트 몫), 등록된 질환이 있으면 그 질환들만 필터링한다.
+**설계 변경 2 (2026-07-08, 구현 중 확정)**: "정보" 탭은 로그인 여부와 무관하게 볼 수 있어야 한다는 요구사항이 확인되어, `GET /contents/me`를 인증 필수(`get_current_profile`)에서 **공개 엔드포인트**(`get_current_profile_optional`, `app/dependencies/security.py`에 신규 추가 — 금지 경로였으나 이 목적을 위해 예외로 허용받음, [공통모듈 변경])로 전환했다. 비로그인이거나 프로필에 등록된 질환이 없으면 전체 질환의 콘텐츠를 누적 피드로 반환하고(질환 등록 유도 배너는 프론트 몫), 등록된 질환이 있으면 그 질환들만 필터링한다. 프론트가 이 둘을 구분할 수 있도록 응답을 `{ personalized, items }`로 변경.
+
+**설계 변경 3 (2026-07-08, 구현 중 확정)**: "백엔드만 있어봤자 소용없다"는 피드백으로 프론트 "정보" 탭 UI까지 범위에 포함. `docs/FRONTEND_UI_GUIDE_v1.0.md`(Tailwind+shadcn 지정 문서)가 실제로는 리포에 설치되어 있지 않은 상태였음을 확인 → 사용자 승인 하에 Tailwind+shadcn 인프라를 이번에 직접 설치(`[공통모듈 변경]`, 프론트 전체에 영향). `InfoPage.tsx`가 이 인프라의 첫 실제 적용 화면. `personalized=false`일 때 질환 등록 유도 배너를 보여주되, 질환 등록 기능 자체가 없어 시각적 안내만 한다(클릭 액션 없음).
 
 ### 완료 정의 (Definition of Done — TRD 성공요건 = 자동 검증 대상)
 - [x] 동일 질환+카테고리 콘텐츠가 당일 이미 존재하면 재생성 없이 캐시가 재사용된다 (`seed_health_content.py` 재실행 시 0건, 멱등성 확인)
@@ -41,6 +43,10 @@ app/core/db/migrations/versions/000X_*content*.py  (신규 리비전 파일만 �
 docs/dev/ERD.dbml  (health_contents 테이블 추가분만)
 docs/tasks/T-LLM-3.md  (이 파일의 "완료 보고" 섹션만)
 docs/squad-map.md  (D 스쿼드 접두어에 content_* 추가 — 이미 반영됨)
+frontend/src/pages/InfoPage/**
+frontend/src/api/contentApi.ts
+frontend/src/api/types.ts  (콘텐츠 관련 타입 추가분만)
+docs/FRONTEND_UI_GUIDE_v1.0.md  (미커밋 상태였던 걸 커밋 + 상태 갱신, 사용자 승인 하에 진행 — 예외)
 ```
 
 ### 금지 경로 (절대 수정하지 않음 — 필요해 보여도 "공유 파일 변경 필요"로 보고만)
@@ -52,7 +58,7 @@ app/services/safety_service.py  (읽기만, 수정 금지)
 app/services/user_health_context_service.py  (읽기만, 수정 금지)
 app/services/retriever_stub.py, app/services/llm_stub.py  (읽기/재사용만, 수정 금지)
 ai_worker/**
-frontend/**
+frontend/** (예외: 위 허용 경로의 InfoPage/contentApi/types 추가분 + Tailwind/shadcn 인프라 설치는 사용자 승인 하에 진행 — [공통모듈 변경])
 envs/**
 infra/**
 docker-compose.yml
@@ -89,6 +95,7 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
 - 공유 계약 변경 필요 사항:
   - `app/services/llm_stub.py`에 `generate_content_card` 함수를 추가함(기존 `stream_llm_reply`는 그대로, 회귀 없음 확인)
   - `app/dependencies/security.py`에 `get_current_profile_optional` 함수를 추가함(Auth 스쿼드 소유 공유 파일, 사용자 명시적 승인 하에 진행, 기존 `get_current_profile`/`get_request_user`는 미수정 — [공통모듈 변경])
-- 검증: `pytest -v` 52/52 통과, `ruff check .`/`ruff format --check .`/`mypy .` 전체 통과, 실제 OpenAI로 15건(5질환x3카테고리) 생성 → 시드 → 재시드 멱등성 확인 → 실제 profile_id=1(mock 조건 "당뇨")로 서비스 호출 시 3장 정상 반환 확인, 비인증 요청으로 실제 dev DB에서 15건 전체 반환 확인
+  - 프론트 전체에 Tailwind CSS + shadcn/ui 인프라를 신규 설치함(`docs/FRONTEND_UI_GUIDE_v1.0.md`가 미커밋 상태로 설명만 하던 상태 → 실제 설치, 사용자 승인 하에 진행, [공통모듈 변경]). 기존 화면(ChatPage 등)은 건드리지 않음 — 가이드 문서의 단계적 마이그레이션 방침 유지
+- 검증: `pytest -v` 52/52 통과, `ruff check .`/`ruff format --check .`/`mypy .` 전체 통과, 실제 OpenAI로 15건(5질환x3카테고리) 생성 → 시드 → 재시드 멱등성 확인 → 실제 profile_id=1(mock 조건 "당뇨")로 서비스 호출 시 3장 정상 반환 확인, 비인증 요청으로 실제 dev DB에서 15건 전체 반환 확인. 프론트는 `npx tsc --noEmit`/`npm run lint`/`npm run build` 통과 + 브라우저에서 실제 로그인/비로그인/카테고리 필터 시나리오 확인(콘솔 에러 없음)
 - 브랜치명: `feature/T-LLM-3-health-content-pipeline`
-- 후속 작업(범위 밖, 별도 T-ID 필요): 프론트 "정보" 탭 UI, 가족 프로필 스위처(T-AUTH-5/6 완료 후), 챗봇의 콘텐츠 추천 기능, 스테이징 도입 후 배치 스케줄러(Celery beat 등) 연결
+- 후속 작업(범위 밖, 별도 T-ID 필요): 가족 프로필 스위처(T-AUTH-5/6 완료 후), 챗봇의 콘텐츠 추천 기능, 스테이징 도입 후 배치 스케줄러(Celery beat 등) 연결, ChatPage 등 기존 화면의 Tailwind/shadcn 마이그레이션(별도 담당)
