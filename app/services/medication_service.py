@@ -349,6 +349,8 @@ class MedicationService:
                 drug_name=s.medication.medication_name,
                 times=s.times,
                 source_job_id=s.source_job_id,
+                form_type=s.medication.form_type,
+                dosage_guideline=s.medication.dosage_guideline,
             )
             for s in schedules
         ]

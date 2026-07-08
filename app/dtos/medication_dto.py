@@ -43,6 +43,9 @@ class MedicationScheduleResponse(BaseModel):
     drug_name: str
     times: list[str]
     source_job_id: str | None = None
+    # 약 카드 표시용 부가 정보 — 마스터 데이터에 값이 없으면 None (T-NTFY-2)
+    form_type: str | None = None
+    dosage_guideline: str | None = None
 
 
 class MedicationScheduleCreateRequest(BaseModel):

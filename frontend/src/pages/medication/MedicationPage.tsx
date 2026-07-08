@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useMedication, type RecognitionCandidate } from "../../hooks/useMedication";
 
+import DayScheduleSection from "./DayScheduleSection";
+
 export default function MedicationPage() {
   const {
     schedules,
@@ -160,6 +162,9 @@ export default function MedicationPage() {
   return (
     <div style={{ maxWidth: 480, margin: "20px auto", padding: "10px", fontFamily: "sans-serif" }}>
       <h1>복약 관리 (T-MED-1)</h1>
+
+      {/* T-NTFY-2: 복약알림 달력에서 날짜 클릭 시 ?date=로 진입 — 그 날짜의 통합 복용 목록(약+알림) */}
+      <DayScheduleSection medicationSchedules={schedules} />
 
       {/* 탭 네비게이션 (시간표, 목록, 상호작용, 음식) */}
       <div style={{ display: "flex", gap: "5px", marginBottom: "15px" }}>

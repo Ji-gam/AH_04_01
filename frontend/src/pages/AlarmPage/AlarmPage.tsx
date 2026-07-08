@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
@@ -44,6 +45,7 @@ function doseCountOf(counts: Map<string, number>, s: NotificationScheduleResult)
 }
 
 export default function AlarmPage() {
+  const navigate = useNavigate();
   const [schedules, setSchedules] = useState<NotificationScheduleResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +56,8 @@ export default function AlarmPage() {
   const [isSaving, setIsSaving] = useState(false);
 
   const today = new Date();
-  const [selectedDateStr, setSelectedDateStr] = useState(toDateString(today));
+  // 달력 선택 표시는 항상 오늘 — 날짜 클릭 시 이 페이지에서 필터하는 대신 복약스케줄 화면으로 이동한다.
+  const [selectedDateStr] = useState(toDateString(today));
   const [visibleYear, setVisibleYear] = useState(today.getFullYear());
   const [visibleMonth, setVisibleMonth] = useState(today.getMonth());
   const selectedDate = new Date(`${selectedDateStr}T00:00:00`);
@@ -254,12 +257,13 @@ export default function AlarmPage() {
           />
         )}
 
+        {/* 날짜를 누르면 복약스케줄 화면으로 이동해 그 날짜의 통합 복용 목록(약+알림)을 보여준다. */}
         <AlarmCalendar
           year={visibleYear}
           month={visibleMonth}
           selectedDateStr={selectedDateStr}
           schedules={schedules}
-          onSelectDate={setSelectedDateStr}
+          onSelectDate={(dateStr) => navigate(`/medication?date=${dateStr}`)}
           onPrevMonth={handlePrevMonth}
           onNextMonth={handleNextMonth}
         />
