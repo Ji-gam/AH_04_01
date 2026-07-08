@@ -18,6 +18,10 @@ OPENAPI_TAGS = [
         "name": "users",
         "description": "로그인한 계정(User)의 정보 조회/수정. 개인정보(이름/성별/생일/휴대폰번호)는 Profile 기준으로 응답한다.",
     },
+    {
+        "name": "notifications",
+        "description": "복약 알림 일정(Notification Schedule) CRUD. profile_id 기준으로 스코핑한다.",
+    },
 ]
 
 app = FastAPI(

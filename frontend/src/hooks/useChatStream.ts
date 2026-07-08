@@ -1,5 +1,5 @@
 /**
- * T-LLM-2 스트리밍 훅. 소유자: 서현(RAG/Chat 연동) — FRONTEND_ARCHITECTURE.md 6번.
+ * T-LLM-2 스트리밍 훅 — `docs/CODING_RULES.md` 3번(프론트엔드 규칙) 참고.
  */
 import { useRef, useState } from "react";
 
@@ -31,13 +31,17 @@ export function useChatStream() {
 
     try {
       const sessionId = await ensureSession();
+      // React StrictMode가 setState 업데이터를 2번 호출해 순수성을 검증하므로,
+      // 업데이터 내부에서 이 플래그를 직접 mutate하지 않는다(mutate하면 StrictMode에서
+      // 토큰이 중복/누락된다) — 값은 for-await 루프 본문(업데이터 바깥)에서만 갱신한다.
       let assistantStarted = false;
 
       for await (const chunk of chatApi.sendMessage(sessionId, text)) {
         if (chunk.type === "token") {
+          const isFirstToken = !assistantStarted;
+          assistantStarted = true;
           setMessages((prev) => {
-            if (!assistantStarted) {
-              assistantStarted = true;
+            if (isFirstToken) {
               return [...prev, { role: "assistant", content: chunk.content }];
             }
             const next = [...prev];
@@ -51,8 +55,9 @@ export function useChatStream() {
             { role: "assistant", content: chunk.content, disclaimer: chunk.disclaimer },
           ]);
         } else if (chunk.type === "done") {
+          const hasAssistantMessage = assistantStarted;
           setMessages((prev) => {
-            if (!assistantStarted) return prev;
+            if (!hasAssistantMessage) return prev;
             const next = [...prev];
             const last = next[next.length - 1];
             next[next.length - 1] = { ...last, disclaimer: chunk.disclaimer };

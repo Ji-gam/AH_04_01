@@ -7,7 +7,6 @@ export interface AgreementPayload {
   sensitive_info: boolean;
   marketing: boolean;
 }
-
 // api_spec_core_v1_v1.1.yaml과 1:1로 수동 동기화 (FRONTEND_ARCHITECTURE.md 4번 — React Query/자동생성 대신 수동 패턴).
 // 백엔드 /auth/login, /auth/token/refresh 응답: access_token만 body로 오고, refresh_token은 httpOnly 쿠키로 내려온다.
 export interface AuthTokenResult {
@@ -42,13 +41,36 @@ export interface UserInfoResult {
 export interface ChatSessionCreateResult {
   session_id: string;
 }
+// 백엔드 app/dtos/notifications.py와 1:1로 수동 동기화.
+export type FrequencyType = "DAILY" | "WEEKLY";
+export type DayOfWeek = "일" | "월" | "화" | "수" | "목" | "금" | "토";
+export interface NotificationScheduleResult {
+  id: number;
+  medication_name: string;
+  frequency_type: FrequencyType;
+  target_day_of_week: DayOfWeek | null;
+  alarm_time: string; // "HH:MM:SS"
+  is_active: boolean;
+}
+export interface NotificationScheduleCreateRequest {
+  medication_name: string;
+  frequency_type: FrequencyType;
+  target_day_of_week?: DayOfWeek | null;
+  alarm_time: string;
+}
+export interface NotificationScheduleUpdateRequest {
+  medication_name?: string;
+  frequency_type?: FrequencyType;
+  target_day_of_week?: DayOfWeek | null;
+  alarm_time?: string;
+  is_active?: boolean;
+}
 // ChatMessageChunk 스키마 (api_spec_core_v1.yaml). text/plain 스트림의 각 줄이 이 형태의 JSON이다.
 export interface ChatMessageChunk {
   type: "token" | "emergency_fallback" | "done";
   content: string;
   disclaimer?: string;
 }
-
 // 백엔드 POST /auth/{provider}/complete-signup 요청 바디.
 // 소셜 로그인은 이름/이메일만 주므로, 성별/생년월일/휴대폰번호는 이 화면에서 직접 입력받는다.
 export interface SocialSignupCompletePayload {
@@ -59,10 +81,8 @@ export interface SocialSignupCompletePayload {
   phone_number: string;
   agreements: AgreementPayload;
 }
-
 // [T-PROFILE-1] 5대질환: 암/심장질환/뇌혈관질환/당뇨/간질환.
 export type Disease = "CANCER" | "HEART_DISEASE" | "CEREBROVASCULAR_DISEASE" | "DIABETES" | "LIVER_DISEASE";
-
 // 백엔드 PATCH /users/me/biometric-info 요청 바디. 전달 안 한 필드는 기존 값 유지(부분 수정).
 export interface BiometricInfoPayload {
   height_cm: number;
@@ -70,7 +90,6 @@ export interface BiometricInfoPayload {
   diagnosis_history: Disease[];
   family_history: Disease[];
 }
-
 // 백엔드 PATCH /users/me 요청 바디. 전달 안 한 필드는 기존 값 유지(부분 수정).
 export interface UserUpdatePayload {
   name: string;
@@ -79,7 +98,6 @@ export interface UserUpdatePayload {
   birthday: string; // YYYY-MM-DD
   gender: "MALE" | "FEMALE";
 }
-
 // 백엔드 DELETE /auth/withdraw 요청 바디. LOCAL 계정만 password 필요.
 export interface WithdrawPayload {
   password?: string;

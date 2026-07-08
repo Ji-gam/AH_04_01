@@ -18,7 +18,7 @@ export default function ChatPage() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       <h1>상담</h1>
       <DisclaimerBanner />
 
