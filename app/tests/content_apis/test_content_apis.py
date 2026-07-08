@@ -36,18 +36,20 @@ async def _seed_one_content(disease_code: str = "당뇨", category: str = "LIFES
         )
 
 
-async def test_get_contents_without_auth_returns_200_with_all_content():
+async def test_get_contents_without_auth_returns_200_with_all_content_not_personalized():
     """'정보' 탭은 로그인 없이도 볼 수 있어야 한다."""
     await _seed_one_content()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/api/v1/contents/me")
 
     assert response.status_code == status.HTTP_200_OK
-    assert len(response.json()) == 1
-    assert response.json()[0]["disease_code"] == "당뇨"
+    body = response.json()
+    assert body["personalized"] is False
+    assert len(body["items"]) == 1
+    assert body["items"][0]["disease_code"] == "당뇨"
 
 
-async def test_get_contents_for_profile_without_conditions_returns_all_content():
+async def test_get_contents_for_profile_without_conditions_returns_all_content_not_personalized():
     """질환 미등록 프로필은 비로그인과 동일하게 전체 콘텐츠를 본다."""
     await _seed_one_content()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -55,7 +57,9 @@ async def test_get_contents_for_profile_without_conditions_returns_all_content()
         response = await client.get("/api/v1/contents/me", headers={"Authorization": f"Bearer {token}"})
 
     assert response.status_code == status.HTTP_200_OK
-    assert len(response.json()) == 1
+    body = response.json()
+    assert body["personalized"] is False
+    assert len(body["items"]) == 1
 
 
 async def test_get_contents_with_category_filter_returns_200():
@@ -63,7 +67,7 @@ async def test_get_contents_with_category_filter_returns_200():
         response = await client.get("/api/v1/contents/me", params={"category": "FOOD"})
 
     assert response.status_code == status.HTTP_200_OK
-    assert response.json() == []
+    assert response.json() == {"personalized": False, "items": []}
 
 
 async def test_get_contents_with_invalid_category_returns_422():

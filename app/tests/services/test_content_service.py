@@ -89,10 +89,11 @@ async def test_personalized_profile_returns_only_own_conditions():
     repository.seed("고혈압", "LIFESTYLE", today)
     service = _build_service(repository, ["당뇨"])
 
-    results = await service.get_contents(session=None, profile_id=1)
+    result = await service.get_contents(session=None, profile_id=1)
 
-    assert len(results) == 2
-    assert {r["disease_code"] for r in results} == {"당뇨"}
+    assert result["personalized"] is True
+    assert len(result["items"]) == 2
+    assert {item["disease_code"] for item in result["items"]} == {"당뇨"}
 
 
 async def test_missing_combo_is_silently_skipped_not_generated():
@@ -101,14 +102,14 @@ async def test_missing_combo_is_silently_skipped_not_generated():
     repository.seed("당뇨", "LIFESTYLE", today)
     service = _build_service(repository, ["당뇨"])
 
-    results = await service.get_contents(session=None, profile_id=1)
+    result = await service.get_contents(session=None, profile_id=1)
 
-    assert len(results) == 1
-    assert results[0]["category"] == "LIFESTYLE"
+    assert len(result["items"]) == 1
+    assert result["items"][0]["category"] == "LIFESTYLE"
     assert repository.save_calls == 0
 
 
-async def test_anonymous_request_returns_all_cached_content():
+async def test_anonymous_request_returns_all_cached_content_and_not_personalized():
     """profile_id=None(비로그인)이면 등록된 질환과 무관하게 전체를 반환한다."""
     repository = FakeContentRepository()
     today = _today_kst()
@@ -116,12 +117,13 @@ async def test_anonymous_request_returns_all_cached_content():
     repository.seed("고혈압", "FOOD", today)
     service = _build_service(repository, conditions=["당뇨"])  # 어차피 profile_id=None이라 무시됨
 
-    results = await service.get_contents(session=None, profile_id=None)
+    result = await service.get_contents(session=None, profile_id=None)
 
-    assert {r["disease_code"] for r in results} == {"당뇨", "고혈압"}
+    assert result["personalized"] is False
+    assert {item["disease_code"] for item in result["items"]} == {"당뇨", "고혈압"}
 
 
-async def test_profile_without_registered_conditions_returns_all_cached_content():
+async def test_profile_without_registered_conditions_returns_all_cached_content_and_not_personalized():
     """질환 미등록 프로필은 비로그인과 동일하게 전체 콘텐츠를 본다."""
     repository = FakeContentRepository()
     today = _today_kst()
@@ -129,9 +131,10 @@ async def test_profile_without_registered_conditions_returns_all_cached_content(
     repository.seed("고혈압", "FOOD", today)
     service = _build_service(repository, conditions=[])
 
-    results = await service.get_contents(session=None, profile_id=1)
+    result = await service.get_contents(session=None, profile_id=1)
 
-    assert {r["disease_code"] for r in results} == {"당뇨", "고혈압"}
+    assert result["personalized"] is False
+    assert {item["disease_code"] for item in result["items"]} == {"당뇨", "고혈압"}
 
 
 async def test_category_filter_applies_regardless_of_personalization():
@@ -142,10 +145,10 @@ async def test_category_filter_applies_regardless_of_personalization():
     repository.seed("고혈압", "FOOD", today)
     service = _build_service(repository, conditions=[])
 
-    results = await service.get_contents(session=None, profile_id=None, category="FOOD")
+    result = await service.get_contents(session=None, profile_id=None, category="FOOD")
 
-    assert {r["disease_code"] for r in results} == {"당뇨", "고혈압"}
-    assert all(r["category"] == "FOOD" for r in results)
+    assert {item["disease_code"] for item in result["items"]} == {"당뇨", "고혈압"}
+    assert all(item["category"] == "FOOD" for item in result["items"])
 
 
 async def test_feed_accumulates_across_dates_newest_first():
@@ -156,9 +159,9 @@ async def test_feed_accumulates_across_dates_newest_first():
     repository.seed("당뇨", "LIFESTYLE", today, title="오늘 카드")
     service = _build_service(repository, ["당뇨"])
 
-    results = await service.get_contents(session=None, profile_id=1)
+    result = await service.get_contents(session=None, profile_id=1)
 
-    assert [r["title"] for r in results] == ["오늘 카드", "어제 카드"]
+    assert [item["title"] for item in result["items"]] == ["오늘 카드", "어제 카드"]
 
 
 async def test_response_includes_disclaimer_from_safety_service():
@@ -167,9 +170,9 @@ async def test_response_includes_disclaimer_from_safety_service():
     repository.seed("당뇨", "FOOD", today)
     service = _build_service(repository, ["당뇨"])
 
-    results = await service.get_contents(session=None, profile_id=1, category="FOOD")
+    result = await service.get_contents(session=None, profile_id=1, category="FOOD")
 
-    assert results[0]["disclaimer"] == DISCLAIMER_TEXT
+    assert result["items"][0]["disclaimer"] == DISCLAIMER_TEXT
 
 
 async def test_seed_from_fixture_inserts_new_entries():
