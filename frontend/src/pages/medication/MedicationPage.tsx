@@ -8,8 +8,8 @@ export default function MedicationPage() {
     error,
     fetchSchedules,
     createManualSchedule,
+    quickRegister,
     deleteSchedule,
-    searchMedications,
     uploadJob,
     getJobStatus,
     confirmJob,
@@ -28,10 +28,13 @@ export default function MedicationPage() {
   const [confirmedTimes, setConfirmedTimes] = useState<string>("09:00, 13:00, 19:00");
   const [guideCards, setGuideCards] = useState<any[]>([]);
 
-  // 수동 등록/검색용 상태
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
+  // 수동 등록용 상태 — 약품명을 입력하고 등록 버튼 한 번으로 끝나는 게 기본 플로우(T-MED-3),
+  // 이름이 여러 약과 부분일치할 때만 후보 목록을 보여줘 그중 하나를 고르게 한다.
+  const [quickDrugName, setQuickDrugName] = useState("");
   const [manualTimes, setManualTimes] = useState("09:00, 13:00, 19:00");
+  const [quickCandidates, setQuickCandidates] = useState<
+    Array<{ drug_code: string; medication_name: string; form_type: string | null }>
+  >([]);
 
   // 탭 상태 (12, 13번 확장용)
   const [activeTab, setActiveTab] = useState<"schedule" | "list" | "interaction" | "food">("schedule");
@@ -106,21 +109,39 @@ export default function MedicationPage() {
     }
   };
 
-  // 수동 검색 핸들러
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-    const res = await searchMedications(searchQuery);
-    setSearchResults(res);
+  // 약품명 입력 → 바로 등록 핸들러 (T-MED-3). 정확히 하나만 일치하면 즉시 등록되고,
+  // 전혀 일치하지 않으면 새 약품을 즉석 생성해서라도 등록된다. 여러 개가 부분일치할 때만
+  // 후보 목록을 보여주고, 그중 하나를 고르면 기존 createManualSchedule로 확정 등록한다.
+  const handleQuickRegister = async () => {
+    if (!quickDrugName.trim()) return;
+    try {
+      const timesArray = manualTimes.split(",").map((t) => t.trim()).filter(Boolean);
+      const res = await quickRegister(quickDrugName, timesArray);
+      if (res.status === "registered") {
+        alert(
+          res.auto_created
+            ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다.`
+            : "복약 일정이 성공적으로 등록되었습니다!"
+        );
+        setQuickDrugName("");
+        setQuickCandidates([]);
+      } else {
+        // 여러 약과 부분일치 — 사용자가 직접 골라야 하므로 후보만 보여주고 자동 등록하지 않는다.
+        setQuickCandidates(res.candidates);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
-  // 수동 등록 핸들러
-  const handleManualRegister = async (drugCode: string) => {
+  // 부분일치 후보 중 하나를 사용자가 선택해 최종 등록하는 핸들러
+  const handleSelectCandidate = async (drugCode: string) => {
     try {
-      const timesArray = manualTimes.split(",").map(t => t.trim()).filter(Boolean);
+      const timesArray = manualTimes.split(",").map((t) => t.trim()).filter(Boolean);
       await createManualSchedule(drugCode, timesArray);
-      alert("수동 복약 일정이 성공적으로 등록되었습니다!");
-      setSearchQuery("");
-      setSearchResults([]);
+      alert("복약 일정이 성공적으로 등록되었습니다!");
+      setQuickDrugName("");
+      setQuickCandidates([]);
     } catch (err) {
       console.error(err);
     }
@@ -258,31 +279,43 @@ export default function MedicationPage() {
             </div>
           )}
 
-          {/* 수동 검색Fallback (DoD 2번 요건) */}
+          {/* 수동 약품 등록 (T-MED-1 DoD 2번: 등록 자체는 막히지 않아야 한다 / T-MED-3: 약품명 입력 →
+              바로 등록 한 단계로 개선) */}
           <div style={{ border: "1px solid #ccc", padding: "15px" }}>
             <h3>수동 약품 등록</h3>
+            <p style={{ fontSize: "12px", color: "#666" }}>
+              약품명을 입력하고 등록 버튼을 누르면 바로 복약 일정이 등록됩니다. 마스터 DB에 없는 약도
+              새로 등록되며(OCR과 동일한 정책), 여러 약과 이름이 겹칠 때만 아래에 선택 목록이 뜹니다.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "5px", margin: "10px 0" }}>
+              <label>복용 시간대 (쉼표 구분):</label>
+              <input type="text" value={manualTimes} onChange={(e) => setManualTimes(e.target.value)} />
+            </div>
             <div style={{ display: "flex", gap: "5px", marginBottom: "10px" }}>
               <input
                 type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="검색할 약품명 입력"
+                value={quickDrugName}
+                onChange={(e) => setQuickDrugName(e.target.value)}
+                placeholder="등록할 약품명 입력"
+                style={{ flex: 1 }}
               />
-              <button onClick={handleSearch}>검색</button>
+              <button onClick={handleQuickRegister} disabled={isLoading || !quickDrugName.trim()}>
+                등록
+              </button>
             </div>
 
-            {searchResults.length > 0 && (
+            {quickCandidates.length > 0 && (
               <div style={{ border: "1px dashed #ccc", padding: "10px", display: "flex", flexDirection: "column", gap: "5px" }}>
-                <label>복용 시간대 (수동):</label>
-                <input
-                  type="text"
-                  value={manualTimes}
-                  onChange={(e) => setManualTimes(e.target.value)}
-                />
-                {searchResults.map((m) => (
-                  <div key={m.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px", borderBottom: "1px solid #eee" }}>
+                <label style={{ fontSize: "13px", color: "#b26a00" }}>
+                  여러 약품과 이름이 겹칩니다. 등록할 약품을 선택해주세요:
+                </label>
+                {quickCandidates.map((m) => (
+                  <div
+                    key={m.drug_code}
+                    style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px", borderBottom: "1px solid #eee" }}
+                  >
                     <span>{m.medication_name} ({m.form_type})</span>
-                    <button onClick={() => handleManualRegister(m.standard_code)}>스케줄 등록</button>
+                    <button onClick={() => handleSelectCandidate(m.drug_code)}>이걸로 등록</button>
                   </div>
                 ))}
               </div>

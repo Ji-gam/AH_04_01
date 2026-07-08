@@ -48,3 +48,21 @@ class MedicationScheduleResponse(BaseModel):
 class MedicationScheduleCreateRequest(BaseModel):
     drug_code: str  # standard_code
     times: list[str]
+
+
+class QuickRegisterRequest(BaseModel):
+    drug_name: str
+    times: list[str]
+
+
+class QuickRegisterCandidate(BaseModel):
+    drug_code: str
+    medication_name: str
+    form_type: str | None = None
+
+
+class QuickRegisterResult(BaseModel):
+    status: str  # "registered" | "multiple_matches"
+    schedule: MedicationScheduleResponse | None = None
+    candidates: list[QuickRegisterCandidate] = []
+    auto_created: bool = False

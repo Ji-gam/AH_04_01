@@ -3,5 +3,15 @@
     "owner": "agent-Antigravity",
     "branch": "feat/T-MED-1-pill-ocr",
     "started": "2026-07-07"
+  },
+  "T-MED-3": {
+    "owner": "claude",
+    "branch": "feature/T-MED-3-ocr-manual-fallback",
+    "started": "2026-07-08"
+  },
+  "T-LLM-3": {
+    "owner": "agent-Claude",
+    "branch": "feature/T-LLM-3-content-pipeline-backend",
+    "started": "2026-07-08"
   }
 }
