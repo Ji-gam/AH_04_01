@@ -11,6 +11,7 @@ import { createBrowserRouter } from "react-router-dom";
 import AccountSettingsPage from "./pages/AccountSettingsPage/AccountSettingsPage";
 import Layout from "./components/common/Layout";
 import RequireAuth from "./components/common/RequireAuth";
+import AlarmPage from "./pages/AlarmPage/AlarmPage";
 import ChatPage from "./pages/ChatPage/ChatPage";
 import EmailSignupPage from "./pages/EmailSignupPage/EmailSignupPage";
 import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
         element: <Layout />,
         children: [
           { path: "/", element: <HomePage /> },
+          { path: "/alarms", element: <AlarmPage /> },
           { path: "/track", element: <TrackPage /> },
           { path: "/chat", element: <ChatPage /> },
           { path: "/info", element: <InfoPage /> },
