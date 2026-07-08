@@ -124,3 +124,40 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
     않는 상태였음(별도 조치 불필요 — 로컬 venv 검증으로 충분).
 - 공유 계약 변경 필요 사항: 없음.
 - 브랜치명: `feature/T-MED-3-ocr-manual-fallback`
+
+### 완료 보고 2 — 수동 등록 UX 개선 (2차 확장, 2026-07-08, 사용자 확인 후 진행)
+
+- 완료 정의(DoD) 추가분:
+  - [x] 약품명을 입력하고 등록 버튼 한 번으로 스케줄이 등록된다(검색→선택 2단계 불필요)
+  - [x] DB와 정확히 하나만 일치하면 즉시 등록된다
+  - [x] DB에 전혀 없는 이름이어도 등록 자체가 막히지 않고, OCR 플로우와 동일하게 새 약품을 즉석 생성해 등록한다
+  - [x] 여러 약과 부분일치하면 자동 등록하지 않고 후보 목록만 반환한다(T-MED-1 "사용자 최종 선택 없이는
+        등록되지 않는다" 원칙 유지)
+- 구현 방식:
+  - `app/dtos/medication_dto.py`: `QuickRegisterRequest`(drug_name, times), `QuickRegisterCandidate`,
+    `QuickRegisterResult`(status/schedule/candidates/auto_created) 신설.
+  - `app/services/medication_service.py`: `MedicationService.quick_register_medication` 신설 — 정확히
+    일치 1건이면 즉시 등록, 매칭 0건이면 `Medication(standard_code=f"AUTO_...")`로 즉석 생성 후 등록(기존
+    OCR 자동생성 로직과 동일 패턴), 매칭 2건 이상이면 등록하지 않고 후보만 반환.
+  - `app/apis/v1/medication.py`: `POST /api/v1/medications/quick-register` 신규(Swagger 설명 포함, 후보가
+    여러 개일 때는 기존 `POST /medications`(drug_code 지정)를 재사용해 최종 확정하도록 안내).
+  - 프론트(`useMedication.ts`, `MedicationPage.tsx`): 기존 "검색 → 목록에서 선택" 2단계 UI를 "약품명 입력 →
+    등록 버튼" 1단계로 교체. 여러 후보가 반환된 경우에만 선택 목록이 나타나고, 선택 시 기존
+    `createManualSchedule`(→ `POST /medications`)로 확정 등록. `searchMedications`/`GET /medications/search`는
+    이 후보 선택 화면 재사용을 위해 그대로 유지(엔드포인트 자체는 삭제하지 않음).
+- 가정(Assumptions):
+  - "정확히 하나 일치"는 `medication_name` 완전 일치 기준. 완전 일치가 없고 부분일치가 1건뿐이면 그 1건으로
+    간주해 즉시 등록(부분일치 1건과 완전일치 0건인 흔한 오타 케이스도 등록이 막히지 않도록).
+  - 자동 생성된 약품은 기존 OCR 플로우와 동일하게 `standard_code=AUTO_*`로 구분되며, 별도 신뢰도 표시는
+    프론트 알림 문구로만 안내(스키마 변경 없음).
+- 테스트: `app/tests/medication_apis/test_medication_apis.py`에 3건 추가
+  - `test_quick_register_with_exact_name_match_registers_immediately`
+  - `test_quick_register_with_no_match_auto_creates_and_registers`
+  - `test_quick_register_with_multiple_matches_returns_candidates_without_registering`
+  - 검증 결과: `uv run pytest -v` 전체 43 passed, `uv run ruff check app/`/`ruff format --check app/`/
+    `uv run mypy app/services/medication_service.py app/apis/v1/medication.py app/dtos/medication_dto.py` 전부 통과.
+  - 실제 구동 확인: 리포 루트를 이 커밋으로 detached checkout 후 `docker compose up -d --build fastapi`로
+    재기동(WatchFiles 자동 reload로 반영 확인), `npm run dev`(포트 5174)로 프론트 기동 후 `/api/openapi.json`에
+    `quick-register` 경로 노출 확인.
+- 공유 계약 변경 필요 사항: 없음(`frontend/src/api/`, `app/core/` 등 금지 경로 미변경).
+- 브랜치명: `feature/T-MED-3-ocr-manual-fallback` (동일 브랜치, 2번째 커밋)
