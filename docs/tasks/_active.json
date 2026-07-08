@@ -3,5 +3,10 @@
     "owner": "agent-Antigravity",
     "branch": "feat/T-MED-1-pill-ocr",
     "started": "2026-07-07"
+  },
+  "T-MED-4": {
+    "owner": "agent-Claude",
+    "branch": "feature/T-MED-4-medicine-master-data",
+    "started": "2026-07-08"
   }
 }
