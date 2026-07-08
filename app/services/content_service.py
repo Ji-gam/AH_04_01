@@ -35,21 +35,16 @@ class ContentService:
         self._repository = repository or ContentRepository()
         self._health_context_service = health_context_service or UserHealthContextService()
 
-    async def get_contents_for_profile(
-        self, session: AsyncSession, profile_id: int, category: str | None = None
+    async def get_contents(
+        self, session: AsyncSession, profile_id: int | None, category: str | None = None
     ) -> list[dict]:
-        """캐시에 있는 것만 반환한다. 없는 조합은 조용히 건너뛴다(라이브 생성 없음)."""
-        conditions = self._health_context_service.get_context(profile_id)["conditions"]
-        categories = [category] if category else CATEGORIES
-        today = _today_kst()
-
-        results = []
-        for disease_code in conditions:
-            for cat in categories:
-                content = await self._repository.get_by_disease_category_date(session, disease_code, cat, today)
-                if content is not None:
-                    results.append(self._to_response(content))
-        return results
+        """캐시에 있는 것만 반환하는 누적 피드(라이브 생성 없음).
+        비로그인(profile_id=None)이거나 등록된 질환이 없으면 전체 질환의 콘텐츠를 그대로
+        반환한다 — "정보" 탭은 로그인/질환 등록 여부와 무관하게 볼 수 있어야 하기 때문이다."""
+        conditions = self._health_context_service.get_context(profile_id)["conditions"] if profile_id else []
+        disease_filter = conditions if conditions else None
+        contents = await self._repository.list_by_diseases(session, disease_filter, category)
+        return [self._to_response(content) for content in contents]
 
     async def seed_from_fixture(self, session: AsyncSession, entries: list[dict]) -> int:
         """오프라인 생성 스크립트가 만든 픽스처 항목들을 오늘 날짜로 DB에 채운다.
