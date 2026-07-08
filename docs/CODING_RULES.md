@@ -1,8 +1,9 @@
 # AH_04_01 개발 규칙
 
-> **문서 버전**: v1.2 · **최종 수정**: 2026-07-07
-> **변경 이력** (배경 설명은 `docs/decision_log.md` 참고 — 여긴 무엇이 바뀌었는지만, 최근 변경만 남김)
+> **문서 버전**: v1.3 · **최종 수정**: 2026-07-08
+> **변경 이력** (배경 설명은 `docs/decision_log/` 참고 — 여긴 무엇이 바뀌었는지만, 최근 변경만 남김)
 > - v1.2 (2026-07-07): `FRONTEND_ARCHITECTURE.md`를 3번으로 흡수, `docs/dev/`·`docs/plan/` 경로 반영, 전반적으로 배경 설명/변경 이력 축약
+> - v1.3 (2026-07-08): 하네스 정리 — `.agents/CONVENTIONS.md`(코드 스타일/API 응답 포맷/DB 네이밍/공용 상수)와 `AGENT_PLAYBOOK.md` 8번(프론트 미결 항목)을 10~13번으로 흡수, `decision_log.md` 경로를 `decision_log/` 폴더로 갱신
 
 ## 1. 계층 구조
 
@@ -23,7 +24,7 @@ Router  → Service → Repository → (DB/Redis 등)
 
 ## 2. 폴더 구조 (Backend)
 
-**레이어 우선(종류별) 구조** — 레이어(종류)당 폴더 하나, 도메인별 파일이 같은 레이어 폴더 안에 나란히 놓인다(배경: `docs/decision_log.md`).
+**레이어 우선(종류별) 구조** — 레이어(종류)당 폴더 하나, 도메인별 파일이 같은 레이어 폴더 안에 나란히 놓인다(배경: `docs/decision_log/`).
 
 ```
 app/
@@ -75,7 +76,7 @@ app/
 - **Profile**(개인정보 + 앞으로 만들 모든 도메인 테이블의 기준): `id`, `user_id`(FK), `name`, `gender`, `birthday`, `phone_number`, `relation`(`SELF`/향후 가족용 값), `created_at`, `updated_at`. **본인도 하나의 Profile로 취급**한다 — 회원가입 시 User와 함께 `relation=SELF`인 기본 Profile이 자동 생성된다.
 - **새 도메인 테이블(복약, 일정, 채팅 등)은 반드시 `profile_id`를 참조 키로 쓴다.** `user_id`를 직접 참조하지 않는다. 이렇게 하면 한 계정이 여러 프로필(가족구성원 등)을 갖게 되는 서포터그룹 기능이 나와도, 이미 만든 도메인 테이블의 구조를 바꾸지 않고 그대로 확장할 수 있다.
 - JWT payload에는 `user_id`와 `profile_id`가 함께 담긴다. 도메인 라우터는 `app/dependencies/security.py`의 `get_current_profile` 의존성으로 곧바로 `Profile`을 받아 `profile.id`로 스코핑한다 — `get_request_user`(User 조회)를 거칠 필요가 없다.
-- 배경(왜 이 결정을 했는지)은 `decision_log.md` 참고.
+- 배경(왜 이 결정을 했는지)은 `docs/decision_log/` 참고.
 
 ### 2-2. 환경 변수 관리
 
@@ -147,6 +148,14 @@ frontend/src/
 | API/타입 | React Query + 자동 타입생성 | 수동 fetch 패턴 + 수동 타입 정의 |
 | 스타일 | CSS-in-JS/디자인시스템 | 도입 전 — 화면 2~3개 쌓인 뒤 재검토 |
 
+### 3-8. 아직 답이 없는 것 — 새 작업이 여기 해당하면 먼저 확인
+
+아래 항목은 `docs/SESSION_START.md`의 drill-me가 걸려야 하는 대표 사례다. 세션에 이미 답변 기록이 없다면 스스로 판단해 진행하지 않는다.
+
+- **탭/화면 구성(IA)**: 5탭(홈/트랙커/상담/정보/더보기) 구성은 `docs/decision_log/`에 "가안"으로 남아 있다. 새 탭을 추가하거나 기존 탭의 성격을 바꿔야 하면 먼저 확인한다.
+- **로그인 이후의 온보딩 분기**(생활정보/생체정보/삼성헬스 연동 여부에 따라 다른 화면을 보여주는 로직 등): 해당 도메인의 백엔드 자체가 아직 없다 — 그 도메인을 맡은 담당자의 몫이니 임의로 설계하지 않는다.
+- **참고할 디자인 레퍼런스가 전혀 없는 상태**에서 "그래도 최소한의 톤(색상 등)"이 필요한 경우: 3-5번의 "스타일 없이"로 충분하지 않다고 판단되면 먼저 확인한다.
+
 ## 4. TDD 규칙
 
 - **테스트 없는 기능 코드는 미완성이다.** Service 함수 하나(또는 엔드포인트/버그수정) 만들면, 최소 2개 테스트(정상/실패)를 **같은 PR 안에** 포함한다.
@@ -176,7 +185,7 @@ frontend/src/
 ## 7. 그 외 최소 규칙
 
 - 커밋 메시지: `[T-ID] 설명` 형식 (예: `[T-LLM-2] 응급 키워드 필터 추가`) — Notion 스토리와 매칭용
-- API 에러 응답은 항상 `{error_code, message}` 형태로 통일 (OpenAPI 명세의 `ErrorResponse` 스키마 참고)
+- API 에러 응답 형태는 11번(API 응답/에러 규칙) 참고
 - `.env`는 절대 커밋하지 않는다 — `envs/example.*.env`만 커밋 (2-2 참고)
 - PR을 올리기 전 로컬에서 `ruff check`/`ruff format --check`, `pytest`를 미리 돌려본다 — GitHub Actions CI에서 동일하게 검사한다
 
@@ -190,9 +199,94 @@ RAG Retriever가 필요한 기능인데 아직 RAG가 준비 안 됐다면:
 
 ## 9. 에러 처리 / 로깅 규칙
 
-완료 기준은 "일단 막았다"가 아니라 "무엇이 왜 잘못됐는지 바로 알 수 있다"(사례: `docs/decision_log.md`).
+완료 기준은 "일단 막았다"가 아니라 "무엇이 왜 잘못됐는지 바로 알 수 있다"(사례: `docs/decision_log/`).
 
 - FastAPI 422 응답의 `detail`은 문자열 또는 배열(`[{"loc": [...], "msg": "..."}, ...]`)로 온다 — **먼저 타입을 분기**해서, 배열이면 각 항목의 `loc`/`msg`를 사람이 읽을 문장으로 합친다. 이 변환은 `api/client.ts`의 공통 파싱 로직 한 곳에서만 하고, 각 페이지가 직접 파싱하지 않는다.
 - 화면엔 짧고 명확한 문장만, 원본 에러(전체 응답 body, stack trace)는 `console.error`(프론트)/로거(백엔드)에 그대로 남긴다.
 - **백엔드**: 의도된 실패는 `HTTPException(detail="사람이 읽을 문장")`. 의도치 않은 예외는 `except Exception: pass`로 삼키지 않고 전파시키거나 로그에 스택트레이스를 남긴다.
 - 새 실패 케이스(`responses=` 항목)를 추가할 때마다 프론트에서 실제로 트리거해 에러 문구가 사람이 읽을 수 있게 나오는지 확인한다.
+
+## 10. 코드 스타일 (백엔드)
+
+### 10-1. 네이밍
+| 대상 | 규칙 | 예시 |
+| --- | --- | --- |
+| 변수/함수 | snake_case | `get_user_by_id` |
+| 클래스(Pydantic DTO, SQLAlchemy Model) | PascalCase | `MedicationScheduleDTO`, `MedicationSchedule` |
+| 상수/Enum 값 | UPPER_SNAKE_CASE | `MAX_RETRY_COUNT` |
+| 파일명 | snake_case | `medication_service.py` |
+| Boolean 변수/필드 | is/has/can 접두사 | `is_active`, `has_consent` |
+
+### 10-2. 포맷터/린터/패키지 관리 (질문 없이 고정)
+- 패키지 매니저: `uv` (`pyproject.toml` + `uv.lock`) — pip 직접 설치 금지
+- 포맷/린트: `ruff format` + `ruff check` (line-length 100)
+- 타입체크: `mypy` 필수 통과 (모든 함수 시그니처에 타입 힌트 명시)
+- 커밋 전 `uv run ruff check . && uv run mypy .` 통과 확인. 실패한 코드는 PR 올리지 않음.
+
+### 10-3. 에러/예외 처리
+- 백엔드는 반드시 `HTTPException`(혹은 공용 `AppException`)으로 던지고, 문자열 그대로 노출 금지.
+- 에러 메시지는 사용자용(한국어, 간결)과 로그용(영어, 상세)을 분리.
+- 절대 `except: pass`로 조용히 삼키지 않음 — 최소 `logger.warning`/`logger.error` 남길 것.
+
+### 10-4. 주석/TODO
+- 스텁/미완성 코드는 반드시 `# TODO(T-ID): 설명` 형태로 표시 (예: `# TODO(T-MED-1): OCR 후보 매칭률 로직 미구현`).
+- Task ID 없는 TODO는 남기지 않음 (누가 언제 할지 추적 불가해짐).
+
+## 11. API 응답/에러 규칙
+
+### 11-1. 엔드포인트 네이밍
+- 경로: `/api/v1/{도메인}/{리소스}` (복수형, kebab-case) — 예: `/api/v1/medication/schedules`
+- 동사를 경로에 쓰지 않음. HTTP 메서드로 표현: `GET`(조회) `POST`(생성) `PATCH`(부분수정) `PUT`(전체수정) `DELETE`(삭제)
+- 예외적으로 상태 변경 트리거만 동사 허용: `/api/v1/medication/schedules/{id}/complete`
+
+### 11-2. 요청/응답 공통 포맷 (고정, 새 엔드포인트도 반드시 준수)
+성공 응답:
+```json
+{ "success": true, "data": { ... }, "message": null }
+```
+에러 응답:
+```json
+{ "success": false, "data": null, "message": "사용자에게 보여줄 메시지", "error_code": "MED_001" }
+```
+- 리스트 응답은 `data`에 `{ "items": [...], "total": N, "page": N }` 형태(페이지네이션 필요 시)
+- `error_code`는 `{도메인 3글자}_{3자리 숫자}` (예: `AUTH_001`, `MED_002`)
+
+### 11-3. 상태 코드
+| 상황 | 코드 |
+| --- | --- |
+| 조회/수정 성공 | 200 |
+| 생성 성공 | 201 |
+| 입력값 오류 | 400 |
+| 인증 실패/토큰 없음 | 401 |
+| 권한 없음 | 403 |
+| 리소스 없음 | 404 |
+| 서버 내부 오류 | 500 |
+
+### 11-4. 필수 사항
+- 모든 신규 엔드포인트는 FastAPI docstring/`summary`/`description`으로 설명, 에러 응답, 필드 설명을 남길 것 (Swagger `/api/docs` 자동화, 5번 참고).
+- 인증 필요 엔드포인트는 `Depends(get_current_user)` 또는 `Depends(get_current_profile)`을 명시한다(임의 우회 금지). 개인 데이터(건강정보 등)를 다루는 엔드포인트는 `user_id`가 아니라 `profile_id` 기준으로 조회/기록한다.
+- 로그인/회원가입/토큰 재발급 응답: 바디에는 `access_token`과 `profile_id`만 포함하고, `refresh_token`은 바디에 노출하지 않는다(HttpOnly 쿠키 등으로 전달).
+- 날짜/시간은 항상 ISO 8601 UTC 문자열로 응답 (`2026-07-04T10:00:00Z`), `frontend/`에서 로컬 변환.
+
+## 12. DB/ERD 네이밍 규칙
+
+| 대상 | 규칙 | 예시 |
+| --- | --- | --- |
+| 테이블명 | snake_case, 복수형 | `medication_schedules` |
+| 컬럼명 | snake_case | `created_at`, `profile_id` |
+| PK | 항상 `id` (`mapped_column(primary_key=True)`) | `id` |
+| FK | `{참조테이블 단수}_id` (SQLAlchemy `ForeignKey`) | `profile_id`, `medication_id` |
+| 생성/수정 시각 | 모든 모델에 필수 (`server_default=func.now()` / `onupdate=func.now()`) | `created_at`, `updated_at` |
+| 삭제 | 하드 삭제 대신 소프트 삭제 우선 | `deleted_at` (nullable) |
+| Boolean 컬럼 | is/has 접두사 | `is_active`, `has_consent` |
+| Enum 값 | DB에는 문자열로 저장, UPPER_SNAKE_CASE | `"COMPLETED"`, `"PENDING"` |
+
+- PII(개인식별정보)와 건강정보 테이블은 물리적으로 분리하고, FK로만 연결 (2-1번 참고).
+- 마이그레이션은 반드시 **Alembic**으로 생성한다 (`uv run alembic revision --autogenerate -m "{설명}"` 후 `uv run alembic upgrade head`). DB에 수동 ALTER 금지.
+
+## 13. 공용 타입/상수 관리
+
+- 백엔드 전체에서 쓰는 값(에러코드, enum, 상태값 등)은 **`app/core/constants.py` 한 곳에서만** 정의한다.
+- 같은 의미의 상수를 도메인마다 각자 다시 정의하지 않는다 (예: 복약 상태값을 medication에서 또 만들고 tracking에서 또 만드는 것 금지).
+- 새 Enum/상수 추가 시 `docs/shared-glossary.md`에 한 줄 등록(이름, 의미, 사용 도메인) — 파일이 아직 없다면 새로 만든다.
+- 프론트(`frontend/`)와 코드 레벨로 값을 공유하는 패키지가 없으므로, `error_code`/enum 값이 바뀌면 PR 설명에 `[API 계약 변경]` 태그를 달고 프론트 담당자에게 별도로 공지한다.

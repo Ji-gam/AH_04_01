@@ -1,5 +1,9 @@
 # Task Contract 템플릿 (AI 워커 및 백엔드 전용)
 
+> **문서 버전**: v1.0 · **최종 수정**: 2026-07-08
+> **변경 이력**
+> - v1.0 (2026-07-08): 하네스 정리 과정에서 `.agents/TASK_CONTRACT_TEMPLATE.md`를 canonical 위치인 여기로 이동
+
 > 사용법: T-그룹 하나당 이 템플릿을 복사해 `docs/tasks/T-XXX-N.md`로 저장하고 채웁니다.
 > "입력/출력/성공요건"은 TRD에서 그대로 복사해오면 됩니다 — 이미 에이전트가 쓰기 좋은 형태입니다.
 > 아래는 T-MED-1을 채운 예시입니다.
@@ -19,6 +23,8 @@
 - [ ] 신뢰도가 낮거나 후보가 여러 개면 사용자 최종 선택 없이는 등록되지 않는다
 - [ ] 식별 실패 시 수동 검색으로 전환되며 등록 자체가 막히지 않는다
 - [ ] 스케줄 등록은 시간 선택 외 추가 입력 없이 완료 가능해야 한다
+- [ ] (공통) 새 테이블/조회 로직은 `profile_id` 기준으로 설계되었는가 (`user_id` 직접 참조 금지)
+- [ ] (공통) 테스트를 TDD로 먼저 작성했고 `uv run pytest -v`가 통과하는가
 - [ ] (공통) API P95 Latency ≤ 3초
 - [ ] (공통) 모든 신규 코드에 대해 Ruff 포맷 및 Mypy 타입체크 통과
 
@@ -31,15 +37,20 @@
 ```
 app/apis/v1/medication.py
 app/services/medication_service.py
+app/repositories/medication_repository.py
 app/dtos/medication_dto.py
+app/tests/medication_apis/**
 ai_worker/tasks/medication_task.py
-frontend/src/features/medication/**
+ai_worker/schemas/medication_schema.py
+frontend/src/pages/medication/**
+frontend/src/hooks/useMedication*.ts
 docs/tasks/T-MED-1.md  (이 파일의 "완료 보고" 섹션만)
 ```
 
 ### 금지 경로 (절대 수정하지 않음 — 필요해 보여도 "공유 파일 변경 필요"로 보고만)
 ```
 app/core/**
+app/dependencies/**
 ai_worker/core/**
 frontend/src/api/**
 frontend/src/components/**
@@ -53,8 +64,8 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
 ```
 
 ### 의존하는 공유 계약 (읽기만 가능, 이미 고정됨)
-- `app/core/dependencies.py` — 로그인 사용자 인증 의존성 (`get_current_user`)
-- `app/models/medication_model.py` — 데이터베이스 테이블 모델 (Tortoise ORM)
+- `app/dependencies/` — 로그인 사용자 인증 의존성 (`get_current_user`, `get_current_profile`)
+- `app/models/medication_model.py` — 데이터베이스 테이블 모델 (SQLAlchemy ORM, `profile_id` FK)
 - `frontend/src/api/endpoints/medication.ts` — API 클라이언트 정의
 
 > 만약 위 계약을 변경해야만 성공요건을 충족할 수 있다면, 진행하지 말고 "완료 보고"에
