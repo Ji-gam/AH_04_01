@@ -14,6 +14,8 @@ from app.dtos.medication_dto import (
     GuideCard,
     MedicationScheduleCreateRequest,
     MedicationScheduleResponse,
+    QuickRegisterCandidate,
+    QuickRegisterResult,
     RecognitionCandidate,
     RecognitionConfirmResult,
     RecognitionJobCreateResult,
@@ -369,6 +371,57 @@ class MedicationService:
 
         return MedicationScheduleResponse(
             id=schedule.id, medication_id=schedule.medication_id, drug_name=med.medication_name, times=schedule.times
+        )
+
+    async def quick_register_medication(
+        self, session: AsyncSession, profile_id: int, drug_name: str, times: list[str]
+    ) -> QuickRegisterResult:
+        """약품명을 직접 입력해 검색 단계 없이 한 번에 등록한다(T-MED-3).
+
+        - 정확히 하나만 일치하면 즉시 등록.
+        - 전혀 일치하지 않으면 OCR 자동생성 로직과 동일하게 새 약품을 즉석 생성해서라도 등록
+          (등록 자체가 막히지 않아야 한다는 T-MED-1 원칙을 수동 등록에도 동일 적용).
+        - 여러 개가 부분일치하면 자동 등록하지 않고 후보만 반환한다
+          (T-MED-1 원칙: 후보가 여러 개면 사용자 최종 선택 없이는 등록되지 않는다)."""
+        stripped_name = drug_name.strip()
+        if not stripped_name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="약품명을 입력해주세요.")
+
+        matches = await self._repository.search_medication_by_name(session, stripped_name)
+        exact_matches = [m for m in matches if m.medication_name == stripped_name]
+
+        auto_created = False
+        if len(exact_matches) == 1:
+            med = exact_matches[0]
+        elif len(matches) == 1:
+            med = matches[0]
+        elif len(matches) > 1:
+            candidates = [
+                QuickRegisterCandidate(
+                    drug_code=m.standard_code or f"CODE_{m.id}",
+                    medication_name=m.medication_name,
+                    form_type=m.form_type,
+                )
+                for m in matches
+            ]
+            return QuickRegisterResult(status="multiple_matches", candidates=candidates)
+        else:
+            med = Medication(medication_name=stripped_name, standard_code=f"AUTO_{uuid.uuid4().hex[:10].upper()}")
+            med = await self._repository.create_medication(session, med)
+            auto_created = True
+
+        schedule = MedicationSchedule(profile_id=profile_id, medication_id=med.id, times=times)
+        schedule = await self._repository.create_schedule(session, schedule)
+
+        return QuickRegisterResult(
+            status="registered",
+            schedule=MedicationScheduleResponse(
+                id=schedule.id,
+                medication_id=schedule.medication_id,
+                drug_name=med.medication_name,
+                times=schedule.times,
+            ),
+            auto_created=auto_created,
         )
 
     async def search_medications(self, session: AsyncSession, query: str) -> list[dict]:

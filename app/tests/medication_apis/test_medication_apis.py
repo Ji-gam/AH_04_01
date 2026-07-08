@@ -235,6 +235,71 @@ async def test_delete_schedule_of_another_profile_is_forbidden():
         assert delete_res.status_code == status.HTTP_404_NOT_FOUND
 
 
+async def test_quick_register_with_exact_name_match_registers_immediately():
+    """약품명을 정확히 입력하고 바로 등록하면, 검색 단계 없이 한 번에 스케줄이 등록되어야 한다."""
+    await _seed_dummy_medications()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "quick_register_exact@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        res = await client.post(
+            "/api/v1/medications/quick-register",
+            headers=headers,
+            json={"drug_name": "아스피린정 100mg", "times": ["08:00"]},
+        )
+        assert res.status_code == status.HTTP_200_OK
+        body = res.json()
+        assert body["status"] == "registered"
+        assert body["auto_created"] is False
+        assert body["schedule"]["drug_name"] == "아스피린정 100mg"
+        assert body["schedule"]["times"] == ["08:00"]
+
+        list_res = await client.get("/api/v1/medications", headers=headers)
+        assert any(s["drug_name"] == "아스피린정 100mg" for s in list_res.json())
+
+
+async def test_quick_register_with_no_match_auto_creates_and_registers():
+    """DB에 없는 약도 등록 자체는 막히지 않도록, OCR 플로우처럼 새 약품을 즉석 생성해 등록해야 한다."""
+    await _seed_dummy_medications()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "quick_register_new@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        res = await client.post(
+            "/api/v1/medications/quick-register",
+            headers=headers,
+            json={"drug_name": "존재하지않는약품12345", "times": ["10:00"]},
+        )
+        assert res.status_code == status.HTTP_200_OK
+        body = res.json()
+        assert body["status"] == "registered"
+        assert body["auto_created"] is True
+        assert body["schedule"]["drug_name"] == "존재하지않는약품12345"
+
+
+async def test_quick_register_with_multiple_matches_returns_candidates_without_registering():
+    """이름이 여러 약과 부분일치하면, 자동 등록하지 않고 사용자가 고를 후보 목록만 반환해야 한다
+    (T-MED-1 원칙: 후보가 여러 개면 사용자 최종 선택 없이는 등록되지 않는다)."""
+    await _seed_dummy_medications()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "quick_register_multi@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        res = await client.post(
+            "/api/v1/medications/quick-register",
+            headers=headers,
+            json={"drug_name": "정", "times": ["10:00"]},
+        )
+        assert res.status_code == status.HTTP_200_OK
+        body = res.json()
+        assert body["status"] == "multiple_matches"
+        assert len(body["candidates"]) >= 2
+        assert body["schedule"] is None
+
+        list_res = await client.get("/api/v1/medications", headers=headers)
+        assert list_res.json() == []
+
+
 async def test_cross_profile_job_access_is_forbidden():
     await _seed_dummy_medications()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

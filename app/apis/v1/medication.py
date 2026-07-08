@@ -8,6 +8,8 @@ from app.dependencies.security import get_current_profile
 from app.dtos.medication_dto import (
     MedicationScheduleCreateRequest,
     MedicationScheduleResponse,
+    QuickRegisterRequest,
+    QuickRegisterResult,
     RecognitionConfirmRequest,
     RecognitionConfirmResult,
     RecognitionJobCreateResult,
@@ -124,6 +126,26 @@ async def create_manual_schedule(
 ) -> MedicationScheduleResponse:
     service = MedicationService()
     return await service.create_manual_schedule(session, profile.id, body)
+
+
+@medication_router.post(
+    "/medications/quick-register",
+    response_model=QuickRegisterResult,
+    summary="약품명으로 바로 등록 (검색 단계 생략)",
+    description=(
+        "약품명을 입력해 검색→선택 2단계 없이 한 번에 복약 스케줄을 등록합니다. "
+        "이름이 정확히 하나만 일치하면 즉시 등록되고, 전혀 일치하지 않으면 새 약품을 즉석 생성해서라도 "
+        "등록을 막지 않습니다(T-MED-3). 여러 개가 부분일치하면 자동 등록하지 않고 후보 목록만 반환하며, "
+        "이 경우 응답의 `candidates`를 `POST /medications`(drug_code 지정)로 다시 요청해 최종 등록해야 합니다."
+    ),
+)
+async def quick_register_medication(
+    body: QuickRegisterRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> QuickRegisterResult:
+    service = MedicationService()
+    return await service.quick_register_medication(session, profile.id, body.drug_name, body.times)
 
 
 @medication_router.delete(
