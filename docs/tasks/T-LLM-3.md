@@ -49,7 +49,7 @@ app/core/** (celery_app.py 등 스케줄러 인프라 포함 — 이번 라운�
 app/dependencies/**  (예외: get_current_profile_optional 추가만 사용자 승인 하에 진행, 기존 함수는 미수정)
 app/services/chat_service.py  (챗봇 연동은 후속 작업)
 app/services/safety_service.py  (읽기만, 수정 금지)
-app/services/user_health_context_service.py  (읽기만, 수정 금지)
+app/services/user_health_context_service.py  (예외: 데모/테스트용 mock 프로필(profile_id=5, 당뇨) 1건 추가만 사용자 승인 하에 진행, 기존 항목은 미수정)
 app/services/retriever_stub.py, app/services/llm_stub.py  (읽기/재사용만, 수정 금지)
 ai_worker/**
 frontend/**
@@ -89,6 +89,7 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
 - 공유 계약 변경 필요 사항:
   - `app/services/llm_stub.py`에 `generate_content_card` 함수를 추가함(기존 `stream_llm_reply`는 그대로, 회귀 없음 확인)
   - `app/dependencies/security.py`에 `get_current_profile_optional` 함수를 추가함(Auth 스쿼드 소유 공유 파일, 사용자 명시적 승인 하에 진행, 기존 `get_current_profile`/`get_request_user`는 미수정 — [공통모듈 변경])
+  - `app/services/user_health_context_service.py`의 mock 딕셔너리에 `profile_id=5`(당뇨) 항목을 추가함 — 프론트 데모/테스트 시 로그인해서 개인화 콘텐츠를 바로 확인할 수 있는 계정 필요성 때문(사용자 명시적 승인 하에 진행, 기존 1/2/4번 항목은 미수정). 테스트 계정: `demo-diabetes@example.com` / `Password123!`
 - 검증: `pytest -v` 52/52 통과, `ruff check .`/`ruff format --check .`/`mypy .` 전체 통과, 실제 OpenAI로 15건(5질환x3카테고리) 생성 → 시드 → 재시드 멱등성 확인 → 실제 profile_id=1(mock 조건 "당뇨")로 서비스 호출 시 3장 정상 반환 확인, 비인증 요청으로 실제 dev DB에서 15건 전체 반환 확인
 - 브랜치명: `feature/T-LLM-3-content-pipeline-backend` (백엔드 전용 — 프론트 "정보" 탭 UI는 이 브랜치를 base로 하는 `feature/T-LLM-3-info-page-frontend`에서 별도 PR로 진행. 애초 하나의 브랜치/PR로 진행했으나, 백엔드만으로는 리뷰/데모가 어려워 PR을 분리했다)
 - 후속 작업(범위 밖, 별도 T-ID 필요): 프론트 "정보" 탭 UI(별도 PR로 분리 진행 중), 가족 프로필 스위처(T-AUTH-5/6 완료 후), 챗봇의 콘텐츠 추천 기능, 스테이징 도입 후 배치 스케줄러(Celery beat 등) 연결
