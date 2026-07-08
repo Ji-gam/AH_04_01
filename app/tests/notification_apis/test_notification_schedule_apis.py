@@ -8,6 +8,7 @@ SIGNUP_BASE = {
     "name": "알림테스터",
     "gender": "FEMALE",
     "birth_date": "1993-03-03",
+    "agreements": {"service_terms": True, "privacy": True, "sensitive_info": True},
 }
 
 

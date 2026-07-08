@@ -17,6 +17,7 @@ async def _signup_login_and_get_token(client: AsyncClient, email: str) -> str:
         "gender": "MALE",
         "birth_date": "1990-01-01",
         "phone_number": "01022223333",
+        "agreements": {"service_terms": True, "privacy": True, "sensitive_info": True},
     }
     await client.post("/api/v1/auth/signup", json=signup_data)
     login_response = await client.post("/api/v1/auth/login", json={"email": email, "password": "Password123!"})

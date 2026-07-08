@@ -15,6 +15,7 @@ async def _signup_and_login(client: AsyncClient, email: str) -> str:
         "gender": "FEMALE",
         "birth_date": "1995-05-05",
         "phone_number": phone_number,
+        "agreements": {"service_terms": True, "privacy": True, "sensitive_info": True},
     }
     await client.post("/api/v1/auth/signup", json=signup_data)
     login_response = await client.post("/api/v1/auth/login", json={"email": email, "password": "Password123!"})
