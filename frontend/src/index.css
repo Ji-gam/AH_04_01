@@ -1,0 +1,23 @@
+/* FRONTEND_UI_GUIDE_v1.0.md 2번 — 디자인 토큰. 색은 여기서만 정의하고 컴포넌트에서는 토큰 이름으로만 쓴다. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222 47% 11%;
+  --primary: 211 100% 50%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 210 40% 96%;
+  --secondary-foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 214 32% 91%;
+  --radius: 1rem;
+}
+
+body {
+  @apply bg-background text-foreground;
+}
