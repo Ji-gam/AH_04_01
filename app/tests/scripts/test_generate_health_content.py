@@ -3,11 +3,11 @@ from app.services.content_service import CATEGORIES, POPULAR_DISEASES
 
 
 class FakeRetriever:
-    def search(self, query: str, context: dict) -> list[str]:
+    async def search(self, query: str, context: dict) -> list[dict]:
         return []
 
 
-async def fake_generate(disease_code: str, category: str, chunks: list[str]) -> dict:
+async def fake_generate(disease_code: str, category: str, chunks: list[dict]) -> dict:
     return {"title": f"{disease_code}-{category}", "summary": "s", "body": "b", "image_prompt": None}
 
 

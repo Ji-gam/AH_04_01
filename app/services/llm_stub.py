@@ -53,7 +53,7 @@ async def stream_llm_reply(message: str, context: dict, chunks: list[str]) -> As
             yield delta
 
 
-async def generate_content_card(disease_code: str, category: str, chunks: list[str]) -> dict:
+async def generate_content_card(disease_code: str, category: str, chunks: list[dict]) -> dict:
     """T-LLM-3: 질환+카테고리 하나에 대한 건강 콘텐츠 카드를 JSON으로 생성한다.
     `stream_llm_reply`(T-LLM-2, 스트리밍 챗봇 응답)와는 별개 함수로, 기존 챗봇 흐름에는
     영향을 주지 않는 추가 함수다."""
