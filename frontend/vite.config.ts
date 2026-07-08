@@ -1,8 +1,15 @@
+import path from "node:path";
+
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+    },
+  },
   server: {
     port: 5174,
     // api/client.ts가 상대경로(/api/v1/...)로 호출한다 — 운영은 NGINX가 이 역할을 하므로
