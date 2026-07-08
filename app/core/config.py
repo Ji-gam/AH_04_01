@@ -40,3 +40,8 @@ class Config(BaseSettings):
     # T-LLM-2: 설정 안 하면 app/services/llm_stub.py가 고정 문자열 stub으로 폴백한다.
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
+
+    # T-MED-4: 공공데이터포털(data.go.kr) 서비스키. 의약품 낱알식별 API와 의약품제품
+    # 허가정보 API가 같은 계정의 서비스키를 공유한다. 설정 안 하면
+    # app/services/medication_open_api_client.py가 빈 리스트를 반환한다.
+    PUBLIC_DATA_API_KEY: str | None = None
