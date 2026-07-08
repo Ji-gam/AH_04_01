@@ -1,10 +1,11 @@
 # squad-map.md — 담당자 매핑 (킥오프 때 채우기)
 
-> **문서 버전**: v1.1 · **최종 수정**: 2026-07-07
+> **문서 버전**: v1.2 · **최종 수정**: 2026-07-08
 > **변경 이력**
 >
 > - v1.0 (2026-07-07): `remedi_mweb_co`에서 이식. 표 구조는 그대로, 이름만 새로 채운다.
 > - v1.1 (2026-07-07): `FRONTEND_ARCHITECTURE.md`가 `CODING_RULES.md`로 흡수되며 §6 표와의 중복 참조를 제거. `useAuth.ts`→`useAuth.tsx` 오탈자 수정(실제 파일이 Context/Provider라 확장자가 다름)
+> - v1.2 (2026-07-08): T-LLM-3(건강 콘텐츠 생성 파이프라인) 착수하며 D 스쿼드 백엔드 파일 접두어에 `content_*` 추가
 >
 > 목적: "이 파일/기능은 누구 담당인지"를 이슈 번호나 파일명만 보고 바로 알 수 있게 한다.
 > `CONTRIBUTING.md` §2, `CODING_RULES.md` 2번·3-6번과 짝을 이루는 문서. 이 문서가 공통모듈 소유자의 **유일한 출처**다 — 다른 문서에 같은 표를 중복해서 두지 않는다.
@@ -18,7 +19,7 @@
 | A. 인증/보안          | 심복규                      | T-AUTH-1~6, T-SEC-1, T-STAT-1, T-PRIV-1, T-ENC-1, T-ARCH-1                    | `auth_*`                         |
 | B. 복약인식/알림      | (인식)이은호 / (알림)정다이 | T-MED-1~2, T-DOC-1~3, T-NTFY-1~6, T-CARD-1                                    | `medication_*`, `notification_*` |
 | C. 목표/추적/건강정보 | _(이름)_                    | T-GOAL-1~3, T-ADH-1~3, T-GUIDE-1, T-INFO-1~3, T-TRCK-1~3, T-DIET-1~2, T-ACC-1 | `tracking_*`, `diet_*`           |
-| D. LLM/AI             | 박지은                      | T-LLM-1~6, (T-QUAL-2 관련)                                                    | `chat_*` + `ai_worker/`          |
+| D. LLM/AI             | 박지은                      | T-LLM-1~6, (T-QUAL-2 관련)                                                    | `chat_*` + `content_*` + `ai_worker/` |
 
 ## 2. 백엔드 공통모듈 소유자 (`app/services/*`, 접두어 없음)
 

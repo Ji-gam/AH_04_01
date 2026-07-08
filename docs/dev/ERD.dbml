@@ -1,10 +1,11 @@
 // AH_04_01 ERD — dbdiagram.io (https://dbdiagram.io)에 그대로 붙여넣어 보면 됩니다.
 //
-// 문서 버전: v1.2 · 최종 수정: 2026-07-07
+// 문서 버전: v1.3 · 최종 수정: 2026-07-08
 // 변경 이력:
 //   - v1.0 (2026-07-07): User/Profile 분리 반영한 최초 작성
 //   - v1.1 (2026-07-07): T-LLM-2 chat_sessions/chat_messages 테이블 추가
 //   - v1.2 (2026-07-07): notification_schedules 테이블 추가 (T-NTFY, 복약 알림)
+//   - v1.3 (2026-07-08): health_contents 테이블 추가 (T-LLM-3, 건강 콘텐츠 생성 파이프라인)
 //
 // 규칙 (docs/CODING_RULES_v1.0.md 6번):
 //   DB를 CRUD하는 작업(모델 추가/변경, 마이그레이션 작성)을 할 때마다 이 파일도 같은 커밋/PR에서
@@ -110,5 +111,29 @@ Table medication_recognition_jobs {
   extracted_fields json
   created_at datetime [not null]
   updated_at datetime [not null]
+}
+
+Table health_contents {
+  id bigint [pk, increment]
+  disease_code varchar(50) [not null]
+  category varchar(20) [not null, note: 'LIFESTYLE | FOOD | MEDICAL_NEWS']
+  content_date date [not null]
+  title varchar(200) [not null]
+  summary varchar(500) [not null]
+  body text [not null]
+  image_prompt varchar(500)
+  source_refs json
+  created_at datetime [not null]
+
+  indexes {
+    (disease_code, category, content_date) [unique]
+  }
+
+  Note: '''
+  T-LLM-3 건강 콘텐츠 생성 파이프라인 캐시. profile_id를 참조하지 않는다 — 개인 데이터가
+  아니라 질환(disease_code) 기준으로 전체 사용자가 공유하는 캐시다. 과거 날짜 카드는
+  삭제/교체하지 않고 누적해 "정보" 탭 피드로 노출한다. 라이브(요청 중) LLM 생성은 하지
+  않으며, 오프라인 스크립트(app/scripts/generate_health_content.py + seed_health_content.py)로만 채워진다.
+  '''
 }
 

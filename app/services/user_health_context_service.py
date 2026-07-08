@@ -29,6 +29,11 @@ _MOCK_HEALTH_PROFILES: dict[int, dict] = {
             {"condition": "고혈압", "name": "발사르탄", "dose": "80mg", "times_per_day": 1},
         ],
     },
+    5: {
+        "conditions": ["당뇨"],
+        "family_history": [],
+        "medications": [],
+    },
 }
 
 _DEFAULT_MOCK_HEALTH_PROFILE: dict = {"conditions": [], "family_history": [], "medications": []}
