@@ -79,6 +79,31 @@ export function useMedication() {
     }
   };
 
+  const quickRegister = async (drugName: string, times: string[]) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch<{
+        status: string;
+        auto_created: boolean;
+        schedule: MedicationSchedule | null;
+        candidates: Array<{ drug_code: string; medication_name: string; form_type: string | null }>;
+      }>("/medications/quick-register", {
+        method: "POST",
+        body: JSON.stringify({ drug_name: drugName, times }),
+      });
+      if (res.status === "registered") {
+        await fetchSchedules();
+      }
+      return res;
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "약품 등록에 실패했습니다.");
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const searchMedications = async (query: string) => {
     try {
       return await apiFetch<Array<{ id: number; standard_code: string; medication_name: string; form_type: string }>>(
@@ -175,6 +200,7 @@ export function useMedication() {
     error,
     fetchSchedules,
     createManualSchedule,
+    quickRegister,
     deleteSchedule,
     searchMedications,
     uploadJob,
