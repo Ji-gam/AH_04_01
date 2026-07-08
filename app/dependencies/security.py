@@ -12,6 +12,7 @@ from app.repositories.user_repository import UserRepository
 from app.services.jwt import JwtService
 
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 
 async def get_request_user(
@@ -39,3 +40,18 @@ async def get_current_profile(
     if not profile:
         raise HTTPException(detail="Authenticate Failed.", status_code=status.HTTP_401_UNAUTHORIZED)
     return profile
+
+
+async def get_current_profile_optional(
+    credential: Annotated[HTTPAuthorizationCredentials | None, Depends(security_optional)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Profile | None:
+    """비로그인 사용자도 접근 가능한 공개 엔드포인트용(T-LLM-3 "정보" 탭 등).
+    토큰이 없거나 검증에 실패하면 예외를 던지지 않고 None(익명 처리)을 반환한다."""
+    if credential is None:
+        return None
+    try:
+        verified = JwtService().verify_jwt(token=credential.credentials, token_type="access")
+        return await ProfileRepository().get_profile(session, verified.payload["profile_id"])
+    except Exception:
+        return None
