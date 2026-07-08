@@ -93,3 +93,32 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
 - 검증: `pytest -v` 52/52 통과, `ruff check .`/`ruff format --check .`/`mypy .` 전체 통과, 실제 OpenAI로 15건(5질환x3카테고리) 생성 → 시드 → 재시드 멱등성 확인 → 실제 profile_id=1(mock 조건 "당뇨")로 서비스 호출 시 3장 정상 반환 확인, 비인증 요청으로 실제 dev DB에서 15건 전체 반환 확인
 - 브랜치명: `feature/T-LLM-3-content-pipeline-backend` (백엔드 전용 — 프론트 "정보" 탭 UI는 이 브랜치를 base로 하는 `feature/T-LLM-3-info-page-frontend`에서 별도 PR로 진행. 애초 하나의 브랜치/PR로 진행했으나, 백엔드만으로는 리뷰/데모가 어려워 PR을 분리했다)
 - 후속 작업(범위 밖, 별도 T-ID 필요): 프론트 "정보" 탭 UI(별도 PR로 분리 진행 중), 가족 프로필 스위처(T-AUTH-5/6 완료 후), 챗봇의 콘텐츠 추천 기능, 스테이징 도입 후 배치 스케줄러(Celery beat 등) 연결
+
+---
+
+## 프론트 PR 추가 사항 (`feature/T-LLM-3-info-page-frontend`, 이 브랜치를 base로 하는 스택형 PR)
+
+**설계 변경 3 (2026-07-08, 구현 중 확정)**: "백엔드만 있어봤자 소용없다"는 피드백으로 프론트 "정보" 탭 UI까지 범위에 포함. `docs/FRONTEND_UI_GUIDE_v1.0.md`(Tailwind+shadcn 지정 문서)가 실제로는 리포에 설치되어 있지 않은 상태(미커밋)였음을 확인 → 사용자 승인 하에 Tailwind+shadcn 인프라를 직접 설치(`[공통모듈 변경]`, 프론트 전체에 영향). `InfoPage.tsx`가 이 인프라의 첫 실제 적용 화면. `personalized=false`일 때 질환 등록 유도 배너를 보여주되, 질환 등록 기능 자체가 없어 시각적 안내만 한다(클릭 액션 없음).
+
+**버그 수정**: Tailwind Preflight(`@tailwind base`)가 전역 CSS 리셋(`border-width: 0` 등)을 적용해 아직 마이그레이션 안 된 다른 화면(로그인 등)의 기본 테두리가 사라지는 회귀가 있었음(사용자가 실사용 중 발견) → `tailwind.config.js`에 `corePlugins: { preflight: false }`로 비활성화. InfoPage 자체 스타일에는 영향 없음, 다른 화면은 원래 브라우저 기본 스타일로 복구됨.
+
+### 이 PR의 허용 경로 (추가)
+```
+frontend/src/pages/InfoPage/**
+frontend/src/api/contentApi.ts
+frontend/src/api/types.ts  (콘텐츠 관련 타입 추가분만)
+frontend/tailwind.config.js, postcss.config.js, components.json, src/index.css, src/lib/utils.ts
+frontend/src/components/ui/button.tsx, input.tsx  (신규 공용 부품)
+frontend/vite.config.ts, tsconfig.json  (`@` alias 추가분만)
+frontend/src/main.tsx  (index.css import 한 줄만)
+frontend/package.json, package-lock.json  (Tailwind/shadcn 의존성 추가분만)
+docs/FRONTEND_UI_GUIDE_v1.0.md  (미커밋 상태였던 걸 커밋 + 상태 갱신, 사용자 승인 하에 진행 — 예외)
+```
+그 외 프론트 화면(ChatPage, HomePage, TrackPage 등)은 이 PR에서 건드리지 않는다.
+
+### 이 PR의 완료 보고
+- Tailwind + shadcn/ui 인프라 신규 설치(`[공통모듈 변경]`, 사용자 승인). 기존 화면은 건드리지 않음(가이드 문서의 단계적 마이그레이션 방침 유지).
+- `InfoPage.tsx`: 카테고리 탭(전체/라이프스타일/푸드/의학뉴스), 누적 피드 카드, `personalized=false`일 때 질환 등록 유도 배너(시각적 안내만), 로딩/에러/빈 상태 구현.
+- Preflight 비활성화로 다른 화면 테두리 유실 버그 수정 완료.
+- 검증: `npx tsc --noEmit`/`npm run lint`/`npm run build` 통과(기존에 있던 medication 쪽 에러는 이 PR 범위 밖, T-MED-1 소유). 브라우저 실동작 확인 — 질환 있는 프로필(간질환)은 해당 콘텐츠만 개인화 표시, 질환 없는 프로필/비로그인은 전체 15건 + 배너, 카테고리 필터 정상 전환, 로그인 페이지 등 다른 화면 테두리 정상 복구, 콘솔 에러 없음.
+- 브랜치명: `feature/T-LLM-3-info-page-frontend` (base: `feature/T-LLM-3-content-pipeline-backend`)
