@@ -34,16 +34,16 @@ T-MED-1(PR #16) 리뷰 중 팀원이 다음을 보고함:
 
 ### 완료 정의 (Definition of Done)
 
-- [ ] CLOVA OCR API 키가 없거나 호출이 실패해도 job이 `"failed"`로 끝나지 않고, 더미 candidates를 포함한
+- [x] CLOVA OCR API 키가 없거나 호출이 실패해도 job이 `"failed"`로 끝나지 않고, 더미 candidates를 포함한
       `"done"` 상태로 응답한다 (기존 mock 대체 동작을 결정적·검증 가능하게 정리)
-- [ ] QA가 실제 OCR 성공/실패 여부와 무관하게 더미 모드를 명시적으로 트리거할 수 있다
-- [ ] 더미 모드로 만들어진 candidates도 기존 `confirm_recognition_job` 플로우(사용자 최종 선택 → 스케줄 등록)를
+- [x] QA가 실제 OCR 성공/실패 여부와 무관하게 더미 모드를 명시적으로 트리거할 수 있다
+- [x] 더미 모드로 만들어진 candidates도 기존 `confirm_recognition_job` 플로우(사용자 최종 선택 → 스케줄 등록)를
       변경 없이 그대로 통과한다
-- [ ] 응답(또는 로그)에 더미 모드 여부가 표시되어, 실제 인식 결과와 혼동되지 않는다
-- [ ] T-MED-1 기존 성공요건("신뢰도가 낮거나 후보가 여러 개면 사용자 최종 선택 없이는 등록되지 않는다")이
+- [x] 응답(또는 로그)에 더미 모드 여부가 표시되어, 실제 인식 결과와 혼동되지 않는다
+- [x] T-MED-1 기존 성공요건("신뢰도가 낮거나 후보가 여러 개면 사용자 최종 선택 없이는 등록되지 않는다")이
       그대로 유지되는지 회귀 확인
-- [ ] (공통) 테스트를 TDD로 먼저 작성했고 `uv run pytest -v`가 통과하는가
-- [ ] (공통) 모든 신규 코드에 대해 Ruff 포맷 및 Mypy 타입체크 통과
+- [x] (공통) 테스트를 TDD로 먼저 작성했고 `uv run pytest -v`가 통과하는가
+- [x] (공통) 모든 신규 코드에 대해 Ruff 포맷 및 Mypy 타입체크 통과
 
 ---
 
@@ -88,4 +88,32 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
 ---
 
 ### 완료 보고 (에이전트가 작성)
-- (미작성 — 코드 구현 시작 전, 문서 단계만 완료)
+
+- 구현 방식:
+  - `app/services/medication_service.py`에 고정 더미 인식 텍스트 `DUMMY_OCR_RAW_TEXT = ["*타이레놀정", "*아스피린정"]`를
+    신설(기존 매칭 로직인 `_looks_like_drug_name`의 "*" 불릿 규칙을 그대로 태워, "실제 인식됐을 때와 동일한 코드 경로"로
+    검증되게 함).
+  - CLOVA 호출부를 `_call_clova_ocr`(순수 API 호출)와 `_resolve_ocr_raw_text`(dummy_mode 판단 + 폴백 결정)로 분리.
+    `dummy_mode=True`면 CLOVA 호출 자체를 생략, 아니면 기존처럼 호출하되 결과가 비어 있으면(키 미설정/예외/빈 응답)
+    자동으로 같은 더미 텍스트로 폴백. 두 경우 모두 `extracted_fields["dummy_mode"] = true`로 표시.
+  - 기존에 있던 `"MOCK OCR TEXT 타이레놀"` 문자열(매칭에는 실제로 쓰이지 않고 표시용으로만 존재해 결과가
+    비결정적이었던 원인)은 제거.
+  - API: `POST /api/v1/recognition/jobs`에 `dummy_mode: bool = False` 폼 필드 추가(Swagger에 설명 포함).
+    `MedicationService.create_recognition_job` → `run_ocr_task` → `_execute_ocr_logic`까지 그대로 threading.
+- 가정(Assumptions):
+  - dummy 트리거는 별도 인증/권한 우회 경로 없이 기존 인증된 업로드 엔드포인트의 폼 필드로만 노출 — 운영에서도
+    호출 가능하지만 인증 없이는 접근 불가하므로 반드시 확인받아야 할 보안 이슈는 아니라고 판단.
+  - `confirm` 이후 스케줄 등록/알림 로직은 변경하지 않음(범위 밖).
+- 테스트: `app/tests/medication_apis/test_medication_apis.py`에 2건 추가
+  - `test_recognition_job_dummy_mode_returns_deterministic_candidates_and_is_marked`
+  - `test_recognition_job_real_ocr_failure_falls_back_to_dummy_mode_marker`
+  - 검증 결과: `uv run pytest -v` 전체 40 passed (medication 7건 포함), `uv run ruff check app/` /
+    `uv run ruff format --check app/` / `uv run mypy app/services/medication_service.py app/apis/v1/medication.py`
+    전부 통과. `_execute_ocr_logic`의 C901(복잡도) 경고는 `_call_clova_ocr`/`_resolve_ocr_raw_text`로 분리해 해소.
+  - 로컬(venv) 모드로 검증: 이 워크트리에는 `.env`/`envs/.local.env`가 없어(gitignore 대상, 개인 파일) 이미
+    떠 있는 `mysql` 컨테이너(호스트 3306 포트 노출, 템플릿 계정과 동일)를 대상으로 `envs/example.local.env`를
+    복사해 임시로 검증만 하고 커밋에는 포함하지 않음. Docker 모드로 `docker exec fastapi`를 시도했으나 그
+    컨테이너는 워크트리가 아닌 리포 루트(`D:\...\AH_04_01\app`)를 마운트하고 있어 이 브랜치의 변경이 반영되지
+    않는 상태였음(별도 조치 불필요 — 로컬 venv 검증으로 충분).
+- 공유 계약 변경 필요 사항: 없음.
+- 브랜치명: `feature/T-MED-3-ocr-manual-fallback`

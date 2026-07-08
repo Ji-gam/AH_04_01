@@ -118,6 +118,66 @@ async def test_recognition_job_creation_and_completion():
         assert schedules[0]["times"] == ["08:00", "12:00", "20:00"]
 
 
+async def test_recognition_job_dummy_mode_returns_deterministic_candidates_and_is_marked():
+    """OCR이 실패하든 성공하든과 무관하게, QA가 dummy_mode=true로 명시 요청하면
+    결정적인 더미 후보를 즉시 받고, extracted_fields로 더미임을 구분할 수 있어야 한다."""
+    await _seed_dummy_medications()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "dummy_mode_test@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        files = {"file": ("pill.jpg", io.BytesIO(b"fake pill photo bytes"), "image/jpeg")}
+        data = {"source_type": "pill_photo", "dummy_mode": "true"}
+
+        response = await client.post("/api/v1/recognition/jobs", headers=headers, files=files, data=data)
+        assert response.status_code == status.HTTP_202_ACCEPTED
+        job_id = response.json()["job_id"]
+
+        await asyncio.sleep(1.0)
+
+        get_response = await client.get(f"/api/v1/recognition/jobs/{job_id}", headers=headers)
+        assert get_response.status_code == status.HTTP_200_OK
+        result_data = get_response.json()
+        assert result_data["status"] == "done"
+        assert result_data["extracted_fields"]["dummy_mode"] is True
+        drug_names = [c["drug_name"] for c in result_data["candidates"]]
+        assert any("타이레놀정 500mg" in name for name in drug_names)
+        assert any("아스피린정 100mg" in name for name in drug_names)
+
+        # 더미 후보도 기존 confirm 플로우를 그대로 통과해 스케줄 등록까지 이어져야 한다
+        top_candidate = result_data["candidates"][0]
+        confirm_response = await client.post(
+            f"/api/v1/recognition/jobs/{job_id}/confirm",
+            headers=headers,
+            json={"selected_candidate_drug_code": top_candidate["drug_code"]},
+        )
+        assert confirm_response.status_code == status.HTTP_200_OK
+        assert confirm_response.json()["status"] == "confirmed"
+
+
+async def test_recognition_job_real_ocr_failure_falls_back_to_dummy_mode_marker():
+    """dummy_mode를 요청하지 않아도, 실제 OCR 호출이 안 되는/실패하는 환경(CLOVA 키 미설정 등)에서는
+    자동으로 더미 폴백이 걸리고 그 사실이 extracted_fields에 표시되어야 한다."""
+    await _seed_dummy_medications()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "ocr_failure_fallback@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        files = {"file": ("pill.jpg", io.BytesIO(b"fake pill photo bytes"), "image/jpeg")}
+        data = {"source_type": "pill_photo"}
+
+        response = await client.post("/api/v1/recognition/jobs", headers=headers, files=files, data=data)
+        job_id = response.json()["job_id"]
+
+        await asyncio.sleep(1.0)
+
+        get_response = await client.get(f"/api/v1/recognition/jobs/{job_id}", headers=headers)
+        result_data = get_response.json()
+        assert result_data["status"] == "done"
+        # 테스트 환경에는 CLOVA_OCR_SECRET_KEY가 설정되어 있지 않으므로 자동 폴백이 걸려야 한다
+        assert result_data["extracted_fields"]["dummy_mode"] is True
+
+
 async def test_manual_schedule_registration_and_search():
     await _seed_dummy_medications()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

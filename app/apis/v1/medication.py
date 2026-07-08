@@ -24,7 +24,11 @@ medication_router = APIRouter(tags=["Medications"])
     response_model=RecognitionJobCreateResult,
     status_code=202,
     summary="알약/처방전/진료기록 인식 요청",
-    description="비동기로 처방전/알약 이미지를 업로드하고 분석 작업을 시작합니다.",
+    description=(
+        "비동기로 처방전/알약 이미지를 업로드하고 분석 작업을 시작합니다. "
+        "`dummy_mode=true`로 요청하면 실제 OCR 호출 없이 결정적인 더미 인식 결과를 즉시 받을 수 있어, "
+        "OCR 연동 상태와 무관하게 이후 확정/스케줄 등록 플로우를 테스트할 수 있습니다(T-MED-3)."
+    ),
 )
 async def create_recognition_job(
     background_tasks: BackgroundTasks,
@@ -32,6 +36,15 @@ async def create_recognition_job(
     profile: Annotated[Profile, Depends(get_current_profile)],
     session: Annotated[AsyncSession, Depends(get_db)],
     file: Annotated[UploadFile, File(...)],
+    dummy_mode: Annotated[
+        bool,
+        Form(
+            description=(
+                "true로 요청하면 실제 OCR을 호출하지 않고 결정적인 더미 인식 결과(타이레놀정/아스피린정 후보)를 "
+                "즉시 반환한다. QA가 OCR 연동 상태와 무관하게 이후 확정/스케줄 등록 플로우를 테스트할 때 사용."
+            )
+        ),
+    ] = False,
 ) -> RecognitionJobCreateResult:
     service = MedicationService()
     file_bytes = await file.read()
@@ -42,6 +55,7 @@ async def create_recognition_job(
         file_bytes=file_bytes,
         file_name=file.filename or "image.jpg",
         background_tasks=background_tasks,
+        dummy_mode=dummy_mode,
     )
 
 
