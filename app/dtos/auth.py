@@ -80,6 +80,7 @@ class LoginResponse(BaseModel):
         Field(description="본인(SELF) Profile의 ID. 도메인 API 호출 시 이 값 기준으로 데이터를 조회/기록한다."),
     ]
 
+
 class TokenRefreshResponse(LoginResponse): ...
 
 
