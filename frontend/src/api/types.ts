@@ -65,3 +65,14 @@ export interface ChatMessageChunk {
   content: string;
   disclaimer?: string;
 }
+
+export interface ChatSessionResponse {
+  id: number;
+  created_at: string;
+}
+
+export interface ChatMessageResponse {
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}

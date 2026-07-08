@@ -84,8 +84,15 @@ services:
     env_file: .env
     restart: always
     mem_limit: 4G
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./ai_worker:/app/ai_worker
+      - /app/.venv
     networks:
       - ws
+    command: |
+      sh -c "uv run uvicorn ai_worker.main:app --host 0.0.0.0 --port 8001 --reload"
     depends_on:
       mysql:
         condition: service_healthy

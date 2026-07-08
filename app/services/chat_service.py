@@ -52,14 +52,29 @@ class ChatService:
         history = await self._repository.list_messages(session, session_id)
         context = self._health_context_service.get_context(profile_id)
         context["history"] = [{"role": m.role, "content": m.content} for m in history]
-        chunks = self._retriever.search(message, context)
+        chunks = await self._retriever.search(message, context)
+        content_chunks = [chunk.get("content", "") for chunk in chunks]
+        sources = sorted(
+            {
+                chunk["metadata"]["source"]
+                for chunk in chunks
+                if chunk.get("metadata") and chunk["metadata"].get("source")
+            }
+        )
 
         full_response = ""
-        async for token in self._llm_stream(message, context, chunks):
+        async for token in self._llm_stream(message, context, content_chunks):
             full_response += token
             yield {"type": "token", "content": token}
+
+        # RAG 메타데이터 출처가 존재할 경우, 답변 끝에 출처를 합성하여 노출하고 데이터베이스에도 함께 기록합니다.
+        if sources:
+            source_text = f"\n\n[출처: {', '.join(sources)}]"
+            full_response += source_text
+            yield {"type": "token", "content": source_text}
 
         await self._repository.save_message(session, session_id, MessageRole.USER, message)
         await self._repository.save_message(session, session_id, MessageRole.ASSISTANT, full_response)
 
+        # T-LLM-1: 면책조항은 RAG 매칭 여부와 무관하게 항상 노출한다(끄거나 숨길 수 없음).
         yield {"type": "done", "content": "", "disclaimer": safety_service.DISCLAIMER_TEXT}

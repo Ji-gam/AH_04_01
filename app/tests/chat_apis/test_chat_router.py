@@ -80,3 +80,39 @@ async def test_send_message_to_other_profiles_session_is_forbidden():
         )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_list_chat_sessions_success():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "list_sess@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.post("/api/v1/chat/sessions", headers=headers)
+        await client.post("/api/v1/chat/sessions", headers=headers)
+
+        list_response = await client.get("/api/v1/chat/sessions", headers=headers)
+        assert list_response.status_code == status.HTTP_200_OK
+        sessions = list_response.json()
+        assert len(sessions) >= 2
+
+
+async def test_list_chat_messages_success():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "list_msg@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        session_response = await client.post("/api/v1/chat/sessions", headers=headers)
+        session_id = session_response.json()["session_id"]
+
+        await client.post(
+            f"/api/v1/chat/sessions/{session_id}/messages",
+            headers=headers,
+            json={"message": "두통약 뭐가 좋아요?"},
+        )
+
+        msg_list_response = await client.get(f"/api/v1/chat/sessions/{session_id}/messages", headers=headers)
+        assert msg_list_response.status_code == status.HTTP_200_OK
+        messages = msg_list_response.json()
+        assert len(messages) >= 2
+        assert messages[0]["role"].lower() == "user"
+        assert "두통약" in messages[0]["content"]
