@@ -1,4 +1,3 @@
-from calendar import timegm
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Self
 from uuid import uuid4
@@ -71,7 +70,11 @@ class Token:
         assert lifetime is not None
 
         dt = from_time + lifetime
-        self.payload["exp"] = timegm(dt.timetuple())
+        # [T-AUTH-4 버그수정] timegm(dt.timetuple())은 dt의 tzinfo를 무시하고 "이 숫자들이
+        # 이미 UTC다"라고 가정한다. config.TIMEZONE이 Asia/Seoul(UTC+9)이라, 실제로는
+        # 만료시각이 의도보다 9시간 더 늦게(뒤로) 찍히는 버그가 있었다. dt.timestamp()는
+        # tzinfo를 정확히 반영해서 진짜 절대시각(UTC epoch)을 계산한다.
+        self.payload["exp"] = int(dt.timestamp())
 
     def set_jti(self) -> None:
         self.payload["jti"] = uuid4().hex
@@ -97,7 +100,9 @@ class AccessToken(Token):
 
 class RefreshToken(Token):
     token_type = "refresh"
-    lifetime = timedelta(days=config.REFRESH_TOKEN_EXPIRE_MINUTES)
+    # [T-AUTH-4 버그수정] 예전엔 timedelta(days=...)였는데, REFRESH_TOKEN_EXPIRE_MINUTES는
+    # "분" 단위 값(20160=14일)이라 실제로는 20160일(약 55년)짜리 토큰이 발급되고 있었다.
+    lifetime = timedelta(minutes=config.REFRESH_TOKEN_EXPIRE_MINUTES)
     no_copy_claims = ("type", "exp", "jti")
 
     @property
@@ -112,3 +117,23 @@ class RefreshToken(Token):
             access[claim] = value
 
         return access
+
+
+class PendingSocialSignupToken(Token):
+    """[T-AUTH-7 동의 순서 수정] 소셜 로그인 콜백 시점엔 아직 계정을 만들지 않는다.
+    개인정보보호법상 "동의 먼저, 수집(=DB 저장)은 그다음"이 원칙이라, 제공자가 넘겨준
+    프로필 정보를 여기 임시로 서명해서 담아두고, 사용자가 우리 서비스 약관에 동의를 완료한
+    순간에만(POST /auth/{provider}/complete-signup) 진짜 User+Profile을 생성한다.
+    User 객체가 아직 없는 상태라 for_user()를 쓸 수 없어서 별도 클래스로 뺐다."""
+
+    token_type = "pending_social_signup"
+    lifetime = timedelta(minutes=10)
+
+    @classmethod
+    def for_social_profile(cls, provider: str, sns_id: str, email: str | None, name: str | None) -> Self:
+        token = cls()
+        token["provider"] = provider
+        token["sns_id"] = sns_id
+        token["email"] = email
+        token["name"] = name
+        return token

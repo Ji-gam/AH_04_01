@@ -16,6 +16,7 @@ async def test_signup_success():
         "gender": "MALE",
         "birth_date": "1990-01-01",
         "phone_number": "01012345678",
+        "agreements": {"service_terms": True, "privacy": True, "sensitive_info": True},
     }
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -40,6 +41,7 @@ async def test_signup_invalid_email():
         "gender": "MALE",
         "birth_date": "1990-01-01",
         "phone_number": "01012345678",
+        "agreements": {"service_terms": True, "privacy": True, "sensitive_info": True},
     }
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/api/v1/auth/signup", json=signup_data)
@@ -54,6 +56,7 @@ async def test_signup_duplicate_email():
         "gender": "MALE",
         "birth_date": "1990-01-01",
         "phone_number": "01011112222",
+        "agreements": {"service_terms": True, "privacy": True, "sensitive_info": True},
     }
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/api/v1/auth/signup", json=signup_data)
@@ -70,6 +73,7 @@ async def test_signup_duplicate_phone_number():
         "gender": "FEMALE",
         "birth_date": "1990-01-01",
         "phone_number": "01099990000",
+        "agreements": {"service_terms": True, "privacy": True, "sensitive_info": True},
     }
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/api/v1/auth/signup", json=signup_data)

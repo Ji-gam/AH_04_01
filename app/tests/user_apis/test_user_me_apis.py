@@ -14,6 +14,7 @@ async def test_get_user_me_success():
         "gender": "FEMALE",
         "birth_date": "1992-02-02",
         "phone_number": "01055556666",
+        "agreements": {"service_terms": True, "privacy": True, "sensitive_info": True},
     }
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/api/v1/auth/signup", json=signup_data)
@@ -43,6 +44,7 @@ async def test_update_user_me_success():
         "gender": "MALE",
         "birth_date": "1990-10-10",
         "phone_number": "01077778888",
+        "agreements": {"service_terms": True, "privacy": True, "sensitive_info": True},
     }
     update_data = {"name": "수정후"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

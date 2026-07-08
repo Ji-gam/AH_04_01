@@ -3,7 +3,7 @@ from typing import Literal, overload
 from fastapi import HTTPException
 
 from app.core.jwt.exceptions import ExpiredTokenError, TokenError
-from app.core.jwt.tokens import AccessToken, RefreshToken
+from app.core.jwt.tokens import AccessToken, PendingSocialSignupToken, RefreshToken
 from app.models.profiles import Profile
 from app.models.users import User
 
@@ -55,3 +55,14 @@ class JwtService:
         rt = self.create_refresh_token(user, profile)
         at = rt.access_token
         return {"access_token": at, "refresh_token": rt}
+
+    def verify_pending_social_signup(self, token: str) -> PendingSocialSignupToken:
+        """[T-AUTH-7] 소셜 가입 완료(POST /auth/{provider}/complete-signup)에서 쓴다."""
+        try:
+            return PendingSocialSignupToken(token=token)
+        except ExpiredTokenError as err:
+            raise HTTPException(
+                status_code=401, detail="가입 대기 시간이 만료되었습니다. 소셜 로그인을 다시 시도해주세요."
+            ) from err
+        except TokenError as err:
+            raise HTTPException(status_code=400, detail="유효하지 않은 가입 대기 토큰입니다.") from err

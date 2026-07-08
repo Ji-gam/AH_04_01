@@ -11,6 +11,7 @@ dependencies = [
     "python-dateutil>=2.9.0.post0",
     "redis>=7.1.0",
     "tomlkit>=0.14.0",
+    "tzdata>=2026.2",
 ]
 
 [dependency-groups]
@@ -28,6 +29,7 @@ app = [
     "fastapi[standard]>=0.128.0",
     "httpx>=0.28.1",
     "orjson>=3.11.5",
+    "slowapi>=0.1.10",
     "passlib[bcrypt]>=1.7.4",
     "pyjwt>=2.10.1",
     "sqlalchemy[asyncio]>=2.0.36",

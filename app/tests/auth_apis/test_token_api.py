@@ -15,6 +15,7 @@ async def test_token_refresh_success():
         "gender": "MALE",
         "birth_date": "1990-01-01",
         "phone_number": "01099998888",
+        "agreements": {"service_terms": True, "privacy": True, "sensitive_info": True},
     }
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/api/v1/auth/signup", json=signup_data)
@@ -36,6 +37,7 @@ async def test_token_refresh_success():
         response = await client.get("/api/v1/auth/token/refresh")
     assert response.status_code == status.HTTP_200_OK
     assert "access_token" in response.json()
+    assert "profile_id" in response.json()
 
 
 async def test_token_refresh_missing_token():

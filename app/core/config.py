@@ -36,3 +36,21 @@ class Config(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 14 * 24 * 60
     JWT_LEEWAY: int = 5
+
+    # [소셜로그인 연결 포인트] envs/example.*.env에 추가된 키를 실제 코드에서 쓸 수 있게 필드로 선언한다.
+    # 키가 비어있어도(로컬에서 아직 발급 전) 서버는 정상적으로 뜬다 — 실제 로그인 시도할 때만 실패한다.
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = ""
+
+    NAVER_CLIENT_ID: str = ""
+    NAVER_CLIENT_SECRET: str = ""
+    NAVER_REDIRECT_URI: str = ""
+
+    KAKAO_CLIENT_ID: str = ""
+    KAKAO_CLIENT_SECRET: str = ""
+    KAKAO_REDIRECT_URI: str = ""
+
+    # 소셜로그인 완료 후 브라우저를 돌려보낼 프론트엔드 주소.
+    # .env에 값이 없으면 로컬 개발 기본값(127.0.0.1)을 쓴다.
+    FRONTEND_URL: str = "http://127.0.0.1:5173"

@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.core import config
 from app.core.db import databases
+from app.core.rate_limit import limiter
 from app.main import app
 from app.models.base import Base
 
@@ -30,6 +31,15 @@ async def override_get_db():
     app.dependency_overrides[databases.get_db] = _get_db
     yield
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(autouse=True)
+def reset_rate_limiter():
+    """[T-AUTH-6] 테스트마다 같은 IP(127.0.0.1)로 signup/login을 여러 번 호출하는데,
+    Limiter 상태가 테스트 사이에 그대로 남아있으면 나중 테스트가 429로 실패한다."""
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest_asyncio.fixture(autouse=True)
