@@ -52,6 +52,10 @@ class BiometricInfoRequest(BaseModel):
     family_history: Annotated[
         list[Disease] | None, Field(None, description="가족(직계) 5대질환 병력 목록. 없으면 빈 리스트.")
     ]
+    health_notes: Annotated[
+        str | None,
+        Field(None, max_length=1000, description="'기타' 탭 자유 메모(복용 중인 영양제, 알레르기, 특이사항 등)."),
+    ]
 
 
 class UserInfoResponse(BaseSerializerModel):
@@ -68,4 +72,5 @@ class UserInfoResponse(BaseSerializerModel):
     weight_kg: Annotated[float | None, Field(description="체중(kg). 아직 입력 전이면 null.")]
     diagnosis_history: Annotated[list[Disease], Field(description="본인 진단병력(5대질환). 없으면 빈 리스트.")]
     family_history: Annotated[list[Disease], Field(description="가족력(5대질환). 없으면 빈 리스트.")]
+    health_notes: Annotated[str | None, Field(description="'기타' 탭 자유 메모. 없으면 null.")]
     created_at: Annotated[datetime, Field(description="User(계정) 생성 시각.")]

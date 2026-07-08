@@ -16,6 +16,7 @@ ALLOWED_UPDATE_FIELDS = [
     "weight_kg",
     "diagnosis_history",
     "family_history",
+    "health_notes",
 ]
 
 

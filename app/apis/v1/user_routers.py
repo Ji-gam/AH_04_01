@@ -27,6 +27,7 @@ def _to_user_info_response(user: User, profile: Profile) -> UserInfoResponse:
         weight_kg=profile.weight_kg,
         diagnosis_history=[Disease(d) for d in (profile.diagnosis_history or [])],
         family_history=[Disease(d) for d in (profile.family_history or [])],
+        health_notes=profile.health_notes,
         created_at=user.created_at,
     )
 

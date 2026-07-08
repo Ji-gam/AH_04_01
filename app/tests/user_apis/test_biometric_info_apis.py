@@ -127,3 +127,48 @@ async def test_update_biometric_info_requires_auth():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.patch("/api/v1/users/me/biometric-info", json={"height_cm": 170})
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+
+async def test_update_health_notes_success():
+    """[건강정보 '기타' 탭] 자유 메모 입력/수정이 잘 되는지 확인."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_login_and_get_token(client, "health_notes@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = await client.patch(
+            "/api/v1/users/me/biometric-info",
+            json={"health_notes": "오메가3 복용 중, 갑각류 알레르기 있음"},
+            headers=headers,
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["health_notes"] == "오메가3 복용 중, 갑각류 알레르기 있음"
+
+
+async def test_update_health_notes_does_not_affect_other_fields():
+    """'기타' 메모만 수정해도, 이미 입력해둔 키/체중/병력이 그대로 유지되어야 한다."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_login_and_get_token(client, "health_notes_partial@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.patch(
+            "/api/v1/users/me/biometric-info",
+            json={"height_cm": 170.0, "diagnosis_history": ["DIABETES"]},
+            headers=headers,
+        )
+        response = await client.patch(
+            "/api/v1/users/me/biometric-info", json={"health_notes": "특이사항 없음"}, headers=headers
+        )
+
+    body = response.json()
+    assert body["health_notes"] == "특이사항 없음"
+    assert body["height_cm"] == 170.0
+    assert body["diagnosis_history"] == ["DIABETES"]
+
+
+async def test_new_user_has_null_health_notes_by_default():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_login_and_get_token(client, "health_notes_default@example.com")
+        response = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.json()["health_notes"] is None

@@ -19,9 +19,25 @@ const REQUIRED_AGREEMENTS: { key: keyof AgreementPayload; label: string }[] = [
   { key: "sensitive_info", label: "[필수] 민감정보(건강정보) 수집이용 동의" },
 ];
 
+/** 생년월일 문자열(YYYY-MM-DD)로 만 나이를 계산한다. 값이 없거나 형식이 이상하면 null. */
+function calcAge(birthDate: string): number | null {
+  if (!birthDate) return null;
+  const birth = new Date(birthDate);
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const hasHadBirthdayThisYear =
+    today.getMonth() > birth.getMonth() ||
+    (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
+  if (!hasHadBirthdayThisYear) age -= 1;
+  return age;
+}
+
 /** [T-AUTH-7] 소셜 가입 완료 화면. 이메일 가입과 동일하게 1단계 약관동의(먼저) -> 2단계
  * 정보입력(이름/이메일은 소셜에서 받은 값으로 이미 채워져 있어 성별/생년월일/휴대폰번호만 받음)
- * 순서로 분리한다 - 이메일 가입 플로우와 단계 구조를 통일했다. */
+ * 순서로 분리한다 - 이메일 가입 플로우와 단계 구조를 통일했다.
+ * [건강정보는 여기서 받지 않는다 - 가입 완료 후 바로 홈으로 이동하고,
+ *  건강정보는 더보기 > 개인건강관리(/health-info)에서 별도로 입력한다] */
 export default function SocialSignupPage() {
   const { pendingToken, provider, email, name: providerName } = usePendingSignupParams();
   const { completeSocialSignup } = useAuth();
@@ -69,7 +85,7 @@ export default function SocialSignupPage() {
         phone_number: phoneNumber,
         agreements,
       });
-      navigate("/complete-profile", { replace: true });
+      navigate("/", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "가입 완료 처리 중 오류가 발생했습니다.");
     } finally {
@@ -138,13 +154,17 @@ export default function SocialSignupPage() {
           <option value="MALE">남성</option>
           <option value="FEMALE">여성</option>
         </select>
-        <input
-          type="date"
-          value={birthDate}
-          onChange={(e) => setBirthDate(e.target.value)}
-          required
-          aria-label="생년월일"
-        />
+        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+          생년월일
+          <input
+            type="date"
+            value={birthDate}
+            onChange={(e) => setBirthDate(e.target.value)}
+            required
+            aria-label="생년월일"
+          />
+          {calcAge(birthDate) !== null && <span style={{ fontSize: 12, color: "#888" }}>만 {calcAge(birthDate)}세</span>}
+        </label>
         <input
           type="tel"
           placeholder="휴대폰번호 (01012345678)"

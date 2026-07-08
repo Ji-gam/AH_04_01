@@ -20,8 +20,24 @@ const REQUIRED_AGREEMENTS: { key: keyof AgreementPayload; label: string }[] = [
   { key: "sensitive_info", label: "[필수] 민감정보(건강정보) 수집이용 동의" },
 ];
 
+/** 생년월일 문자열(YYYY-MM-DD)로 만 나이를 계산한다. 값이 없거나 형식이 이상하면 null. */
+function calcAge(birthDate: string): number | null {
+  if (!birthDate) return null;
+  const birth = new Date(birthDate);
+  if (Number.isNaN(birth.getTime())) return null;
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const hasHadBirthdayThisYear =
+    today.getMonth() > birth.getMonth() ||
+    (today.getMonth() === birth.getMonth() && today.getDate() >= birth.getDate());
+  if (!hasHadBirthdayThisYear) age -= 1;
+  return age;
+}
+
 /** 이메일 회원가입: 1단계 약관동의(먼저!) -> 2단계 이메일/이름 포함 전체 정보 입력.
- * "동의 먼저, 수집은 그다음" 순서를 지키기 위해 약관 화면이 항상 먼저 온다. */
+ * "동의 먼저, 수집은 그다음" 순서를 지키기 위해 약관 화면이 항상 먼저 온다.
+ * [건강정보는 여기서 받지 않는다 - 가입 완료 후 바로 홈으로 이동하고,
+ *  건강정보는 더보기 > 개인건강관리(/health-info)에서 별도로 입력한다] */
 export default function EmailSignupPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -50,9 +66,9 @@ export default function EmailSignupPage() {
     try {
       await authApi.signup({ ...form, agreements });
       // [자동로그인] 가입 직후 다시 로그인 화면으로 보내는 대신, 방금 입력한 자격증명으로
-      // 바로 로그인시키고 "건강 정보 입력(생체정보)" 화면으로 이어준다.
+      // 바로 로그인시키고 홈으로 보낸다. 건강정보는 더보기 > 개인건강관리에서 별도로 입력.
       await login(form.email, form.password);
-      navigate("/complete-profile", { replace: true });
+      navigate("/", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "회원가입에 실패했습니다.");
     } finally {
@@ -135,7 +151,13 @@ export default function EmailSignupPage() {
           <option value="MALE">남성</option>
           <option value="FEMALE">여성</option>
         </select>
-        <input type="date" value={form.birth_date} onChange={(e) => update("birth_date", e.target.value)} required />
+        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+          생년월일
+          <input type="date" value={form.birth_date} onChange={(e) => update("birth_date", e.target.value)} required />
+          {calcAge(form.birth_date) !== null && (
+            <span style={{ fontSize: 12, color: "#888" }}>만 {calcAge(form.birth_date)}세</span>
+          )}
+        </label>
         <input
           type="tel"
           placeholder="휴대폰번호 (01012345678)"

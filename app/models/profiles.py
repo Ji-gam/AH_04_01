@@ -53,6 +53,8 @@ class Profile(Base):
     weight_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     diagnosis_history: Mapped[list[str] | None] = mapped_column(JSON, default=list, nullable=True)
     family_history: Mapped[list[str] | None] = mapped_column(JSON, default=list, nullable=True)
+    # [건강정보 "기타" 탭] 정형화되지 않은 자유 메모(복용 중인 영양제, 알레르기, 특이사항 등).
+    health_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

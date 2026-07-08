@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-const BACKEND_BASE_URL = "http://127.0.0.1:8000";
+const BACKEND_BASE_URL = "http://localhost:8000";
 
 const socialButtonStyle = {
   textAlign: "center" as const,
