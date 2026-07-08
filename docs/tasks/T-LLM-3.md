@@ -9,7 +9,7 @@
 - 출력/노출: 규격화된 팁 카드(JSON 기반)
 
 ### 이번 라운드 범위
-백엔드(모델/서비스/API) + 오프라인 생성·시드 스크립트까지. 프론트 "정보" 탭 UI, 가족 프로필 스위처(T-AUTH-5/6 의존), 챗봇의 콘텐츠 추천 기능은 이번 PR 범위 밖 — 별도 후속 작업.
+백엔드(모델/서비스/API) + 오프라인 생성·시드 스크립트까지. 프론트 "정보" 탭 UI는 이 브랜치를 base로 하는 `feature/T-LLM-3-info-page-frontend`(스택형 PR)에서 별도로 진행한다(백엔드만으로는 리뷰가 어렵다는 판단하에 PR을 분리). 가족 프로필 스위처(T-AUTH-5/6 의존), 챗봇의 콘텐츠 추천 기능은 범위 밖 — 별도 후속 작업.
 
 **설계 변경 1 (2026-07-08, 구현 중 확정)**: 최초 계획은 캐시 미스 시 요청 안에서 온디맨드로 LLM을 호출하는 것이었으나, 사용자 요청마다 LLM 호출이 발생하는 구조의 지연/비용 문제가 지적되어 **라이브 생성을 완전히 제거**했다. 대신 `generate_health_content.py`(오프라인, LLM 호출 → JSON 픽스처 생성) → 커밋 → `seed_health_content.py`(픽스처를 로컬 DB에 시드)로 흐름을 바꿨다. `GET /contents/me`는 캐시에 있는 것만 읽고, 없는 조합은 조용히 스킵한다(생성하지 않음).
 
@@ -90,5 +90,5 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
   - `app/services/llm_stub.py`에 `generate_content_card` 함수를 추가함(기존 `stream_llm_reply`는 그대로, 회귀 없음 확인)
   - `app/dependencies/security.py`에 `get_current_profile_optional` 함수를 추가함(Auth 스쿼드 소유 공유 파일, 사용자 명시적 승인 하에 진행, 기존 `get_current_profile`/`get_request_user`는 미수정 — [공통모듈 변경])
 - 검증: `pytest -v` 52/52 통과, `ruff check .`/`ruff format --check .`/`mypy .` 전체 통과, 실제 OpenAI로 15건(5질환x3카테고리) 생성 → 시드 → 재시드 멱등성 확인 → 실제 profile_id=1(mock 조건 "당뇨")로 서비스 호출 시 3장 정상 반환 확인, 비인증 요청으로 실제 dev DB에서 15건 전체 반환 확인
-- 브랜치명: `feature/T-LLM-3-health-content-pipeline`
-- 후속 작업(범위 밖, 별도 T-ID 필요): 프론트 "정보" 탭 UI, 가족 프로필 스위처(T-AUTH-5/6 완료 후), 챗봇의 콘텐츠 추천 기능, 스테이징 도입 후 배치 스케줄러(Celery beat 등) 연결
+- 브랜치명: `feature/T-LLM-3-content-pipeline-backend` (백엔드 전용 — 프론트 "정보" 탭 UI는 이 브랜치를 base로 하는 `feature/T-LLM-3-info-page-frontend`에서 별도 PR로 진행. 애초 하나의 브랜치/PR로 진행했으나, 백엔드만으로는 리뷰/데모가 어려워 PR을 분리했다)
+- 후속 작업(범위 밖, 별도 T-ID 필요): 프론트 "정보" 탭 UI(별도 PR로 분리 진행 중), 가족 프로필 스위처(T-AUTH-5/6 완료 후), 챗봇의 콘텐츠 추천 기능, 스테이징 도입 후 배치 스케줄러(Celery beat 등) 연결

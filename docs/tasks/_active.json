@@ -6,7 +6,7 @@
   },
   "T-LLM-3": {
     "owner": "agent-Claude",
-    "branch": "feature/T-LLM-3-health-content-pipeline",
+    "branch": "feature/T-LLM-3-content-pipeline-backend",
     "started": "2026-07-08"
   }
 }
