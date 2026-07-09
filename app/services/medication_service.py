@@ -55,6 +55,28 @@ def _extract_item_seq(standard_code: str | None) -> str | None:
     return item_seq or None
 
 
+_TRAILING_DOSAGE_PATTERN = re.compile(r"\s*\d+(\.\d+)?\s*(mg|g|ml)\s*$", re.IGNORECASE)
+
+
+def _strip_trailing_dosage(name: str) -> str | None:
+    """공공데이터 API의 정식 품목명은 'mg'가 아니라 '밀리그램' 등 한글 단위 표기를 쓰는 경우가
+    많아, OCR/사용자 입력이 'NNmg' 형태 접미사로 끝나면 그 부분을 뗀 이름으로도 재시도할 수 있게
+    한다. 접미사가 없으면 None."""
+    stripped = _TRAILING_DOSAGE_PATTERN.sub("", name).strip()
+    return stripped if stripped and stripped != name else None
+
+
+async def _fetch_master_data_with_fallback(name: str) -> dict | None:
+    master_data = await medication_open_api_client.fetch_medication_master_data(name)
+    if master_data and master_data.get("standard_code"):
+        return master_data
+
+    stripped_name = _strip_trailing_dosage(name)
+    if stripped_name:
+        return await medication_open_api_client.fetch_medication_master_data(stripped_name)
+    return master_data
+
+
 async def _resolve_medications_with_item_seq(
     session: AsyncSession, medications: list[Medication]
 ) -> list[tuple[str, Medication]]:
@@ -74,7 +96,7 @@ async def _resolve_medications_with_item_seq(
         return meds_with_seq
 
     master_data_results = await asyncio.gather(
-        *[medication_open_api_client.fetch_medication_master_data(med.medication_name) for med in meds_without_seq]
+        *[_fetch_master_data_with_fallback(med.medication_name) for med in meds_without_seq]
     )
     resolved_any = False
     for med, master_data in zip(meds_without_seq, master_data_results, strict=True):
