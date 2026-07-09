@@ -8,6 +8,7 @@ import type { MedicationSchedule } from "../../hooks/useMedication";
 
 import AlarmCalendar from "./components/AlarmCalendar";
 import AlarmForm, { type AlarmFormSubmit } from "./components/AlarmForm";
+import MedTimeForm from "./components/MedTimeForm";
 import { isScheduleDueOnDate, toDateString } from "./dateUtils";
 import { alarmTheme as t } from "./theme";
 
@@ -46,6 +47,22 @@ function doseCountOf(counts: Map<string, number>, s: NotificationScheduleResult)
   return counts.get(`${s.medication_name}|${s.frequency_type}|${s.target_day_of_week ?? ""}`) ?? 1;
 }
 
+// 복약 관리(medications)에는 알림 on/off 개념이 백엔드에 없어, 브라우저 알림 여부만
+// localStorage에 보관한다 — 기본값은 켜짐(ON), 여기 저장된 키만 꺼짐 상태다.
+const MED_ALARM_DISABLED_KEY = "medAlarmDisabled";
+
+function loadMedAlarmDisabled(): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(MED_ALARM_DISABLED_KEY) ?? "[]") as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveMedAlarmDisabled(disabled: Set<string>) {
+  localStorage.setItem(MED_ALARM_DISABLED_KEY, JSON.stringify([...disabled]));
+}
+
 export default function AlarmPage() {
   const navigate = useNavigate();
   const [schedules, setSchedules] = useState<NotificationScheduleResult[]>([]);
@@ -55,8 +72,15 @@ export default function AlarmPage() {
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<NotificationScheduleResult | null>(null);
+  // 복약 관리에서 등록한 약의 시간 수정 (알림 추가 폼과 같은 UI, 시간만 변경)
+  const [editingMed, setEditingMed] = useState<{ med: MedicationSchedule; time: string } | null>(
+    null,
+  );
   const [formError, setFormError] = useState<string | undefined>(undefined);
   const [isSaving, setIsSaving] = useState(false);
+  const [medAlarmDisabled, setMedAlarmDisabled] = useState<Set<string>>(() =>
+    loadMedAlarmDisabled(),
+  );
 
   const today = new Date();
   // 달력 선택 표시는 항상 오늘 — 날짜 클릭 시 이 페이지에서 필터하는 대신 복약스케줄 화면으로 이동한다.
@@ -100,26 +124,45 @@ export default function AlarmPage() {
   }, []);
 
   // 탭이 열려 있는 동안, 오늘 예약 시각이 되면 브라우저 알림을 자동으로 띄운다.
+  // 같은 시각의 약(직접 등록 알림 + 복약 관리 약)은 하나로 묶어 한 번만 울린다.
   // 진짜 백그라운드 푸시(서비스워커)가 아니라 포그라운드 폴링이라 탭을 닫으면 울리지 않는다.
   const firedTodayRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const checkAndFire = () => {
       if (!("Notification" in window) || Notification.permission !== "granted") return;
-      const todayStr = new Date().toDateString();
       const nowHHMM = getCurrentHHMM();
+      const names: string[] = [];
       for (const s of schedules) {
-        if (!s.is_active || !isDueToday(s)) continue;
-        if (s.alarm_time.slice(0, 5) !== nowHHMM) continue;
-        const key = `${todayStr}:${s.id}`;
-        if (firedTodayRef.current.has(key)) continue;
-        firedTodayRef.current.add(key);
-        new Notification("💊 복약 시간이에요!", { body: s.medication_name });
+        if (s.is_active && isDueToday(s) && s.alarm_time.slice(0, 5) === nowHHMM) {
+          names.push(s.medication_name);
+        }
       }
+      for (const m of medSchedules) {
+        const matchTime = m.times.find((time) => time.slice(0, 5) === nowHHMM);
+        if (matchTime && !medAlarmDisabled.has(`med-${m.id}-${matchTime}`)) {
+          names.push(m.drug_name);
+        }
+      }
+      if (names.length === 0) return;
+      const key = `${new Date().toDateString()}:${nowHHMM}`;
+      if (firedTodayRef.current.has(key)) return;
+      firedTodayRef.current.add(key);
+      new Notification("💊 복약 시간이에요!", { body: [...new Set(names)].join(", ") });
     };
     checkAndFire();
     const timer = setInterval(checkAndFire, 15000);
     return () => clearInterval(timer);
-  }, [schedules]);
+  }, [schedules, medSchedules, medAlarmDisabled]);
+
+  const handleToggleMedAlarm = (key: string) => {
+    setMedAlarmDisabled((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      saveMedAlarmDisabled(next);
+      return next;
+    });
+  };
 
   const requestNotificationPermission = () => {
     if ("Notification" in window && Notification.permission === "default") {
@@ -182,9 +225,41 @@ export default function AlarmPage() {
   // 수정 폼은 페이지 상단에 열리므로, 스크롤을 내린 상태에서도 폼이 보이도록 위로 올린다.
   const startEdit = (schedule: NotificationScheduleResult) => {
     setEditingSchedule(schedule);
+    setEditingMed(null);
     setShowAddForm(false);
     setFormError(undefined);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const startEditMed = (med: MedicationSchedule, time: string) => {
+    setEditingMed({ med, time });
+    setEditingSchedule(null);
+    setShowAddForm(false);
+    setFormError(undefined);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // 해당 시각 하나만 새 시각으로 바꾸고, 나머지 시각은 그대로 유지한다.
+  const handleUpdateMedTime = (newTime: string) => {
+    if (!editingMed) return;
+    setIsSaving(true);
+    setFormError(undefined);
+    const oldHHMM = editingMed.time.slice(0, 5);
+    const newTimes = [
+      ...new Set(
+        editingMed.med.times.map((time) => (time.slice(0, 5) === oldHHMM ? newTime : time)),
+      ),
+    ].sort();
+    apiFetch(`/medications/${editingMed.med.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ times: newTimes }),
+    })
+      .then(() => {
+        setEditingMed(null);
+        loadSchedules();
+      })
+      .catch((e: Error) => setFormError(`수정에 실패했습니다. (${e.message})`))
+      .finally(() => setIsSaving(false));
   };
 
   const handleDelete = (schedule: NotificationScheduleResult) => {
@@ -197,7 +272,7 @@ export default function AlarmPage() {
 
   const doseCounts = buildDoseCounts(schedules);
 
-  // 달력 밑에는 직접 등록한 알림 + 복약 관리에서 등록한 약을 시간순으로 함께 보여준다
+  // 달력 밑에는 직접 등록한 알림 + 복약 관리에서 등록한 약을 같은 시각끼리 묶어 보여준다
   // (날짜별 시간표는 /schedule 화면 담당). alarm이 있으면 토글/수정/삭제가 가능한 직접 등록 알림.
   interface RegisteredRow {
     key: string;
@@ -205,6 +280,7 @@ export default function AlarmPage() {
     name: string;
     subLabel: string;
     alarm?: NotificationScheduleResult;
+    med?: MedicationSchedule;
   }
   const rows: RegisteredRow[] = [
     ...schedules.map((s) => ({
@@ -221,12 +297,19 @@ export default function AlarmPage() {
         key: `med-${m.id}-${time}`,
         time: time.slice(0, 5),
         name: m.drug_name,
-        subLabel:
-          `매일${m.times.length > 1 ? ` · ${doseLabel(m.times.length)}` : ""}` +
-          (m.hospital_name ? ` · ${m.hospital_name}` : ""),
+        subLabel: `매일${m.times.length > 1 ? ` · ${doseLabel(m.times.length)}` : ""}`,
+        med: m,
       })),
     ),
   ].sort((a, b) => a.time.localeCompare(b.time));
+
+  // 같은 시각끼리 하나의 카드로 묶는다 — 알림도 시각당 한 번만 울리는 것과 짝을 이룬다.
+  const timeGroups: { time: string; items: RegisteredRow[] }[] = [];
+  for (const row of rows) {
+    const last = timeGroups[timeGroups.length - 1];
+    if (last && last.time === row.time) last.items.push(row);
+    else timeGroups.push({ time: row.time, items: [row] });
+  }
 
   return (
     <div style={{ background: t.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
@@ -284,6 +367,18 @@ export default function AlarmPage() {
           />
         )}
 
+        {editingMed && (
+          <MedTimeForm
+            key={`${editingMed.med.id}-${editingMed.time}`}
+            medName={editingMed.med.drug_name}
+            initialTime={editingMed.time}
+            isSaving={isSaving}
+            errorMessage={formError}
+            onCancel={() => setEditingMed(null)}
+            onSubmit={handleUpdateMedTime}
+          />
+        )}
+
         {/* 날짜를 누르면 복약 시간표 화면으로 이동해 그 날짜의 통합 타임라인(약+알림)을 보여준다. */}
         <AlarmCalendar
           year={visibleYear}
@@ -318,92 +413,144 @@ export default function AlarmPage() {
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
-          {rows.map((row) => (
+          {timeGroups.map((group) => (
             <div
-              key={row.key}
+              key={group.time}
               style={{
                 background: t.cardBg,
                 border: `1px solid ${t.border}`,
                 borderRadius: 14,
                 padding: "14px 16px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
                 boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
-                opacity: row.alarm && !row.alarm.is_active ? 0.5 : 1,
               }}
             >
-              <div>
-                <span style={{ fontSize: 16, fontWeight: 700, color: t.primary }}>{row.time}</span>{" "}
-                <span style={{ fontSize: 14, color: t.text }}>{row.name}</span>
-                <p style={{ fontSize: 12, color: t.textMuted, margin: "2px 0 0" }}>
-                  {row.subLabel}
-                </p>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                {row.alarm ? (
-                  <>
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        fontSize: 12,
-                        color: t.textMuted,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={row.alarm.is_active}
-                        onChange={() => handleToggleActive(row.alarm!)}
-                      />
-                      알림
-                    </label>
-                    <button
-                      type="button"
-                      aria-label="알림 수정"
-                      onClick={() => startEdit(row.alarm!)}
-                      style={{
-                        border: "none",
-                        background: "none",
-                        color: t.textMuted,
-                        cursor: "pointer",
-                        fontSize: 14,
-                      }}
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="알림 삭제"
-                      onClick={() => handleDelete(row.alarm!)}
-                      style={{
-                        border: "none",
-                        background: "none",
-                        color: t.textMuted,
-                        cursor: "pointer",
-                        fontSize: 14,
-                      }}
-                    >
-                      🗑️
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    aria-label={`${row.name} 복약 관리로 이동`}
-                    onClick={() => navigate("/medication")}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                <span style={{ fontSize: 16, fontWeight: 700, color: t.primary }}>
+                  {group.time}
+                </span>
+                {group.items.length > 1 && (
+                  <span
                     style={{
-                      border: "none",
-                      background: "none",
-                      color: t.textMuted,
-                      cursor: "pointer",
-                      fontSize: 14,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: t.primary,
+                      background: t.primarySoft,
+                      borderRadius: 999,
+                      padding: "1px 8px",
                     }}
                   >
-                    ✏️
-                  </button>
+                    {group.items.length}개
+                  </span>
                 )}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {group.items.map((row, i) => (
+                  <div
+                    key={row.key}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: i === 0 ? "0 0 8px" : "8px 0",
+                      borderTop: i > 0 ? `1px solid ${t.border}` : undefined,
+                      opacity:
+                        (row.alarm && !row.alarm.is_active) ||
+                        (row.med && medAlarmDisabled.has(row.key))
+                          ? 0.5
+                          : 1,
+                    }}
+                  >
+                    <div>
+                      <span style={{ fontSize: 14, color: t.text }}>{row.name}</span>
+                      <p style={{ fontSize: 12, color: t.textMuted, margin: "2px 0 0" }}>
+                        {row.subLabel}
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      {row.alarm ? (
+                        <>
+                          <label
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              fontSize: 12,
+                              color: t.textMuted,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={row.alarm.is_active}
+                              onChange={() => handleToggleActive(row.alarm!)}
+                            />
+                            알림
+                          </label>
+                          <button
+                            type="button"
+                            aria-label="알림 수정"
+                            onClick={() => startEdit(row.alarm!)}
+                            style={{
+                              border: "none",
+                              background: "none",
+                              color: t.textMuted,
+                              cursor: "pointer",
+                              fontSize: 14,
+                            }}
+                          >
+                            ✏️
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="알림 삭제"
+                            onClick={() => handleDelete(row.alarm!)}
+                            style={{
+                              border: "none",
+                              background: "none",
+                              color: t.textMuted,
+                              cursor: "pointer",
+                              fontSize: 14,
+                            }}
+                          >
+                            🗑️
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <label
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                              fontSize: 12,
+                              color: t.textMuted,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!medAlarmDisabled.has(row.key)}
+                              onChange={() => handleToggleMedAlarm(row.key)}
+                            />
+                            알림
+                          </label>
+                          <button
+                            type="button"
+                            aria-label={`${row.name} 복용 시각 수정`}
+                            onClick={() => startEditMed(row.med!, row.time)}
+                            style={{
+                              border: "none",
+                              background: "none",
+                              color: t.textMuted,
+                              cursor: "pointer",
+                              fontSize: 14,
+                            }}
+                          >
+                            ✏️
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ))}
