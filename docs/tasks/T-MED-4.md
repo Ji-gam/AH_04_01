@@ -61,16 +61,19 @@ T-MED-1(PR #16, `feat/T-MED-1-pill-ocr`) 구현 조사 중 다음이 확인됨:
 
 ### 완료 정의 (Definition of Done)
 
-- [ ] e약은요 API + DUR 품목정보 API를 호출해 데이터를 가져오는 클라이언트 함수가 있다
+- [x] e약은요 API + DUR 품목정보 API를 호출해 데이터를 가져오는 클라이언트 함수가 있다
       (`app/services/medication_open_api_client.py`에 낱알식별/허가정보와 같은 패턴으로 추가).
-- [ ] 식약처 4개 API(낱알식별/허가정보/e약은요/DUR) 응답을 `standard_code` 기준으로 하나의
-      `medications` 레코드에 병합해 저장하는 동기화 로직이 있다.
-- [ ] 동기화는 API 키 미설정/호출 실패 시 서비스 기동이나 기존 OCR 매칭 흐름을 깨뜨리지 않는다(스킵/로그만).
-- [ ] `medication_service.py`의 실시간 매칭 경로: 로컬 DB(Tier 2)에 없으면 API(Tier 3)를 호출해 후보를
+- [x] 식약처 4개 API(낱알식별/허가정보/e약은요/DUR) 응답을 `standard_code` 기준으로 하나의
+      `medications` 레코드에 병합해 저장하는 동기화 로직이 있다
+      (`fetch_medication_master_data` 병합 + `app/scripts/sync_medication_master_data.py` 배치 스크립트).
+      단, `fixtures/medication_sync_list.json`은 예시 목록 — 실제 Tier 1/2 경계(자주/종종 조회되는
+      약품 목록)는 팀에서 채워야 함(아래 "반드시 멈춰야 하는 경우" 참고).
+- [x] 동기화는 API 키 미설정/호출 실패 시 서비스 기동이나 기존 OCR 매칭 흐름을 깨뜨리지 않는다(스킵/로그만).
+- [x] `medication_service.py`의 실시간 매칭 경로: 로컬 DB(Tier 2)에 없으면 API(Tier 3)를 호출해 후보를
       구성하되, API 미설정/실패 시에도 기존 `AUTO_` 더미 생성 폴백으로 안전하게 떨어진다.
-- [ ] DB 스키마 변경이 있다면 Alembic 리비전과 `docs/dev/ERD.dbml`을 함께 갱신했다.
-- [ ] (공통) 테스트를 TDD로 먼저 작성했고 `uv run pytest -v`가 통과하는가.
-- [ ] (공통) 모든 신규 코드에 대해 Ruff 포맷 및 Mypy 타입체크 통과.
+- [ ] DB 스키마 변경 없음(기존 `Medication` 컬럼만 채움) — Alembic/ERD 갱신 불필요.
+- [x] (공통) 테스트를 TDD로 먼저 작성했고 `uv run pytest -v`가 통과하는가.
+- [x] (공통) 모든 신규 코드에 대해 Ruff 포맷 및 Mypy 타입체크 통과.
 
 ---
 

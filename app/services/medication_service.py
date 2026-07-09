@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import os
 import re
@@ -68,29 +67,14 @@ async def _fetch_medication_from_public_api(name: str) -> Medication | None:
     `PUBLIC_DATA_API_KEY` 미설정/호출 실패/빈 응답이면 None을 반환해 기존 `AUTO_` 더미 생성
     폴백으로 넘어가게 한다 — 등록 자체가 막히지 않는다는 T-MED-1 원칙을 그대로 유지."""
     try:
-        pill_items, approval_items = await asyncio.gather(
-            medication_open_api_client.fetch_pill_identification(item_name=name),
-            medication_open_api_client.fetch_drug_approval_info(item_name=name),
-        )
+        fields = await medication_open_api_client.fetch_medication_master_data(name)
     except medication_open_api_client.PublicDataApiError:
         return None
-
-    pill_info = pill_items[0] if pill_items else {}
-    approval_info = approval_items[0] if approval_items else {}
-    if not pill_info and not approval_info:
+    if fields is None:
         return None
 
-    item_seq = pill_info.get("ITEM_SEQ") or approval_info.get("ITEM_SEQ")
-    return Medication(
-        medication_name=name,
-        standard_code=f"PDP_{item_seq}" if item_seq else f"AUTO_{uuid.uuid4().hex[:10].upper()}",
-        dosage_guideline=approval_info.get("UD_DOC_DATA"),
-        side_effects=approval_info.get("NB_DOC_DATA"),
-        storage_method=approval_info.get("STORAGE_METHOD"),
-        shape=pill_info.get("DRUG_SHAPE"),
-        color=pill_info.get("COLOR_CLASS1"),
-        letters=pill_info.get("PRINT_FRONT"),
-    )
+    standard_code = fields.pop("standard_code") or f"AUTO_{uuid.uuid4().hex[:10].upper()}"
+    return Medication(medication_name=name, standard_code=standard_code, **fields)
 
 
 async def _create_medication_for_unmatched_name(

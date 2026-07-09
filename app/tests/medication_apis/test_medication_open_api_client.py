@@ -159,3 +159,80 @@ async def test_fetch_drug_summary_returns_empty_list_without_api_key(monkeypatch
 
     assert await client.fetch_drug_summary(item_name="타이레놀") == []
     assert await client.fetch_dur_item_info(item_name="타이레놀") == []
+
+
+async def test_fetch_medication_master_data_merges_all_four_sources(monkeypatch):
+    async def _fake_pill(item_name=None, **kwargs):
+        return [{"ITEM_SEQ": "200000001", "DRUG_SHAPE": "원형", "COLOR_CLASS1": "하양", "PRINT_FRONT": "TYLENOL"}]
+
+    async def _fake_approval(item_name=None, **kwargs):
+        return [
+            {
+                "ITEM_SEQ": "200000001",
+                "UD_DOC_DATA": "1회 1정",
+                "NB_DOC_DATA": "간질환 환자 주의",
+                "STORAGE_METHOD": "실온",
+            }
+        ]
+
+    async def _fake_summary(item_name=None, **kwargs):
+        return [{"ITEM_SEQ": "200000001", "UD_DOC_DATA": "요약 용법"}]
+
+    async def _fake_dur(item_name=None, **kwargs):
+        return [{"PROHBT_CONTENT": "와파린과 병용금기"}]
+
+    monkeypatch.setattr(client, "fetch_pill_identification", _fake_pill)
+    monkeypatch.setattr(client, "fetch_drug_approval_info", _fake_approval)
+    monkeypatch.setattr(client, "fetch_drug_summary", _fake_summary)
+    monkeypatch.setattr(client, "fetch_dur_item_info", _fake_dur)
+
+    result = await client.fetch_medication_master_data("타이레놀정500밀리그람")
+
+    assert result == {
+        "standard_code": "PDP_200000001",
+        "dosage_guideline": "1회 1정",
+        "side_effects": "와파린과 병용금기",
+        "storage_method": "실온",
+        "shape": "원형",
+        "color": "하양",
+        "letters": "TYLENOL",
+    }
+
+
+async def test_fetch_medication_master_data_falls_back_when_approval_and_dur_missing(monkeypatch):
+    """허가정보/DUR이 비어도 e약은요(summary)의 용법용량으로 대체하고, 나머지 필드는 없어도 된다."""
+
+    async def _fake_pill(item_name=None, **kwargs):
+        return []
+
+    async def _fake_approval(item_name=None, **kwargs):
+        return []
+
+    async def _fake_summary(item_name=None, **kwargs):
+        return [{"ITEM_SEQ": "300000002", "UD_DOC_DATA": "요약 용법"}]
+
+    async def _fake_dur(item_name=None, **kwargs):
+        return []
+
+    monkeypatch.setattr(client, "fetch_pill_identification", _fake_pill)
+    monkeypatch.setattr(client, "fetch_drug_approval_info", _fake_approval)
+    monkeypatch.setattr(client, "fetch_drug_summary", _fake_summary)
+    monkeypatch.setattr(client, "fetch_dur_item_info", _fake_dur)
+
+    result = await client.fetch_medication_master_data("아무개약")
+
+    assert result["standard_code"] == "PDP_300000002"
+    assert result["dosage_guideline"] == "요약 용법"
+    assert result["side_effects"] is None
+
+
+async def test_fetch_medication_master_data_returns_none_when_all_sources_empty(monkeypatch):
+    async def _empty(item_name=None, **kwargs):
+        return []
+
+    monkeypatch.setattr(client, "fetch_pill_identification", _empty)
+    monkeypatch.setattr(client, "fetch_drug_approval_info", _empty)
+    monkeypatch.setattr(client, "fetch_drug_summary", _empty)
+    monkeypatch.setattr(client, "fetch_dur_item_info", _empty)
+
+    assert await client.fetch_medication_master_data("존재하지않는약") is None

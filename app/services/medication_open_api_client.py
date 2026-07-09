@@ -5,6 +5,8 @@
 담당하고, `medications` 테이블 적재(동기화)는 별도 단계에서 이 모듈을 사용한다.
 """
 
+import asyncio
+
 import httpx
 
 from app.core import config
@@ -97,3 +99,33 @@ async def fetch_dur_item_info(
     if item_name:
         params["itemName"] = item_name
     return await _fetch_items(DUR_ITEM_INFO_URL, params)
+
+
+async def fetch_medication_master_data(item_name: str) -> dict | None:
+    """네 API(낱알식별/허가정보/e약은요/DUR 품목정보)를 모두 조회해 `Medication` 컬럼에 바로
+    대입할 수 있는 필드 딕셔너리로 병합한다. 실시간 매칭 폴백(Tier 3)과 배치 동기화 스크립트
+    (Tier 2 적재) 양쪽에서 공용으로 쓴다. 낱알식별/허가정보/e약은요 모두 빈 응답이면 None."""
+    pill_items, approval_items, summary_items, dur_items = await asyncio.gather(
+        fetch_pill_identification(item_name=item_name),
+        fetch_drug_approval_info(item_name=item_name),
+        fetch_drug_summary(item_name=item_name),
+        fetch_dur_item_info(item_name=item_name),
+    )
+    pill = pill_items[0] if pill_items else {}
+    approval = approval_items[0] if approval_items else {}
+    summary = summary_items[0] if summary_items else {}
+    dur = dur_items[0] if dur_items else {}
+
+    if not pill and not approval and not summary:
+        return None
+
+    item_seq = pill.get("ITEM_SEQ") or approval.get("ITEM_SEQ") or summary.get("ITEM_SEQ")
+    return {
+        "standard_code": f"PDP_{item_seq}" if item_seq else None,
+        "dosage_guideline": approval.get("UD_DOC_DATA") or summary.get("UD_DOC_DATA"),
+        "side_effects": dur.get("PROHBT_CONTENT") or approval.get("NB_DOC_DATA"),
+        "storage_method": approval.get("STORAGE_METHOD"),
+        "shape": pill.get("DRUG_SHAPE"),
+        "color": pill.get("COLOR_CLASS1"),
+        "letters": pill.get("PRINT_FRONT"),
+    }
