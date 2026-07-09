@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import {
   useMedication,
+  type InteractionCheckResult,
   type RecognitionCandidate,
   type RecognitionJobResult,
 } from "../../hooks/useMedication";
@@ -22,6 +23,7 @@ export default function MedicationPage() {
     uploadJob,
     getJobStatus,
     confirmJob,
+    checkInteractions,
   } = useMedication();
 
   // 상태 관리
@@ -51,9 +53,32 @@ export default function MedicationPage() {
     "schedule",
   );
 
+  // 약물 상호작용(병용금기) 체크 — 등록약이 바뀌지 않는 한 다시 조회하지 않도록 캐시 (T-MED-2-2)
+  const [interactionResult, setInteractionResult] = useState<InteractionCheckResult | null>(null);
+  const [interactionLoading, setInteractionLoading] = useState(false);
+  const [interactionError, setInteractionError] = useState<string | null>(null);
+
   useEffect(() => {
     fetchSchedules();
   }, []);
+
+  // 등록약 목록이 바뀌면(추가/삭제) 캐시를 무효화해 다음에 탭을 열 때 재조회한다.
+  useEffect(() => {
+    setInteractionResult(null);
+  }, [schedules.length]);
+
+  useEffect(() => {
+    if (activeTab !== "interaction" || interactionResult || interactionLoading) return;
+    setInteractionLoading(true);
+    setInteractionError(null);
+    checkInteractions()
+      .then(setInteractionResult)
+      .catch((err: unknown) => {
+        setInteractionError(err instanceof Error ? err.message : "상호작용 확인에 실패했습니다.");
+      })
+      .finally(() => setInteractionLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   // 비동기 작업 폴링 처리
   useEffect(() => {
@@ -479,16 +504,66 @@ export default function MedicationPage() {
 
       {activeTab === "interaction" && (
         <div style={{ padding: "15px", border: "1px solid #ccc" }}>
-          {/* 12번 단계: 약물 상호작용 (확장 설계) */}
+          {/* 12번 단계: 약물 상호작용 (T-MED-2-2) — 등록약 간 병용금기(DUR) 체크 */}
           <h3>약물 상호작용 체크 (DUR)</h3>
           <p style={{ color: "#666" }}>
-            본 기능은 추후 연동될 약물 상호작용 분석 엔진 및 F-MED-2 기능과의 조율을 고려하여 확장
-            가능하도록 탭 구조로 설계되었습니다.
+            등록하신 약들을 서로 대조해 식약처 병용금기 데이터에서 함께 복용하면 위험한 조합이
+            있는지 확인합니다. 지병(질병)과의 상충 여부는 아직 포함되지 않습니다.
           </p>
-          <div style={{ padding: "10px", backgroundColor: "#fffde7", border: "1px solid #fff59d" }}>
-            <strong>[추후 개발 예정]</strong> 다른 처방전/알약과의 조합 시 상충되거나 중복 처방되는
-            위험성 감지 결과가 표시됩니다.
-          </div>
+
+          {interactionLoading && <p>등록약을 대조하는 중입니다...</p>}
+
+          {!interactionLoading && interactionError && (
+            <div
+              style={{ padding: "10px", backgroundColor: "#fdecea", border: "1px solid #f5c6cb" }}
+            >
+              {interactionError}
+            </div>
+          )}
+
+          {!interactionLoading && !interactionError && interactionResult && (
+            <>
+              {interactionResult.checked_count < 2 ? (
+                <div
+                  style={{
+                    padding: "10px",
+                    backgroundColor: "#fffde7",
+                    border: "1px solid #fff59d",
+                  }}
+                >
+                  비교할 수 있는 등록약이 2개 미만이라 상호작용을 확인할 수 없습니다.
+                </div>
+              ) : interactionResult.warnings.length === 0 ? (
+                <div
+                  style={{
+                    padding: "10px",
+                    backgroundColor: "#e8f5e9",
+                    border: "1px solid #a5d6a7",
+                  }}
+                >
+                  등록하신 약들 사이에서 확인된 병용금기 조합이 없습니다.
+                </div>
+              ) : (
+                interactionResult.warnings.map((w, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      padding: "10px",
+                      marginBottom: "10px",
+                      backgroundColor: "#fdecea",
+                      border: "1px solid #f5c6cb",
+                    }}
+                  >
+                    <strong>
+                      ⚠ {w.drug_a_name} + {w.drug_b_name}
+                    </strong>
+                    <p>{w.description}</p>
+                    <small style={{ color: "#666" }}>{w.disclaimer}</small>
+                  </div>
+                ))
+              )}
+            </>
+          )}
 
           {guideCards.length > 0 && (
             <div style={{ marginTop: "15px" }}>

@@ -12,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.databases import AsyncSessionLocal
 from app.dtos.medication_dto import (
     GuideCard,
+    InteractionCheckResult,
+    InteractionWarning,
     MedicationScheduleCreateRequest,
     MedicationScheduleResponse,
     MedicationScheduleUpdateRequest,
@@ -41,6 +43,15 @@ _MIN_DRUG_NAME_LEN = 5
 # 쓰는 고정 더미 인식 텍스트. 처방전 목록 표기 관례("*" 불릿)를 그대로 따라야 기존 매칭 로직
 # (_looks_like_drug_name)을 그대로 태워서 "실제 인식됐을 때와 동일한 흐름"으로 검증할 수 있다.
 DUMMY_OCR_RAW_TEXT = ["*타이레놀정", "*아스피린정"]
+
+
+def _extract_item_seq(standard_code: str | None) -> str | None:
+    """`Medication.standard_code`가 품목기준코드 유래(`PDP_{item_seq}`)일 때만 item_seq를 뽑아낸다.
+    로컬 라이트 DB 등 다른 경로로 채워진 코드(예: `KD_...`)는 병용금기 DUR 조회에 쓸 수 없어 None."""
+    if not standard_code or not standard_code.startswith("PDP_"):
+        return None
+    item_seq = standard_code.removeprefix("PDP_")
+    return item_seq or None
 
 
 def _looks_like_drug_name(word: str) -> bool:
@@ -513,6 +524,51 @@ class MedicationService:
             ),
             auto_created=auto_created,
         )
+
+    async def check_interactions(self, session: AsyncSession, profile_id: int) -> InteractionCheckResult:
+        """등록약 중 item_seq가 있는 약들을 서로 대조해 병용금기(DUR) 페어를 찾는다 (T-MED-2-2).
+        지병(질병-성분) 기준 금기는 범위 밖 — 등록약 사이의 약물-약물 병용금기만 다룬다."""
+        schedules = await self._repository.list_schedules_by_profile(session, profile_id)
+        medications_by_id = {s.medication_id: s.medication for s in schedules}
+
+        meds_with_seq = [
+            (item_seq, med) for med in medications_by_id.values() if (item_seq := _extract_item_seq(med.standard_code))
+        ]
+
+        if len(meds_with_seq) < 2:
+            return InteractionCheckResult(warnings=[], checked_count=len(meds_with_seq))
+
+        seq_to_med = {item_seq: med for item_seq, med in meds_with_seq}
+        name_to_med = {med.medication_name: med for _, med in meds_with_seq}
+
+        warnings: list[InteractionWarning] = []
+        seen_pairs: set[frozenset[int]] = set()
+
+        for item_seq, med in meds_with_seq:
+            dur_items = await medication_open_api_client.fetch_dur_item_info(item_seq=item_seq)
+            for dur in dur_items:
+                mixture_seq = dur.get("MIXTURE_ITEM_SEQ")
+                mixture_name = dur.get("MIXTURE_ITEM_NAME")
+                other_med = seq_to_med.get(mixture_seq) if mixture_seq else None
+                if other_med is None and mixture_name:
+                    other_med = name_to_med.get(mixture_name)
+                if other_med is None or other_med.id == med.id:
+                    continue
+
+                pair_key = frozenset({med.id, other_med.id})
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+
+                warnings.append(
+                    InteractionWarning(
+                        drug_a_name=med.medication_name,
+                        drug_b_name=other_med.medication_name,
+                        description=dur.get("PROHBT_CONTENT") or "병용금기 성분 조합으로 확인되었습니다.",
+                    )
+                )
+
+        return InteractionCheckResult(warnings=warnings, checked_count=len(meds_with_seq))
 
     async def search_medications(self, session: AsyncSession, query: str) -> list[dict]:
         meds = await self._repository.search_medication_by_name(session, query)
