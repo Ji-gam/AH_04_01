@@ -71,9 +71,7 @@ export default function ChatPage() {
           + 새로운 상담 시작
         </button>
 
-        <h3 style={{ fontSize: "12px", marginBottom: "10px" }}>
-          이전 상담 기록
-        </h3>
+        <h3 style={{ fontSize: "12px", marginBottom: "10px" }}>이전 상담 기록</h3>
 
         <div
           style={{
@@ -141,13 +139,16 @@ export default function ChatPage() {
               boxSizing: "border-box",
               display: "flex",
               flexDirection: "column",
-              borderRight: "2px solid black"
+              borderRight: "2px solid black",
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px" }}>
               <strong>메뉴</strong>
-              <button onClick={() => setIsMobileMenuOpen(false)} style={{ border: "1px solid black", background: "none" }}>
+              <button
+                onClick={() => setIsMobileMenuOpen(false)}
+                style={{ border: "1px solid black", background: "none" }}
+              >
                 닫기
               </button>
             </div>
