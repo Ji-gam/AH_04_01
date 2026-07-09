@@ -18,9 +18,10 @@ class HealthInfoService:
         fields = data.model_dump(exclude_none=True)
 
         # StrEnum 리스트는 순수 str 리스트로 변환해서 JSON 컬럼에 저장한다.
-        if "diagnosis_history" in fields:
+        # (dict 멤버십이 아니라 data.xxx is not None으로 직접 좁혀야 mypy가 None을 배제한다.)
+        if data.diagnosis_history is not None:
             fields["diagnosis_history"] = [d.value for d in data.diagnosis_history]
-        if "family_history" in fields:
+        if data.family_history is not None:
             fields["family_history"] = [d.value for d in data.family_history]
 
         await self.profile_repo.update_instance(session, profile, fields)
