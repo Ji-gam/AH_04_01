@@ -250,9 +250,8 @@ export default function MorePage() {
                       </p>
                     </div>
                   ))
-                : !loading && elapsedMs !== null && (
-                    <p>{notFoundReason ?? "검색 결과가 없습니다."}</p>
-                  )}
+                : !loading &&
+                  elapsedMs !== null && <p>{notFoundReason ?? "검색 결과가 없습니다."}</p>}
             </div>
           </div>
         </div>

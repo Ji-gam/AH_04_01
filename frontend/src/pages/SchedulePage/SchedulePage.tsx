@@ -409,116 +409,118 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                             opacity: done ? 0.55 : 1,
                           }}
                         >
-                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          {isToday ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            {isToday ? (
+                              <button
+                                type="button"
+                                aria-label={
+                                  done ? `${item.name} 복용 취소` : `${item.name} 복용 체크`
+                                }
+                                onClick={() => toggle(item.key)}
+                                style={{
+                                  width: 22,
+                                  height: 22,
+                                  borderRadius: "50%",
+                                  flexShrink: 0,
+                                  border: done ? "none" : `2px solid ${c.line}`,
+                                  background: done ? c.pink : "white",
+                                  color: "white",
+                                  fontSize: 13,
+                                  lineHeight: 1,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                }}
+                              >
+                                {done ? "✓" : ""}
+                              </button>
+                            ) : (
+                              <span style={{ fontSize: 15 }}>💊</span>
+                            )}
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <p
+                                style={{
+                                  margin: 0,
+                                  fontSize: 14,
+                                  fontWeight: 700,
+                                  color: c.text,
+                                  textDecoration: done ? "line-through" : "none",
+                                }}
+                              >
+                                {isToday && "💊 "}
+                                {item.name}{" "}
+                                <span style={{ fontSize: 12, fontWeight: 400, color: c.textMuted }}>
+                                  하루 {item.doseCount}회
+                                </span>
+                              </p>
+                              {item.subLabel && (
+                                <p style={{ margin: "2px 0 0", fontSize: 12, color: c.textMuted }}>
+                                  {item.hospitalName ? `🏥 ${item.subLabel}` : item.subLabel}
+                                </p>
+                              )}
+                            </div>
                             <button
                               type="button"
-                              aria-label={
-                                done ? `${item.name} 복용 취소` : `${item.name} 복용 체크`
-                              }
-                              onClick={() => toggle(item.key)}
+                              onClick={() => toggleDurExpand(item.name)}
+                              aria-expanded={isExpanded}
                               style={{
-                                width: 22,
-                                height: 22,
-                                borderRadius: "50%",
                                 flexShrink: 0,
-                                border: done ? "none" : `2px solid ${c.line}`,
-                                background: done ? c.pink : "white",
-                                color: "white",
-                                fontSize: 13,
-                                lineHeight: 1,
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              {done ? "✓" : ""}
-                            </button>
-                          ) : (
-                            <span style={{ fontSize: 15 }}>💊</span>
-                          )}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <p
-                              style={{
-                                margin: 0,
-                                fontSize: 14,
+                                border: "none",
+                                background: "none",
+                                color: c.pink,
+                                fontSize: 11,
                                 fontWeight: 700,
-                                color: c.text,
-                                textDecoration: done ? "line-through" : "none",
+                                cursor: "pointer",
+                                padding: "4px 6px",
                               }}
                             >
-                              {isToday && "💊 "}
-                              {item.name}{" "}
-                              <span style={{ fontSize: 12, fontWeight: 400, color: c.textMuted }}>
-                                하루 {item.doseCount}회
-                              </span>
-                            </p>
-                            {item.subLabel && (
-                              <p style={{ margin: "2px 0 0", fontSize: 12, color: c.textMuted }}>
-                                {item.hospitalName ? `🏥 ${item.subLabel}` : item.subLabel}
-                              </p>
-                            )}
+                              주의사항 {isExpanded ? "닫기 ▲" : "보기 ▼"}
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => toggleDurExpand(item.name)}
-                            aria-expanded={isExpanded}
-                            style={{
-                              flexShrink: 0,
-                              border: "none",
-                              background: "none",
-                              color: c.pink,
-                              fontSize: 11,
-                              fontWeight: 700,
-                              cursor: "pointer",
-                              padding: "4px 6px",
-                            }}
-                          >
-                            주의사항 {isExpanded ? "닫기 ▲" : "보기 ▼"}
-                          </button>
-                        </div>
 
-                        {isExpanded && (
-                          <div
-                            style={{
-                              marginTop: 8,
-                              background: c.tipBg,
-                              borderRadius: 10,
-                              padding: "8px 12px",
-                              fontSize: 12,
-                              color: c.tipText,
-                              lineHeight: 1.5,
-                            }}
-                          >
-                            {(!durState || durState.status === "loading") && "조회 중..."}
-                            {durState?.status === "error" && "주의사항을 불러오지 못했습니다."}
-                            {durState?.status === "done" && durState.results.length === 0 && (
-                              <span>
-                                {durState.notFoundReason ?? "등록된 DUR/효능 정보가 없습니다."}
-                              </span>
-                            )}
-                            {durState?.status === "done" && durState.results.length > 0 && (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                                {durState.results.length > 1 && (
-                                  <span style={{ color: c.textMuted }}>
-                                    "{item.name}" 이름으로 매칭된 {durState.results.length}건 —
-                                    같은 이름의 다른 약이 섞여 있을 수 있어요.
-                                  </span>
-                                )}
-                                {durState.results.map((r, idx) => (
-                                  <div key={idx}>
-                                    <strong>
-                                      {r.item_name} ({r.entp_name})
-                                    </strong>
-                                    <p style={{ margin: "2px 0" }}>💊 효능: {r.efficacy}</p>
-                                    <p style={{ margin: "2px 0" }}>⚠️ 주의사항: {r.precautions}</p>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
+                          {isExpanded && (
+                            <div
+                              style={{
+                                marginTop: 8,
+                                background: c.tipBg,
+                                borderRadius: 10,
+                                padding: "8px 12px",
+                                fontSize: 12,
+                                color: c.tipText,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {(!durState || durState.status === "loading") && "조회 중..."}
+                              {durState?.status === "error" && "주의사항을 불러오지 못했습니다."}
+                              {durState?.status === "done" && durState.results.length === 0 && (
+                                <span>
+                                  {durState.notFoundReason ?? "등록된 DUR/효능 정보가 없습니다."}
+                                </span>
+                              )}
+                              {durState?.status === "done" && durState.results.length > 0 && (
+                                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                  {durState.results.length > 1 && (
+                                    <span style={{ color: c.textMuted }}>
+                                      "{item.name}" 이름으로 매칭된 {durState.results.length}건 —
+                                      같은 이름의 다른 약이 섞여 있을 수 있어요.
+                                    </span>
+                                  )}
+                                  {durState.results.map((r, idx) => (
+                                    <div key={idx}>
+                                      <strong>
+                                        {r.item_name} ({r.entp_name})
+                                      </strong>
+                                      <p style={{ margin: "2px 0" }}>💊 효능: {r.efficacy}</p>
+                                      <p style={{ margin: "2px 0" }}>
+                                        ⚠️ 주의사항: {r.precautions}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
