@@ -19,6 +19,18 @@ function labelsOf(list: Disease[]): string {
     .join(", ");
 }
 
+/** 아직 아무 건강정보도 입력하지 않은 상태인지 — 이 경우 보기 모드 없이 바로 편집 모드로 연다. */
+function isHealthInfoEmpty(h: HealthInfoResult): boolean {
+  return (
+    h.height_cm === null &&
+    h.weight_kg === null &&
+    h.diagnosis_history.length === 0 &&
+    h.family_history.length === 0 &&
+    !h.special_notes &&
+    !h.other_notes
+  );
+}
+
 function calcAge(birthday: string): number | null {
   if (!birthday) return null;
   const birth = new Date(birthday);
@@ -94,6 +106,8 @@ export default function HealthInfoPage() {
       setOtherNotes(data.other_notes ?? "");
       diagnosis.reset(data.diagnosis_history);
       family.reset(data.family_history);
+      // 아무것도 입력한 적 없으면(온보딩 등) 보기 모드 없이 바로 편집 폼부터 연다.
+      if (isHealthInfoEmpty(data)) setMode("edit");
     } catch (err) {
       setError(err instanceof Error ? err.message : "정보를 불러오지 못했습니다.");
     } finally {
