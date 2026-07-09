@@ -103,4 +103,4 @@ frontend/src/hooks/useMedication.ts  (이번 범위는 SchedulePage 자체 fetch
   실행하지 못함. 대신 `search_medications_dur` 함수를 직접 호출해 로컬 히트/공공 API 폴백 히트/폴백도
   빈 결과 3가지 경로를 모두 확인했고, 프론트 기능은 별도로 뜬 dev 서버 + 실제 로그인/등록 플로우로
   브라우저에서 직접 확인함(수동 등록·OCR dummy_mode 등록 둘 다).
-- 브랜치명: `claude/drug-precautions-display-0aa97f` (기존 세션 브랜치 그대로 사용, 별도 브랜치 생성 안 함)
+- 브랜치명: `feature/T-MED-2-schedule-dur-precaution` (PR #35를 닫고 팀 컨벤션에 맞춰 재오픈 → PR #36)

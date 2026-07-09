@@ -21,7 +21,7 @@
   },
   "T-MED-2": {
     "owner": "agent-Claude",
-    "branch": "claude/drug-precautions-display-0aa97f",
+    "branch": "feature/T-MED-2-schedule-dur-precaution",
     "started": "2026-07-09"
   }
 }
