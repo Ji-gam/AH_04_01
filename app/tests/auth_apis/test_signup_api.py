@@ -66,9 +66,7 @@ async def test_signup_weak_password():
 
     # 검증에서 막혔으니 실제로 DB에 저장되면 안 된다
     async with TestSessionLocal() as session:
-        user = (
-            await session.execute(select(User).where(User.email == "weakpw@example.com"))
-        ).scalar_one_or_none()
+        user = (await session.execute(select(User).where(User.email == "weakpw@example.com"))).scalar_one_or_none()
         assert user is None
 
 
@@ -91,9 +89,7 @@ async def test_signup_invalid_phone_number_format():
     assert "휴대폰" in messages
 
     async with TestSessionLocal() as session:
-        user = (
-            await session.execute(select(User).where(User.email == "badphone@example.com"))
-        ).scalar_one_or_none()
+        user = (await session.execute(select(User).where(User.email == "badphone@example.com"))).scalar_one_or_none()
         assert user is None
 
 
