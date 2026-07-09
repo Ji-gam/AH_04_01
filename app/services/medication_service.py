@@ -66,14 +66,23 @@ def _strip_trailing_dosage(name: str) -> str | None:
     return stripped if stripped and stripped != name else None
 
 
+async def _fetch_master_data_safely(name: str) -> dict | None:
+    """공공데이터 API가 타임아웃/오류로 응답하지 않아도 등록약 백필 전체가 500으로 죽지 않게
+    한다 — 그 약만 이번 조회에서 건너뛴다."""
+    try:
+        return await medication_open_api_client.fetch_medication_master_data(name)
+    except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
+        return None
+
+
 async def _fetch_master_data_with_fallback(name: str) -> dict | None:
-    master_data = await medication_open_api_client.fetch_medication_master_data(name)
+    master_data = await _fetch_master_data_safely(name)
     if master_data and master_data.get("standard_code"):
         return master_data
 
     stripped_name = _strip_trailing_dosage(name)
     if stripped_name:
-        return await medication_open_api_client.fetch_medication_master_data(stripped_name)
+        return await _fetch_master_data_safely(stripped_name)
     return master_data
 
 
@@ -120,7 +129,11 @@ async def _find_interaction_warnings(meds_with_seq: list[tuple[str, Medication]]
     seen_pairs: set[frozenset[int]] = set()
 
     for item_seq, med in meds_with_seq:
-        dur_items = await medication_open_api_client.fetch_dur_item_info(item_seq=item_seq)
+        try:
+            dur_items = await medication_open_api_client.fetch_dur_item_info(item_seq=item_seq)
+        except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
+            # 공공데이터 API가 타임아웃/오류로 응답하지 않아도 그 약만 건너뛰고 나머지는 계속 확인한다.
+            continue
         for dur in dur_items:
             mixture_seq = dur.get("MIXTURE_ITEM_SEQ")
             mixture_name = dur.get("MIXTURE_ITEM_NAME")
