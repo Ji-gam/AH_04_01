@@ -119,8 +119,8 @@ async def test_list_chat_messages_success():
 
 
 async def test_pregnant_concerta_dur_warning_in_chat():
-    from datetime import date
     from sqlalchemy import select
+
     from app.models.profiles import Profile
     from app.tests.conftest import TestSessionLocal
 
@@ -153,7 +153,9 @@ async def test_pregnant_concerta_dur_warning_in_chat():
 
 async def test_geriatric_diazepam_dur_warning_in_chat():
     from datetime import date
+
     from sqlalchemy import select
+
     from app.models.profiles import Profile
     from app.tests.conftest import TestSessionLocal
 

@@ -86,29 +86,30 @@ class FakePregnantUserHealthContextService:
         return {
             "profile_id": profile_id,
             "conditions": ["ADHD", "당뇨"],
-            "medications": [
-                {"condition": "ADHD", "name": "콘서타", "dose": "18mg", "times_per_day": 1}
-            ],
-            "goals": []
+            "medications": [{"condition": "ADHD", "name": "콘서타", "dose": "18mg", "times_per_day": 1}],
+            "goals": [],
         }
 
 
 def test_is_medical_related_fallback():
     service = ChatService()
-    
+
     # 의료 관련 질의응답 -> True
     assert service._is_medical_related_fallback("콘서타 먹어도 되나요?", "임산부는 복용 시 주의해야 합니다.") is True
     assert service._is_medical_related_fallback("감기약 처방전 질문", "이 약물은 부작용이...") is True
-    
+
     # 무관한 질의응답 -> False
     assert service._is_medical_related_fallback("오늘 날씨 어때?", "오늘 날씨는 매우 맑고 따뜻할 예정입니다.") is False
-    assert service._is_medical_related_fallback("초코칩 쿠키 레시피 알려줘", "밀가루와 설탕을 섞어 구우면 됩니다.") is False
+    assert (
+        service._is_medical_related_fallback("초코칩 쿠키 레시피 알려줘", "밀가루와 설탕을 섞어 구우면 됩니다.")
+        is False
+    )
 
 
 async def test_dur_warning_injected_for_pregnant_user():
     repository = FakeChatRepository()
     spy_llm = SpyLlmStream()
-    
+
     # 임산부(콘서타) 건강 정보를 반환하는 Fake 서비스 주입
     service = ChatService(
         repository=cast(ChatRepository, repository),
@@ -116,17 +117,17 @@ async def test_dur_warning_injected_for_pregnant_user():
         retriever=cast(Retriever, FakeRetriever()),
         llm_stream=spy_llm,
     )
-    
+
     # profile_id가 2(임산부) 혹은 profile_name을 Mock 처리하기 위해 Fake DB 세션 등을 모킹하는 대신,
     # chat_service의 로직에 맞게 profile_id = 2 번(임산부) 데이터를 target_mock으로 매핑하도록 실행
     chunks = await _collect(
         service.stream_reply(session=None, profile_id=2, session_id=11, message="콘서타 먹어도 괜찮은지 물어봅니다.")
     )
-    
+
     # done 청크에 면책조항이 들어가 있는지 확인
     assert chunks[-1]["type"] == "done"
     assert chunks[-1]["disclaimer"] == DISCLAIMER_TEXT
-    
+
     # LLM 스트림에 넘겨진 content_chunks에 DUR 경고가 포함되었는지 확인
     assert len(spy_llm.received_chunks) > 0
     assert any("[임부금기 경고]" in c for c in spy_llm.received_chunks)
