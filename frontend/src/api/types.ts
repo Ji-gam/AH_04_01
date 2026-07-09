@@ -75,6 +75,8 @@ export interface ChatMessageResponse {
   role: "user" | "assistant";
   content: string;
   created_at: string;
+}
+
 // 백엔드 app/dtos/content_dto.py와 1:1로 수동 동기화 (T-LLM-3).
 export type ContentCategory = "LIFESTYLE" | "FOOD" | "MEDICAL_NEWS";
 
@@ -93,4 +95,38 @@ export interface ContentsFeedResult {
   // false면 비로그인/질환 미등록으로 전체 콘텐츠를 폴백한 결과 — "질환 등록" 안내 배너 노출 기준.
   personalized: boolean;
   items: HealthContentResult[];
+}
+
+// 백엔드 app/dtos/health_info.py와 1:1로 수동 동기화. 더보기 > 개인건강정보.
+export type Disease =
+  "CANCER" | "HEART_DISEASE" | "CEREBROVASCULAR_DISEASE" | "DIABETES" | "LIVER_DISEASE";
+
+export interface HealthInfoResult {
+  birthday: string; // YYYY-MM-DD, 조회만 가능 (여기서 수정 불가 - PATCH /users/me에서 수정)
+  gender: "MALE" | "FEMALE"; // 조회만 가능
+  height_cm: number | null;
+  weight_kg: number | null;
+  bmi: number | null; // height_cm/weight_kg 둘 다 있어야 값이 있음, 백엔드가 계산해서 내려줌
+  diagnosis_history: Disease[];
+  family_history: Disease[];
+  special_notes: string | null;
+  other_notes: string | null;
+}
+
+// PATCH 요청 바디. 전부 선택 - 보낸 필드만 반영된다. 빈 배열([])을 보내면 "질병 없음"으로 확정되어 지워진다.
+export interface HealthInfoUpdatePayload {
+  height_cm?: number;
+  weight_kg?: number;
+  diagnosis_history?: Disease[];
+  family_history?: Disease[];
+  special_notes?: string;
+  other_notes?: string;
+}
+
+// PATCH /users/me 요청 바디. email은 로그인 식별자라 백엔드가 애초에 안 받는다(가입 후 고정).
+export interface UserUpdatePayload {
+  name?: string;
+  phone_number?: string;
+  birthday?: string; // YYYY-MM-DD
+  gender?: "MALE" | "FEMALE";
 }

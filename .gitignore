@@ -12,7 +12,7 @@ wheels/
 .coverage
 *.coverage
 .coverage.*
-
+docker-compose.override.yml
 # frontend
 node_modules/
 frontend/dist/

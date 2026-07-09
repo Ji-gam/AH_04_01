@@ -6,7 +6,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.profiles import Gender, Profile, ProfileRelation
 
-ALLOWED_UPDATE_FIELDS = ["name", "phone_number", "gender", "birthday"]
+ALLOWED_UPDATE_FIELDS = [
+    "name",
+    "phone_number",
+    "gender",
+    "birthday",
+    "height_cm",
+    "weight_kg",
+    "diagnosis_history",
+    "family_history",
+    "special_notes",
+    "other_notes",
+]
 
 
 class ProfileRepository:
