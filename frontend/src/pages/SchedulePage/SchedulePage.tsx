@@ -39,6 +39,19 @@ interface TimelineItem {
   tip: string | null;
 }
 
+interface DurSearchResultItem {
+  item_name: string;
+  entp_name: string;
+  efficacy: string;
+  precautions: string;
+}
+
+/** 약 이름별 DUR 조회 결과 캐시 상태 — 아직 조회 전이면 키가 없고, 조회 중/완료/실패를 구분한다. */
+type DurLookup =
+  | { status: "loading" }
+  | { status: "error" }
+  | { status: "done"; results: DurSearchResultItem[]; notFoundReason: string | null };
+
 interface TimeGroup {
   time: string; // "HH:MM"
   items: TimelineItem[];
@@ -134,6 +147,9 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checked, setChecked] = useState<Set<string>>(() => loadChecked(dateStr));
+  // 약 이름별 DUR 조회 결과 캐시 — 펼침 버튼을 누른 약만 조회하고, 같은 이름은 재조회하지 않는다.
+  const [durByName, setDurByName] = useState<Map<string, DurLookup>>(new Map());
+  const [expandedNames, setExpandedNames] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     Promise.all([apiFetch<MedicationSchedule[]>("/medications"), notificationApi.list()])
@@ -181,6 +197,36 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
     }
     setChecked(next);
     saveChecked(dateStr, next);
+  };
+
+  const toggleDurExpand = (name: string) => {
+    setExpandedNames((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+
+    if (durByName.has(name)) return; // 이미 조회했거나 조회 중 — 재조회하지 않음
+
+    setDurByName((prev) => new Map(prev).set(name, { status: "loading" }));
+    apiFetch<{
+      elapsed_ms: number;
+      results: DurSearchResultItem[];
+      not_found_reason: string | null;
+    }>(`/medications/search-dur?query=${encodeURIComponent(name)}`)
+      .then((res) => {
+        setDurByName((prev) =>
+          new Map(prev).set(name, {
+            status: "done",
+            results: res.results,
+            notFoundReason: res.not_found_reason,
+          }),
+        );
+      })
+      .catch(() => {
+        setDurByName((prev) => new Map(prev).set(name, { status: "error" }));
+      });
   };
 
   const title = isToday
@@ -350,13 +396,12 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {group.items.map((item) => {
                       const done = checked.has(item.key);
+                      const isExpanded = expandedNames.has(item.name);
+                      const durState = durByName.get(item.name);
                       return (
                         <div
                           key={item.key}
                           style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
                             background: "#FDFCF9",
                             border: `1px solid ${c.cardBorder}`,
                             borderRadius: 12,
@@ -364,6 +409,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                             opacity: done ? 0.55 : 1,
                           }}
                         >
+                        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                           {isToday ? (
                             <button
                               type="button"
@@ -414,6 +460,65 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                               </p>
                             )}
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleDurExpand(item.name)}
+                            aria-expanded={isExpanded}
+                            style={{
+                              flexShrink: 0,
+                              border: "none",
+                              background: "none",
+                              color: c.pink,
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              padding: "4px 6px",
+                            }}
+                          >
+                            주의사항 {isExpanded ? "닫기 ▲" : "보기 ▼"}
+                          </button>
+                        </div>
+
+                        {isExpanded && (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              background: c.tipBg,
+                              borderRadius: 10,
+                              padding: "8px 12px",
+                              fontSize: 12,
+                              color: c.tipText,
+                              lineHeight: 1.5,
+                            }}
+                          >
+                            {(!durState || durState.status === "loading") && "조회 중..."}
+                            {durState?.status === "error" && "주의사항을 불러오지 못했습니다."}
+                            {durState?.status === "done" && durState.results.length === 0 && (
+                              <span>
+                                {durState.notFoundReason ?? "등록된 DUR/효능 정보가 없습니다."}
+                              </span>
+                            )}
+                            {durState?.status === "done" && durState.results.length > 0 && (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                {durState.results.length > 1 && (
+                                  <span style={{ color: c.textMuted }}>
+                                    "{item.name}" 이름으로 매칭된 {durState.results.length}건 —
+                                    같은 이름의 다른 약이 섞여 있을 수 있어요.
+                                  </span>
+                                )}
+                                {durState.results.map((r, idx) => (
+                                  <div key={idx}>
+                                    <strong>
+                                      {r.item_name} ({r.entp_name})
+                                    </strong>
+                                    <p style={{ margin: "2px 0" }}>💊 효능: {r.efficacy}</p>
+                                    <p style={{ margin: "2px 0" }}>⚠️ 주의사항: {r.precautions}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         </div>
                       );
                     })}

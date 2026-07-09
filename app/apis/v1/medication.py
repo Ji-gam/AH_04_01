@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import config
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
 from app.dtos.medication_dto import (
@@ -17,6 +18,7 @@ from app.dtos.medication_dto import (
     RecognitionResult,
 )
 from app.models.profiles import Profile
+from app.services import medication_open_api_client
 from app.services.medication_service import MedicationService
 
 medication_router = APIRouter(tags=["Medications"])
@@ -156,9 +158,6 @@ async def search_medications_dur(
     rows = cursor.fetchall()
     conn.close()
 
-    end_time = time.perf_counter()
-    elapsed_ms = (end_time - start_time) * 1000
-
     results = []
     for row in rows:
         results.append(
@@ -170,7 +169,52 @@ async def search_medications_dur(
             }
         )
 
-    return {"elapsed_ms": round(elapsed_ms, 4), "results": results}
+    # 로컬 SQLite Light DB는 제품 27,231건 중 효능 데이터가 4,753건뿐이라 커버리지가 낮다.
+    # 결과가 없으면 식약처 공공데이터 API(e약은요)로 실시간 폴백한다.
+    checked_public_api = False
+    if not results:
+        if config.PUBLIC_DATA_API_KEY:
+            checked_public_api = True
+            summary_items = await medication_open_api_client.fetch_drug_summary(item_name=query)
+            for item in summary_items:
+                precaution_parts = [
+                    item.get("atpnQesitm"),
+                    item.get("atpnWarnQesitm"),
+                    item.get("intrcQesitm"),
+                ]
+                precautions = " ".join(p.strip() for p in precaution_parts if p and p.strip())
+                results.append(
+                    {
+                        "item_name": item.get("itemName") or query,
+                        "entp_name": item.get("entpName") or "",
+                        "efficacy": (item.get("efcyQesitm") or "정보 없음").strip(),
+                        "precautions": precautions or "특이사항 없음",
+                    }
+                )
+
+    # 결과가 끝까지 없으면, 어디까지 찾아봤는지를 그대로 알려준다 — "정보 없음"만 보여주면
+    # 사용자가 "안 찾아본 것 아니냐"고 의심할 수 있어 신뢰도 문제가 생긴다.
+    not_found_reason = None
+    if not results:
+        if checked_public_api:
+            not_found_reason = (
+                "로컬 DB(식약처 DUR 데이터 일부)와 식약처 공공데이터(e약은요) 모두에서 "
+                "일치하는 의약품 정보를 찾지 못했습니다."
+            )
+        else:
+            not_found_reason = (
+                "로컬 DB(식약처 DUR 데이터 일부)에서 일치하는 의약품 정보를 찾지 못했습니다. "
+                "공공데이터포털 실시간 조회는 서비스키가 설정되지 않아 시도하지 못했습니다."
+            )
+
+    end_time = time.perf_counter()
+    elapsed_ms = (end_time - start_time) * 1000
+
+    return {
+        "elapsed_ms": round(elapsed_ms, 4),
+        "results": results,
+        "not_found_reason": not_found_reason,
+    }
 
 
 @medication_router.post(

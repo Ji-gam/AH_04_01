@@ -12,6 +12,7 @@ interface SearchResultItem {
 interface SearchDurResponse {
   elapsed_ms: number;
   results: SearchResultItem[];
+  not_found_reason: string | null;
 }
 
 export default function MorePage() {
@@ -19,6 +20,7 @@ export default function MorePage() {
   const [query, setQuery] = useState("");
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const [results, setResults] = useState<SearchResultItem[]>([]);
+  const [notFoundReason, setNotFoundReason] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +35,7 @@ export default function MorePage() {
       );
       setElapsedMs(data.elapsed_ms);
       setResults(data.results);
+      setNotFoundReason(data.not_found_reason);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "검색 중 오류가 발생했습니다.");
@@ -45,6 +48,7 @@ export default function MorePage() {
     setIsModalOpen(true);
     setQuery("");
     setResults([]);
+    setNotFoundReason(null);
     setElapsedMs(null);
     setError(null);
   };
@@ -246,7 +250,9 @@ export default function MorePage() {
                       </p>
                     </div>
                   ))
-                : !loading && elapsedMs !== null && <p>검색 결과가 없습니다.</p>}
+                : !loading && elapsedMs !== null && (
+                    <p>{notFoundReason ?? "검색 결과가 없습니다."}</p>
+                  )}
             </div>
           </div>
         </div>
