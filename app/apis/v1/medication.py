@@ -20,7 +20,7 @@ from app.dtos.medication_dto import (
 )
 from app.models.profiles import Profile
 from app.services import medication_open_api_client
-from app.services.medication_service import MedicationService
+from app.services.medication_service import MedicationService, _strip_trailing_dosage
 
 medication_router = APIRouter(tags=["Medications"])
 
@@ -134,6 +134,57 @@ async def check_medication_interactions(
     return await service.check_interactions(session, profile.id)
 
 
+_LOCAL_DUR_SQL = """
+SELECT
+    p.item_name,
+    p.entp_name,
+    e.efcy_qesitm,
+    GROUP_CONCAT(DISTINCT r.rule_type || ': ' || r.prohbt_content) AS precautions
+FROM products p
+LEFT JOIN drugs_einfo e ON p.item_seq = e.item_seq
+LEFT JOIN dur_product_rules r ON p.item_seq = r.item_seq
+WHERE p.item_name LIKE ?
+GROUP BY p.item_seq
+LIMIT 15;
+"""
+
+
+def _query_local_dur_rows(cursor, query: str, stripped_query: str | None) -> list:
+    """로컬 DB의 품목명은 'mg'가 아니라 '밀리그램' 등 한글 단위 표기라, OCR/사용자 입력이
+    'NN mg' 접미사로 끝나면 그대로는 매칭이 안 될 수 있다 — 접미사를 뗀 이름으로 재시도한다."""
+    cursor.execute(_LOCAL_DUR_SQL, (f"%{query}%",))
+    rows = cursor.fetchall()
+    if not rows and stripped_query:
+        cursor.execute(_LOCAL_DUR_SQL, (f"%{stripped_query}%",))
+        rows = cursor.fetchall()
+    return rows
+
+
+def _build_dur_result(item_name: str, entp_name: str, efficacy: str | None, precautions: str | None) -> dict:
+    efficacy = (efficacy or "").strip()
+    precautions = (precautions or "").strip()
+    return {
+        "item_name": item_name,
+        "entp_name": entp_name,
+        "efficacy": efficacy or "정보 없음",
+        "precautions": precautions or "특이사항 없음",
+    }
+
+
+def _has_content(result: dict) -> bool:
+    return result["efficacy"] != "정보 없음" or result["precautions"] != "특이사항 없음"
+
+
+def _drop_empty_duplicates(results: list[dict]) -> list[dict]:
+    """같은 이름으로 여러 품목이 매칭될 때(제형/제조사 차이 등) 그중 일부만 효능·주의사항이
+    있으면, 내용이 하나도 없는 나머지는 노이즈이므로 뺀다. 반대로 매칭된 품목 전부에 내용이
+    없으면(이 약 자체의 데이터가 아직 없는 경우) — 찾은 품목명만이라도 그대로 보여주는 게
+    "못 찾았다"는 잘못된 인상을 주는 것보다 낫다."""
+    if any(_has_content(r) for r in results):
+        return [r for r in results if _has_content(r)]
+    return results
+
+
 @medication_router.get(
     "/medications/search-dur",
     summary="의약품 DUR 및 효능 검색 API (SQLite Light + 공공데이터 폴백)",
@@ -160,37 +211,14 @@ async def search_medications_dur(
         "dur_drug_light.db",
     )
 
+    stripped_query = _strip_trailing_dosage(query)
+
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-
-    sql = """
-    SELECT
-        p.item_name,
-        p.entp_name,
-        e.efcy_qesitm,
-        GROUP_CONCAT(DISTINCT r.rule_type || ': ' || r.prohbt_content) AS precautions
-    FROM products p
-    LEFT JOIN drugs_einfo e ON p.item_seq = e.item_seq
-    LEFT JOIN dur_product_rules r ON p.item_seq = r.item_seq
-    WHERE p.item_name LIKE ?
-    GROUP BY p.item_seq
-    LIMIT 15;
-    """
-
-    cursor.execute(sql, (f"%{query}%",))
-    rows = cursor.fetchall()
+    rows = _query_local_dur_rows(cursor, query, stripped_query)
     conn.close()
 
-    results = []
-    for row in rows:
-        results.append(
-            {
-                "item_name": row[0],
-                "entp_name": row[1],
-                "efficacy": row[2] or "정보 없음",
-                "precautions": row[3] or "특이사항 없음",
-            }
-        )
+    results = [_build_dur_result(row[0], row[1], row[2], row[3]) for row in rows]
 
     # 로컬 SQLite Light DB는 제품 27,231건 중 효능 데이터가 4,753건뿐이라 커버리지가 낮다.
     # 결과가 없으면 식약처 공공데이터 API(e약은요)로 실시간 폴백한다.
@@ -199,6 +227,8 @@ async def search_medications_dur(
         if config.PUBLIC_DATA_API_KEY:
             checked_public_api = True
             summary_items = await medication_open_api_client.fetch_drug_summary(item_name=query)
+            if not summary_items and stripped_query:
+                summary_items = await medication_open_api_client.fetch_drug_summary(item_name=stripped_query)
             for item in summary_items:
                 precaution_parts = [
                     item.get("atpnQesitm"),
@@ -207,13 +237,12 @@ async def search_medications_dur(
                 ]
                 precautions = " ".join(p.strip() for p in precaution_parts if p and p.strip())
                 results.append(
-                    {
-                        "item_name": item.get("itemName") or query,
-                        "entp_name": item.get("entpName") or "",
-                        "efficacy": (item.get("efcyQesitm") or "정보 없음").strip(),
-                        "precautions": precautions or "특이사항 없음",
-                    }
+                    _build_dur_result(
+                        item.get("itemName") or query, item.get("entpName") or "", item.get("efcyQesitm"), precautions
+                    )
                 )
+
+    results = _drop_empty_duplicates(results)
 
     # 결과가 끝까지 없으면, 어디까지 찾아봤는지를 그대로 알려준다 — "정보 없음"만 보여주면
     # 사용자가 "안 찾아본 것 아니냐"고 의심할 수 있어 신뢰도 문제가 생긴다.
