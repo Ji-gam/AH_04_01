@@ -41,8 +41,6 @@ jobs:
   frontend-check:
     name: Frontend Lint & Type Check
     runs-on: ubuntu-latest
-    # 프론트엔드 코드가 아직 정리 중이라, 당장은 결과를 가시화만 하고 PR 병합을 막지 않는다.
-    # 팀이 기존 코드를 정리한 뒤 이 continue-on-error들을 제거해 강제 게이트로 전환할 것.
     defaults:
       run:
         working-directory: frontend
@@ -60,24 +58,18 @@ jobs:
 
     - name: Install Dependencies
       run: npm ci
-      continue-on-error: true
 
     - name: Run Prettier Format Check
       run: npm run format:check
-      continue-on-error: true
 
     - name: Run ESLint
       run: npm run lint
-      continue-on-error: true
 
     - name: Run Type Check
       run: npm run typecheck
-      continue-on-error: true
 
     - name: Run Tests
       run: npm test
-      continue-on-error: true
 
     - name: Run Build
       run: npm run build
-      continue-on-error: true
