@@ -33,9 +33,9 @@ export default function MorePage() {
       );
       setElapsedMs(data.elapsed_ms);
       setResults(data.results);
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      setError(err?.message || "검색 중 오류가 발생했습니다.");
+      setError(err instanceof Error ? err.message : "검색 중 오류가 발생했습니다.");
     } finally {
       setLoading(false);
     }
