@@ -92,6 +92,16 @@ class ChatService:
         target_mock = None
         if str(profile_id) in mock_users:
             target_mock = mock_users[str(profile_id)]
+            is_pregnant = target_mock.get("is_pregnant", False)
+            birth_str = target_mock.get("birthday")
+            if birth_str:
+                try:
+                    b_date = date.fromisoformat(birth_str)
+                    today = date.today()
+                    age = today.year - b_date.year - ((today.month, today.day) < (b_date.month, b_date.day))
+                    is_geriatric = age >= 65
+                except ValueError:
+                    pass
         elif is_pregnant or profile_name == "임산부":
             target_mock = mock_users.get("2")
             is_pregnant = True
@@ -230,7 +240,7 @@ class ChatService:
 
     def _is_medical_related_fallback(self, message: str, response: str) -> bool:
         medical_keywords = [
-            "약", "복용", "약물", "부작용", "처방", "dur", "치료", "복약", "먹어", "먹는", "정",
+            "약", "복용", "약물", "부작용", "처방", "dur", "치료", "복약", "먹어", "먹는", "정제", "알약",
             "콘서타", "디아제팜", "메트포르민", "암로디핀", "아스피린", "타이레놀", "졸피뎀",
             "병", "질환", "의사", "진단", "당뇨", "고혈압", "임신", "임산부", "노인", "고령",
             "증상", "의료", "병원", "진료", "의학"
