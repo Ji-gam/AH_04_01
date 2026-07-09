@@ -20,7 +20,7 @@ export default function MorePage() {
           }}
         >
           <span>
-            ⏰ 복약 시간표
+            ⏰ 복약 스케줄
             <span style={{ display: "block", fontSize: "12px", color: "#888", marginTop: "2px" }}>
               오늘 먹을 약을 시간순으로 확인하고 복용 체크해요
             </span>
