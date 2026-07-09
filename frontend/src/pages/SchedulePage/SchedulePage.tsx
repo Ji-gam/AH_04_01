@@ -115,10 +115,17 @@ function saveChecked(dateStr: string, checked: Set<string>) {
   localStorage.setItem(`intake-${dateStr}`, JSON.stringify([...checked]));
 }
 
-export default function SchedulePage() {
+interface Props {
+  /** 모달 등에 임베드할 때 URL 쿼리 대신 직접 넘기는 날짜 ("YYYY-MM-DD") */
+  dateStr?: string;
+  /** true면 전체 페이지 배경/최소높이 없이 카드처럼 렌더링 (복약알림 달력 모달용) */
+  embedded?: boolean;
+}
+
+export default function SchedulePage({ dateStr: dateStrProp, embedded = false }: Props = {}) {
   const [searchParams] = useSearchParams();
   const todayStr = toDateString(new Date());
-  const dateStr = searchParams.get("date") ?? todayStr;
+  const dateStr = dateStrProp ?? searchParams.get("date") ?? todayStr;
   const date = new Date(`${dateStr}T00:00:00`);
   const isToday = dateStr === todayStr;
 
@@ -181,7 +188,13 @@ export default function SchedulePage() {
     : `${date.getMonth() + 1}월 ${date.getDate()}일 복약 시간표`;
 
   return (
-    <div style={{ background: c.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
+    <div
+      style={
+        embedded
+          ? { background: c.pageBg, borderRadius: 16, padding: "20px 16px" }
+          : { background: c.pageBg, minHeight: "100vh", padding: "24px 16px" }
+      }
+    >
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
         <div
           style={{

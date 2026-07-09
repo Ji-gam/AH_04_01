@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
 import type { MedicationSchedule } from "../../hooks/useMedication";
+import SchedulePage from "../SchedulePage/SchedulePage";
 
 import AlarmCalendar from "./components/AlarmCalendar";
 import AlarmForm, { type AlarmFormSubmit } from "./components/AlarmForm";
 import MedTimeForm from "./components/MedTimeForm";
+import Modal from "./components/Modal";
 import ToggleSwitch from "./components/ToggleSwitch";
 import { isScheduleDueOnDate, toDateString } from "./dateUtils";
 import { alarmTheme as t } from "./theme";
@@ -65,7 +66,6 @@ function saveMedAlarmDisabled(disabled: Set<string>) {
 }
 
 export default function AlarmPage() {
-  const navigate = useNavigate();
   const [schedules, setSchedules] = useState<NotificationScheduleResult[]>([]);
   const [medSchedules, setMedSchedules] = useState<MedicationSchedule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +82,8 @@ export default function AlarmPage() {
   const [medAlarmDisabled, setMedAlarmDisabled] = useState<Set<string>>(() =>
     loadMedAlarmDisabled(),
   );
+  // 달력 날짜 클릭 시 복약 스케줄 화면을 페이지 이동 없이 모달로 띄운다.
+  const [scheduleModalDate, setScheduleModalDate] = useState<string | null>(null);
 
   const today = new Date();
   // 달력 선택 표시는 항상 오늘 — 날짜 클릭 시 이 페이지에서 필터하는 대신 복약스케줄 화면으로 이동한다.
@@ -223,13 +225,12 @@ export default function AlarmPage() {
       .catch((e: Error) => setError(`알림 상태 변경에 실패했습니다. (${e.message})`));
   };
 
-  // 수정 폼은 페이지 상단에 열리므로, 스크롤을 내린 상태에서도 폼이 보이도록 위로 올린다.
+  // 수정 폼은 모달로 뜨므로 스크롤 이동이 필요 없다.
   const startEdit = (schedule: NotificationScheduleResult) => {
     setEditingSchedule(schedule);
     setEditingMed(null);
     setShowAddForm(false);
     setFormError(undefined);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const startEditMed = (med: MedicationSchedule, time: string) => {
@@ -237,7 +238,6 @@ export default function AlarmPage() {
     setEditingSchedule(null);
     setShowAddForm(false);
     setFormError(undefined);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // 해당 시각 하나만 새 시각으로 바꾸고, 나머지 시각은 그대로 유지한다.
@@ -349,44 +349,56 @@ export default function AlarmPage() {
         </div>
 
         {showAddForm && (
-          <AlarmForm
-            isSaving={isSaving}
-            errorMessage={formError}
-            onCancel={() => setShowAddForm(false)}
-            onSubmit={handleCreate}
-          />
+          <Modal onClose={() => setShowAddForm(false)}>
+            <AlarmForm
+              isSaving={isSaving}
+              errorMessage={formError}
+              onCancel={() => setShowAddForm(false)}
+              onSubmit={handleCreate}
+            />
+          </Modal>
         )}
 
         {editingSchedule && (
-          <AlarmForm
-            key={editingSchedule.id}
-            initial={editingSchedule}
-            isSaving={isSaving}
-            errorMessage={formError}
-            onCancel={() => setEditingSchedule(null)}
-            onSubmit={handleUpdate}
-          />
+          <Modal onClose={() => setEditingSchedule(null)}>
+            <AlarmForm
+              key={editingSchedule.id}
+              initial={editingSchedule}
+              isSaving={isSaving}
+              errorMessage={formError}
+              onCancel={() => setEditingSchedule(null)}
+              onSubmit={handleUpdate}
+            />
+          </Modal>
         )}
 
         {editingMed && (
-          <MedTimeForm
-            key={`${editingMed.med.id}-${editingMed.time}`}
-            medName={editingMed.med.drug_name}
-            initialTime={editingMed.time}
-            isSaving={isSaving}
-            errorMessage={formError}
-            onCancel={() => setEditingMed(null)}
-            onSubmit={handleUpdateMedTime}
-          />
+          <Modal onClose={() => setEditingMed(null)}>
+            <MedTimeForm
+              key={`${editingMed.med.id}-${editingMed.time}`}
+              medName={editingMed.med.drug_name}
+              initialTime={editingMed.time}
+              isSaving={isSaving}
+              errorMessage={formError}
+              onCancel={() => setEditingMed(null)}
+              onSubmit={handleUpdateMedTime}
+            />
+          </Modal>
         )}
 
-        {/* 날짜를 누르면 복약 시간표 화면으로 이동해 그 날짜의 통합 타임라인(약+알림)을 보여준다. */}
+        {/* 날짜를 누르면 그 날짜의 복약 스케줄 화면(타임라인+복용체크)을 모달로 띄운다. */}
+        {scheduleModalDate && (
+          <Modal onClose={() => setScheduleModalDate(null)}>
+            <SchedulePage dateStr={scheduleModalDate} embedded />
+          </Modal>
+        )}
+
         <AlarmCalendar
           year={visibleYear}
           month={visibleMonth}
           selectedDateStr={selectedDateStr}
           schedules={schedules}
-          onSelectDate={(dateStr) => navigate(`/schedule?date=${dateStr}`)}
+          onSelectDate={(dateStr) => setScheduleModalDate(dateStr)}
           onPrevMonth={handlePrevMonth}
           onNextMonth={handleNextMonth}
         />
