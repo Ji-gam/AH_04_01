@@ -120,8 +120,7 @@ async def list_medication_schedules(
     summary="의약품 DUR 및 효능 검색 API (SQLite Light + 공공데이터 폴백)",
     description=(
         "Light SQLite 데이터베이스에서 제품명으로 먼저 검색하고, 결과가 없으면 식약처 공공데이터포털"
-        "(e약은요) API로 실시간 폴백한다. 각 결과 항목의 `source` 필드로 어디서 온 정보인지"
-        "(`local_dur_db` | `public_data_api`) 구분할 수 있고, 결과가 끝까지 없으면 `not_found_reason`에"
+        "(e약은요) API로 실시간 폴백한다. 결과가 끝까지 없으면 `not_found_reason`에"
         "어디까지 찾아봤는지가 담긴다."
     ),
 )
@@ -171,7 +170,6 @@ async def search_medications_dur(
                 "entp_name": row[1],
                 "efficacy": row[2] or "정보 없음",
                 "precautions": row[3] or "특이사항 없음",
-                "source": "local_dur_db",
             }
         )
 
@@ -195,7 +193,6 @@ async def search_medications_dur(
                         "entp_name": item.get("entpName") or "",
                         "efficacy": (item.get("efcyQesitm") or "정보 없음").strip(),
                         "precautions": precautions or "특이사항 없음",
-                        "source": "public_data_api",
                     }
                 )
 

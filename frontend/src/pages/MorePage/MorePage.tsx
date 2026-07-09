@@ -7,7 +7,6 @@ interface SearchResultItem {
   entp_name: string;
   efficacy: string;
   precautions: string;
-  source: "local_dur_db" | "public_data_api";
 }
 
 interface SearchDurResponse {
@@ -16,10 +15,7 @@ interface SearchDurResponse {
   not_found_reason: string | null;
 }
 
-const DUR_SOURCE_LABEL: Record<SearchResultItem["source"], string> = {
-  local_dur_db: "출처: 식약처 DUR 데이터(로컬)",
-  public_data_api: "출처: 식약처 공공데이터포털 e약은요(실시간)",
-};
+const DUR_SOURCE_LABEL = "출처: 식약처 의약품안전나라(DUR·의약품 개요정보)";
 
 export default function MorePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -255,7 +251,7 @@ export default function MorePage() {
                         <strong>주의사항:</strong> {item.precautions}
                       </p>
                       <p style={{ margin: "5px 0 0", fontSize: "11px", color: "#666" }}>
-                        {DUR_SOURCE_LABEL[item.source]}
+                        {DUR_SOURCE_LABEL}
                       </p>
                     </div>
                   ))
