@@ -12,13 +12,17 @@ interface SearchResultItem {
 interface SearchDurResponse {
   elapsed_ms: number;
   results: SearchResultItem[];
+  not_found_reason: string | null;
 }
+
+const DUR_SOURCE_LABEL = "출처: 식약처 의약품안전나라(DUR·의약품 개요정보)";
 
 export default function MorePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const [results, setResults] = useState<SearchResultItem[]>([]);
+  const [notFoundReason, setNotFoundReason] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +37,7 @@ export default function MorePage() {
       );
       setElapsedMs(data.elapsed_ms);
       setResults(data.results);
+      setNotFoundReason(data.not_found_reason);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "검색 중 오류가 발생했습니다.");
@@ -45,6 +50,7 @@ export default function MorePage() {
     setIsModalOpen(true);
     setQuery("");
     setResults([]);
+    setNotFoundReason(null);
     setElapsedMs(null);
     setError(null);
   };
@@ -244,9 +250,13 @@ export default function MorePage() {
                       >
                         <strong>주의사항:</strong> {item.precautions}
                       </p>
+                      <p style={{ margin: "5px 0 0", fontSize: "11px", color: "#666" }}>
+                        {DUR_SOURCE_LABEL}
+                      </p>
                     </div>
                   ))
-                : !loading && elapsedMs !== null && <p>검색 결과가 없습니다.</p>}
+                : !loading &&
+                  elapsedMs !== null && <p>{notFoundReason ?? "검색 결과가 없습니다."}</p>}
             </div>
           </div>
         </div>

@@ -18,5 +18,10 @@
     "owner": "agent-Claude",
     "branch": "feature/T-MED-4-medicine-master-data",
     "started": "2026-07-08"
+  },
+  "T-MED-2": {
+    "owner": "agent-Claude",
+    "branch": "feature/T-MED-2-schedule-dur-precaution",
+    "started": "2026-07-09"
   }
 }
