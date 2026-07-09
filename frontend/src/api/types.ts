@@ -75,6 +75,8 @@ export interface ChatMessageResponse {
   role: "user" | "assistant";
   content: string;
   created_at: string;
+}
+
 // 백엔드 app/dtos/content_dto.py와 1:1로 수동 동기화 (T-LLM-3).
 export type ContentCategory = "LIFESTYLE" | "FOOD" | "MEDICAL_NEWS";
 
