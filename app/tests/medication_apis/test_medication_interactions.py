@@ -192,6 +192,36 @@ async def test_backfill_failure_still_returns_without_crashing(monkeypatch):
     assert session.commit_called is False
 
 
+async def test_backfill_retries_with_dosage_suffix_stripped(monkeypatch):
+    """공공데이터 API의 정식 품목명은 'mg'가 아니라 '밀리그램' 등 한글 단위 표기를 쓰는 경우가
+    많아 'NN mg' 접미사가 붙은 OCR 등록명은 그대로 검색하면 매칭이 안 될 수 있다. 접미사를 뗀
+    이름으로 재시도해서 찾으면 그 결과를 쓴다."""
+    med_auto = _medication(1, "레마이드정100mg", None)
+    med_b = _medication(2, "와파린정", "222")
+    repository = _FakeRepository([_schedule(med_auto), _schedule(med_b)])
+    service = MedicationService(repository=repository)
+    session = _FakeSession()
+
+    async def _resolve_master_data(name: str):
+        if name == "레마이드정":
+            return {"standard_code": "PDP_333"}
+        return None
+
+    async def _fake_fetch(item_seq: str):
+        if item_seq == "333":
+            return [{"MIXTURE_ITEM_SEQ": "222", "MIXTURE_ITEM_NAME": "와파린정", "PROHBT_CONTENT": "경고"}]
+        return []
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_medication_master_data", _resolve_master_data)
+    monkeypatch.setattr(medication_open_api_client, "fetch_dur_item_info", _fake_fetch)
+
+    result = await service.check_interactions(session=session, profile_id=1)
+
+    assert result.checked_count == 2
+    assert med_auto.standard_code == "PDP_333"
+    assert len(result.warnings) == 1
+
+
 async def test_deduplicates_warning_for_reverse_pair(monkeypatch):
     med_a = _medication(1, "타이레놀정", "111")
     med_b = _medication(2, "와파린정", "222")

@@ -405,3 +405,57 @@ async def test_search_medications_dur_missing_query():
         # 필수 query 인자가 누락된 경우 422 Unprocessable Entity 에러 검증
         response = await client.get("/api/v1/medications/search-dur", headers=headers)
         assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+
+async def test_search_medications_dur_retries_with_dosage_suffix_stripped():
+    """로컬 DB의 품목명은 'mg'가 아니라 '밀리그람' 등 한글 단위 표기라, OCR 등록명처럼
+    'NN mg' 접미사가 붙은 검색어는 그대로면 매칭이 안 될 수 있다(T-MED-2-2에서 발견).
+    '바이엘아스피린정500밀리그람'은 로컬 DB에 실제 효능 데이터가 있는 품목이라, 접미사를
+    떼지 못하면 결과가 아예 없어야(0건) 재시도 로직이 실제로 동작했는지 구분할 수 있다."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "dur_search_dosage_test@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        exact_response = await client.get("/api/v1/medications/search-dur?query=바이엘아스피린정500mg", headers=headers)
+        stripped_response = await client.get("/api/v1/medications/search-dur?query=바이엘아스피린정", headers=headers)
+
+        assert exact_response.status_code == status.HTTP_200_OK
+        assert stripped_response.status_code == status.HTTP_200_OK
+        exact_results = exact_response.json()["results"]
+        stripped_results = stripped_response.json()["results"]
+        assert len(exact_results) > 0
+        assert len(exact_results) == len(stripped_results)
+
+
+async def test_search_medications_dur_filters_out_items_with_no_content():
+    """같은 이름으로 여러 품목이 매칭돼도(제형/제조사 차이 등), 효능·주의사항이 둘 다 없는
+    빈 항목은 결과에서 제외한다 — '아스피린정'은 로컬 DB에 3건이 매칭되지만 1건만 실제
+    내용이 있다."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "dur_search_no_empty_test@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = await client.get("/api/v1/medications/search-dur?query=아스피린정", headers=headers)
+
+        assert response.status_code == status.HTTP_200_OK
+        results = response.json()["results"]
+        assert len(results) > 0
+        for result in results:
+            assert result["efficacy"] != "정보 없음" or result["precautions"] != "특이사항 없음"
+
+
+async def test_search_medications_dur_keeps_single_match_even_without_content():
+    """매칭된 품목이 하나뿐인데 그 품목에 효능·주의사항 데이터가 전혀 없는 경우(로컬 라이트
+    DB의 커버리지 한계), "제외할 다른 후보"가 없으므로 그 품목명 그대로 보여준다 — "정보
+    없음"으로라도 무엇을 찾았는지 보여주는 게 "아예 못 찾았다"는 인상을 주는 것보다 낫다."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "dur_no_content_single@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = await client.get("/api/v1/medications/search-dur?query=레마이드정100mg", headers=headers)
+
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert len(data["results"]) == 1
+        assert "레마이드정" in data["results"][0]["item_name"]
+        assert data["not_found_reason"] is None
