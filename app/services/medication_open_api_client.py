@@ -11,6 +11,8 @@ from app.core import config
 
 PILL_IDENTIFICATION_URL = "https://apis.data.go.kr/1471000/MdcinGrnIdntfcInfoService02/getMdcinGrnIdntfcInfoList02"
 DRUG_APPROVAL_URL = "https://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService06/getDrugPrdtPrmsnDtlInq05"
+DRUG_SUMMARY_URL = "https://apis.data.go.kr/1471000/DrbEasyDrugInfoService/getDrbEasyDrugList"
+DUR_ITEM_INFO_URL = "https://apis.data.go.kr/1471000/DURPrdlstInfoService02/getUsjntTabooInfoList02"
 
 _TIMEOUT = 10.0
 _DEFAULT_NUM_OF_ROWS = 100
@@ -73,3 +75,25 @@ async def fetch_drug_approval_info(
     if item_name:
         params["item_name"] = item_name
     return await _fetch_items(DRUG_APPROVAL_URL, params)
+
+
+async def fetch_drug_summary(
+    item_name: str | None = None, num_of_rows: int = _DEFAULT_NUM_OF_ROWS, page_no: int = 1
+) -> list[dict]:
+    """e약은요(의약품개요정보) 조회서비스 — 효능효과/용법용량/주의사항 요약 텍스트 포함."""
+    params: dict = {"numOfRows": num_of_rows, "pageNo": page_no}
+    if item_name:
+        params["item_name"] = item_name
+    return await _fetch_items(DRUG_SUMMARY_URL, params)
+
+
+async def fetch_dur_item_info(
+    item_name: str | None = None, num_of_rows: int = _DEFAULT_NUM_OF_ROWS, page_no: int = 1
+) -> list[dict]:
+    """DUR 품목정보(병용금기 등) 조회서비스 — 품목 단위 병용금기/노인주의/임부금기 등 정보.
+    이 서비스는 파라미터명이 `itemName`(카멜케이스)으로, 다른 세 API의 `item_name`(스네이크케이스)과
+    다르다 — 공공데이터포털 서비스별로 파라미터 명명 규칙이 다른 것이 실제 스펙이다."""
+    params: dict = {"numOfRows": num_of_rows, "pageNo": page_no}
+    if item_name:
+        params["itemName"] = item_name
+    return await _fetch_items(DUR_ITEM_INFO_URL, params)

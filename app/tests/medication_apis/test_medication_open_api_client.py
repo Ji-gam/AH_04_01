@@ -113,3 +113,49 @@ async def test_fetch_raises_on_error_result_code(monkeypatch):
 
     with pytest.raises(client.PublicDataApiError):
         await client.fetch_drug_approval_info(item_name="타이레놀")
+
+
+async def test_fetch_drug_summary_parses_items(monkeypatch):
+    """e약은요(의약품개요정보) API — 효능효과/용법용량/주의사항 텍스트 포함."""
+    monkeypatch.setattr(config, "PUBLIC_DATA_API_KEY", "test-service-key")
+    items = [{"ITEM_NAME": "타이레놀정500밀리그람", "EE_DOC_DATA": "해열, 진통", "UD_DOC_DATA": "1회 1~2정"}]
+
+    async def _fake_get(self, url, params=None, timeout=None):
+        assert url == client.DRUG_SUMMARY_URL
+        assert params["item_name"] == "타이레놀"
+        return _FakeResponse(200, _wrap_response(items))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _fake_get)
+
+    result = await client.fetch_drug_summary(item_name="타이레놀")
+
+    assert result == items
+
+
+async def test_fetch_dur_item_info_parses_items(monkeypatch):
+    """DUR 품목정보(병용금기 등) API — 품목 단위 병용금기/주의 정보."""
+    monkeypatch.setattr(config, "PUBLIC_DATA_API_KEY", "test-service-key")
+    items = [{"ITEM_NAME": "타이레놀정500밀리그람", "MIXTURE_NAME": "와파린", "PROHBT_CONTENT": "병용금기"}]
+
+    async def _fake_get(self, url, params=None, timeout=None):
+        assert url == client.DUR_ITEM_INFO_URL
+        assert params["itemName"] == "타이레놀"
+        return _FakeResponse(200, _wrap_response(items))
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _fake_get)
+
+    result = await client.fetch_dur_item_info(item_name="타이레놀")
+
+    assert result == items
+
+
+async def test_fetch_drug_summary_returns_empty_list_without_api_key(monkeypatch):
+    monkeypatch.setattr(config, "PUBLIC_DATA_API_KEY", None)
+
+    async def _fail_get(*args, **kwargs):
+        raise AssertionError("API 키가 없으면 HTTP 호출 자체가 발생하면 안 된다")
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", _fail_get)
+
+    assert await client.fetch_drug_summary(item_name="타이레놀") == []
+    assert await client.fetch_dur_item_info(item_name="타이레놀") == []
