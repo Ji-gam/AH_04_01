@@ -23,5 +23,10 @@
     "owner": "agent-Claude",
     "branch": "feature/T-MED-2-schedule-dur-precaution",
     "started": "2026-07-09"
+  },
+  "T-MED-2-2": {
+    "owner": "agent-Claude",
+    "branch": "feature/T-MED-2-2-drug-interaction-check",
+    "started": "2026-07-09"
   }
 }

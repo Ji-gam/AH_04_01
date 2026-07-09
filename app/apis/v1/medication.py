@@ -7,6 +7,7 @@ from app.core import config
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
 from app.dtos.medication_dto import (
+    InteractionCheckResult,
     MedicationScheduleCreateRequest,
     MedicationScheduleResponse,
     MedicationScheduleUpdateRequest,
@@ -113,6 +114,24 @@ async def list_medication_schedules(
 ) -> list[MedicationScheduleResponse]:
     service = MedicationService()
     return await service.list_schedules(session, profile.id)
+
+
+@medication_router.get(
+    "/medications/interactions",
+    response_model=InteractionCheckResult,
+    summary="등록약 간 병용금기(약물 상호작용) 체크",
+    description=(
+        "현재 프로필에 등록된 약들을 서로 대조해 식약처 병용금기 DUR 데이터에서 페어로 확인되는 "
+        "조합이 있으면 경고 목록으로 반환합니다. 지병(질병-성분) 기준 금기는 다루지 않으며, "
+        "등록약이 2개 미만이거나 품목기준코드(item_seq)가 없는 약뿐이면 빈 결과를 반환합니다(T-MED-2-2)."
+    ),
+)
+async def check_medication_interactions(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> InteractionCheckResult:
+    service = MedicationService()
+    return await service.check_interactions(session, profile.id)
 
 
 @medication_router.get(
