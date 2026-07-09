@@ -532,9 +532,7 @@ class MedicationService:
         medications_by_id = {s.medication_id: s.medication for s in schedules}
 
         meds_with_seq = [
-            (item_seq, med)
-            for med in medications_by_id.values()
-            if (item_seq := _extract_item_seq(med.standard_code))
+            (item_seq, med) for med in medications_by_id.values() if (item_seq := _extract_item_seq(med.standard_code))
         ]
 
         if len(meds_with_seq) < 2:

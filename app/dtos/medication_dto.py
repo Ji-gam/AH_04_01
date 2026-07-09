@@ -87,7 +87,9 @@ class InteractionWarning(BaseModel):
     drug_a_name: str
     drug_b_name: str
     description: str
-    disclaimer: str = "본 서비스는 정보 제공 도구이며, 의학적 진단·처방을 대체하지 않습니다. 출처: 식약처 의약품안전나라(DUR)"
+    disclaimer: str = (
+        "본 서비스는 정보 제공 도구이며, 의학적 진단·처방을 대체하지 않습니다. 출처: 식약처 의약품안전나라(DUR)"
+    )
 
 
 class InteractionCheckResult(BaseModel):

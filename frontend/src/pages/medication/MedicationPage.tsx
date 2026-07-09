@@ -514,7 +514,9 @@ export default function MedicationPage() {
           {interactionLoading && <p>등록약을 대조하는 중입니다...</p>}
 
           {!interactionLoading && interactionError && (
-            <div style={{ padding: "10px", backgroundColor: "#fdecea", border: "1px solid #f5c6cb" }}>
+            <div
+              style={{ padding: "10px", backgroundColor: "#fdecea", border: "1px solid #f5c6cb" }}
+            >
               {interactionError}
             </div>
           )}
@@ -522,11 +524,23 @@ export default function MedicationPage() {
           {!interactionLoading && !interactionError && interactionResult && (
             <>
               {interactionResult.checked_count < 2 ? (
-                <div style={{ padding: "10px", backgroundColor: "#fffde7", border: "1px solid #fff59d" }}>
+                <div
+                  style={{
+                    padding: "10px",
+                    backgroundColor: "#fffde7",
+                    border: "1px solid #fff59d",
+                  }}
+                >
                   비교할 수 있는 등록약이 2개 미만이라 상호작용을 확인할 수 없습니다.
                 </div>
               ) : interactionResult.warnings.length === 0 ? (
-                <div style={{ padding: "10px", backgroundColor: "#e8f5e9", border: "1px solid #a5d6a7" }}>
+                <div
+                  style={{
+                    padding: "10px",
+                    backgroundColor: "#e8f5e9",
+                    border: "1px solid #a5d6a7",
+                  }}
+                >
                   등록하신 약들 사이에서 확인된 병용금기 조합이 없습니다.
                 </div>
               ) : (
