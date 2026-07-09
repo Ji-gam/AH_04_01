@@ -161,17 +161,16 @@ async def search_medications_dur(
 
     results = []
     for row in rows:
-        results.append({
-            "item_name": row[0],
-            "entp_name": row[1],
-            "efficacy": row[2] or "정보 없음",
-            "precautions": row[3] or "특이사항 없음"
-        })
+        results.append(
+            {
+                "item_name": row[0],
+                "entp_name": row[1],
+                "efficacy": row[2] or "정보 없음",
+                "precautions": row[3] or "특이사항 없음",
+            }
+        )
 
-    return {
-        "elapsed_ms": round(elapsed_ms, 4),
-        "results": results
-    }
+    return {"elapsed_ms": round(elapsed_ms, 4), "results": results}
 
 
 @medication_router.post(
@@ -253,4 +252,3 @@ async def search_medications(
 ):
     service = MedicationService()
     return await service.search_medications(session, query)
-
