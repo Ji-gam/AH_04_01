@@ -24,6 +24,7 @@ from app.dtos.medication_dto import (
 )
 from app.models.medication_model import Medication, MedicationRecognitionJob, MedicationSchedule
 from app.repositories.medication_repository import MedicationRepository
+from app.services import medication_open_api_client
 
 CLOVA_OCR_SECRET_KEY = os.getenv("CLOVA_OCR_SECRET_KEY")
 CLOVA_OCR_INVOKE_URL = os.getenv("CLOVA_OCR_INVOKE_URL")
@@ -62,6 +63,80 @@ def _dedupe_drug_names(names: set[str]) -> list[str]:
     return kept
 
 
+async def _fetch_medication_from_public_api(name: str) -> Medication | None:
+    """Tier 3: 로컬 DB(Tier 1/2)에 없는 약품을 공공데이터포털 API로 실시간 조회한다(T-MED-4).
+    `PUBLIC_DATA_API_KEY` 미설정/호출 실패/빈 응답이면 None을 반환해 기존 `AUTO_` 더미 생성
+    폴백으로 넘어가게 한다 — 등록 자체가 막히지 않는다는 T-MED-1 원칙을 그대로 유지."""
+    try:
+        fields = await medication_open_api_client.fetch_medication_master_data(name)
+    except medication_open_api_client.PublicDataApiError:
+        return None
+    if fields is None:
+        return None
+
+    standard_code = fields.pop("standard_code") or f"AUTO_{uuid.uuid4().hex[:10].upper()}"
+    return Medication(medication_name=name, standard_code=standard_code, **fields)
+
+
+async def _create_medication_for_unmatched_name(
+    db_session: AsyncSession, repo: MedicationRepository, name: str
+) -> tuple[Medication, bool]:
+    """DB(Tier 2)에 없는 약품명에 대해 Tier 3(공공 API) 조회 → 실패 시 AUTO_ 더미 생성 순으로
+    레코드를 만든다. 반환값: (생성된 Medication, 더미 생성 여부)."""
+    new_med = await _fetch_medication_from_public_api(name)
+    is_auto_dummy = new_med is None
+    if new_med is None:
+        new_med = Medication(medication_name=name, standard_code=f"AUTO_{uuid.uuid4().hex[:10].upper()}")
+    new_med = await repo.create_medication(db_session, new_med)
+    return new_med, is_auto_dummy
+
+
+async def _match_existing_by_word(
+    db_session: AsyncSession, repo: MedicationRepository, raw_text_list: list[str], seen_ids: set[int]
+) -> list[Medication]:
+    """짧은 숫자/용량 조각("100mg" 등)까지 LIKE 검색에 넣으면 우연히 다른 약의 용량과 겹쳐
+    엉뚱한 약이 매칭되므로(예: "100mg"이 "아스피린정 100mg"에 우연히 포함), 약품명처럼
+    보이는 온전한 단어에 대해서만 실제 DB 매칭을 시도한다."""
+    matched: list[Medication] = []
+    for word in raw_text_list:
+        if not _looks_like_drug_name(word):
+            continue
+        stripped = word.lstrip("*").strip()
+        for med in await repo.search_medication_by_name(db_session, stripped):
+            if med.id not in seen_ids:
+                seen_ids.add(med.id)
+                matched.append(med)
+    return matched
+
+
+async def _resolve_or_create_drug_like_names(
+    db_session: AsyncSession, repo: MedicationRepository, raw_text_list: list[str], seen_ids: set[int]
+) -> tuple[list[Medication], set[int]]:
+    """마스터 DB에 없는 약이어도, OCR 텍스트가 약품명 형태(용량단위 또는 "*" 불릿 표시)로
+    보이면 등록이 막히지 않도록 새 마스터 레코드를 즉석에서 생성해 후보로 포함시킨다.
+    "*"는 정규화 과정에서 제거하고, 잘려서 중복된 짧은 조각은 dedupe로 걸러낸다."""
+    resolved: list[Medication] = []
+    auto_created_ids: set[int] = set()
+
+    drug_like_words = {w.lstrip("*").strip() for w in raw_text_list if _looks_like_drug_name(w)}
+    for name in _dedupe_drug_names(drug_like_words):
+        existing = await repo.search_medication_by_name(db_session, name)
+        exact = next((m for m in existing if m.medication_name == name), None)
+        if exact:
+            if exact.id not in seen_ids:
+                seen_ids.add(exact.id)
+                resolved.append(exact)
+            continue
+
+        new_med, is_auto_dummy = await _create_medication_for_unmatched_name(db_session, repo, name)
+        seen_ids.add(new_med.id)
+        if is_auto_dummy:
+            auto_created_ids.add(new_med.id)
+        resolved.append(new_med)
+
+    return resolved, auto_created_ids
+
+
 async def _match_or_create_medications(
     db_session: AsyncSession, repo: MedicationRepository, raw_text_list: list[str]
 ) -> tuple[list[Medication], set[int]]:
@@ -72,37 +147,9 @@ async def _match_or_create_medications(
     seen_ids: set[int] = set()
 
     if raw_text_list:
-        # 짧은 숫자/용량 조각("100mg" 등)까지 LIKE 검색에 넣으면 우연히 다른 약의 용량과
-        # 겹쳐 엉뚱한 약이 매칭되므로(예: "100mg"이 "아스피린정 100mg"에 우연히 포함),
-        # 약품명처럼 보이는 온전한 단어에 대해서만 실제 DB 매칭을 시도한다.
-        for word in raw_text_list:
-            if not _looks_like_drug_name(word):
-                continue
-            stripped = word.lstrip("*").strip()
-            meds = await repo.search_medication_by_name(db_session, stripped)
-            for med in meds:
-                if med.id not in seen_ids:
-                    seen_ids.add(med.id)
-                    matched_meds.append(med)
-
-        # 마스터 DB에 없는 약이어도, OCR 텍스트가 약품명 형태(용량단위 또는 "*" 불릿 표시)로
-        # 보이면 등록이 막히지 않도록 새 마스터 레코드를 즉석에서 생성해 후보로 포함시킨다.
-        # "*"는 정규화 과정에서 제거하고, 잘려서 중복된 짧은 조각은 dedupe로 걸러낸다.
-        drug_like_words = {w.lstrip("*").strip() for w in raw_text_list if _looks_like_drug_name(w)}
-        for name in _dedupe_drug_names(drug_like_words):
-            existing = await repo.search_medication_by_name(db_session, name)
-            exact = next((m for m in existing if m.medication_name == name), None)
-            if exact:
-                if exact.id not in seen_ids:
-                    seen_ids.add(exact.id)
-                    matched_meds.append(exact)
-                continue
-
-            new_med = Medication(medication_name=name, standard_code=f"AUTO_{uuid.uuid4().hex[:10].upper()}")
-            new_med = await repo.create_medication(db_session, new_med)
-            seen_ids.add(new_med.id)
-            auto_created_ids.add(new_med.id)
-            matched_meds.append(new_med)
+        matched_meds.extend(await _match_existing_by_word(db_session, repo, raw_text_list, seen_ids))
+        resolved, auto_created_ids = await _resolve_or_create_drug_like_names(db_session, repo, raw_text_list, seen_ids)
+        matched_meds.extend(resolved)
 
     # 그래도 후보가 하나도 없으면(약품명으로 보이는 텍스트조차 없었던 경우)
     # 마스터 DB 상위 몇 개를 참고용으로 보여준다 — 이 경우엔 수동 검색으로의 전환을 기대한다.

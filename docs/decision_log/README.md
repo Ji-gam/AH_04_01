@@ -12,4 +12,4 @@
 | 날짜 | 주요 내용 |
 | --- | --- |
 | [2026-07-07](2026-07-07.md) | `remedi_mweb_co` → `AH_04_01` 이관 결정, 에러처리/문서버전 규칙 배경, 1차 하네스 문서 정리(FRONTEND_ARCHITECTURE.md 흡수 등), 확정 기술 스택, 공통 모듈, RAG Tier 전략, 미결사항 |
-| [2026-07-08](2026-07-08.md) | 2차 하네스 정리 — `AGENTS.md` 단일 진입점화, `.agents/`·`.antigravity/` 중복 제거, `decision_log` 폴더화. T-MED-3(OCR 수동 폴백/더미 모드) 미결사항 추가 |
+| [2026-07-08](2026-07-08.md) | 2차 하네스 정리 — `AGENTS.md` 단일 진입점화, `.agents/`·`.antigravity/` 중복 제거, `decision_log` 폴더화. T-MED-3(OCR 수동 폴백/더미 모드), T-MED-4(약품 마스터 데이터 DB 적재) 미결사항 추가 |

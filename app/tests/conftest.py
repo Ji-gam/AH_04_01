@@ -1,3 +1,4 @@
+import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -39,3 +40,11 @@ async def clean_tables():
         for table in reversed(Base.metadata.sorted_tables):
             await session.execute(table.delete())
         await session.commit()
+
+
+@pytest.fixture(autouse=True)
+def _no_real_external_api_keys_in_tests(monkeypatch):
+    """로컬 `.env`에 실제 발급받은 키(OPENAI_API_KEY, PUBLIC_DATA_API_KEY 등)가 있어도, 이를
+    모르는 테스트가 실제 네트워크를 호출해 타임아웃/비결정적 결과를 내지 않도록 기본값을 None으로
+    강제한다. 실제 호출을 검증하는 테스트는 각자 monkeypatch로 필요한 키만 다시 설정한다(T-MED-4)."""
+    monkeypatch.setattr(config, "PUBLIC_DATA_API_KEY", None)
