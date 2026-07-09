@@ -46,6 +46,53 @@ async def test_signup_invalid_email():
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
+async def test_signup_weak_password():
+    # 대문자/특수문자가 빠진 비밀번호 -> validate_password가 거부해야 한다
+    signup_data = {
+        "email": "weakpw@example.com",
+        "password": "password123",
+        "name": "테스터",
+        "gender": "MALE",
+        "birth_date": "1990-01-01",
+        "phone_number": "01055556666",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/auth/signup", json=signup_data)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+    body = response.json()
+    messages = " ".join(err["msg"] for err in body["detail"])
+    assert "비밀번호" in messages
+
+    # 검증에서 막혔으니 실제로 DB에 저장되면 안 된다
+    async with TestSessionLocal() as session:
+        user = (await session.execute(select(User).where(User.email == "weakpw@example.com"))).scalar_one_or_none()
+        assert user is None
+
+
+async def test_signup_invalid_phone_number_format():
+    # 형식에 안 맞는 휴대폰번호(자릿수 부족) -> validate_phone_number가 거부해야 한다
+    signup_data = {
+        "email": "badphone@example.com",
+        "password": "Password123!",
+        "name": "테스터",
+        "gender": "MALE",
+        "birth_date": "1990-01-01",
+        "phone_number": "0101234",
+    }
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/auth/signup", json=signup_data)
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+    body = response.json()
+    messages = " ".join(err["msg"] for err in body["detail"])
+    assert "휴대폰" in messages
+
+    async with TestSessionLocal() as session:
+        user = (await session.execute(select(User).where(User.email == "badphone@example.com"))).scalar_one_or_none()
+        assert user is None
+
+
 async def test_signup_duplicate_email():
     signup_data = {
         "email": "dup@example.com",
