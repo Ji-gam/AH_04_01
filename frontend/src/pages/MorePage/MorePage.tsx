@@ -8,7 +8,8 @@ export default function MorePage() {
         <Link
           to="/schedule"
           style={{
-            border: "1px solid #ccc",
+            background: "#FFF8FA",
+            border: "1px solid #FFE3EB",
             borderRadius: "8px",
             padding: "14px 16px",
             textDecoration: "none",

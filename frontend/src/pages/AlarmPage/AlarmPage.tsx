@@ -60,8 +60,6 @@ export default function AlarmPage() {
   const [selectedDateStr] = useState(toDateString(today));
   const [visibleYear, setVisibleYear] = useState(today.getFullYear());
   const [visibleMonth, setVisibleMonth] = useState(today.getMonth());
-  const selectedDate = new Date(`${selectedDateStr}T00:00:00`);
-  const isSelectedToday = selectedDateStr === toDateString(today);
 
   const handlePrevMonth = () => {
     if (visibleMonth === 0) {
@@ -191,15 +189,10 @@ export default function AlarmPage() {
       .catch((e: Error) => setError(`알림 삭제에 실패했습니다. (${e.message})`));
   };
 
-  const selectedDaySchedules = schedules
-    .filter((s) => isScheduleDueOnDate(s, selectedDate))
-    .sort((a, b) => a.alarm_time.localeCompare(b.alarm_time));
+  // 달력 밑에는 등록한 알림 전체를 보여준다 (날짜별 시간표는 /schedule 화면 담당).
+  const sortedSchedules = [...schedules].sort((a, b) => a.alarm_time.localeCompare(b.alarm_time));
 
   const doseCounts = buildDoseCounts(schedules);
-
-  const sectionTitle = isSelectedToday
-    ? "오늘의 복약 시간표"
-    : `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일 복약 시간표`;
 
   return (
     <div style={{ background: t.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
@@ -268,12 +261,12 @@ export default function AlarmPage() {
           onNextMonth={handleNextMonth}
         />
 
-        <h2 style={{ fontSize: 15, color: t.text, marginBottom: 10 }}>{sectionTitle}</h2>
+        <h2 style={{ fontSize: 15, color: t.text, marginBottom: 10 }}>🔔 등록된 알림</h2>
 
         {loading && <p style={{ color: t.textMuted, fontSize: 14 }}>불러오는 중...</p>}
         {error && <p style={{ color: t.danger, fontSize: 14 }}>{error}</p>}
 
-        {!loading && !error && selectedDaySchedules.length === 0 && (
+        {!loading && !error && sortedSchedules.length === 0 && (
           <div
             style={{
               background: t.cardBg,
@@ -286,14 +279,12 @@ export default function AlarmPage() {
             }}
           >
             <p style={{ fontSize: 28, margin: 0 }}>🌸</p>
-            <p style={{ fontSize: 14, margin: "8px 0 0" }}>
-              {isSelectedToday ? "오늘 등록된 알림이 없어요." : "이 날짜에 등록된 알림이 없어요."}
-            </p>
+            <p style={{ fontSize: 14, margin: "8px 0 0" }}>등록된 알림이 없어요.</p>
           </div>
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
-          {selectedDaySchedules.map((s) => (
+          {sortedSchedules.map((s) => (
             <div
               key={s.id}
               style={{
@@ -366,66 +357,6 @@ export default function AlarmPage() {
               </div>
             </div>
           ))}
-        </div>
-
-        <h2 style={{ fontSize: 15, color: t.text, marginBottom: 10 }}>등록된 전체 알림</h2>
-        {!loading && schedules.length === 0 && (
-          <p style={{ color: t.textMuted, fontSize: 14 }}>등록된 알림이 없습니다.</p>
-        )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {[...schedules]
-            .sort((a, b) => a.alarm_time.localeCompare(b.alarm_time))
-            .map((s) => (
-              <div
-                key={s.id}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  fontSize: 13,
-                  color: t.text,
-                  padding: "8px 4px",
-                  borderBottom: `1px solid ${t.border}`,
-                }}
-              >
-                <span>
-                  {s.alarm_time.slice(0, 5)} · {s.medication_name} · {dayLabel(s)}
-                  {doseCountOf(doseCounts, s) > 1 && ` · ${doseLabel(doseCountOf(doseCounts, s))}`}
-                </span>
-                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ color: s.is_active ? t.success : t.textMuted }}>
-                    {s.is_active ? "켜짐" : "꺼짐"}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="알림 수정"
-                    onClick={() => startEdit(s)}
-                    style={{
-                      border: "none",
-                      background: "none",
-                      color: t.textMuted,
-                      cursor: "pointer",
-                      fontSize: 13,
-                    }}
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="알림 삭제"
-                    onClick={() => handleDelete(s)}
-                    style={{
-                      border: "none",
-                      background: "none",
-                      color: t.textMuted,
-                      cursor: "pointer",
-                      fontSize: 13,
-                    }}
-                  >
-                    🗑️
-                  </button>
-                </span>
-              </div>
-            ))}
         </div>
       </div>
     </div>

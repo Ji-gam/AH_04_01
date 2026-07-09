@@ -7,20 +7,18 @@ import type { NotificationScheduleResult } from "../../api/types";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { isScheduleDueOnDate, toDateString } from "../AlarmPage/dateUtils";
 
-/** 사진 레퍼런스 팔레트 — 크림 배경 + 그린 포인트 + 다음 복용 오렌지 */
+/** 레퍼런스 레이아웃 + 앱 공통 연핑크 테마 (복약알림 화면과 동일 계열) */
 const c = {
-  pageBg: "#FBF7EF",
+  pageBg: "#FFF5F8",
   cardBg: "#FFFFFF",
-  cardBorder: "#F0EAE0",
-  text: "#3D3A34",
-  textMuted: "#9B958A",
-  green: "#3FA776",
-  greenSoft: "#E9F6EF",
-  orange: "#F59A23",
-  orangeSoft: "#FFF4E3",
+  cardBorder: "#FFE3EB",
+  text: "#4A3F44",
+  textMuted: "#A8969E",
+  pink: "#FF6F91",
+  pinkSoft: "#FFEDF2",
   tipBg: "#FFFBEA",
   tipText: "#8A7B4F",
-  line: "#E5DFD3",
+  line: "#F3DCE3",
 };
 
 const FORM_TYPE_UNIT: Record<string, string> = {
@@ -36,6 +34,8 @@ interface TimelineItem {
   /** 약 이름 아래 줄 — 병원명이 있으면 병원명, 없으면 제형 단위 */
   subLabel: string | null;
   hospitalName: string | null;
+  /** 이 약을 하루에 몇 번 먹는지 — 약 이름 옆에 표시 */
+  doseCount: number;
   editTo: string;
   tip: string | null;
 }
@@ -66,19 +66,26 @@ function buildGroups(
         subLabel:
           m.hospital_name ?? (m.form_type ? (FORM_TYPE_UNIT[m.form_type] ?? m.form_type) : null),
         hospitalName: m.hospital_name ?? null,
+        doseCount: m.times.length,
         editTo: "/medication",
         tip: m.dosage_guideline ?? null,
       });
     }
   }
 
-  for (const a of alarms) {
-    if (!a.is_active || !isScheduleDueOnDate(a, date)) continue;
+  // 직접 등록 알림은 같은 약 이름의 알림 개수 = 하루 복용 횟수
+  const dueAlarms = alarms.filter((a) => a.is_active && isScheduleDueOnDate(a, date));
+  const alarmDoseCounts = new Map<string, number>();
+  for (const a of dueAlarms) {
+    alarmDoseCounts.set(a.medication_name, (alarmDoseCounts.get(a.medication_name) ?? 0) + 1);
+  }
+  for (const a of dueAlarms) {
     push(a.alarm_time.slice(0, 5), {
       key: `alarm-${a.id}`,
       name: a.medication_name,
       subLabel: "직접 등록 알림",
       hospitalName: null,
+      doseCount: alarmDoseCounts.get(a.medication_name) ?? 1,
       editTo: "/alarms",
       tip: null,
     });
@@ -191,8 +198,8 @@ export default function SchedulePage() {
           {totalCount > 0 && (
             <span
               style={{
-                background: remaining > 0 ? c.orangeSoft : c.greenSoft,
-                color: remaining > 0 ? c.orange : c.green,
+                background: c.pinkSoft,
+                color: c.pink,
                 borderRadius: 999,
                 padding: "5px 12px",
                 fontSize: 12,
@@ -221,7 +228,7 @@ export default function SchedulePage() {
             <p style={{ fontSize: 30, margin: 0 }}>🌿</p>
             <p style={{ fontSize: 14, margin: "8px 0 0" }}>이 날짜에 복용할 약이 없어요.</p>
             <p style={{ fontSize: 13, margin: "4px 0 0" }}>
-              <Link to="/medication" style={{ color: c.green }}>
+              <Link to="/medication" style={{ color: c.pink }}>
                 약 등록하러 가기 →
               </Link>
             </p>
@@ -259,7 +266,7 @@ export default function SchedulePage() {
                     width: 18,
                     height: 18,
                     borderRadius: "50%",
-                    background: isNext ? c.orange : groupAllChecked ? c.green : "#CFC9BC",
+                    background: isNext ? c.pink : groupAllChecked ? "#FFB3C4" : "#E0D0D6",
                     border: `4px solid ${c.pageBg}`,
                     boxSizing: "border-box",
                   }}
@@ -277,7 +284,7 @@ export default function SchedulePage() {
                   {isNext && (
                     <span
                       style={{
-                        background: c.orange,
+                        background: c.pink,
                         color: "white",
                         borderRadius: 999,
                         padding: "3px 10px",
@@ -292,8 +299,8 @@ export default function SchedulePage() {
 
                 <div
                   style={{
-                    background: isNext ? c.orangeSoft : c.cardBg,
-                    border: `1.5px solid ${isNext ? c.orange : c.cardBorder}`,
+                    background: isNext ? c.pinkSoft : c.cardBg,
+                    border: `1.5px solid ${isNext ? c.pink : c.cardBorder}`,
                     borderRadius: 16,
                     padding: 14,
                     boxShadow: "0 2px 10px rgba(120, 100, 60, 0.06)",
@@ -307,7 +314,7 @@ export default function SchedulePage() {
                       marginBottom: 10,
                     }}
                   >
-                    <span style={{ color: c.green, fontSize: 13, fontWeight: 700 }}>
+                    <span style={{ color: c.pink, fontSize: 13, fontWeight: 700 }}>
                       ▼ {group.isPrescription ? "처방약" : "복용약"} {group.items.length}종
                     </span>
                     {isToday && (
@@ -316,8 +323,8 @@ export default function SchedulePage() {
                         onClick={() => checkAll(group)}
                         style={{
                           border: "none",
-                          background: groupAllChecked ? c.green : c.greenSoft,
-                          color: groupAllChecked ? "white" : c.green,
+                          background: groupAllChecked ? c.pink : c.pinkSoft,
+                          color: groupAllChecked ? "white" : c.pink,
                           borderRadius: 8,
                           padding: "5px 10px",
                           fontSize: 12,
@@ -360,7 +367,7 @@ export default function SchedulePage() {
                                 borderRadius: "50%",
                                 flexShrink: 0,
                                 border: done ? "none" : `2px solid ${c.line}`,
-                                background: done ? c.green : "white",
+                                background: done ? c.pink : "white",
                                 color: "white",
                                 fontSize: 13,
                                 lineHeight: 1,
@@ -386,7 +393,10 @@ export default function SchedulePage() {
                               }}
                             >
                               {isToday && "💊 "}
-                              {item.name}
+                              {item.name}{" "}
+                              <span style={{ fontSize: 12, fontWeight: 400, color: c.textMuted }}>
+                                하루 {item.doseCount}회
+                              </span>
                             </p>
                             {item.subLabel && (
                               <p style={{ margin: "2px 0 0", fontSize: 12, color: c.textMuted }}>
