@@ -116,3 +116,4 @@ frontend/src/types/**
     프로덕션 코드는 변경하지 않음). 확인 후 테스트로 등록한 두 약은 DB에서 정리했다.
 - 브랜치명: `feature/T-MED-2-2-drug-interaction-check` (원래 `claude/drug-contraindications-api-75ca69`에서
   팀 브랜치 컨벤션에 맞춰 개명)
+- PR: https://github.com/AI-HealthCare-04/AH_04_01/pull/38 (`dev` 대상)
