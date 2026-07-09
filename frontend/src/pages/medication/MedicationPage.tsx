@@ -186,7 +186,6 @@ export default function MedicationPage() {
     <div style={{ maxWidth: 480, margin: "20px auto", padding: "10px", fontFamily: "sans-serif" }}>
       <h1>복약 관리 (T-MED-1)</h1>
 
-
       {/* 탭 네비게이션 (시간표, 목록, 상호작용, 음식) */}
       <div style={{ display: "flex", gap: "5px", marginBottom: "15px" }}>
         <button
