@@ -39,9 +39,13 @@ class Config(BaseSettings):
 
     # T-LLM-2: 설정 안 하면 app/services/llm_stub.py가 고정 문자열 stub으로 폴백한다.
     OPENAI_API_KEY: str | None = None
+    OPENAI_EMBEDDING_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
 
     # T-MED-4: 공공데이터포털(data.go.kr) 서비스키. 의약품 낱알식별 API와 의약품제품
     # 허가정보 API가 같은 계정의 서비스키를 공유한다. 설정 안 하면
     # app/services/medication_open_api_client.py가 빈 리스트를 반환한다.
     PUBLIC_DATA_API_KEY: str | None = None
+
+    # T-LLM-2: RAG 검색을 담당하는 ai-worker 서비스의 /retrieve 엔드포인트 (docker-compose 네트워크 내부 호스트명)
+    AI_WORKER_RETRIEVE_URL: str = "http://ai-worker:8001/retrieve"

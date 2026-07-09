@@ -65,3 +65,32 @@ export interface ChatMessageChunk {
   content: string;
   disclaimer?: string;
 }
+
+export interface ChatSessionResponse {
+  id: number;
+  created_at: string;
+}
+
+export interface ChatMessageResponse {
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+// 백엔드 app/dtos/content_dto.py와 1:1로 수동 동기화 (T-LLM-3).
+export type ContentCategory = "LIFESTYLE" | "FOOD" | "MEDICAL_NEWS";
+
+export interface HealthContentResult {
+  disease_code: string;
+  category: ContentCategory;
+  content_date: string; // YYYY-MM-DD
+  title: string;
+  summary: string;
+  body: string;
+  image_prompt: string | null;
+  disclaimer: string;
+}
+
+export interface ContentsFeedResult {
+  // false면 비로그인/질환 미등록으로 전체 콘텐츠를 폴백한 결과 — "질환 등록" 안내 배너 노출 기준.
+  personalized: boolean;
+  items: HealthContentResult[];
+}

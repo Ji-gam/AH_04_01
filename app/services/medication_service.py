@@ -14,6 +14,8 @@ from app.dtos.medication_dto import (
     GuideCard,
     MedicationScheduleCreateRequest,
     MedicationScheduleResponse,
+    QuickRegisterCandidate,
+    QuickRegisterResult,
     RecognitionCandidate,
     RecognitionConfirmResult,
     RecognitionJobCreateResult,
@@ -32,6 +34,11 @@ CLOVA_OCR_INVOKE_URL = os.getenv("CLOVA_OCR_INVOKE_URL")
 _KOREAN_TOKEN_PATTERN = re.compile(r"[가-힣]{2,}")
 _DOSAGE_PATTERN = re.compile(r"\d+(mg|g|ml)", re.IGNORECASE)
 _MIN_DRUG_NAME_LEN = 5
+
+# T-MED-3: OCR이 실패했거나(키 미설정/호출 예외/빈 응답) QA가 dummy_mode를 명시적으로 요청했을 때
+# 쓰는 고정 더미 인식 텍스트. 처방전 목록 표기 관례("*" 불릿)를 그대로 따라야 기존 매칭 로직
+# (_looks_like_drug_name)을 그대로 태워서 "실제 인식됐을 때와 동일한 흐름"으로 검증할 수 있다.
+DUMMY_OCR_RAW_TEXT = ["*타이레놀정", "*아스피린정"]
 
 
 def _looks_like_drug_name(word: str) -> bool:
@@ -105,46 +112,75 @@ async def _match_or_create_medications(
     return matched_meds, auto_created_ids
 
 
+async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[str]:
+    """CLOVA OCR을 호출해 인식된 텍스트 조각 목록을 반환한다. 호출 실패/빈 응답이면 빈 리스트.
+    호출 전 `_clova_configured()`로 키/URL이 설정됐음을 확인했다는 전제 하에만 호출된다."""
+    assert CLOVA_OCR_SECRET_KEY is not None
+    assert CLOVA_OCR_INVOKE_URL is not None
+    raw_text_list: list[str] = []
+    try:
+        base64_data = base64.b64encode(file_bytes).decode("utf-8")
+        file_format = file_name.split(".")[-1].lower()
+        if file_format not in ["jpg", "jpeg", "png", "pdf"]:
+            file_format = "jpg"
+
+        payload = {
+            "images": [{"format": file_format, "name": "medication_doc", "data": base64_data}],
+            "requestId": str(uuid.uuid4()),
+            "timestamp": int(time.time() * 1000),
+            "version": "V2",
+        }
+        headers = {"X-OCR-SECRET": CLOVA_OCR_SECRET_KEY, "Content-Type": "application/json"}
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
+            if response.status_code == 200:
+                res_json = response.json()
+                images = res_json.get("images", [])
+                if images:
+                    fields = images[0].get("fields", [])
+                    raw_text_list = [field.get("inferText", "") for field in fields if field.get("inferText")]
+    except Exception:
+        pass
+    return raw_text_list
+
+
+def _clova_configured() -> bool:
+    return bool(CLOVA_OCR_SECRET_KEY and CLOVA_OCR_INVOKE_URL and not CLOVA_OCR_SECRET_KEY.startswith("your_"))
+
+
+async def _resolve_ocr_raw_text(file_bytes: bytes, file_name: str, dummy_mode: bool) -> tuple[list[str], bool]:
+    """OCR 인식 텍스트 목록과 "더미 폴백이 사용됐는지"를 반환한다(T-MED-3).
+
+    dummy_mode가 명시적으로 요청됐거나, 실제 OCR 호출이 불가능/실패/빈 응답이면
+    결정적인 더미 텍스트로 폴백해 등록 자체가 막히지 않게 한다."""
+    if dummy_mode:
+        return list(DUMMY_OCR_RAW_TEXT), True
+
+    raw_text_list: list[str] = []
+    if _clova_configured():
+        raw_text_list = await _call_clova_ocr(file_bytes, file_name)
+
+    if not raw_text_list:
+        return list(DUMMY_OCR_RAW_TEXT), True
+    return raw_text_list, False
+
+
 async def _execute_ocr_logic(
-    db_session: AsyncSession, job_id: str, source_type: str, file_bytes: bytes, file_name: str
+    db_session: AsyncSession,
+    job_id: str,
+    source_type: str,
+    file_bytes: bytes,
+    file_name: str,
+    dummy_mode: bool = False,
 ):
     repo = MedicationRepository()
 
     # 1. 상태를 processing으로 변경
     await repo.update_recognition_job(db_session, job_id, "processing")
 
-    raw_text_list = []
-
-    # 2. CLOVA OCR API 호출 (설정되어 있고 실제 호출 성공 시)
-    if CLOVA_OCR_SECRET_KEY and CLOVA_OCR_INVOKE_URL and not CLOVA_OCR_SECRET_KEY.startswith("your_"):
-        try:
-            base64_data = base64.b64encode(file_bytes).decode("utf-8")
-            file_format = file_name.split(".")[-1].lower()
-            if file_format not in ["jpg", "jpeg", "png", "pdf"]:
-                file_format = "jpg"
-
-            payload = {
-                "images": [{"format": file_format, "name": "medication_doc", "data": base64_data}],
-                "requestId": str(uuid.uuid4()),
-                "timestamp": int(time.time() * 1000),
-                "version": "V2",
-            }
-
-            headers = {"X-OCR-SECRET": CLOVA_OCR_SECRET_KEY, "Content-Type": "application/json"}
-
-            async with httpx.AsyncClient() as client:
-                response = await client.post(CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
-                if response.status_code == 200:
-                    res_json = response.json()
-                    images = res_json.get("images", [])
-                    if images:
-                        fields = images[0].get("fields", [])
-                        for field in fields:
-                            text = field.get("inferText", "")
-                            if text:
-                                raw_text_list.append(text)
-        except Exception:
-            pass
+    # 2. OCR 텍스트 확보 (dummy_mode 명시 요청 또는 실제 OCR 실패 시 결정적 더미로 폴백)
+    raw_text_list, used_dummy_fallback = await _resolve_ocr_raw_text(file_bytes, file_name, dummy_mode)
 
     # 3. OCR 파싱 결과 분석 & DB 매칭
     candidates = []
@@ -153,7 +189,8 @@ async def _execute_ocr_logic(
         "times": ["09:00", "13:00", "19:00"],
         "duration": "3일",
         "instruction": "식후 30분 복용",
-        "ocr_raw_text": " ".join(raw_text_list) if raw_text_list else "MOCK OCR TEXT 타이레놀",
+        "ocr_raw_text": " ".join(raw_text_list),
+        "dummy_mode": used_dummy_fallback,
     }
 
     matched_meds, auto_created_ids = await _match_or_create_medications(db_session, repo, raw_text_list)
@@ -181,17 +218,23 @@ async def _execute_ocr_logic(
 
 
 async def run_ocr_task(
-    job_id: str, source_type: str, file_bytes: bytes, file_name: str = "image.jpg", session: AsyncSession | None = None
+    job_id: str,
+    source_type: str,
+    file_bytes: bytes,
+    file_name: str = "image.jpg",
+    session: AsyncSession | None = None,
+    dummy_mode: bool = False,
 ):
     """
     비동기 OCR 및 약품 매칭 백그라운드 태스크.
     session이 제공되면 해당 session을 재사용하고(테스트 환경용), 그렇지 않으면 자체 세션을 생성합니다.
+    dummy_mode=True면 실제 OCR 호출 없이 결정적인 더미 인식 결과를 반환한다(T-MED-3).
     """
     if session is not None:
-        await _execute_ocr_logic(session, job_id, source_type, file_bytes, file_name)
+        await _execute_ocr_logic(session, job_id, source_type, file_bytes, file_name, dummy_mode)
     else:
         async with AsyncSessionLocal() as db_session:
-            await _execute_ocr_logic(db_session, job_id, source_type, file_bytes, file_name)
+            await _execute_ocr_logic(db_session, job_id, source_type, file_bytes, file_name, dummy_mode)
             await db_session.commit()
 
 
@@ -207,6 +250,7 @@ class MedicationService:
         file_bytes: bytes,
         file_name: str,
         background_tasks: BackgroundTasks,
+        dummy_mode: bool = False,
     ) -> RecognitionJobCreateResult:
         if source_type not in ["pill_photo", "prescription", "medical_record", "medication_guide"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효하지 않은 source_type 입니다.")
@@ -223,7 +267,9 @@ class MedicationService:
         await self._repository.create_recognition_job(session, job)
 
         # 백그라운드 태스크 등록
-        background_tasks.add_task(run_ocr_task, job_id, source_type, file_bytes, file_name, session=session)
+        background_tasks.add_task(
+            run_ocr_task, job_id, source_type, file_bytes, file_name, session=session, dummy_mode=dummy_mode
+        )
 
         return RecognitionJobCreateResult(job_id=job_id, status="pending")
 
@@ -325,6 +371,57 @@ class MedicationService:
 
         return MedicationScheduleResponse(
             id=schedule.id, medication_id=schedule.medication_id, drug_name=med.medication_name, times=schedule.times
+        )
+
+    async def quick_register_medication(
+        self, session: AsyncSession, profile_id: int, drug_name: str, times: list[str]
+    ) -> QuickRegisterResult:
+        """약품명을 직접 입력해 검색 단계 없이 한 번에 등록한다(T-MED-3).
+
+        - 정확히 하나만 일치하면 즉시 등록.
+        - 전혀 일치하지 않으면 OCR 자동생성 로직과 동일하게 새 약품을 즉석 생성해서라도 등록
+          (등록 자체가 막히지 않아야 한다는 T-MED-1 원칙을 수동 등록에도 동일 적용).
+        - 여러 개가 부분일치하면 자동 등록하지 않고 후보만 반환한다
+          (T-MED-1 원칙: 후보가 여러 개면 사용자 최종 선택 없이는 등록되지 않는다)."""
+        stripped_name = drug_name.strip()
+        if not stripped_name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="약품명을 입력해주세요.")
+
+        matches = await self._repository.search_medication_by_name(session, stripped_name)
+        exact_matches = [m for m in matches if m.medication_name == stripped_name]
+
+        auto_created = False
+        if len(exact_matches) == 1:
+            med = exact_matches[0]
+        elif len(matches) == 1:
+            med = matches[0]
+        elif len(matches) > 1:
+            candidates = [
+                QuickRegisterCandidate(
+                    drug_code=m.standard_code or f"CODE_{m.id}",
+                    medication_name=m.medication_name,
+                    form_type=m.form_type,
+                )
+                for m in matches
+            ]
+            return QuickRegisterResult(status="multiple_matches", candidates=candidates)
+        else:
+            med = Medication(medication_name=stripped_name, standard_code=f"AUTO_{uuid.uuid4().hex[:10].upper()}")
+            med = await self._repository.create_medication(session, med)
+            auto_created = True
+
+        schedule = MedicationSchedule(profile_id=profile_id, medication_id=med.id, times=times)
+        schedule = await self._repository.create_schedule(session, schedule)
+
+        return QuickRegisterResult(
+            status="registered",
+            schedule=MedicationScheduleResponse(
+                id=schedule.id,
+                medication_id=schedule.medication_id,
+                drug_name=med.medication_name,
+                times=schedule.times,
+            ),
+            auto_created=auto_created,
         )
 
     async def search_medications(self, session: AsyncSession, query: str) -> list[dict]:
