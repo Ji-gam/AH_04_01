@@ -257,13 +257,13 @@ export default function AlarmPage() {
           />
         )}
 
-        {/* 날짜를 누르면 복약스케줄 화면으로 이동해 그 날짜의 통합 복용 목록(약+알림)을 보여준다. */}
+        {/* 날짜를 누르면 복약 시간표 화면으로 이동해 그 날짜의 통합 타임라인(약+알림)을 보여준다. */}
         <AlarmCalendar
           year={visibleYear}
           month={visibleMonth}
           selectedDateStr={selectedDateStr}
           schedules={schedules}
-          onSelectDate={(dateStr) => navigate(`/medication?date=${dateStr}`)}
+          onSelectDate={(dateStr) => navigate(`/schedule?date=${dateStr}`)}
           onPrevMonth={handlePrevMonth}
           onNextMonth={handleNextMonth}
         />

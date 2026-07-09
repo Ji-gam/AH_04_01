@@ -46,16 +46,19 @@ class MedicationScheduleResponse(BaseModel):
     # 약 카드 표시용 부가 정보 — 마스터 데이터에 값이 없으면 None (T-NTFY-2)
     form_type: str | None = None
     dosage_guideline: str | None = None
+    hospital_name: str | None = None  # 처방 병원명 (T-NTFY-2)
 
 
 class MedicationScheduleCreateRequest(BaseModel):
     drug_code: str  # standard_code
     times: list[str]
+    hospital_name: str | None = None
 
 
 class QuickRegisterRequest(BaseModel):
     drug_name: str
     times: list[str]
+    hospital_name: str | None = None
 
 
 class QuickRegisterCandidate(BaseModel):

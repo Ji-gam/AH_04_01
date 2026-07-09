@@ -6,7 +6,7 @@ export default function MorePage() {
       <h1>더보기</h1>
       <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "15px" }}>
         <Link
-          to="/medication"
+          to="/schedule"
           style={{
             border: "1px solid #ccc",
             borderRadius: "8px",
@@ -19,9 +19,9 @@ export default function MorePage() {
           }}
         >
           <span>
-            💊 복약 스케줄
+            ⏰ 복약 시간표
             <span style={{ display: "block", fontSize: "12px", color: "#888", marginTop: "2px" }}>
-              등록된 약과 복용 시간을 한눈에 관리해요
+              오늘 먹을 약을 시간순으로 확인하고 복용 체크해요
             </span>
           </span>
           <span aria-hidden>›</span>

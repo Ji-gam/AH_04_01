@@ -12,10 +12,11 @@ import ChatPage from "./pages/ChatPage/ChatPage";
 import HomePage from "./pages/HomePage/HomePage";
 import InfoPage from "./pages/InfoPage/InfoPage";
 import LoginPage from "./pages/LoginPage/LoginPage";
+import MedicationPage from "./pages/medication/MedicationPage";
 import MorePage from "./pages/MorePage/MorePage";
+import SchedulePage from "./pages/SchedulePage/SchedulePage";
 import SignupPage from "./pages/SignupPage/SignupPage";
 import TrackPage from "./pages/TrackPage/TrackPage";
-import MedicationPage from "./pages/medication/MedicationPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -28,6 +29,7 @@ export const router = createBrowserRouter([
         children: [
           { path: "/", element: <HomePage /> },
           { path: "/alarms", element: <AlarmPage /> },
+          { path: "/schedule", element: <SchedulePage /> },
           { path: "/track", element: <TrackPage /> },
           { path: "/medication", element: <MedicationPage /> },
           { path: "/chat", element: <ChatPage /> },

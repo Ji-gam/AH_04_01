@@ -258,6 +258,26 @@ async def test_quick_register_with_exact_name_match_registers_immediately():
         assert any(s["drug_name"] == "아스피린정 100mg" for s in list_res.json())
 
 
+async def test_quick_register_with_hospital_name_saves_and_returns_it():
+    """병원명을 함께 입력하면 저장되고, 목록 조회에서도 병원명이 내려와야 한다(T-NTFY-2 복약 시간표 표시용)."""
+    await _seed_dummy_medications()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "quick_register_hospital@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        res = await client.post(
+            "/api/v1/medications/quick-register",
+            headers=headers,
+            json={"drug_name": "아스피린정 100mg", "times": ["08:00"], "hospital_name": "서울건강내과"},
+        )
+        assert res.status_code == status.HTTP_200_OK
+        assert res.json()["schedule"]["hospital_name"] == "서울건강내과"
+
+        list_res = await client.get("/api/v1/medications", headers=headers)
+        mine = [s for s in list_res.json() if s["drug_name"] == "아스피린정 100mg"]
+        assert mine and mine[0]["hospital_name"] == "서울건강내과"
+
+
 async def test_quick_register_with_no_match_auto_creates_and_registers():
     """DB에 없는 약도 등록 자체는 막히지 않도록, OCR 플로우처럼 새 약품을 즉석 생성해 등록해야 한다."""
     await _seed_dummy_medications()

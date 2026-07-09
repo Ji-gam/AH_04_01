@@ -351,6 +351,7 @@ class MedicationService:
                 source_job_id=s.source_job_id,
                 form_type=s.medication.form_type,
                 dosage_guideline=s.medication.dosage_guideline,
+                hospital_name=s.hospital_name,
             )
             for s in schedules
         ]
@@ -368,15 +369,26 @@ class MedicationService:
         if not med:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 약품 정보를 찾을 수 없습니다.")
 
-        schedule = MedicationSchedule(profile_id=profile_id, medication_id=med.id, times=req.times)
+        schedule = MedicationSchedule(
+            profile_id=profile_id, medication_id=med.id, times=req.times, hospital_name=req.hospital_name
+        )
         await self._repository.create_schedule(session, schedule)
 
         return MedicationScheduleResponse(
-            id=schedule.id, medication_id=schedule.medication_id, drug_name=med.medication_name, times=schedule.times
+            id=schedule.id,
+            medication_id=schedule.medication_id,
+            drug_name=med.medication_name,
+            times=schedule.times,
+            hospital_name=schedule.hospital_name,
         )
 
     async def quick_register_medication(
-        self, session: AsyncSession, profile_id: int, drug_name: str, times: list[str]
+        self,
+        session: AsyncSession,
+        profile_id: int,
+        drug_name: str,
+        times: list[str],
+        hospital_name: str | None = None,
     ) -> QuickRegisterResult:
         """약품명을 직접 입력해 검색 단계 없이 한 번에 등록한다(T-MED-3).
 
@@ -412,7 +424,9 @@ class MedicationService:
             med = await self._repository.create_medication(session, med)
             auto_created = True
 
-        schedule = MedicationSchedule(profile_id=profile_id, medication_id=med.id, times=times)
+        schedule = MedicationSchedule(
+            profile_id=profile_id, medication_id=med.id, times=times, hospital_name=hospital_name
+        )
         schedule = await self._repository.create_schedule(session, schedule)
 
         return QuickRegisterResult(
@@ -422,6 +436,7 @@ class MedicationService:
                 medication_id=schedule.medication_id,
                 drug_name=med.medication_name,
                 times=schedule.times,
+                hospital_name=schedule.hospital_name,
             ),
             auto_created=auto_created,
         )

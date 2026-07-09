@@ -1,4 +1,5 @@
 import { useState } from "react";
+
 import { apiFetch, apiFetchRaw } from "../api/client";
 
 export interface MedicationSchedule {
@@ -10,6 +11,7 @@ export interface MedicationSchedule {
   // 약 카드 표시용 부가 정보 — 마스터 데이터에 값이 없으면 null (T-NTFY-2)
   form_type?: string | null;
   dosage_guideline?: string | null;
+  hospital_name?: string | null;
 }
 
 export interface RecognitionCandidate {
@@ -65,13 +67,17 @@ export function useMedication() {
     }
   };
 
-  const createManualSchedule = async (drugCode: string, times: string[]) => {
+  const createManualSchedule = async (
+    drugCode: string,
+    times: string[],
+    hospitalName?: string | null,
+  ) => {
     setIsLoading(true);
     setError(null);
     try {
       await apiFetch("/medications", {
         method: "POST",
-        body: JSON.stringify({ drug_code: drugCode, times }),
+        body: JSON.stringify({ drug_code: drugCode, times, hospital_name: hospitalName ?? null }),
       });
       await fetchSchedules();
     } catch (err: unknown) {
@@ -82,7 +88,7 @@ export function useMedication() {
     }
   };
 
-  const quickRegister = async (drugName: string, times: string[]) => {
+  const quickRegister = async (drugName: string, times: string[], hospitalName?: string | null) => {
     setIsLoading(true);
     setError(null);
     try {
@@ -93,7 +99,7 @@ export function useMedication() {
         candidates: Array<{ drug_code: string; medication_name: string; form_type: string | null }>;
       }>("/medications/quick-register", {
         method: "POST",
-        body: JSON.stringify({ drug_name: drugName, times }),
+        body: JSON.stringify({ drug_name: drugName, times, hospital_name: hospitalName ?? null }),
       });
       if (res.status === "registered") {
         await fetchSchedules();

@@ -145,7 +145,7 @@ async def quick_register_medication(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> QuickRegisterResult:
     service = MedicationService()
-    return await service.quick_register_medication(session, profile.id, body.drug_name, body.times)
+    return await service.quick_register_medication(session, profile.id, body.drug_name, body.times, body.hospital_name)
 
 
 @medication_router.delete(
