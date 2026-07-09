@@ -22,7 +22,6 @@ export default function ChatPage() {
     await sendMessage(text);
   }
 
-  // 날짜 변환용 포맷터
   const formatDate = (isoString: string) => {
     try {
       const d = new Date(isoString);
@@ -40,59 +39,39 @@ export default function ChatPage() {
         display: "flex",
         height: "100%",
         overflow: "hidden",
-        fontFamily: "'Outfit', 'Inter', sans-serif",
+        fontFamily: "monospace",
       }}
     >
       {/* 1. 데스크톱 사이드바 */}
       <div
         className="chat-sidebar"
         style={{
-          width: "280px",
-          background: "rgba(30, 41, 59, 0.05)",
-          borderRight: "1px solid rgba(226, 232, 240, 0.8)",
+          width: "250px",
+          borderRight: "1px solid black",
           display: "flex",
           flexDirection: "column",
           height: "100%",
-          padding: "16px",
+          padding: "10px",
           boxSizing: "border-box",
-          transition: "all 0.3s ease",
         }}
       >
         <button
           onClick={startNewChat}
           style={{
-            background: "linear-gradient(135deg, #4f46e5, #06b6d4)",
-            color: "white",
-            border: "none",
-            borderRadius: "12px",
-            padding: "12px 16px",
-            fontSize: "15px",
-            fontWeight: "600",
+            background: "none",
+            color: "black",
+            border: "1px solid black",
+            padding: "10px",
+            fontSize: "14px",
+            fontWeight: "bold",
             cursor: "pointer",
-            marginBottom: "20px",
-            boxShadow: "0 4px 12px rgba(79, 70, 229, 0.3)",
-            transition: "transform 0.2s ease, opacity 0.2s ease",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "8px",
+            marginBottom: "15px",
           }}
-          onMouseOver={(e) => (e.currentTarget.style.transform = "translateY(-1px)")}
-          onMouseOut={(e) => (e.currentTarget.style.transform = "translateY(0)")}
         >
-          <span>+</span> 새로운 상담 시작
+          + 새로운 상담 시작
         </button>
 
-        <h3
-          style={{
-            fontSize: "12px",
-            textTransform: "uppercase",
-            color: "#64748b",
-            letterSpacing: "1px",
-            marginBottom: "12px",
-            fontWeight: "700",
-          }}
-        >
+        <h3 style={{ fontSize: "12px", marginBottom: "10px" }}>
           이전 상담 기록
         </h3>
 
@@ -102,7 +81,7 @@ export default function ChatPage() {
             overflowY: "auto",
             display: "flex",
             flexDirection: "column",
-            gap: "8px",
+            gap: "5px",
           }}
         >
           {sessionList.map((session) => {
@@ -112,41 +91,26 @@ export default function ChatPage() {
                 key={session.id}
                 onClick={() => void selectSession(String(session.id))}
                 style={{
-                  padding: "12px 16px",
-                  borderRadius: "10px",
-                  background: isActive ? "rgba(79, 70, 229, 0.1)" : "transparent",
-                  border: isActive ? "1px solid rgba(79, 70, 229, 0.3)" : "1px solid transparent",
-                  color: isActive ? "#4f46e5" : "#334155",
-                  fontWeight: isActive ? "600" : "500",
+                  padding: "10px",
+                  border: isActive ? "2px solid black" : "1px solid gray",
+                  color: "black",
+                  fontWeight: isActive ? "bold" : "normal",
                   cursor: "pointer",
-                  transition: "all 0.2s ease",
                   display: "flex",
                   flexDirection: "column",
-                  gap: "4px",
+                  gap: "2px",
                 }}
                 className="session-item"
               >
-                <span style={{ fontSize: "14px" }}>상담 #{session.id}</span>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: isActive ? "rgba(79, 70, 229, 0.7)" : "#94a3b8",
-                  }}
-                >
+                <span style={{ fontSize: "13px" }}>상담 #{session.id}</span>
+                <span style={{ fontSize: "11px", color: "gray" }}>
                   {formatDate(session.created_at)}
                 </span>
               </div>
             );
           })}
           {sessionList.length === 0 && (
-            <p
-              style={{
-                fontSize: "13px",
-                color: "#94a3b8",
-                textAlign: "center",
-                marginTop: "20px",
-              }}
-            >
+            <p style={{ fontSize: "12px", color: "gray", textAlign: "center" }}>
               이전 상담이 없습니다.
             </p>
           )}
@@ -162,8 +126,7 @@ export default function ChatPage() {
             left: 0,
             width: "100vw",
             height: "100vh",
-            background: "rgba(15, 23, 42, 0.4)",
-            backdropFilter: "blur(4px)",
+            background: "rgba(0, 0, 0, 0.5)",
             zIndex: 1000,
             display: "flex",
           }}
@@ -171,36 +134,21 @@ export default function ChatPage() {
         >
           <div
             style={{
-              width: "280px",
+              width: "250px",
               background: "white",
               height: "100%",
-              padding: "20px 16px",
+              padding: "15px",
               boxSizing: "border-box",
               display: "flex",
               flexDirection: "column",
+              borderRight: "2px solid black"
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: "20px",
-              }}
-            >
-              <span style={{ fontWeight: "700", color: "#1e293b" }}>메뉴</span>
-              <button
-                onClick={() => setIsMobileMenuOpen(false)}
-                style={{
-                  background: "none",
-                  border: "none",
-                  fontSize: "20px",
-                  cursor: "pointer",
-                  color: "#64748b",
-                }}
-              >
-                ×
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px" }}>
+              <strong>메뉴</strong>
+              <button onClick={() => setIsMobileMenuOpen(false)} style={{ border: "1px solid black", background: "none" }}>
+                닫기
               </button>
             </div>
 
@@ -210,39 +158,24 @@ export default function ChatPage() {
                 setIsMobileMenuOpen(false);
               }}
               style={{
-                background: "linear-gradient(135deg, #4f46e5, #06b6d4)",
-                color: "white",
-                border: "none",
-                borderRadius: "12px",
-                padding: "12px 16px",
-                fontSize: "15px",
-                fontWeight: "600",
-                cursor: "pointer",
-                marginBottom: "20px",
-                boxShadow: "0 4px 12px rgba(79, 70, 229, 0.3)",
+                background: "none",
+                border: "1px solid black",
+                padding: "10px",
+                fontWeight: "bold",
+                marginBottom: "15px",
               }}
             >
               + 새로운 상담 시작
             </button>
 
-            <h3
-              style={{
-                fontSize: "11px",
-                textTransform: "uppercase",
-                color: "#64748b",
-                letterSpacing: "1px",
-                marginBottom: "12px",
-              }}
-            >
-              이전 상담 기록
-            </h3>
+            <h3 style={{ fontSize: "12px", marginBottom: "10px" }}>이전 상담 기록</h3>
             <div
               style={{
                 flex: 1,
                 overflowY: "auto",
                 display: "flex",
                 flexDirection: "column",
-                gap: "8px",
+                gap: "5px",
               }}
             >
               {sessionList.map((session) => {
@@ -255,27 +188,17 @@ export default function ChatPage() {
                       setIsMobileMenuOpen(false);
                     }}
                     style={{
-                      padding: "12px 16px",
-                      borderRadius: "10px",
-                      background: isActive ? "rgba(79, 70, 229, 0.1)" : "transparent",
-                      border: isActive
-                        ? "1px solid rgba(79, 70, 229, 0.3)"
-                        : "1px solid transparent",
-                      color: isActive ? "#4f46e5" : "#334155",
-                      fontWeight: isActive ? "600" : "500",
+                      padding: "10px",
+                      border: isActive ? "2px solid black" : "1px solid gray",
+                      fontWeight: isActive ? "bold" : "normal",
                       cursor: "pointer",
                       display: "flex",
                       flexDirection: "column",
-                      gap: "4px",
+                      gap: "2px",
                     }}
                   >
-                    <span style={{ fontSize: "14px" }}>상담 #{session.id}</span>
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        color: isActive ? "rgba(79, 70, 229, 0.7)" : "#94a3b8",
-                      }}
-                    >
+                    <span style={{ fontSize: "13px" }}>상담 #{session.id}</span>
+                    <span style={{ fontSize: "11px", color: "gray" }}>
                       {formatDate(session.created_at)}
                     </span>
                   </div>
@@ -293,7 +216,7 @@ export default function ChatPage() {
           display: "flex",
           flexDirection: "column",
           height: "100%",
-          background: "#ffffff",
+          background: "white",
           position: "relative",
         }}
       >
@@ -302,11 +225,9 @@ export default function ChatPage() {
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "12px",
-            padding: "16px 20px",
-            borderBottom: "1px solid rgba(226, 232, 240, 0.8)",
-            background: "rgba(255, 255, 255, 0.8)",
-            backdropFilter: "blur(8px)",
+            gap: "10px",
+            padding: "10px",
+            borderBottom: "1px solid black",
           }}
         >
           <button
@@ -314,19 +235,16 @@ export default function ChatPage() {
             onClick={() => setIsMobileMenuOpen(true)}
             style={{
               background: "none",
-              border: "none",
-              fontSize: "20px",
+              border: "1px solid black",
               cursor: "pointer",
-              padding: "4px",
-              color: "#334155",
               display: "none",
             }}
           >
-            ☰
+            메뉴
           </button>
-          <h2 style={{ fontSize: "18px", fontWeight: "700", color: "#1e293b", margin: 0 }}>
-            {currentSessionId ? `의약성분 상담 (#${currentSessionId})` : "신규 상담방"}
-          </h2>
+          <h3 style={{ margin: 0 }}>
+            {currentSessionId ? `상담 (#${currentSessionId})` : "신규 상담방"}
+          </h3>
         </div>
 
         <DisclaimerBanner />
@@ -336,10 +254,10 @@ export default function ChatPage() {
           style={{
             flex: 1,
             overflowY: "auto",
-            padding: "20px",
+            padding: "10px",
             display: "flex",
             flexDirection: "column",
-            gap: "16px",
+            gap: "10px",
           }}
         >
           {messages.map((m, i) => {
@@ -349,22 +267,22 @@ export default function ChatPage() {
                 key={i}
                 style={{
                   alignSelf: isUser ? "flex-end" : "flex-start",
-                  maxWidth: "75%",
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: isUser ? "flex-end" : "flex-start",
+                  marginLeft: isUser ? "auto" : "0",
+                  marginRight: isUser ? "0" : "auto",
+                  maxWidth: "80%",
+                  textAlign: isUser ? "right" : "left",
                 }}
               >
                 <div
                   style={{
-                    padding: "12px 16px",
-                    borderRadius: isUser ? "16px 16px 0 16px" : "16px 16px 16px 0",
-                    background: isUser ? "#4f46e5" : "rgba(241, 245, 249, 0.9)",
-                    color: isUser ? "#ffffff" : "#1e293b",
-                    boxShadow: "0 2px 8px rgba(0,0,0,0.02)",
-                    lineHeight: "1.5",
-                    fontSize: "15px",
+                    display: "inline-block",
+                    padding: "8px 12px",
+                    border: "1px solid black",
+                    background: isUser ? "#eee" : "none",
+                    color: "black",
+                    fontSize: "13px",
                     whiteSpace: "pre-wrap",
+                    textAlign: "left",
                   }}
                 >
                   {m.content}
@@ -372,11 +290,12 @@ export default function ChatPage() {
                 {m.disclaimer && (
                   <span
                     style={{
+                      display: "block",
                       fontSize: "11px",
-                      color: "#ef4444",
-                      marginTop: "6px",
-                      maxWidth: "90%",
-                      lineHeight: "1.4",
+                      color: "red",
+                      marginTop: "4px",
+                      maxWidth: "100%",
+                      textAlign: "left",
                     }}
                   >
                     ⚠ {m.disclaimer}
@@ -389,14 +308,11 @@ export default function ChatPage() {
             <div
               style={{
                 alignSelf: "flex-start",
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                color: "#64748b",
-                fontSize: "14px",
+                color: "gray",
+                fontSize: "12px",
               }}
             >
-              <span className="dot-pulse">답변 작성 중...</span>
+              <span>답변 작성 중...</span>
             </div>
           )}
           {messages.length === 0 && (
@@ -407,16 +323,12 @@ export default function ChatPage() {
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "#94a3b8",
-                gap: "12px",
+                color: "gray",
+                gap: "5px",
               }}
             >
-              <div style={{ fontSize: "40px" }}>💬</div>
               <p style={{ margin: 0, fontSize: "14px" }}>
-                궁금한 약 성분이나 DUR 기준을 편하게 여쭤보세요.
-              </p>
-              <p style={{ margin: 0, fontSize: "12px", opacity: 0.7 }}>
-                예: "졸피뎀의 최대 투여 기간이 어떻게 되나요?"
+                궁금한 약 성분이나 DUR 기준을 물어보세요.
               </p>
             </div>
           )}
@@ -429,11 +341,11 @@ export default function ChatPage() {
             void handleSend();
           }}
           style={{
-            padding: "16px 20px",
-            background: "#ffffff",
-            borderTop: "1px solid rgba(226, 232, 240, 0.8)",
+            padding: "10px",
+            background: "white",
+            borderTop: "1px solid black",
             display: "flex",
-            gap: "10px",
+            gap: "5px",
             boxSizing: "border-box",
           }}
         >
@@ -444,33 +356,23 @@ export default function ChatPage() {
             disabled={isStreaming}
             style={{
               flex: 1,
-              padding: "14px 18px",
-              fontSize: "15px",
-              border: "1px solid #cbd5e1",
-              borderRadius: "14px",
+              padding: "10px",
+              fontSize: "13px",
+              border: "1px solid black",
               outline: "none",
-              transition: "border-color 0.2s",
-              boxShadow: "inset 0 1px 2px rgba(0,0,0,0.02)",
             }}
-            onFocus={(e) => (e.target.style.borderColor = "#4f46e5")}
-            onBlur={(e) => (e.target.style.borderColor = "#cbd5e1")}
           />
           <button
             type="submit"
             disabled={isStreaming || !input.trim()}
             style={{
-              padding: "0 24px",
-              fontSize: "15px",
-              fontWeight: "600",
-              background:
-                isStreaming || !input.trim()
-                  ? "#cbd5e1"
-                  : "linear-gradient(135deg, #4f46e5, #0b0f19)",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "14px",
+              padding: "0 15px",
+              fontSize: "13px",
+              fontWeight: "bold",
+              background: "none",
+              color: "black",
+              border: "1px solid black",
               cursor: isStreaming || !input.trim() ? "default" : "pointer",
-              transition: "opacity 0.2s",
             }}
           >
             전송
@@ -478,7 +380,6 @@ export default function ChatPage() {
         </form>
       </div>
 
-      {/* 미디어 쿼리 주입 */}
       <style>{`
         @media (max-width: 768px) {
           .chat-sidebar {
@@ -487,9 +388,6 @@ export default function ChatPage() {
           .menu-toggle-btn {
             display: block !important;
           }
-        }
-        .session-item:hover {
-          background: rgba(79, 70, 229, 0.05) !important;
         }
       `}</style>
     </div>
