@@ -1,12 +1,12 @@
 # FRONTEND_UI_GUIDE.md — 디자인 시스템 & UI 컴포넌트 사용규칙
 
 > **문서 버전**: v1.0 · **작성**: 2026-07-08 (서현)
-> **위치**: `FRONTEND_ARCHITECTURE.md` 5번(스타일링) 항목의 **구체적인 실행 방법**을 정리한 짝 문서입니다.
-> 5번에서 "유틸리티 클래스(Tailwind 등) 하나로 통일한다"고 정한 것을, 실제로 **Tailwind CSS + shadcn/ui**로 확정하고
+> **위치**: `docs/CODING_RULES.md` 3-5번(스타일링) 항목의 **구체적인 실행 방법**을 정리한 짝 문서입니다.
+> 3-5번에서 "유틸리티 클래스(Tailwind 등) 하나로 통일한다"고 정한 것을, 실제로 **Tailwind CSS + shadcn/ui**로 확정하고
 > 어떻게 쓰는지 정리했습니다.
 
 > ℹ️ 아직 전체 화면에 적용된 상태는 아닙니다. 다른 화면(홈/추적/더보기)은 각 담당자가 이 문서를 보고 같은
-> 방식으로 맞춰가면 됩니다. 화면 하나씩 작은 PR로 옮겨주세요 (FRONTEND_ARCHITECTURE.md 7번 — 탭 폴더 단위 PR
+> 방식으로 맞춰가면 됩니다. 화면 하나씩 작은 PR로 옮겨주세요 (`docs/CONTRIBUTING.md` 6번 — 탭 폴더 단위 PR
 > 원칙 그대로 적용).
 >
 > **2026-07-08 갱신**: Tailwind+shadcn 인프라(설정 파일/토큰/`button`·`input` 부품)를 T-LLM-3(정보 탭) 작업
@@ -63,7 +63,7 @@
 
 ## 3. 폴더 규칙 — `components/ui/` vs `components/common/`
 
-FRONTEND_ARCHITECTURE.md 3번의 `components/common/`(3개 이상 페이지에서 쓰는 재사용 컴포넌트) 규칙에
+`docs/CODING_RULES.md` 3-2번의 `components/common/`(3개 이상 페이지에서 쓰는 재사용 컴포넌트) 규칙에
 **한 단계를 추가**합니다.
 
 ```
@@ -73,7 +73,7 @@ src/components/
 ```
 
 - `ui/` 안의 파일은 **shadcn 원본 그대로 두는 게 원칙**입니다. 스타일을 크게 바꾸고 싶으면 파일을 직접 고치지 말고
-  팀에 먼저 얘기하세요 (FRONTEND_ARCHITECTURE.md 6번 "공통 모듈" 규칙과 같은 이유 — 여기 바뀌면 전체 화면에 영향).
+  팀에 먼저 얘기하세요 (`docs/CODING_RULES.md` 3-6번 "공통 모듈" 규칙과 같은 이유 — 여기 바뀌면 전체 화면에 영향).
 - `common/`은 기존 규칙 그대로입니다 (페이지 폴더 안에서 시작 → 3곳 이상 재사용되면 승격).
 
 ---
