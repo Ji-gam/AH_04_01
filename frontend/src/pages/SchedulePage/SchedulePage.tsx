@@ -44,7 +44,13 @@ interface DurSearchResultItem {
   entp_name: string;
   efficacy: string;
   precautions: string;
+  source: "local_dur_db" | "public_data_api";
 }
+
+const DUR_SOURCE_LABEL: Record<DurSearchResultItem["source"], string> = {
+  local_dur_db: "출처: 식약처 DUR 데이터(로컬)",
+  public_data_api: "출처: 식약처 공공데이터포털 e약은요(실시간)",
+};
 
 /** 약 이름별 DUR 조회 결과 캐시 상태 — 아직 조회 전이면 키가 없고, 조회 중/완료/실패를 구분한다. */
 type DurLookup =
@@ -514,6 +520,15 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                                       <p style={{ margin: "2px 0" }}>💊 효능: {r.efficacy}</p>
                                       <p style={{ margin: "2px 0" }}>
                                         ⚠️ 주의사항: {r.precautions}
+                                      </p>
+                                      <p
+                                        style={{
+                                          margin: "2px 0 0",
+                                          fontSize: 11,
+                                          color: c.textMuted,
+                                        }}
+                                      >
+                                        {DUR_SOURCE_LABEL[r.source]}
                                       </p>
                                     </div>
                                   ))}

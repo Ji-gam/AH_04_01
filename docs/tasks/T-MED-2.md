@@ -10,6 +10,9 @@
 >   가져 커버리지가 낮다는 게 확인됨. 로컬 결과가 없을 때 식약처 공공데이터 API(e약은요,
 >   T-MED-4에서 이미 연동된 `medication_open_api_client.py`)로 실시간 폴백하는 것을 범위에 추가.
 >   이에 따라 허용 경로에 `app/apis/v1/medication.py`(해당 엔드포인트 함수 내부만) 추가.
+> - v1.2 (2026-07-09): 각 결과 항목에 `source`(`local_dur_db` | `public_data_api`) 필드를 추가해
+>   화면에 "출처: 식약처 DUR 데이터(로컬)" / "출처: 식약처 공공데이터포털 e약은요(실시간)"를 함께
+>   표시 — 정보가 어디서 왔는지 투명하게 밝혀 신뢰도를 높인다.
 
 ### 참조
 - PRD: F-MED-2 / TRD: T-MED-2 (부분) / 배경: 사용자가 OCR로 등록한 약이 "오늘의 복약 시간표"(SchedulePage)에
@@ -34,6 +37,8 @@
 - [ ] `PUBLIC_DATA_API_KEY`가 없으면(로컬 미설정 등) 폴백 호출이 조용히 빈 결과로 넘어가고 에러로 죽지 않는다
 - [ ] 로컬 DB와 공공 API 둘 다에서 결과를 못 찾으면, "어디까지 찾아봤는지"(`not_found_reason`)를 사용자에게
       그대로 보여준다 — API 키 미설정으로 못 찾아본 것과 둘 다 조회했는데 없는 것을 구분해서 안내한다
+- [ ] 결과가 있을 때도 그 정보가 로컬 DB에서 온 것인지 실시간 공공 API에서 온 것인지(`source`) 화면에
+      같이 밝힌다 — "정보 없음"이 아니라 "있는 정보"에도 출처를 밝혀야 신뢰도가 생긴다
 - [ ] (공통) `ruff`/`tsc`/`lint` 통과, 변경 범위가 허용 경로 내로 한정
 
 ### 허용 경로 (이 안에서만 자유롭게 작업 — 질문 없이 진행)
@@ -88,6 +93,9 @@ frontend/src/hooks/useMedication.ts  (이번 범위는 SchedulePage 자체 fetch
   - [x] 로컬/공공 API 둘 다 없을 때 `not_found_reason`으로 어디까지 찾아봤는지 안내(API 키 없어서 못
     찾아본 경우와 둘 다 조회했는데 없는 경우를 구분) — 직접 확인
   - [x] `ruff check`/`mypy`(백엔드), `tsc -b --noEmit`/`eslint`(프론트) 모두 통과, 신규 warning 없음
+  - [x] 결과 항목에 `source` 필드 추가 + 화면에 출처 라벨 노출 — 브라우저로 로컬 히트("출처: 식약처 DUR
+    데이터(로컬)") 및 두 가지 `not_found_reason` 케이스 모두 실제 렌더링 확인. `public_data_api` 라벨의
+    "성공 케이스"(공공 API에서 결과를 찾아온 경우)는 라이브로 재현하지 못함 — 아래 가정 참고.
 - 가정(Assumptions):
   - e약은요 API(`fetch_drug_summary`)만으로 폴백을 구성했다. DUR 품목정보(`fetch_dur_item_info`)는
     `item_seq`를 얻으려면 낱알식별/허가정보 API를 추가로 호출해야 해서 이번 범위에서는 생략 —
@@ -97,6 +105,11 @@ frontend/src/hooks/useMedication.ts  (이번 범위는 SchedulePage 자체 fetch
     일부 약은 여전히 정보가 없을 수 있음 — 이 경우 `not_found_reason`으로 투명하게 안내.
   - `envs/.local.env`(gitignore 대상)에 사용자가 채팅으로 전달한 실제 `PUBLIC_DATA_API_KEY`를 저장함 —
     이 파일은 개인 파일이라 커밋되지 않음, 각자 로컬에 동일한 키를 채워야 폴백이 실제로 동작함.
+  - `source: "public_data_api"`로 응답이 채워지는 "성공" 케이스를 실제 API로 재현해보려 했으나, 로컬
+    라이트 DB(`products` 27,231건)와 e약은요 데이터셋이 같은 식약처 원천이라 커버리지가 거의 겹쳐서
+    "로컬엔 없는데 공공 API엔 있는" 흔한 약을 찾지 못했다(둘 다 없거나 둘 다 있는 경우만 반복 확인됨).
+    코드 경로 자체는 필드 딕셔너리에 리터럴 `"source": "public_data_api"` 한 줄을 추가한 것으로,
+    이미 라이브로 검증된 필드 매핑 로직(효능/주의사항 파싱)에 얹힌 것이라 별도 로직 위험은 낮다고 판단.
 - 공유 계약 변경 필요 사항: 없음. `app/services/medication_open_api_client.py`는 기존 함수를
   그대로 재사용만 했고 수정하지 않음.
 - 검증 한계: 이 개발 환경에 연결 가능한 MySQL이 없어 `pytest`(엔드포인트 통합 테스트, 인증 의존성 포함)를
