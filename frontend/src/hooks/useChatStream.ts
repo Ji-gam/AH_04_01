@@ -1,9 +1,10 @@
 /**
  * T-LLM-2 스트리밍 훅 — `docs/CODING_RULES.md` 3번(프론트엔드 규칙) 참고.
  */
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { chatApi } from "../api/chatApi";
+import type { ChatSessionResponse } from "../api/types";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -14,12 +15,54 @@ export interface ChatMessage {
 export function useChatStream() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
-  const sessionIdRef = useRef<string | null>(null);
+  const [sessionList, setSessionList] = useState<ChatSessionResponse[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  const loadSessions = async () => {
+    try {
+      const list = await chatApi.listSessions();
+      setSessionList(list);
+      return list;
+    } catch (err) {
+      console.error("세션 목록 로드 실패:", err);
+      return [];
+    }
+  };
+
+  const selectSession = async (sessionId: string) => {
+    setCurrentSessionId(sessionId);
+    setIsStreaming(false);
+    try {
+      const history = await chatApi.listMessages(sessionId);
+      // 기존 메시지는 생성 시각 순서대로 정렬되어 반환됨
+      setMessages(history.map((m) => ({ role: m.role, content: m.content })));
+    } catch (err) {
+      console.error("이전 대화 로드 실패:", err);
+    }
+  };
+
+  const startNewChat = () => {
+    setMessages([]);
+    setCurrentSessionId(null);
+  };
+
+  // 컴포넌트 마운트 시 세션 목록을 조회하고, 마지막 세션이 있다면 복원합니다.
+  useEffect(() => {
+    void (async () => {
+      const list = await loadSessions();
+      if (list.length > 0) {
+        // 가장 최근 세션 ID 로드
+        const latestSessionId = String(list[0].id);
+        void selectSession(latestSessionId);
+      }
+    })();
+  }, []);
 
   async function ensureSession(): Promise<string> {
-    if (sessionIdRef.current) return sessionIdRef.current;
+    if (currentSessionId) return currentSessionId;
     const { session_id } = await chatApi.createSession();
-    sessionIdRef.current = session_id;
+    setCurrentSessionId(session_id);
+    void loadSessions(); // 새로운 세션이 생겼으므로 목록을 갱신합니다.
     return session_id;
   }
 
@@ -31,9 +74,6 @@ export function useChatStream() {
 
     try {
       const sessionId = await ensureSession();
-      // React StrictMode가 setState 업데이터를 2번 호출해 순수성을 검증하므로,
-      // 업데이터 내부에서 이 플래그를 직접 mutate하지 않는다(mutate하면 StrictMode에서
-      // 토큰이 중복/누락된다) — 값은 for-await 루프 본문(업데이터 바깥)에서만 갱신한다.
       let assistantStarted = false;
 
       for await (const chunk of chatApi.sendMessage(sessionId, text)) {
@@ -76,5 +116,14 @@ export function useChatStream() {
     }
   }
 
-  return { messages, sendMessage, isStreaming };
+  return {
+    messages,
+    sendMessage,
+    isStreaming,
+    sessionList,
+    currentSessionId,
+    selectSession,
+    startNewChat,
+    loadSessions,
+  };
 }

@@ -1,5 +1,10 @@
 import { apiFetch, apiFetchRaw } from "./client";
-import type { ChatMessageChunk, ChatSessionCreateResult } from "./types";
+import type {
+  ChatMessageChunk,
+  ChatMessageResponse,
+  ChatSessionCreateResult,
+  ChatSessionResponse,
+} from "./types";
 
 // text/plain 스트림을 줄 단위로 읽어 ChatMessageChunk로 파싱한다. api_spec_core_v1.yaml 참고.
 async function* readChunks(res: Response): AsyncGenerator<ChatMessageChunk> {
@@ -23,6 +28,11 @@ async function* readChunks(res: Response): AsyncGenerator<ChatMessageChunk> {
 
 export const chatApi = {
   createSession: () => apiFetch<ChatSessionCreateResult>("/chat/sessions", { method: "POST" }),
+
+  listSessions: () => apiFetch<ChatSessionResponse[]>("/chat/sessions"),
+
+  listMessages: (sessionId: string) =>
+    apiFetch<ChatMessageResponse[]>(`/chat/sessions/${sessionId}/messages`),
 
   sendMessage: async function* (
     sessionId: string,

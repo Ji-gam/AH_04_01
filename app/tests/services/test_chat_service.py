@@ -26,8 +26,8 @@ class FakeUserHealthContextService:
 
 
 class FakeRetriever:
-    def search(self, query: str, context: dict) -> list[str]:
-        return ["fake-chunk-1"]
+    async def search(self, query: str, context: dict) -> list[dict]:
+        return [{"content": "fake-chunk-1", "metadata": {"source": "fake_source.csv"}}]
 
 
 async def fake_llm_stream(message: str, context: dict, chunks: list[str]):
@@ -74,6 +74,7 @@ async def test_normal_message_streams_tokens_and_saves_conversation():
     assert len(token_chunks) > 0
 
     full_reply = "".join(c["content"] for c in token_chunks)
+    assert "[출처: fake_source.csv]" in full_reply
     assert repository.saved_messages == [
         (10, MessageRole.USER, "두통약 뭐가 좋아요?"),
         (10, MessageRole.ASSISTANT, full_reply),

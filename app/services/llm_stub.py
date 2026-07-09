@@ -33,6 +33,9 @@ async def stream_llm_reply(message: str, context: dict, chunks: list[str]) -> As
     system_prompt = (
         "당신은 ReMedi의 건강 상담 챗봇입니다. 아래 사용자 건강 컨텍스트(진단병력·가족력·"
         "복약정보)를 참고해 개인화된 답변을 간결하고 안전하게 제공하세요.\n"
+        "이 시스템은 답변 하단 UI 영역에 면책 조항(의사와 상담하라는 내용 등)을 별도로 노출하고 있습니다.\n"
+        "따라서 당신의 답변 본문 텍스트 내에는 '의사와 상담하세요', '의학적 조언이 아닙니다' 같은 자가 경고나 면책 문구를 절대 적지 마십시오.\n"
+        "오직 사용자의 질문에 대한 핵심 의학적 정보와 대답만을 정확하고 팩트 기반으로 답변하세요.\n"
         f"참고 문서: {chunks}\n"
         f"사용자 건강 컨텍스트: {context}"
     )
@@ -50,7 +53,7 @@ async def stream_llm_reply(message: str, context: dict, chunks: list[str]) -> As
             yield delta
 
 
-async def generate_content_card(disease_code: str, category: str, chunks: list[str]) -> dict:
+async def generate_content_card(disease_code: str, category: str, chunks: list[dict]) -> dict:
     """T-LLM-3: 질환+카테고리 하나에 대한 건강 콘텐츠 카드를 JSON으로 생성한다.
     `stream_llm_reply`(T-LLM-2, 스트리밍 챗봇 응답)와는 별개 함수로, 기존 챗봇 흐름에는
     영향을 주지 않는 추가 함수다."""

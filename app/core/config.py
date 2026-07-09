@@ -39,4 +39,8 @@ class Config(BaseSettings):
 
     # T-LLM-2: 설정 안 하면 app/services/llm_stub.py가 고정 문자열 stub으로 폴백한다.
     OPENAI_API_KEY: str | None = None
+    OPENAI_EMBEDDING_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
+
+    # T-LLM-2: RAG 검색을 담당하는 ai-worker 서비스의 /retrieve 엔드포인트 (docker-compose 네트워크 내부 호스트명)
+    AI_WORKER_RETRIEVE_URL: str = "http://ai-worker:8001/retrieve"
