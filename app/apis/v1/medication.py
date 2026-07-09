@@ -8,6 +8,7 @@ from app.dependencies.security import get_current_profile
 from app.dtos.medication_dto import (
     MedicationScheduleCreateRequest,
     MedicationScheduleResponse,
+    MedicationScheduleUpdateRequest,
     QuickRegisterRequest,
     QuickRegisterResult,
     RecognitionConfirmRequest,
@@ -145,7 +146,23 @@ async def quick_register_medication(
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> QuickRegisterResult:
     service = MedicationService()
-    return await service.quick_register_medication(session, profile.id, body.drug_name, body.times)
+    return await service.quick_register_medication(session, profile.id, body.drug_name, body.times, body.hospital_name)
+
+
+@medication_router.patch(
+    "/medications/{schedule_id}",
+    response_model=MedicationScheduleResponse,
+    summary="복약 스케줄 부분 수정",
+    description="전달한 필드(복용 시간 목록, 병원명)만 부분 수정합니다.",
+)
+async def update_medication_schedule(
+    schedule_id: int,
+    body: MedicationScheduleUpdateRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> MedicationScheduleResponse:
+    service = MedicationService()
+    return await service.update_schedule(session, profile.id, schedule_id, body)
 
 
 @medication_router.delete(

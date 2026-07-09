@@ -38,6 +38,7 @@ class MedicationSchedule(Base):
     )
     times: Mapped[list[str]] = mapped_column(JSON, nullable=False)  # 복용 시간 목록 (e.g. ["08:30", "19:00"])
     source_job_id: Mapped[str | None] = mapped_column(String(36), nullable=True)  # 인식을 통해 등록된 경우 job_id 연계
+    hospital_name: Mapped[str | None] = mapped_column(String(100), nullable=True)  # 처방 병원명 (T-NTFY-2)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
