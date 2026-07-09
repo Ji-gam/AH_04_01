@@ -7,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import config
 from app.core.config import Env
 from app.core.db.databases import get_db
-from app.dtos.auth import LoginRequest, LoginResponse, SignUpRequest, TokenRefreshResponse
+from app.dependencies.security import get_request_user
+from app.dtos.auth import LoginRequest, LoginResponse, SignUpRequest, TokenRefreshResponse, WithdrawRequest
+from app.models.users import User
 from app.services.auth import AuthService
 from app.services.jwt import JwtService
 
@@ -89,3 +91,25 @@ async def token_refresh(
     return Response(
         content=TokenRefreshResponse(access_token=str(access_token)).model_dump(), status_code=status.HTTP_200_OK
     )
+
+
+@auth_router.delete(
+    "/withdraw",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="회원탈퇴",
+    description=(
+        "본인 확인용 현재 비밀번호를 재확인한 뒤, User(계정)와 본인 Profile(개인정보)을 즉시 완전 삭제한다. "
+        "개인정보보호법상 탈퇴 시 지체없이 파기해야 하므로 소프트삭제가 아니라 하드삭제이며, 되돌릴 수 없다."
+    ),
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "비밀번호가 올바르지 않음"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"},
+    },
+)
+async def withdraw(
+    request: WithdrawRequest,
+    user: Annotated[User, Depends(get_request_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    auth_service: Annotated[AuthService, Depends(AuthService)],
+) -> None:
+    await auth_service.withdraw(session, user, request.password)

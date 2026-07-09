@@ -25,7 +25,7 @@ export default function Layout() {
         </Link>
         <Link to="/more">더보기</Link>
         <span style={{ marginLeft: "auto" }}>
-          {user?.name}님{" "}
+          {user?.name}님 <Link to="/account-settings">개인정보수정</Link>{" "}
           <button type="button" onClick={logout}>
             로그아웃
           </button>
