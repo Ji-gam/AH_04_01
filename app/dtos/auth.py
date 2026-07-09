@@ -47,6 +47,12 @@ class LoginRequest(BaseModel):
     password: Annotated[str, Field(min_length=8, examples=["Password123!"])]
 
 
+class WithdrawRequest(BaseModel):
+    """회원탈퇴 - 탈취된 토큰만으로 탈퇴되는 것을 막기 위해 현재 비밀번호 재확인을 요구한다."""
+
+    password: Annotated[str, Field(min_length=8, description="본인 확인용 현재 비밀번호.", examples=["Password123!"])]
+
+
 class LoginResponse(BaseModel):
     access_token: Annotated[
         str,

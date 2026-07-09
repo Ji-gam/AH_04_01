@@ -16,16 +16,12 @@ class UserManageService:
     async def update_user(
         self, session: AsyncSession, user: User, profile: Profile, data: UserUpdateRequest
     ) -> tuple[User, Profile]:
-        if data.email:
-            await self.auth_service.check_email_exists(session, data.email)
-            user.email = data.email
-
         if data.phone_number:
             normalized_phone_number = normalize_phone_number(data.phone_number)
             await self.auth_service.check_phone_number_exists(session, normalized_phone_number)
             data.phone_number = normalized_phone_number
 
-        profile_fields = data.model_dump(exclude_none=True, exclude={"email"})
+        profile_fields = data.model_dump(exclude_none=True)
         await self.profile_repo.update_instance(session, profile, profile_fields)
         await session.commit()
         return user, profile
