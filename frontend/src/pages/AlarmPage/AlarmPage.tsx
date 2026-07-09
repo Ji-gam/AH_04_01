@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { apiFetch } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
+import type { MedicationSchedule } from "../../hooks/useMedication";
 
 import AlarmCalendar from "./components/AlarmCalendar";
 import AlarmForm, { type AlarmFormSubmit } from "./components/AlarmForm";
@@ -47,6 +49,7 @@ function doseCountOf(counts: Map<string, number>, s: NotificationScheduleResult)
 export default function AlarmPage() {
   const navigate = useNavigate();
   const [schedules, setSchedules] = useState<NotificationScheduleResult[]>([]);
+  const [medSchedules, setMedSchedules] = useState<MedicationSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,9 +85,12 @@ export default function AlarmPage() {
   const loadSchedules = () => {
     setLoading(true);
     setError(null);
-    notificationApi
-      .list()
-      .then(setSchedules)
+    // 직접 등록한 알림 + 복약 관리에서 등록한 약 스케줄을 함께 불러와 목록에 같이 보여준다.
+    Promise.all([notificationApi.list(), apiFetch<MedicationSchedule[]>("/medications")])
+      .then(([alarms, meds]) => {
+        setSchedules(alarms);
+        setMedSchedules(meds);
+      })
       .catch(() => setError("알림 목록을 불러오지 못했습니다."))
       .finally(() => setLoading(false));
   };
@@ -189,10 +195,38 @@ export default function AlarmPage() {
       .catch((e: Error) => setError(`알림 삭제에 실패했습니다. (${e.message})`));
   };
 
-  // 달력 밑에는 등록한 알림 전체를 보여준다 (날짜별 시간표는 /schedule 화면 담당).
-  const sortedSchedules = [...schedules].sort((a, b) => a.alarm_time.localeCompare(b.alarm_time));
-
   const doseCounts = buildDoseCounts(schedules);
+
+  // 달력 밑에는 직접 등록한 알림 + 복약 관리에서 등록한 약을 시간순으로 함께 보여준다
+  // (날짜별 시간표는 /schedule 화면 담당). alarm이 있으면 토글/수정/삭제가 가능한 직접 등록 알림.
+  interface RegisteredRow {
+    key: string;
+    time: string;
+    name: string;
+    subLabel: string;
+    alarm?: NotificationScheduleResult;
+  }
+  const rows: RegisteredRow[] = [
+    ...schedules.map((s) => ({
+      key: `alarm-${s.id}`,
+      time: s.alarm_time.slice(0, 5),
+      name: s.medication_name,
+      subLabel:
+        dayLabel(s) +
+        (doseCountOf(doseCounts, s) > 1 ? ` · ${doseLabel(doseCountOf(doseCounts, s))}` : ""),
+      alarm: s,
+    })),
+    ...medSchedules.flatMap((m) =>
+      m.times.map((time) => ({
+        key: `med-${m.id}-${time}`,
+        time: time.slice(0, 5),
+        name: m.drug_name,
+        subLabel:
+          `매일${m.times.length > 1 ? ` · ${doseLabel(m.times.length)}` : ""}` +
+          (m.hospital_name ? ` · ${m.hospital_name}` : ""),
+      })),
+    ),
+  ].sort((a, b) => a.time.localeCompare(b.time));
 
   return (
     <div style={{ background: t.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
@@ -266,7 +300,7 @@ export default function AlarmPage() {
         {loading && <p style={{ color: t.textMuted, fontSize: 14 }}>불러오는 중...</p>}
         {error && <p style={{ color: t.danger, fontSize: 14 }}>{error}</p>}
 
-        {!loading && !error && sortedSchedules.length === 0 && (
+        {!loading && !error && rows.length === 0 && (
           <div
             style={{
               background: t.cardBg,
@@ -284,9 +318,9 @@ export default function AlarmPage() {
         )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
-          {sortedSchedules.map((s) => (
+          {rows.map((row) => (
             <div
-              key={s.id}
+              key={row.key}
               style={{
                 background: t.cardBg,
                 border: `1px solid ${t.border}`,
@@ -296,64 +330,80 @@ export default function AlarmPage() {
                 alignItems: "center",
                 justifyContent: "space-between",
                 boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
-                opacity: s.is_active ? 1 : 0.5,
+                opacity: row.alarm && !row.alarm.is_active ? 0.5 : 1,
               }}
             >
               <div>
-                <span style={{ fontSize: 16, fontWeight: 700, color: t.primary }}>
-                  {s.alarm_time.slice(0, 5)}
-                </span>{" "}
-                <span style={{ fontSize: 14, color: t.text }}>{s.medication_name}</span>
+                <span style={{ fontSize: 16, fontWeight: 700, color: t.primary }}>{row.time}</span>{" "}
+                <span style={{ fontSize: 14, color: t.text }}>{row.name}</span>
                 <p style={{ fontSize: 12, color: t.textMuted, margin: "2px 0 0" }}>
-                  {dayLabel(s)}
-                  {doseCountOf(doseCounts, s) > 1 && ` · ${doseLabel(doseCountOf(doseCounts, s))}`}
+                  {row.subLabel}
                 </p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 4,
-                    fontSize: 12,
-                    color: t.textMuted,
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={s.is_active}
-                    onChange={() => handleToggleActive(s)}
-                  />
-                  알림
-                </label>
-                <button
-                  type="button"
-                  aria-label="알림 수정"
-                  onClick={() => startEdit(s)}
-                  style={{
-                    border: "none",
-                    background: "none",
-                    color: t.textMuted,
-                    cursor: "pointer",
-                    fontSize: 14,
-                  }}
-                >
-                  ✏️
-                </button>
-                <button
-                  type="button"
-                  aria-label="알림 삭제"
-                  onClick={() => handleDelete(s)}
-                  style={{
-                    border: "none",
-                    background: "none",
-                    color: t.textMuted,
-                    cursor: "pointer",
-                    fontSize: 14,
-                  }}
-                >
-                  🗑️
-                </button>
+                {row.alarm ? (
+                  <>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 12,
+                        color: t.textMuted,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={row.alarm.is_active}
+                        onChange={() => handleToggleActive(row.alarm!)}
+                      />
+                      알림
+                    </label>
+                    <button
+                      type="button"
+                      aria-label="알림 수정"
+                      onClick={() => startEdit(row.alarm!)}
+                      style={{
+                        border: "none",
+                        background: "none",
+                        color: t.textMuted,
+                        cursor: "pointer",
+                        fontSize: 14,
+                      }}
+                    >
+                      ✏️
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="알림 삭제"
+                      onClick={() => handleDelete(row.alarm!)}
+                      style={{
+                        border: "none",
+                        background: "none",
+                        color: t.textMuted,
+                        cursor: "pointer",
+                        fontSize: 14,
+                      }}
+                    >
+                      🗑️
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={`${row.name} 복약 관리로 이동`}
+                    onClick={() => navigate("/medication")}
+                    style={{
+                      border: "none",
+                      background: "none",
+                      color: t.textMuted,
+                      cursor: "pointer",
+                      fontSize: 14,
+                    }}
+                  >
+                    ✏️
+                  </button>
+                )}
               </div>
             </div>
           ))}
