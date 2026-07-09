@@ -114,6 +114,20 @@ frontend/src/types/**
     (수동 등록 폼은 T-MED-3의 기존 동작상 신규 약을 `AUTO_` 더미 코드로만 생성해 item_seq가
     없어서, 검증 목적으로 DB의 `standard_code`만 실제 품목기준코드로 맞춰 등록 흐름을 재현했다 —
     프로덕션 코드는 변경하지 않음). 확인 후 테스트로 등록한 두 약은 DB에서 정리했다.
+  - 실사용 중 발견된 문제를 추가로 수정: 사용자가 실제로 등록한 약 6개 중 "조합" 탭이 "비교할 수
+    있는 등록약이 2개 미만"이라고 떴는데, DB를 보니 대부분 `standard_code`가 `AUTO_...`(수동/OCR
+    빠른 등록이 공공데이터 조회 없이 즉석 발급하는 더미 코드)라 item_seq가 없어서였다. 실제로는
+    다 존재하는 약(리피토정, 부루펜정 등)이라 `check_interactions` 조회 시점에 `item_seq`가 없는
+    등록약에 한해 `fetch_medication_master_data`로 한 번 더 실제 품목기준코드를 찾아보고, 찾으면
+    DB의 `standard_code`에도 반영(다음 조회부터 재조회 불필요)하도록 `_resolve_medications_with_item_seq`
+    보완 로직을 추가했다(`medication_service.py`). 실사용 데이터로 확인한 결과 `checked_count`가
+    2 → 4로 늘었고(비교 가능해진 약: 세토펜8시간이알서방정, 펜잘큐정), DB에도 `PDP_...`로 정상
+    반영됨을 확인. 단, `리피토정10mg`/`애니코프캡슐300mg`/`부루펜정400mg`/`위더스세파클러캡슐250mg`은
+    이번에도 공공 API에서 매칭되지 않아 여전히 `AUTO_` 상태로 남음 — 실제 식약처 데이터셋에 없거나
+    표기(용량 접미사 등)가 API의 `item_name` 검색과 정확히 안 맞는 경우로 추정되며, 이는 이번 범위
+    밖(T-MED-4/T-MED-3의 매칭 정확도 문제)이라 그대로 둔다.
+  - 복잡도(`ruff` C901)를 낮추기 위해 `check_interactions`를 `_resolve_medications_with_item_seq`/
+    `_find_interaction_warnings` 두 헬퍼로 분리했다.
 - 브랜치명: `feature/T-MED-2-2-drug-interaction-check` (원래 `claude/drug-contraindications-api-75ca69`에서
   팀 브랜치 컨벤션에 맞춰 개명)
 - PR: https://github.com/AI-HealthCare-04/AH_04_01/pull/38 (`dev` 대상)

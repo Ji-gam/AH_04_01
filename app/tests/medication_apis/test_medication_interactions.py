@@ -26,6 +26,16 @@ class _FakeRepository:
         return self._schedules
 
 
+class _FakeSession:
+    """`session.commit()`만 호출되는 백필 경로를 세션 없이 단위 테스트하기 위한 더미."""
+
+    def __init__(self) -> None:
+        self.commit_called = False
+
+    async def commit(self) -> None:
+        self.commit_called = True
+
+
 def _schedule(medication: Medication) -> MedicationSchedule:
     schedule = MedicationSchedule(medication_id=medication.id, times=["09:00"])
     schedule.medication = medication
@@ -117,12 +127,69 @@ async def test_skips_medications_without_item_seq_without_crashing(monkeypatch):
     async def _fail_fetch(*args, **kwargs):
         raise AssertionError("item_seq가 하나뿐이면(비교 대상 부족) DUR API를 호출하면 안 된다")
 
+    async def _no_match(name: str):
+        return None
+
     monkeypatch.setattr(medication_open_api_client, "fetch_dur_item_info", _fail_fetch)
+    monkeypatch.setattr(medication_open_api_client, "fetch_medication_master_data", _no_match)
 
     result = await service.check_interactions(session=None, profile_id=1)
 
     assert result.warnings == []
     assert result.checked_count == 1
+
+
+async def test_backfills_item_seq_for_medication_missing_standard_code(monkeypatch):
+    """T-MED-3 수동 등록 등으로 AUTO_ 코드만 있는 약도, 조회 시점에 공공데이터 API로 실제
+    품목기준코드를 찾으면 비교 대상에 포함되고 DB에도 반영된다."""
+    med_auto = _medication(1, "이름만있는약", None)
+    med_b = _medication(2, "와파린정", "222")
+    repository = _FakeRepository([_schedule(med_auto), _schedule(med_b)])
+    service = MedicationService(repository=repository)
+    session = _FakeSession()
+
+    async def _resolve_master_data(name: str):
+        if name == "이름만있는약":
+            return {"standard_code": "PDP_111"}
+        return None
+
+    async def _fake_fetch(item_seq: str):
+        if item_seq == "111":
+            return [{"MIXTURE_ITEM_SEQ": "222", "MIXTURE_ITEM_NAME": "와파린정", "PROHBT_CONTENT": "경고"}]
+        return []
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_medication_master_data", _resolve_master_data)
+    monkeypatch.setattr(medication_open_api_client, "fetch_dur_item_info", _fake_fetch)
+
+    result = await service.check_interactions(session=session, profile_id=1)
+
+    assert result.checked_count == 2
+    assert len(result.warnings) == 1
+    assert med_auto.standard_code == "PDP_111"
+    assert session.commit_called is True
+
+
+async def test_backfill_failure_still_returns_without_crashing(monkeypatch):
+    med_auto = _medication(1, "이름만있는약", None)
+    med_b = _medication(2, "와파린정", "222")
+    repository = _FakeRepository([_schedule(med_auto), _schedule(med_b)])
+    service = MedicationService(repository=repository)
+    session = _FakeSession()
+
+    async def _no_match(name: str):
+        return None
+
+    async def _fail_fetch(*args, **kwargs):
+        raise AssertionError("비교 대상이 여전히 2개 미만이면 DUR API를 호출하면 안 된다")
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_medication_master_data", _no_match)
+    monkeypatch.setattr(medication_open_api_client, "fetch_dur_item_info", _fail_fetch)
+
+    result = await service.check_interactions(session=session, profile_id=1)
+
+    assert result.warnings == []
+    assert result.checked_count == 1
+    assert session.commit_called is False
 
 
 async def test_deduplicates_warning_for_reverse_pair(monkeypatch):
