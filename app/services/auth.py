@@ -86,3 +86,12 @@ class AuthService:
     async def check_phone_number_exists(self, session: AsyncSession, phone_number: str) -> None:
         if await self.profile_repo.exists_by_phone_number(session, phone_number):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 사용중인 휴대폰 번호입니다.")
+
+    async def withdraw(self, session: AsyncSession, user: User, password: str) -> None:
+        """회원탈퇴. 개인정보보호법상 탈퇴 시 지체없이 파기해야 하므로 소프트삭제가 아니라
+        즉시 완전 삭제한다. User를 지우면 Profile도 cascade(delete-orphan)로 같이 삭제된다."""
+        if not verify_password(password, user.hashed_password):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="비밀번호가 올바르지 않습니다.")
+
+        await session.delete(user)
+        await session.commit()

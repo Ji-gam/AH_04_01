@@ -27,6 +27,29 @@ export default function MorePage() {
           </span>
           <span aria-hidden>›</span>
         </Link>
+
+        <Link
+          to="/health-info"
+          style={{
+            background: "#FFF8FA",
+            border: "1px solid #FFE3EB",
+            borderRadius: "8px",
+            padding: "14px 16px",
+            textDecoration: "none",
+            color: "inherit",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>
+            🩺 개인건강정보
+            <span style={{ display: "block", fontSize: "12px", color: "#888", marginTop: "2px" }}>
+              키/체중/BMI, 진단병력·가족력, 특이사항을 관리해요
+            </span>
+          </span>
+          <span aria-hidden>›</span>
+        </Link>
       </div>
     </div>
   );

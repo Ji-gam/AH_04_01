@@ -54,3 +54,15 @@ def validate_birthday(birthday: date | str) -> date:
         raise ValueError("서비스 약관에 따라 만14세 미만은 회원가입이 불가합니다.")
 
     return birthday
+
+
+def validate_height_cm(height_cm: float) -> float:
+    if not (30 <= height_cm <= 250):
+        raise ValueError("키는 30cm 이상 250cm 이하로 입력해주세요.")
+    return height_cm
+
+
+def validate_weight_kg(weight_kg: float) -> float:
+    if not (2 <= weight_kg <= 300):
+        raise ValueError("체중은 2kg 이상 300kg 이하로 입력해주세요.")
+    return weight_kg
