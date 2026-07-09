@@ -381,3 +381,27 @@ async def test_cross_profile_job_access_is_forbidden():
         headers2 = {"Authorization": f"Bearer {token2}"}
         get_res = await client.get(f"/api/v1/recognition/jobs/{job_id}", headers=headers2)
         assert get_res.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_search_medications_dur_success():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "dur_search_test@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 정상 검색 성공 케이스
+        response = await client.get("/api/v1/medications/search-dur?query=콘서타", headers=headers)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert "elapsed_ms" in data
+        assert "results" in data
+        assert isinstance(data["results"], list)
+
+
+async def test_search_medications_dur_missing_query():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "dur_search_test2@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 필수 query 인자가 누락된 경우 422 Unprocessable Entity 에러 검증
+        response = await client.get("/api/v1/medications/search-dur", headers=headers)
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY

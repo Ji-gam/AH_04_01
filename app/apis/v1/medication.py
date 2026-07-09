@@ -113,6 +113,66 @@ async def list_medication_schedules(
     return await service.list_schedules(session, profile.id)
 
 
+@medication_router.get(
+    "/medications/search-dur",
+    summary="의약품 DUR 및 효능 검색 API (SQLite Light)",
+    description="Light SQLite 데이터베이스를 사용하여 제품명으로 검색하고 효능 및 금기사항과 쿼리 지연시간을 반환합니다.",
+)
+async def search_medications_dur(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    query: str = Query(..., min_length=1),
+):
+    import os
+    import sqlite3
+    import time
+
+    start_time = time.perf_counter()
+
+    # Resolve path dynamically using the location of this file
+    db_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "database",
+        "dur_drug_light.db",
+    )
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    sql = """
+    SELECT
+        p.item_name,
+        p.entp_name,
+        e.efcy_qesitm,
+        GROUP_CONCAT(DISTINCT r.rule_type || ': ' || r.prohbt_content) AS precautions
+    FROM products p
+    LEFT JOIN drugs_einfo e ON p.item_seq = e.item_seq
+    LEFT JOIN dur_product_rules r ON p.item_seq = r.item_seq
+    WHERE p.item_name LIKE ?
+    GROUP BY p.item_seq
+    LIMIT 15;
+    """
+
+    cursor.execute(sql, (f"%{query}%",))
+    rows = cursor.fetchall()
+    conn.close()
+
+    end_time = time.perf_counter()
+    elapsed_ms = (end_time - start_time) * 1000
+
+    results = []
+    for row in rows:
+        results.append(
+            {
+                "item_name": row[0],
+                "entp_name": row[1],
+                "efficacy": row[2] or "정보 없음",
+                "precautions": row[3] or "특이사항 없음",
+            }
+        )
+
+    return {"elapsed_ms": round(elapsed_ms, 4), "results": results}
+
+
 @medication_router.post(
     "/medications",
     response_model=MedicationScheduleResponse,

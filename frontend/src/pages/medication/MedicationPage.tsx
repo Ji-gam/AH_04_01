@@ -1,15 +1,16 @@
 import { useState, useEffect } from "react";
-
 import {
   useMedication,
   type RecognitionCandidate,
   type RecognitionJobResult,
 } from "../../hooks/useMedication";
+import { useAuth } from "../../hooks/useAuth";
 
 type ExtractedFields = NonNullable<RecognitionJobResult["extracted_fields"]>;
 type GuideCard = { title: string; content: string; severity?: string; disclaimer?: string };
 
 export default function MedicationPage() {
+  const { user } = useAuth();
   const {
     schedules,
     isLoading,
