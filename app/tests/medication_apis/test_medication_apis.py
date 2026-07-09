@@ -278,6 +278,50 @@ async def test_quick_register_with_hospital_name_saves_and_returns_it():
         assert mine and mine[0]["hospital_name"] == "서울건강내과"
 
 
+async def test_update_schedule_times_success():
+    """복약 스케줄의 복용 시간을 부분 수정(PATCH)하면 변경된 시간이 반영되어야 한다(T-NTFY-2 알림 화면 인라인 수정용)."""
+    await _seed_dummy_medications()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "schedule_patch@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        created = await client.post(
+            "/api/v1/medications/quick-register",
+            headers=headers,
+            json={"drug_name": "아스피린정 100mg", "times": ["08:00", "20:00"]},
+        )
+        schedule_id = created.json()["schedule"]["id"]
+
+        res = await client.patch(
+            f"/api/v1/medications/{schedule_id}",
+            headers=headers,
+            json={"times": ["09:30", "20:00"]},
+        )
+        assert res.status_code == status.HTTP_200_OK
+        assert res.json()["times"] == ["09:30", "20:00"]
+
+
+async def test_update_schedule_not_owned_returns_404():
+    """다른 프로필의 복약 스케줄은 수정할 수 없어야 한다."""
+    await _seed_dummy_medications()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        owner_token = await _signup_and_login(client, "schedule_patch_owner@example.com")
+        created = await client.post(
+            "/api/v1/medications/quick-register",
+            headers={"Authorization": f"Bearer {owner_token}"},
+            json={"drug_name": "아스피린정 100mg", "times": ["08:00"]},
+        )
+        schedule_id = created.json()["schedule"]["id"]
+
+        other_token = await _signup_and_login(client, "schedule_patch_other@example.com")
+        res = await client.patch(
+            f"/api/v1/medications/{schedule_id}",
+            headers={"Authorization": f"Bearer {other_token}"},
+            json={"times": ["10:00"]},
+        )
+        assert res.status_code == status.HTTP_404_NOT_FOUND
+
+
 async def test_quick_register_with_no_match_auto_creates_and_registers():
     """DB에 없는 약도 등록 자체는 막히지 않도록, OCR 플로우처럼 새 약품을 즉석 생성해 등록해야 한다."""
     await _seed_dummy_medications()

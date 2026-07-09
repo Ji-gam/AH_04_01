@@ -14,6 +14,7 @@ from app.dtos.medication_dto import (
     GuideCard,
     MedicationScheduleCreateRequest,
     MedicationScheduleResponse,
+    MedicationScheduleUpdateRequest,
     QuickRegisterCandidate,
     QuickRegisterResult,
     RecognitionCandidate,
@@ -355,6 +356,31 @@ class MedicationService:
             )
             for s in schedules
         ]
+
+    async def update_schedule(
+        self, session: AsyncSession, profile_id: int, schedule_id: int, req: MedicationScheduleUpdateRequest
+    ) -> MedicationScheduleResponse:
+        schedule = await self._repository.get_schedule_by_id(session, schedule_id)
+        if not schedule or schedule.profile_id != profile_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 복약 스케줄을 찾을 수 없습니다.")
+
+        if req.times is not None:
+            schedule.times = req.times
+        if req.hospital_name is not None:
+            schedule.hospital_name = req.hospital_name
+        await session.commit()
+        await session.refresh(schedule)
+
+        return MedicationScheduleResponse(
+            id=schedule.id,
+            medication_id=schedule.medication_id,
+            drug_name=schedule.medication.medication_name,
+            times=schedule.times,
+            source_job_id=schedule.source_job_id,
+            form_type=schedule.medication.form_type,
+            dosage_guideline=schedule.medication.dosage_guideline,
+            hospital_name=schedule.hospital_name,
+        )
 
     async def delete_schedule(self, session: AsyncSession, profile_id: int, schedule_id: int) -> None:
         schedule = await self._repository.get_schedule_by_id(session, schedule_id)
