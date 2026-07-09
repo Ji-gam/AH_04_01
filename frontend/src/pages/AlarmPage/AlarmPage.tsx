@@ -9,6 +9,7 @@ import type { MedicationSchedule } from "../../hooks/useMedication";
 import AlarmCalendar from "./components/AlarmCalendar";
 import AlarmForm, { type AlarmFormSubmit } from "./components/AlarmForm";
 import MedTimeForm from "./components/MedTimeForm";
+import ToggleSwitch from "./components/ToggleSwitch";
 import { isScheduleDueOnDate, toDateString } from "./dateUtils";
 import { alarmTheme as t } from "./theme";
 
@@ -469,22 +470,11 @@ export default function AlarmPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       {row.alarm ? (
                         <>
-                          <label
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 4,
-                              fontSize: 12,
-                              color: t.textMuted,
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={row.alarm.is_active}
-                              onChange={() => handleToggleActive(row.alarm!)}
-                            />
-                            알림
-                          </label>
+                          <ToggleSwitch
+                            checked={row.alarm.is_active}
+                            onChange={() => handleToggleActive(row.alarm!)}
+                            ariaLabel={`${row.name} 알림 ${row.alarm.is_active ? "끄기" : "켜기"}`}
+                          />
                           <button
                             type="button"
                             aria-label="알림 수정"
@@ -516,22 +506,11 @@ export default function AlarmPage() {
                         </>
                       ) : (
                         <>
-                          <label
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 4,
-                              fontSize: 12,
-                              color: t.textMuted,
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={!medAlarmDisabled.has(row.key)}
-                              onChange={() => handleToggleMedAlarm(row.key)}
-                            />
-                            알림
-                          </label>
+                          <ToggleSwitch
+                            checked={!medAlarmDisabled.has(row.key)}
+                            onChange={() => handleToggleMedAlarm(row.key)}
+                            ariaLabel={`${row.name} 알림 ${medAlarmDisabled.has(row.key) ? "켜기" : "끄기"}`}
+                          />
                           <button
                             type="button"
                             aria-label={`${row.name} 복용 시각 수정`}

@@ -36,7 +36,6 @@ interface TimelineItem {
   hospitalName: string | null;
   /** 이 약을 하루에 몇 번 먹는지 — 약 이름 옆에 표시 */
   doseCount: number;
-  editTo: string;
   tip: string | null;
 }
 
@@ -67,7 +66,6 @@ function buildGroups(
           m.hospital_name ?? (m.form_type ? (FORM_TYPE_UNIT[m.form_type] ?? m.form_type) : null),
         hospitalName: m.hospital_name ?? null,
         doseCount: m.times.length,
-        editTo: "/medication",
         tip: m.dosage_guideline ?? null,
       });
     }
@@ -86,7 +84,6 @@ function buildGroups(
       subLabel: "직접 등록 알림",
       hospitalName: null,
       doseCount: alarmDoseCounts.get(a.medication_name) ?? 1,
-      editTo: "/alarms",
       tip: null,
     });
   }
@@ -404,13 +401,6 @@ export default function SchedulePage() {
                               </p>
                             )}
                           </div>
-                          <Link
-                            to={item.editTo}
-                            aria-label={`${item.name} 관리로 이동`}
-                            style={{ textDecoration: "none", fontSize: 14, flexShrink: 0 }}
-                          >
-                            ✏️
-                          </Link>
                         </div>
                       );
                     })}
