@@ -4,10 +4,11 @@
 > "서로 꼬이지 않는 것"에만 집중한 최소 규칙입니다. 완벽한 프로세스가 아니라
 > **사고를 줄이는 최소 장치**라고 생각하고 팀 상황에 맞게 가감하세요.
 >
-> **문서 버전**: v1.1 · **최종 수정**: 2026-07-07
+> **문서 버전**: v1.2 · **최종 수정**: 2026-07-08
 > **변경 이력**
 > - v1.0 (2026-07-07): `remedi_mweb_co`에서 이식하며 레포 구조를 `AH_04_01`의 실제 최상위 폴더(`app/`, `ai_worker/`, `frontend/`, `envs/`, `infra/`, `scripts/`)로 수정
 > - v1.1 (2026-07-07): 하네스 문서 정리 — `docs/`가 `docs/dev`(개발설계 산출물)·`docs/plan`(기획 문서)로 재구성됨에 따라 경로 참조 갱신, `FRONTEND_ARCHITECTURE.md` 폐기(CODING_RULES.md로 흡수) 반영, 프론트 PR 크기 규칙을 6번 표에 추가
+> - v1.2 (2026-07-08): 2차 하네스 정리 — `CLAUDE.md` 대신 `AGENTS.md`가 진입점, `decision_log.md`가 `decision_log/` 폴더로 재구성됨에 따라 레포 구조 트리 갱신
 
 ---
 
@@ -37,11 +38,13 @@ AH_04_01/
 ├─ infra/                # nginx, 배포 관련 설정
 ├─ scripts/              # 배포/CI 보조 스크립트 (ruff/mypy/pytest 로컬 실행용)
 ├─ docs/
-│  ├─ CODING_RULES.md / decision_log.md    # 살아있는 문서 (매번 참조)
+│  ├─ CODING_RULES.md / SESSION_START.md / DEV_WORKFLOW.md / TROUBLESHOOTING.md  # 살아있는 문서 (매번 참조)
+│  ├─ decision_log/       # 날짜별 배경 기록 (YYYY-MM-DD.md)
 │  ├─ squad-map.md        # 아래 2번 내용
 │  ├─ plan/               # 기획 문서 원본 스냅샷 — PRD_ReMedi_v1.1.md, TRD_ReMedi_v1.1.md
 │  └─ dev/                # 개발설계 산출물 — ERD.dbml(CODING_RULES.md 6번), api_spec_core_v1_v1.1.yaml, sample_code_chat/, sample_code_recog/(실제로 동작하는 템플릿 코드)
-└─ CLAUDE.md              # Claude(Code) 등 AI 에이전트가 지켜야 할 규칙
+├─ AGENTS.md              # 단일 진입점 — AI 에이전트(및 사람)가 지켜야 할 규칙
+└─ CLAUDE.md              # AGENTS.md로의 리다이렉트
 ```
 
 **모노레포를 쓰는 이유**: 초보 개발자 팀에서 레포가 나뉘면 "API 스펙이 바뀌었는데 프론트가 몰랐다"는 문제가 반드시 생깁니다. 하나의 레포 + 하나의 PR 흐름이면 리뷰할 때 프론트/백엔드 변경을 같이 볼 수 있어 훨씬 안전합니다.

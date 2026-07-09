@@ -32,6 +32,7 @@ export default function MedicationPage() {
   // 이름이 여러 약과 부분일치할 때만 후보 목록을 보여줘 그중 하나를 고르게 한다.
   const [quickDrugName, setQuickDrugName] = useState("");
   const [manualTimes, setManualTimes] = useState("09:00, 13:00, 19:00");
+  const [hospitalName, setHospitalName] = useState(""); // 처방 병원명(선택) — 복약 시간표에 표시 (T-NTFY-2)
   const [quickCandidates, setQuickCandidates] = useState<
     Array<{ drug_code: string; medication_name: string; form_type: string | null }>
   >([]);
@@ -116,7 +117,7 @@ export default function MedicationPage() {
     if (!quickDrugName.trim()) return;
     try {
       const timesArray = manualTimes.split(",").map((t) => t.trim()).filter(Boolean);
-      const res = await quickRegister(quickDrugName, timesArray);
+      const res = await quickRegister(quickDrugName, timesArray, hospitalName.trim() || null);
       if (res.status === "registered") {
         alert(
           res.auto_created
@@ -124,6 +125,7 @@ export default function MedicationPage() {
             : "복약 일정이 성공적으로 등록되었습니다!"
         );
         setQuickDrugName("");
+        setHospitalName("");
         setQuickCandidates([]);
       } else {
         // 여러 약과 부분일치 — 사용자가 직접 골라야 하므로 후보만 보여주고 자동 등록하지 않는다.
@@ -138,9 +140,10 @@ export default function MedicationPage() {
   const handleSelectCandidate = async (drugCode: string) => {
     try {
       const timesArray = manualTimes.split(",").map((t) => t.trim()).filter(Boolean);
-      await createManualSchedule(drugCode, timesArray);
+      await createManualSchedule(drugCode, timesArray, hospitalName.trim() || null);
       alert("복약 일정이 성공적으로 등록되었습니다!");
       setQuickDrugName("");
+      setHospitalName("");
       setQuickCandidates([]);
     } catch (err) {
       console.error(err);
@@ -290,6 +293,15 @@ export default function MedicationPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: "5px", margin: "10px 0" }}>
               <label>복용 시간대 (쉼표 구분):</label>
               <input type="text" value={manualTimes} onChange={(e) => setManualTimes(e.target.value)} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "5px", margin: "10px 0" }}>
+              <label>처방 병원명 (선택):</label>
+              <input
+                type="text"
+                value={hospitalName}
+                onChange={(e) => setHospitalName(e.target.value)}
+                placeholder="예: 서울건강내과"
+              />
             </div>
             <div style={{ display: "flex", gap: "5px", marginBottom: "10px" }}>
               <input

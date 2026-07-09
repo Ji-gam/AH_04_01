@@ -17,14 +17,14 @@ from app.services.retriever_stub import Retriever
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "health_content_fixture.json"
 
-ContentGenerator = Callable[[str, str, list[str]], Awaitable[dict]]
+ContentGenerator = Callable[[str, str, list[dict]], Awaitable[dict]]
 
 
 async def build_fixture_entries(retriever: Retriever, content_generator: ContentGenerator) -> list[dict]:
     entries = []
     for disease_code in POPULAR_DISEASES:
         for category in CATEGORIES:
-            chunks = retriever.search(disease_code, {"disease_code": disease_code, "category": category})
+            chunks = await retriever.search(disease_code, {"disease_code": disease_code, "category": category})
             card = await content_generator(disease_code, category, chunks)
             entries.append({"disease_code": disease_code, "category": category, **card})
     return entries
