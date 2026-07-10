@@ -4,6 +4,7 @@ T-LLM-2: 응급 감지 → (아니면) 컨텍스트 조회 → RAG 검색 → LL
 SQLAlchemy(AsyncSession) 기반으로 옮긴 것 — 흐름 구조 자체는 동일하다.
 """
 
+import logging
 from collections.abc import AsyncIterator, Callable
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,9 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.chat import MessageRole
 from app.repositories.chat_repository import ChatRepository
 from app.services import safety_service
+from app.services.ai_worker_gateway import AIWorkerGateway, AIWorkerProcessingError, AIWorkerUnavailableError
 from app.services.llm_stub import stream_llm_reply
-from app.services.retriever_stub import Retriever
 from app.services.user_health_context_service import UserHealthContextService
+
+logger = logging.getLogger("app.chat_service")
 
 LlmStream = Callable[[str, dict, list[str]], AsyncIterator[str]]
 
@@ -23,12 +26,12 @@ class ChatService:
         self,
         repository: ChatRepository | None = None,
         health_context_service: UserHealthContextService | None = None,
-        retriever: Retriever | None = None,
+        retriever: AIWorkerGateway | None = None,
         llm_stream: LlmStream | None = None,
     ) -> None:
         self._repository = repository or ChatRepository()
         self._health_context_service = health_context_service or UserHealthContextService()
-        self._retriever = retriever or Retriever()
+        self._retriever = retriever or AIWorkerGateway()
         self._llm_stream = llm_stream or stream_llm_reply
 
     async def create_session(self, session: AsyncSession, profile_id: int):
@@ -70,7 +73,7 @@ class ChatService:
         context["name"] = profile_name
         context["history"] = [{"role": m.role, "content": m.content} for m in history]
 
-        chunks = await self._retriever.search(message, context)
+        chunks = await self._search_chunks(message, context)
         content_chunks = [chunk.get("content", "") for chunk in chunks]
         sources = sorted(
             {
@@ -107,6 +110,15 @@ class ChatService:
         is_medical = await self._check_if_medical_related_via_llm(message, full_response)
 
         yield {"type": "done", "content": "", "disclaimer": safety_service.DISCLAIMER_TEXT if is_medical else ""}
+
+    async def _search_chunks(self, message: str, context: dict) -> list[dict]:
+        """ai_worker 검색 실패는 조용히 삼키지 않고 로깅 후 빈 컨텍스트로 계속 진행한다
+        (`AIWorkerGateway`가 실패를 예외로 알리므로, 그 예외를 여기서만 흡수한다)."""
+        try:
+            return await self._retriever.search(message, context)
+        except (AIWorkerUnavailableError, AIWorkerProcessingError) as e:
+            logger.error(f"ai_worker 검색 실패, 컨텍스트 없이 계속 진행: {e}")
+            return []
 
     @staticmethod
     def _load_mock_users() -> dict:
