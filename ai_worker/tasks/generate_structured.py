@@ -23,6 +23,11 @@ class GenerationUnavailableError(Exception):
 
 
 def _build_chain(json_schema: dict[str, Any], api_key: str):
+    # with_structured_output()에 순수 JSON 스키마 dict를 넘기면 OpenAI 함수 이름으로 쓸
+    # 최상위 "title" 키가 필요하다. Pydantic의 model_json_schema()는 이걸 자동으로 채워주지만,
+    # 이 엔드포인트는 범용이라 title 없는 스키마를 보내는 호출자가 있을 수 있어 방어적으로 채운다.
+    if "title" not in json_schema:
+        json_schema = {**json_schema, "title": "GeneratedResponse"}
     llm = ChatOpenAI(model=settings.OPENAI_MODEL, api_key=SecretStr(api_key))
     return llm.with_structured_output(json_schema)
 
