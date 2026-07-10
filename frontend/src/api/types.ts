@@ -5,13 +5,11 @@ export interface AuthTokenResult {
 }
 
 // 백엔드 /auth/signup 요청 바디 (app/dtos/auth.py의 SignUpRequest와 1:1).
+// [가입 최소화] 닉네임(name)+email+password만 받는다 - 성별/나이/휴대폰번호는 개인건강정보에서 나중에 받는다.
 export interface SignupPayload {
   email: string;
   password: string;
   name: string;
-  gender: "MALE" | "FEMALE";
-  birth_date: string; // YYYY-MM-DD
-  phone_number: string;
 }
 
 // 백엔드 /users/me 응답. profile_id는 User(계정)와 분리된 Profile(개인정보)의 PK — 앞으로 만들
@@ -21,9 +19,8 @@ export interface UserInfoResult {
   profile_id: number;
   name: string;
   email: string;
-  phone_number: string;
-  birthday: string;
-  gender: "MALE" | "FEMALE";
+  phone_number: string | null;
+  gender: "MALE" | "FEMALE" | null;
   created_at: string;
 }
 
@@ -99,26 +96,35 @@ export interface ContentsFeedResult {
 
 // 백엔드 app/dtos/health_info.py와 1:1로 수동 동기화. 더보기 > 개인건강정보.
 export type Disease =
-  "CANCER" | "HEART_DISEASE" | "CEREBROVASCULAR_DISEASE" | "DIABETES" | "LIVER_DISEASE";
+  "CANCER" | "HEART_DISEASE" | "CEREBROVASCULAR_DISEASE" | "DIABETES" | "LIVER_DISEASE" | "OTHER";
+
+// 진단병력/가족력의 항목 하나. detail은 선택 - 체크만 하고 상세는 안 적어도 된다.
+export interface DiseaseEntry {
+  disease: Disease;
+  detail: string | null;
+}
 
 export interface HealthInfoResult {
-  birthday: string; // YYYY-MM-DD, 조회만 가능 (여기서 수정 불가 - PATCH /users/me에서 수정)
-  gender: "MALE" | "FEMALE"; // 조회만 가능
+  // [변경] 가입 시 나이/성별을 안 받아서, 여기가 나이/성별을 처음 입력받는 곳이 됐다 (둘 다 수정 가능).
+  age: number | null;
+  gender: "MALE" | "FEMALE" | null;
   height_cm: number | null;
   weight_kg: number | null;
   bmi: number | null; // height_cm/weight_kg 둘 다 있어야 값이 있음, 백엔드가 계산해서 내려줌
-  diagnosis_history: Disease[];
-  family_history: Disease[];
+  diagnosis_history: DiseaseEntry[];
+  family_history: DiseaseEntry[];
   special_notes: string | null;
   other_notes: string | null;
 }
 
 // PATCH 요청 바디. 전부 선택 - 보낸 필드만 반영된다. 빈 배열([])을 보내면 "질병 없음"으로 확정되어 지워진다.
 export interface HealthInfoUpdatePayload {
+  age?: number;
+  gender?: "MALE" | "FEMALE";
   height_cm?: number;
   weight_kg?: number;
-  diagnosis_history?: Disease[];
-  family_history?: Disease[];
+  diagnosis_history?: DiseaseEntry[];
+  family_history?: DiseaseEntry[];
   special_notes?: string;
   other_notes?: string;
 }
@@ -127,6 +133,5 @@ export interface HealthInfoUpdatePayload {
 export interface UserUpdatePayload {
   name?: string;
   phone_number?: string;
-  birthday?: string; // YYYY-MM-DD
   gender?: "MALE" | "FEMALE";
 }

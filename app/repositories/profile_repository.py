@@ -1,4 +1,3 @@
-from datetime import date
 from typing import Any
 
 from sqlalchemy import select
@@ -10,7 +9,7 @@ ALLOWED_UPDATE_FIELDS = [
     "name",
     "phone_number",
     "gender",
-    "birthday",
+    "age",
     "height_cm",
     "weight_kg",
     "diagnosis_history",
@@ -35,9 +34,8 @@ class ProfileRepository:
         session: AsyncSession,
         user_id: int,
         name: str,
-        phone_number: str,
-        gender: Gender,
-        birthday: date,
+        phone_number: str | None = None,
+        gender: Gender | None = None,
         *,
         relation: ProfileRelation = ProfileRelation.SELF,
     ) -> Profile:
@@ -46,7 +44,6 @@ class ProfileRepository:
             name=name,
             phone_number=phone_number,
             gender=gender,
-            birthday=birthday,
             relation=relation,
         )
         session.add(profile)

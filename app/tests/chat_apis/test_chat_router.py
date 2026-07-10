@@ -152,8 +152,6 @@ async def test_pregnant_concerta_dur_warning_in_chat():
 
 
 async def test_geriatric_diazepam_dur_warning_in_chat():
-    from datetime import date
-
     from sqlalchemy import select
 
     from app.models.profiles import Profile
@@ -163,12 +161,12 @@ async def test_geriatric_diazepam_dur_warning_in_chat():
         token = await _signup_and_login(client, "elder_dur@example.com")
         headers = {"Authorization": f"Bearer {token}"}
 
-        # DB에서 해당 프로필을 만 65세 이상 노인 상태로 업데이트 (1950년생)
+        # DB에서 해당 프로필을 만 65세 이상 노인 상태로 업데이트
         async with TestSessionLocal() as session:
             result = await session.execute(select(Profile).order_by(Profile.id.desc()))
             profile = result.scalars().first()
             assert profile is not None
-            profile.birthday = date(1950, 1, 1)
+            profile.age = 76
             await session.commit()
 
         session_response = await client.post("/api/v1/chat/sessions", headers=headers)

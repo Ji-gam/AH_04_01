@@ -4,7 +4,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
 
 from app.core.jwt.tokens import AccessToken, RefreshToken
-from app.core.utils.common import normalize_phone_number
 from app.core.utils.security import hash_password, verify_password
 from app.dtos.auth import LoginRequest, SignUpRequest
 from app.models.profiles import Profile, ProfileRelation
@@ -24,14 +23,9 @@ class AuthService:
         # 이메일 중복 체크
         await self.check_email_exists(session, data.email)
 
-        # 입력받은 휴대폰 번호를 노말라이즈
-        normalized_phone_number = normalize_phone_number(data.phone_number)
-
-        # 휴대폰 번호 중복 체크
-        await self.check_phone_number_exists(session, normalized_phone_number)
-
         # 계정(User) 생성 + 본인 프로필(Profile, relation=SELF) 생성을 한 트랜잭션으로 묶는다
         # (앞선 중복확인 SELECT로 세션에 트랜잭션이 이미 자동 시작돼 있으므로, 여기서는 commit만 한다)
+        # [가입 최소화] 성별/나이/휴대폰번호는 여기서 안 받는다 - 더보기 > 개인건강정보에서 나중에 채운다.
         user = await self.user_repo.create_user(
             session,
             email=data.email,
@@ -41,9 +35,6 @@ class AuthService:
             session,
             user_id=user.id,
             name=data.name,
-            phone_number=normalized_phone_number,
-            gender=data.gender,
-            birthday=data.birth_date,
             relation=ProfileRelation.SELF,
         )
         await session.commit()
