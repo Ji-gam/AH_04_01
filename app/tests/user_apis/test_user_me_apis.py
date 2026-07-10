@@ -11,9 +11,6 @@ async def test_get_user_me_success():
         "email": email,
         "password": "Password123!",
         "name": "내정보테스터",
-        "gender": "FEMALE",
-        "birth_date": "1992-02-02",
-        "phone_number": "01055556666",
     }
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/api/v1/auth/signup", json=signup_data)
@@ -40,9 +37,6 @@ async def test_update_user_me_success():
         "email": email,
         "password": "Password123!",
         "name": "수정전",
-        "gender": "MALE",
-        "birth_date": "1990-10-10",
-        "phone_number": "01077778888",
     }
     update_data = {"name": "수정후"}
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
@@ -65,9 +59,6 @@ async def test_update_user_me_email_is_ignored():
         "email": email,
         "password": "Password123!",
         "name": "이메일고정테스터",
-        "gender": "FEMALE",
-        "birth_date": "1990-05-05",
-        "phone_number": "01066667777",
     }
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         await client.post("/api/v1/auth/signup", json=signup_data)

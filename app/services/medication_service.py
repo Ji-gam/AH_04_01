@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import os
 import re
@@ -12,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.databases import AsyncSessionLocal
 from app.dtos.medication_dto import (
     GuideCard,
+    InteractionCheckResult,
+    InteractionWarning,
     MedicationScheduleCreateRequest,
     MedicationScheduleResponse,
     MedicationScheduleUpdateRequest,
@@ -41,6 +44,119 @@ _MIN_DRUG_NAME_LEN = 5
 # 쓰는 고정 더미 인식 텍스트. 처방전 목록 표기 관례("*" 불릿)를 그대로 따라야 기존 매칭 로직
 # (_looks_like_drug_name)을 그대로 태워서 "실제 인식됐을 때와 동일한 흐름"으로 검증할 수 있다.
 DUMMY_OCR_RAW_TEXT = ["*타이레놀정", "*아스피린정"]
+
+
+def _extract_item_seq(standard_code: str | None) -> str | None:
+    """`Medication.standard_code`가 품목기준코드 유래(`PDP_{item_seq}`)일 때만 item_seq를 뽑아낸다.
+    로컬 라이트 DB 등 다른 경로로 채워진 코드(예: `KD_...`)는 병용금기 DUR 조회에 쓸 수 없어 None."""
+    if not standard_code or not standard_code.startswith("PDP_"):
+        return None
+    item_seq = standard_code.removeprefix("PDP_")
+    return item_seq or None
+
+
+_TRAILING_DOSAGE_PATTERN = re.compile(r"\s*\d+(\.\d+)?\s*(mg|g|ml)\s*$", re.IGNORECASE)
+
+
+def _strip_trailing_dosage(name: str) -> str | None:
+    """공공데이터 API의 정식 품목명은 'mg'가 아니라 '밀리그램' 등 한글 단위 표기를 쓰는 경우가
+    많아, OCR/사용자 입력이 'NNmg' 형태 접미사로 끝나면 그 부분을 뗀 이름으로도 재시도할 수 있게
+    한다. 접미사가 없으면 None."""
+    stripped = _TRAILING_DOSAGE_PATTERN.sub("", name).strip()
+    return stripped if stripped and stripped != name else None
+
+
+async def _fetch_master_data_safely(name: str) -> dict | None:
+    """공공데이터 API가 타임아웃/오류로 응답하지 않아도 등록약 백필 전체가 500으로 죽지 않게
+    한다 — 그 약만 이번 조회에서 건너뛴다."""
+    try:
+        return await medication_open_api_client.fetch_medication_master_data(name)
+    except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
+        return None
+
+
+async def _fetch_master_data_with_fallback(name: str) -> dict | None:
+    master_data = await _fetch_master_data_safely(name)
+    if master_data and master_data.get("standard_code"):
+        return master_data
+
+    stripped_name = _strip_trailing_dosage(name)
+    if stripped_name:
+        return await _fetch_master_data_safely(stripped_name)
+    return master_data
+
+
+async def _resolve_medications_with_item_seq(
+    session: AsyncSession, medications: list[Medication]
+) -> list[tuple[str, Medication]]:
+    """등록약을 item_seq 유무로 나누고, 없는 약은 공공데이터 API로 한 번 더 보완을 시도한다.
+    수동/OCR 빠른 등록(T-MED-3)은 공공데이터 조회 없이 AUTO_ 더미 코드로 등록하는 경우가 많다 —
+    조회 시점에 실제 품목기준코드를 찾으면 DB에도 반영해 다음 조회부터는 재조회가 필요 없게 한다."""
+    meds_with_seq: list[tuple[str, Medication]] = []
+    meds_without_seq: list[Medication] = []
+    for med in medications:
+        item_seq = _extract_item_seq(med.standard_code)
+        if item_seq:
+            meds_with_seq.append((item_seq, med))
+        else:
+            meds_without_seq.append(med)
+
+    if not meds_without_seq:
+        return meds_with_seq
+
+    master_data_results = await asyncio.gather(
+        *[_fetch_master_data_with_fallback(med.medication_name) for med in meds_without_seq]
+    )
+    resolved_any = False
+    for med, master_data in zip(meds_without_seq, master_data_results, strict=True):
+        new_code = master_data.get("standard_code") if master_data else None
+        item_seq = _extract_item_seq(new_code)
+        if item_seq:
+            med.standard_code = new_code
+            meds_with_seq.append((item_seq, med))
+            resolved_any = True
+    if resolved_any:
+        await session.commit()
+
+    return meds_with_seq
+
+
+async def _find_interaction_warnings(meds_with_seq: list[tuple[str, Medication]]) -> list[InteractionWarning]:
+    seq_to_med = {item_seq: med for item_seq, med in meds_with_seq}
+    name_to_med = {med.medication_name: med for _, med in meds_with_seq}
+
+    warnings: list[InteractionWarning] = []
+    seen_pairs: set[frozenset[int]] = set()
+
+    for item_seq, med in meds_with_seq:
+        try:
+            dur_items = await medication_open_api_client.fetch_dur_item_info(item_seq=item_seq)
+        except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
+            # 공공데이터 API가 타임아웃/오류로 응답하지 않아도 그 약만 건너뛰고 나머지는 계속 확인한다.
+            continue
+        for dur in dur_items:
+            mixture_seq = dur.get("MIXTURE_ITEM_SEQ")
+            mixture_name = dur.get("MIXTURE_ITEM_NAME")
+            other_med = seq_to_med.get(mixture_seq) if mixture_seq else None
+            if other_med is None and mixture_name:
+                other_med = name_to_med.get(mixture_name)
+            if other_med is None or other_med.id == med.id:
+                continue
+
+            pair_key = frozenset({med.id, other_med.id})
+            if pair_key in seen_pairs:
+                continue
+            seen_pairs.add(pair_key)
+
+            warnings.append(
+                InteractionWarning(
+                    drug_a_name=med.medication_name,
+                    drug_b_name=other_med.medication_name,
+                    description=dur.get("PROHBT_CONTENT") or "병용금기 성분 조합으로 확인되었습니다.",
+                )
+            )
+
+    return warnings
 
 
 def _looks_like_drug_name(word: str) -> bool:
@@ -513,6 +629,19 @@ class MedicationService:
             ),
             auto_created=auto_created,
         )
+
+    async def check_interactions(self, session: AsyncSession, profile_id: int) -> InteractionCheckResult:
+        """등록약 중 item_seq가 있는 약들을 서로 대조해 병용금기(DUR) 페어를 찾는다 (T-MED-2-2).
+        지병(질병-성분) 기준 금기는 범위 밖 — 등록약 사이의 약물-약물 병용금기만 다룬다."""
+        schedules = await self._repository.list_schedules_by_profile(session, profile_id)
+        medications = list({s.medication_id: s.medication for s in schedules}.values())
+
+        meds_with_seq = await _resolve_medications_with_item_seq(session, medications)
+        if len(meds_with_seq) < 2:
+            return InteractionCheckResult(warnings=[], checked_count=len(meds_with_seq))
+
+        warnings = await _find_interaction_warnings(meds_with_seq)
+        return InteractionCheckResult(warnings=warnings, checked_count=len(meds_with_seq))
 
     async def search_medications(self, session: AsyncSession, query: str) -> list[dict]:
         meds = await self._repository.search_medication_by_name(session, query)

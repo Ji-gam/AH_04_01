@@ -14,6 +14,18 @@ export interface MedicationSchedule {
   hospital_name?: string | null;
 }
 
+export interface InteractionWarning {
+  drug_a_name: string;
+  drug_b_name: string;
+  description: string;
+  disclaimer: string;
+}
+
+export interface InteractionCheckResult {
+  warnings: InteractionWarning[];
+  checked_count: number;
+}
+
 export interface RecognitionCandidate {
   drug_name: string;
   match_rate: number;
@@ -111,6 +123,10 @@ export function useMedication() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const checkInteractions = async (): Promise<InteractionCheckResult> => {
+    return await apiFetch<InteractionCheckResult>("/medications/interactions");
   };
 
   const searchMedications = async (query: string) => {
@@ -218,6 +234,7 @@ export function useMedication() {
     quickRegister,
     deleteSchedule,
     searchMedications,
+    checkInteractions,
     uploadJob,
     getJobStatus,
     confirmJob,

@@ -79,3 +79,19 @@ class QuickRegisterResult(BaseModel):
     schedule: MedicationScheduleResponse | None = None
     candidates: list[QuickRegisterCandidate] = []
     auto_created: bool = False
+
+
+class InteractionWarning(BaseModel):
+    """등록약 두 개가 식약처 병용금기 DUR 데이터에서 페어로 확인된 경우의 경고 항목 (T-MED-2-2)."""
+
+    drug_a_name: str
+    drug_b_name: str
+    description: str
+    disclaimer: str = (
+        "본 서비스는 정보 제공 도구이며, 의학적 진단·처방을 대체하지 않습니다. 출처: 식약처 의약품안전나라(DUR)"
+    )
+
+
+class InteractionCheckResult(BaseModel):
+    warnings: list[InteractionWarning] = []
+    checked_count: int  # item_seq가 있어 실제로 비교 대상이 된 등록약 수
