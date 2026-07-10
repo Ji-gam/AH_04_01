@@ -11,6 +11,7 @@ class Config(BaseSettings):
 
     OPENAI_API_KEY: str | None = None
     OPENAI_EMBEDDING_API_KEY: str | None = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
 
 
 # 글로벌 싱글톤 인스턴스 생성
