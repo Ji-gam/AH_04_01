@@ -3,8 +3,8 @@ from typing import cast
 
 from app.models.chat import MessageRole
 from app.repositories.chat_repository import ChatRepository
+from app.services.ai_worker_gateway import AIWorkerGateway
 from app.services.chat_service import ChatService
-from app.services.retriever_stub import Retriever
 from app.services.safety_service import DISCLAIMER_TEXT, EMERGENCY_FALLBACK_MESSAGE
 from app.services.user_health_context_service import UserHealthContextService
 
@@ -40,7 +40,7 @@ def _build_service(repository: FakeChatRepository) -> ChatService:
     return ChatService(
         repository=cast(ChatRepository, repository),
         health_context_service=cast(UserHealthContextService, FakeUserHealthContextService()),
-        retriever=cast(Retriever, FakeRetriever()),
+        retriever=cast(AIWorkerGateway, FakeRetriever()),
         llm_stream=fake_llm_stream,
     )
 
@@ -114,7 +114,7 @@ async def test_dur_warning_injected_for_pregnant_user():
     service = ChatService(
         repository=cast(ChatRepository, repository),
         health_context_service=cast(UserHealthContextService, FakePregnantUserHealthContextService()),
-        retriever=cast(Retriever, FakeRetriever()),
+        retriever=cast(AIWorkerGateway, FakeRetriever()),
         llm_stream=spy_llm,
     )
 
