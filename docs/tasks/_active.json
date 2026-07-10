@@ -28,5 +28,10 @@
     "owner": "agent-Claude",
     "branch": "feature/T-MED-2-2-drug-interaction-check",
     "started": "2026-07-09"
+  },
+  "T-MED-5": {
+    "owner": "claude",
+    "branch": "feature/T-MED-5-clova-ocr-error-handling",
+    "started": "2026-07-10"
   }
 }
