@@ -34,9 +34,9 @@
     "branch": "feature/T-MED-5-clova-ocr-error-handling",
     "started": "2026-07-10"
   },
-  "T-LLM-8": {
+  "T-LLM-7-1": {
     "owner": "agent-Claude",
-    "branch": "feat/59-langsmith-eval-set",
+    "branch": "feat/61-query-rewriting",
     "started": "2026-07-10"
   }
 }
