@@ -35,6 +35,7 @@ app = [
     "alembic>=1.14.0",
     "asyncmy>=0.2.11",
     "bcrypt<=4.0.1",
+    "celery>=5.4.0",
     "fastapi[standard]>=0.128.0",
     "httpx>=0.28.1",
     "orjson>=3.11.5",
@@ -107,3 +108,8 @@ line-ending = "auto"
 # docs/dev/sample_code_* 가 실제 app/ 패키지와 같은 이름("app")을 써서
 # 전체 스캔 시 "Duplicate module named app" 오류로 mypy 자체가 멈춘다.
 exclude = ["docs/dev/sample_code_chat", "docs/dev/sample_code_recog"]
+
+[[tool.mypy.overrides]]
+# celery는 타입 스텁(py.typed)을 제공하지 않는다.
+module = ["celery", "celery.*"]
+ignore_missing_imports = true
