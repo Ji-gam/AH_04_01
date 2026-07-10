@@ -55,6 +55,11 @@ services:
         - linux/arm64
     image: ${DOCKER_USER}/${DOCKER_REPOSITORY}:app-${APP_VERSION}  # APP_VERSION은 빌드된 이미지의 버전관리를 위함입니다. v1.0.0 형식으로 사용합니다.
     env_file: .env
+    environment:
+      # .env의 DB_HOST=localhost는 로컬 venv로 fastapi를 직접 실행할 때 기준 값이다.
+      # 도커 컨테이너 안에서는 localhost가 fastapi 컨테이너 자기 자신을 가리켜서 mysql 컨테이너를
+      # 못 찾는다 - 그래서 여기서 mysql(서비스명)로 덮어써야 한다. 여러 명이 겪고 확인한 이슈.
+      DB_HOST: mysql
     command: |
       sh -c "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
