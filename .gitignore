@@ -24,3 +24,9 @@ frontend/dist/
 # chroma db data
 ai_worker/chroma_data/
 
+# macOS junk
+.DS_Store
+
+# local raw-data staging (source CSVs/DB for app/database/*.db builds)
+_data/
+

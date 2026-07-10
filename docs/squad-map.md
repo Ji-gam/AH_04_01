@@ -1,12 +1,13 @@
 # squad-map.md — 담당자 매핑 (킥오프 때 채우기)
 
-> **문서 버전**: v1.3 · **최종 수정**: 2026-07-08
+> **문서 버전**: v1.4 · **최종 수정**: 2026-07-10
 > **변경 이력**
 >
 > - v1.0 (2026-07-07): `remedi_mweb_co`에서 이식. 표 구조는 그대로, 이름만 새로 채운다.
 > - v1.1 (2026-07-07): `FRONTEND_ARCHITECTURE.md`가 `CODING_RULES.md`로 흡수되며 §6 표와의 중복 참조를 제거. `useAuth.ts`→`useAuth.tsx` 오탈자 수정(실제 파일이 Context/Provider라 확장자가 다름)
 > - v1.2 (2026-07-08): T-LLM-3(건강 콘텐츠 생성 파이프라인) 착수하며 D 스쿼드 백엔드 파일 접두어에 `content_*` 추가
 > - v1.3 (2026-07-08): 2차 하네스 정리 — `decision_log.md` 경로를 `decision_log/` 폴더로 갱신
+> - v1.4 (2026-07-10): AI/RAG 워커 통신 방식 확정(`docs/decision_log/2026-07-10-ai-rag-worker.md`)에 따라 RAG Retriever / Context Binder 공통모듈 소유자를 박지은으로 확정
 >
 > 목적: "이 파일/기능은 누구 담당인지"를 이슈 번호나 파일명만 보고 바로 알 수 있게 한다.
 > `CONTRIBUTING.md` §2, `CODING_RULES.md` 2번·3-6번과 짝을 이루는 문서. 이 문서가 공통모듈 소유자의 **유일한 출처**다 — 다른 문서에 같은 표를 중복해서 두지 않는다.
@@ -34,7 +35,7 @@
 | 질병/복약/목표 조회 단일창구   | `app/services/user_health_context_service.py` (신설 예정) | _(이름)_                            |
 | 문서/알약 인식 (Tier 2 stub)   | `app/services/recognition_service.py` (신설 예정)         | 이은호                              |
 | Push 발송                      | `app/services/notification_service.py` (신설 예정)        | 정다이                              |
-| RAG Retriever / Context Binder | `ai_worker/`                                              | _(이름, `docs/decision_log/` 참고)_ |
+| RAG Retriever / Context Binder | `ai_worker/`, `app/services/retriever_stub.py`, `app/services/llm_stub.py` | 박지은 (`docs/decision_log/2026-07-10-ai-rag-worker.md` 참고) |
 
 ## 3. 프론트 공통모듈 소유자 (`CODING_RULES.md` 3-6번이 참조하는 표)
 
