@@ -58,9 +58,7 @@ async def test_call_clova_ocr_retries_on_timeout_then_succeeds(monkeypatch):
 
 
 async def test_call_clova_ocr_gives_up_after_max_attempts_on_repeated_timeout(monkeypatch):
-    _patch_clova_client(
-        monkeypatch, [httpx.TimeoutException("timed out"), httpx.TimeoutException("timed out again")]
-    )
+    _patch_clova_client(monkeypatch, [httpx.TimeoutException("timed out"), httpx.TimeoutException("timed out again")])
 
     result = await medication_service._call_clova_ocr(b"bytes", "pill.jpg")
 
