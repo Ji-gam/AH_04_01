@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "cryptography>=46.0.3",
+    "openai>=2.44.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
     "python-dateutil>=2.9.0.post0",
@@ -19,18 +20,29 @@ ai = [
     "torch",
     "torchvision",
     "torchaudio",
-    "sentence-transformers>=5.2.0"
+    "sentence-transformers>=5.2.0",
+    "langchain>=0.3.0",
+    "langchain-community>=0.3.0",
+    "langchain-chroma>=0.1.0",
+    "langchain-openai>=0.2.0",
+    "langchain-huggingface>=0.1.0",
+    "fastapi[standard]>=0.128.0",
+    "uvicorn>=0.40.0",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.12.0",
 ]
 app = [
-    "aerich>=0.9.2",
+    "alembic>=1.14.0",
     "asyncmy>=0.2.11",
     "bcrypt<=4.0.1",
+    "celery>=5.4.0",
     "fastapi[standard]>=0.128.0",
     "httpx>=0.28.1",
     "orjson>=3.11.5",
     "passlib[bcrypt]>=1.7.4",
     "pyjwt>=2.10.1",
-    "tortoise-orm>=0.25.3",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "tzdata>=2026.2",
     "uvicorn>=0.40.0",
 ]
 dev = [
@@ -52,19 +64,18 @@ name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
 
-[tool.aerich]
-tortoise_orm = "app.core.db.databases.TORTOISE_ORM"
-location = "./app/core/db/migrations"
-src_folder = "./."
-
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["app/tests"]
 
 [tool.ruff]
 # 기본 라인 길이 설정
 line-length = 120
 target-version = "py312"
+# docs/dev/sample_code_* 는 팀원 참고용 예시 코드(실제 실행 대상 아님) — lint 대상에서 제외
+extend-exclude = ["docs/dev/sample_code_chat", "docs/dev/sample_code_recog"]
 
 [tool.ruff.lint]
 # 사용할 린트 규칙들 선택
@@ -83,7 +94,8 @@ ignore = ["UP046", "E501"]
 # 특정 파일에서 무시할 규칙들
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-"db/migrations/*" = ["ALL"]
+"app/core/validators/__init__.py" = ["F403"]
+"app/core/db/migrations/**" = ["ALL"]
 
 [tool.ruff.format]
 # 포매터 설정
@@ -91,3 +103,13 @@ quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
+
+[tool.mypy]
+# docs/dev/sample_code_* 가 실제 app/ 패키지와 같은 이름("app")을 써서
+# 전체 스캔 시 "Duplicate module named app" 오류로 mypy 자체가 멈춘다.
+exclude = ["docs/dev/sample_code_chat", "docs/dev/sample_code_recog"]
+
+[[tool.mypy.overrides]]
+# celery는 타입 스텁(py.typed)을 제공하지 않는다.
+module = ["celery", "celery.*"]
+ignore_missing_imports = true

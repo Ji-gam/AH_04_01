@@ -1,26 +1,29 @@
-from enum import StrEnum
+from datetime import datetime
+from typing import TYPE_CHECKING
 
-from tortoise import fields, models
+from sqlalchemy import BigInteger, Boolean, DateTime, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.models.base import Base
+
+if TYPE_CHECKING:
+    from app.models.profiles import Profile
 
 
-class Gender(StrEnum):
-    MALE = "MALE"
-    FEMALE = "FEMALE"
+class User(Base):
+    """계정/인증 전용. 이름/성별/생일/휴대폰번호 등 개인정보는 Profile로 분리되어 있다."""
 
+    __tablename__ = "users"
 
-class User(models.Model):
-    id = fields.BigIntField(primary_key=True)
-    email = fields.CharField(max_length=40)
-    hashed_password = fields.CharField(max_length=128)
-    name = fields.CharField(max_length=20)
-    gender = fields.CharEnumField(enum_type=Gender)
-    birthday = fields.DateField()
-    phone_number = fields.CharField(max_length=11)
-    is_active = fields.BooleanField(default=True)
-    is_admin = fields.BooleanField(default=False)
-    last_login = fields.DatetimeField(null=True)
-    created_at = fields.DatetimeField(auto_now_add=True)
-    updated_at = fields.DatetimeField(auto_now=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    hashed_password: Mapped[str] = mapped_column(String(128), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
-    class Meta:
-        table = "users"
+    profiles: Mapped[list["Profile"]] = relationship(back_populates="user", cascade="all, delete-orphan")

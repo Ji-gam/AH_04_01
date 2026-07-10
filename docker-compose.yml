@@ -33,6 +33,7 @@ services:
       - ws
     volumes:
       - mysql_data:/var/lib/mysql  # 컨테이너가 삭제돼도 데이터는 호스트 파일시스템에 남음
+      - ./infra/mysql/init-test-db.sh:/docker-entrypoint-initdb.d/init-test-db.sh  # pytest용 test DB 자동 생성(볼륨 최초 초기화 시 1회)
     command: # 한글 저장을 위한 문자셋 설정 (필수!)
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -54,8 +55,13 @@ services:
         - linux/arm64
     image: ${DOCKER_USER}/${DOCKER_REPOSITORY}:app-${APP_VERSION}  # APP_VERSION은 빌드된 이미지의 버전관리를 위함입니다. v1.0.0 형식으로 사용합니다.
     env_file: .env
-    command: | 
-      sh -c "uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    environment:
+      # .env의 DB_HOST=localhost는 로컬 venv로 fastapi를 직접 실행할 때 기준 값이다.
+      # 도커 컨테이너 안에서는 localhost가 fastapi 컨테이너 자기 자신을 가리켜서 mysql 컨테이너를
+      # 못 찾는다 - 그래서 여기서 mysql(서비스명)로 덮어써야 한다. 여러 명이 겪고 확인한 이슈.
+      DB_HOST: mysql
+    command: |
+      sh -c "uv run alembic upgrade head && uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     volumes:
       - ./app:/app/app  # 로컬의 app 디렉토리를 컨테이너의 /app/app에 마운트(수정사항 즉시 반영)
       - static_volume:/app/templates
@@ -83,8 +89,15 @@ services:
     env_file: .env
     restart: always
     mem_limit: 4G
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./ai_worker:/app/ai_worker
+      - /app/.venv
     networks:
       - ws
+    command: |
+      sh -c "uv run uvicorn ai_worker.main:app --host 0.0.0.0 --port 8001 --reload"
     depends_on:
       mysql:
         condition: service_healthy

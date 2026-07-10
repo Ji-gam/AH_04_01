@@ -10,7 +10,7 @@
 - **FastAPI Framework**: 고성능 비동기 API 서버 구현.
 - **AI Worker**: 모델 추론 및 학습 작업을 API 서버와 분리하여 처리.
 - **UV Package Manager**: 매우 빠른 의존성 설치 및 가상환경 관리.
-- **Tortoise ORM**: 비동기 방식의 데이터베이스 모델링 및 쿼리 관리.
+- **SQLAlchemy(AsyncSession) + Alembic**: 비동기 방식의 데이터베이스 모델링·쿼리 관리 및 마이그레이션.
 - **Docker-Compose**: MySQL, Redis, Nginx를 포함한 전체 서비스 스택을 한 번에 실행.
 - **CI/CD Scripts**: 코드 포맷팅(Ruff), 타입 체크(Mypy), 테스트(Pytest)를 위한 자동화 스크립트 제공.
 
@@ -173,5 +173,20 @@ chmod +x scripts/certbot.sh
 ## 📝 개발 가이드
 
 - **API 추가**: `app/apis/v1/` 아래에 새로운 라우터 파일을 생성하고 `app/apis/v1/__init__.py`에 등록하세요.
-- **DB 모델 추가**: `app/models/`에 Tortoise 모델을 정의하고 `app/db/databases.py`의 `MODELS` 리스트에 추가하세요.
+- **DB 모델 추가**: `app/models/`에 SQLAlchemy 2.0 선언형 모델(`Mapped`/`mapped_column`)을 정의하고, `alembic revision --autogenerate`로 마이그레이션을 작성하세요. 같은 커밋/PR에서 `docs/dev/ERD.dbml`도 갱신합니다(`docs/CODING_RULES.md` 6번).
 - **AI 로직 추가**: `ai_worker/tasks/`에 새로운 처리 로직을 작성하고 `ai_worker/main.py`에서 호출하도록 구성하세요.
+
+---
+
+## 📚 문서 지도
+
+이 레포의 규칙/설계 문서는 "얼마나 자주 참조해야 하는지"에 따라 나뉩니다.
+
+| 단계 | 문서 | 언제 보는가 |
+| --- | --- | --- |
+| 1. 진입(매 세션) | `AGENTS.md`(`CLAUDE.md`는 여기로의 리다이렉트) | 작업 시작 전 항상 |
+| 2. 참조(필요할 때) | `docs/SESSION_START.md`, `docs/DEV_WORKFLOW.md`, `docs/TROUBLESHOOTING.md`, `docs/CODING_RULES.md`, `docs/CONTRIBUTING.md`, `docs/decision_log/`, `docs/squad-map.md` | T-ID 작업, 구조/소유권 확인, "왜 이렇게 됐는지" 찾을 때 |
+| 3. 개발설계 산출물 | `docs/dev/ERD.dbml`, `docs/dev/api_spec_core_v1_v1.1.yaml`, `docs/dev/sample_code_chat/`, `docs/dev/sample_code_recog/` | DB/스키마 변경, 새 도메인 구현 시 참고 예제 |
+| 4. 기획 원본 스냅샷 (수정 금지) | `docs/plan/PRD_ReMedi_v1.1.md`, `docs/plan/TRD_ReMedi_v1.1.md` | T-ID의 입력/출력/성공요건 확인 |
+
+문서 버전 관리 규칙(파일명 고정, 헤더 버전업)은 `AGENTS.md`의 "문서 버전 관리" 참고.

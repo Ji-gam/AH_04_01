@@ -1,0 +1,39 @@
+{
+  "1": {
+    "name": "정상인",
+    "email": "normal@example.com",
+    "birthday": "1995-05-05",
+    "gender": "MALE",
+    "is_pregnant": false,
+    "conditions": ["당뇨", "고혈압"],
+    "medications": [
+      {"condition": "당뇨", "name": "메트포르민", "dose": "500mg", "times_per_day": 2},
+      {"condition": "고혈압", "name": "암로디핀", "dose": "5mg", "times_per_day": 1}
+    ]
+  },
+  "2": {
+    "name": "임산부",
+    "email": "pregnant@example.com",
+    "birthday": "1998-08-08",
+    "gender": "FEMALE",
+    "is_pregnant": true,
+    "conditions": ["ADHD", "당뇨"],
+    "medications": [
+      {"condition": "ADHD", "name": "콘서타", "dose": "18mg", "times_per_day": 1},
+      {"condition": "당뇨", "name": "메트포르민", "dose": "500mg", "times_per_day": 1}
+    ]
+  },
+  "3": {
+    "name": "노인",
+    "email": "elder@example.com",
+    "birthday": "1951-01-01",
+    "gender": "MALE",
+    "is_pregnant": false,
+    "conditions": ["불안증", "고혈압", "뇌혈관질환"],
+    "medications": [
+      {"condition": "불안증", "name": "디아제팜", "dose": "5mg", "times_per_day": 1},
+      {"condition": "고혈압", "name": "암로디핀", "dose": "5mg", "times_per_day": 1},
+      {"condition": "뇌혈관질환", "name": "아스피린", "dose": "100mg", "times_per_day": 1}
+    ]
+  }
+}

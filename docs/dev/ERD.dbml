@@ -1,0 +1,139 @@
+// AH_04_01 ERD — dbdiagram.io (https://dbdiagram.io)에 그대로 붙여넣어 보면 됩니다.
+//
+// 문서 버전: v1.3 · 최종 수정: 2026-07-08
+// 변경 이력:
+//   - v1.0 (2026-07-07): User/Profile 분리 반영한 최초 작성
+//   - v1.1 (2026-07-07): T-LLM-2 chat_sessions/chat_messages 테이블 추가
+//   - v1.2 (2026-07-07): notification_schedules 테이블 추가 (T-NTFY, 복약 알림)
+//   - v1.3 (2026-07-08): health_contents 테이블 추가 (T-LLM-3, 건강 콘텐츠 생성 파이프라인)
+//
+// 규칙 (docs/CODING_RULES_v1.0.md 6번):
+//   DB를 CRUD하는 작업(모델 추가/변경, 마이그레이션 작성)을 할 때마다 이 파일도 같은 커밋/PR에서
+//   함께 갱신하고 위 버전을 올린다. 새 도메인 테이블(복약, 일정, 채팅 등)을 추가하면 반드시
+//   여기에 테이블과 profiles로의 FK 관계를 추가한다 — 다른 팀원이 이 ERD를 보고 profile_id를
+//   참조/저장하기 때문에 최신 상태 유지가 필수다.
+
+Table users {
+  id bigint [pk, increment]
+  email varchar(40) [unique, not null]
+  hashed_password varchar(128) [not null]
+  is_active boolean [not null, default: true]
+  is_admin boolean [not null, default: false]
+  last_login datetime
+  created_at datetime [not null]
+  updated_at datetime [not null]
+
+  Note: '계정/인증 전용. 개인정보는 profiles로 분리되어 있다.'
+}
+
+Table profiles {
+  id bigint [pk, increment]
+  user_id bigint [not null, ref: > users.id]
+  name varchar(20) [not null]
+  gender varchar(6) [not null, note: 'MALE | FEMALE']
+  birthday date [not null]
+  phone_number varchar(11) [not null]
+  relation varchar(10) [not null, default: 'SELF', note: 'SELF만 실제 사용 중 — 향후 가족/서포터그룹 확장용']
+  created_at datetime [not null]
+  updated_at datetime [not null]
+
+  Note: '''
+  개인정보 + 앞으로 만들 모든 도메인 테이블의 기준(profile_id).
+  본인도 하나의 Profile로 취급한다 (회원가입 시 relation=SELF로 자동 생성).
+  새 도메인 테이블(복약, 일정, 채팅 등)은 user_id가 아니라 이 profiles.id를 참조 키로 쓴다.
+  '''
+}
+
+Table chat_sessions {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+
+  Note: 'T-LLM-2 챗봇 대화 세션. profile_id 기준으로 스코핑한다.'
+}
+
+Table chat_messages {
+  id bigint [pk, increment]
+  session_id bigint [not null, ref: > chat_sessions.id]
+  role varchar(10) [not null, note: 'USER | ASSISTANT']
+  content text [not null]
+  created_at datetime [not null]
+
+  Note: '응급 Fallback 메시지는 저장하지 않는다.'
+}
+
+Table notification_schedules {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  medication_name varchar(100) [not null]
+  frequency_type varchar(10) [not null, default: 'DAILY', note: 'DAILY | WEEKLY']
+  target_day_of_week varchar(10) [note: 'WEEKLY일 때만 값 존재 — 일/월/화/수/목/금/토']
+  alarm_time time [not null]
+  is_active boolean [not null, default: true]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+
+  Note: '복약 알림 일정 (T-NTFY). profile_id 기준으로 스코핑한다.'
+}
+
+// 새 도메인 테이블을 추가하면 여기 아래에 테이블을 추가하고, profiles로의 FK를 명시하세요.
+Table medications {
+  id bigint [pk, increment]
+  standard_code varchar(50)
+  medication_name varchar(150) [not null]
+  form_type varchar(30)
+  dosage_guideline text
+  side_effects text
+  precautions text
+  storage_method text
+  shape varchar(30)
+  color varchar(30)
+  letters varchar(50)
+}
+
+Table medication_schedules {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  medication_id bigint [not null, ref: > medications.id]
+  times json [not null]
+  source_job_id varchar(36)
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table medication_recognition_jobs {
+  id varchar(36) [pk]
+  profile_id bigint [not null, ref: > profiles.id]
+  status varchar(20) [not null]
+  source_type varchar(20) [not null]
+  candidates json
+  extracted_fields json
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table health_contents {
+  id bigint [pk, increment]
+  disease_code varchar(50) [not null]
+  category varchar(20) [not null, note: 'LIFESTYLE | FOOD | MEDICAL_NEWS']
+  content_date date [not null]
+  title varchar(200) [not null]
+  summary varchar(500) [not null]
+  body text [not null]
+  image_prompt varchar(500)
+  source_refs json
+  created_at datetime [not null]
+
+  indexes {
+    (disease_code, category, content_date) [unique]
+  }
+
+  Note: '''
+  T-LLM-3 건강 콘텐츠 생성 파이프라인 캐시. profile_id를 참조하지 않는다 — 개인 데이터가
+  아니라 질환(disease_code) 기준으로 전체 사용자가 공유하는 캐시다. 과거 날짜 카드는
+  삭제/교체하지 않고 누적해 "정보" 탭 피드로 노출한다. 라이브(요청 중) LLM 생성은 하지
+  않으며, 오프라인 스크립트(app/scripts/generate_health_content.py + seed_health_content.py)로만 채워진다.
+  '''
+}
+
