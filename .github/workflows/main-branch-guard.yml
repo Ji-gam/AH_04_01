@@ -1,0 +1,15 @@
+name: Guard main branch
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: head 브랜치가 Release/* 인지 확인
+        run: |
+          if [[ "${{ github.head_ref }}" != Release/* ]]; then
+            echo "main으로의 PR은 Release/* 브랜치에서만 가능합니다. (head: ${{ github.head_ref }})"
+            exit 1
+          fi
