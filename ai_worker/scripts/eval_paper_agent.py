@@ -32,6 +32,11 @@ EVAL_QUESTIONS = [
     # T-LLM-7-1: Query Rewriting 도입 후 변형 표현 정규화 개선 확인용 추가 케이스.
     {"disease": "심장질환", "question": "심장마비 재발을 줄이는 약물 조합이 있어?"},
     {"disease": "미지원(ADHD)", "question": "ADHD 관련 논문 있어?"},
+    # T-LLM-7-2: 신체 장기를 빗댄 관용구 — 질환 단어가 있어도 도구를 부르면 안 되는 케이스.
+    {"disease": "관용구(오탐 방지 확인용)", "question": "나 심장이 너무 쫄려..."},
+    {"disease": "관용구(오탐 방지 확인용)", "question": "요즘 너무 간이 콩알만해지는 일이 많아"},
+    {"disease": "관용구(오탐 방지 확인용)", "question": "시험 때문에 심장 떨려 죽겠어"},
+    {"disease": "관용구(오탐 방지 확인용)", "question": "아 진짜 간 떨어질 뻔했네"},
 ]
 
 
