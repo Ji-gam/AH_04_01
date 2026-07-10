@@ -158,14 +158,9 @@ class ChatService:
         if profile:
             profile_name = profile.name
 
-            if profile.birthday:
-                today = date.today()
-                age = (
-                    today.year
-                    - profile.birthday.year
-                    - ((today.month, today.day) < (profile.birthday.month, profile.birthday.day))
-                )
-                is_geriatric = age >= 65
+            # [변경] 생년월일 대신 나이(age)를 직접 저장하므로, 계산 없이 바로 쓴다.
+            if profile.age is not None:
+                is_geriatric = profile.age >= 65
 
             # DB 스키마 수정 없이 임산부 여부를 판별하기 위해 프로필 이름이 "임산부"인지 체크
             if profile_name == "임산부":

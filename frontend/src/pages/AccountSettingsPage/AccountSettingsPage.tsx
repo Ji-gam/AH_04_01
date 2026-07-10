@@ -5,16 +5,15 @@ import { authApi } from "../../api/authApi";
 import { useAuth } from "../../hooks/useAuth";
 
 /** 로그아웃 버튼 옆 "개인정보수정" 링크로 들어오는 화면.
- * - 이름/전화번호/생년월일/성별만 수정 가능 (이메일은 로그인 식별자라 고정, PATCH /users/me가 애초에 안 받음).
+ * - [변경] 이름(닉네임)만 수정 가능. 이메일은 로그인 식별자라 고정, PATCH /users/me가 애초에 안 받음.
+ *   전화번호는 당장 안 쓰고, 성별은 더보기 > 개인건강정보에서 이미 받으므로 여기서는 뺐다.
+ *   생년월일은 더 이상 안 쓴다 - 나이는 더보기 > 개인건강정보에서 관리한다.
  * - 회원탈퇴는 개인정보보호법 기준으로 즉시 완전 삭제라 되돌릴 수 없음 - 비밀번호 재확인 + 확인 문구 입력을 요구한다. */
 export default function AccountSettingsPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   const [name, setName] = useState(user?.name ?? "");
-  const [phoneNumber, setPhoneNumber] = useState(user?.phone_number ?? "");
-  const [birthDate, setBirthDate] = useState(user?.birthday ?? "");
-  const [gender, setGender] = useState<"MALE" | "FEMALE">(user?.gender ?? "MALE");
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -31,7 +30,7 @@ export default function AccountSettingsPage() {
     setSavedMessage(null);
     setIsSaving(true);
     try {
-      await authApi.updateMe({ name, phone_number: phoneNumber, birthday: birthDate, gender });
+      await authApi.updateMe({ name });
       setSavedMessage("저장되었습니다.");
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "저장 중 오류가 발생했습니다.");
@@ -82,31 +81,6 @@ export default function AccountSettingsPage() {
         <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
           이름
           <input type="text" value={name} onChange={(e) => setName(e.target.value)} required />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          휴대폰번호
-          <input
-            type="tel"
-            value={phoneNumber}
-            onChange={(e) => setPhoneNumber(e.target.value)}
-            required
-          />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          생년월일
-          <input
-            type="date"
-            value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
-            required
-          />
-        </label>
-        <label style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          성별
-          <select value={gender} onChange={(e) => setGender(e.target.value as "MALE" | "FEMALE")}>
-            <option value="MALE">남성</option>
-            <option value="FEMALE">여성</option>
-          </select>
         </label>
 
         {savedMessage && <p style={{ color: "green" }}>{savedMessage}</p>}

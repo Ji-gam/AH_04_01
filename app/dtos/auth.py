@@ -1,13 +1,14 @@
-from datetime import date
 from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, EmailStr, Field
 
-from app.core.validators import validate_birthday, validate_password, validate_phone_number
-from app.models.profiles import Gender
+from app.core.validators import validate_password
 
 
 class SignUpRequest(BaseModel):
+    """[가입 최소화] 나중에 소셜 로그인을 붙일 걸 감안해서, 가입 시점엔 최소한의 정보만 받는다.
+    성별/나이/휴대폰번호는 여기서 안 받고, 더보기 > 개인건강정보에서 따로 입력받는다."""
+
     email: Annotated[
         EmailStr,
         Field(
@@ -19,26 +20,14 @@ class SignUpRequest(BaseModel):
     password: Annotated[
         str,
         Field(
-            description="대/소문자, 숫자, 특수문자를 각 1개 이상 포함, 8자 이상.",
+            description="소문자, 숫자, 특수문자를 각 1개 이상 포함, 8자 이상.",
             min_length=8,
-            examples=["Password123!"],
+            examples=["password123!"],
         ),
         AfterValidator(validate_password),
     ]
-    name: Annotated[str, Field(description="본인 Profile의 이름으로 저장된다.", max_length=20, examples=["홍길동"])]
-    gender: Annotated[Gender, Field(description="'MALE' 또는 'FEMALE'.")]
-    birth_date: Annotated[
-        date,
-        Field(description="YYYY-MM-DD. 만 14세 미만은 가입할 수 없다.", examples=["1995-05-05"]),
-        AfterValidator(validate_birthday),
-    ]
-    phone_number: Annotated[
-        str,
-        Field(
-            description="010-1234-5678 / 01012345678 / +821012345678 형식 모두 허용. 중복 시 409를 반환한다.",
-            examples=["01012345678"],
-        ),
-        AfterValidator(validate_phone_number),
+    name: Annotated[
+        str, Field(description="닉네임. 본인 Profile의 이름으로 저장된다.", max_length=20, examples=["길동이"])
     ]
 
 
