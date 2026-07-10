@@ -32,6 +32,9 @@
   "T-LLM-7": {
     "owner": "agent-Claude",
     "branch": "feat/52-disease-paper-agent",
+  "T-MED-5": {
+    "owner": "claude",
+    "branch": "feature/T-MED-5-clova-ocr-error-handling",
     "started": "2026-07-10"
   }
 }
