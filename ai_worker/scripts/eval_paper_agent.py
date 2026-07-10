@@ -29,6 +29,9 @@ EVAL_QUESTIONS = [
     {"disease": "당뇨", "question": "당뇨병 혈당 관리에 대한 연구 결과 있어?"},
     {"disease": "간질환", "question": "간질환 진단 관련 논문 알려줘"},
     {"disease": "간질환", "question": "지방간 진행 여부를 검사 없이도 알 수 있어?"},
+    # T-LLM-7-1: Query Rewriting 도입 후 변형 표현 정규화 개선 확인용 추가 케이스.
+    {"disease": "심장질환", "question": "심장마비 재발을 줄이는 약물 조합이 있어?"},
+    {"disease": "미지원(ADHD)", "question": "ADHD 관련 논문 있어?"},
 ]
 
 

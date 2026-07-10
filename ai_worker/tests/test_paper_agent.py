@@ -42,6 +42,15 @@ class _FakeMessage:
         self.content = content
 
 
+def _fake_rewrite(result: str | None):
+    """rewrite_disease_query를 대체할 고정 결과 반환 함수를 만든다."""
+
+    async def _rewrite(question: str) -> str | None:
+        return result
+
+    return _rewrite
+
+
 class FakeAgentExecutor:
     """실제 LangChain 에이전트(create_agent) 대신, "이 질문엔 도구를 불렀을 것"을 시뮬레이션한다."""
 
@@ -60,6 +69,7 @@ class FakeAgentExecutor:
 
 async def test_paper_agent_calls_tool_for_relevant_question(monkeypatch):
     monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
+    monkeypatch.setattr(paper_agent_module, "rewrite_disease_query", _fake_rewrite("당뇨"))
     monkeypatch.setattr(
         paper_agent_module,
         "_build_agent_executor",
@@ -75,6 +85,7 @@ async def test_paper_agent_calls_tool_for_relevant_question(monkeypatch):
 
 async def test_paper_agent_skips_tool_for_irrelevant_question(monkeypatch):
     monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
+    monkeypatch.setattr(paper_agent_module, "rewrite_disease_query", _fake_rewrite(None))
     monkeypatch.setattr(
         paper_agent_module,
         "_build_agent_executor",
@@ -95,3 +106,41 @@ async def test_paper_agent_returns_503_without_api_key(monkeypatch):
         response = await client.post("/agent/paper-search", json={"question": "당뇨 논문 알려줘"})
 
     assert response.status_code == 503
+
+
+class FakeChatModel:
+    """rewrite_disease_query가 쓰는 ChatOpenAI 대신, 고정된 정규화 결과를 돌려준다."""
+
+    def __init__(self, content: str) -> None:
+        self._content = content
+
+    async def ainvoke(self, messages: list[dict]) -> _FakeMessage:
+        return _FakeMessage(self._content)
+
+
+async def test_rewrite_disease_query_normalizes_variant_expression(monkeypatch):
+    monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
+    monkeypatch.setattr(paper_agent_module, "_build_llm", lambda: FakeChatModel("뇌혈관질환"))
+
+    result = await paper_agent_module.rewrite_disease_query("뇌졸중 치료는 빠를수록 좋다는 게 사실이야?")
+
+    assert result == "뇌혈관질환"
+
+
+async def test_rewrite_disease_query_returns_none_for_irrelevant_question(monkeypatch):
+    monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
+    monkeypatch.setattr(paper_agent_module, "_build_llm", lambda: FakeChatModel("NONE"))
+
+    result = await paper_agent_module.rewrite_disease_query("오늘 날씨 어때")
+
+    assert result is None
+
+
+async def test_rewrite_disease_query_passes_through_unsupported_disease(monkeypatch):
+    """지원 5개 밖의 질환(예: ADHD)도 그대로 통과시킨다 — 화이트리스트 필터링은 여기서 안 함."""
+    monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
+    monkeypatch.setattr(paper_agent_module, "_build_llm", lambda: FakeChatModel("ADHD"))
+
+    result = await paper_agent_module.rewrite_disease_query("ADHD 관련 논문 있어?")
+
+    assert result == "ADHD"
