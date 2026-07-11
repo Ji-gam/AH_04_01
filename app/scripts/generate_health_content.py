@@ -13,16 +13,17 @@ T-LLM-2-async-gateway: 실제 생성은 `AIWorkerGateway.call_structured()`를 �
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
+from datetime import timedelta
 from pathlib import Path
 
 from pydantic import BaseModel
 
 from app.services.ai_worker_gateway import AIWorkerGateway
-from app.services.content_service import CATEGORIES, POPULAR_DISEASES
+from app.services.content_service import CATEGORIES, CATEGORY_TOPICS, POPULAR_DISEASES, _today_kst
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "health_content_fixture.json"
 
-ContentGenerator = Callable[[str, str], Awaitable[dict]]
+ContentGenerator = Callable[[str, str, str], Awaitable[dict]]
 
 
 class HealthContentCard(BaseModel):
@@ -32,21 +33,17 @@ class HealthContentCard(BaseModel):
     image_prompt: str | None = None
 
 
-async def generate_content_card(disease_code: str, category: str) -> dict:
-    """`AIWorkerGateway.call_structured()`로 질환+카테고리 하나에 대한 건강 콘텐츠 카드를 생성한다.
-    프롬프트/스키마는 이 도메인(콘텐츠 생성)이 직접 소유한다 — Gateway는 이를 대신하지 않는다.
+async def generate_content_card(disease_code: str, category: str, topic: str) -> dict:
+    """`AIWorkerGateway.call_structured()`로 질환+카테고리+소주제 하나에 대한 건강 콘텐츠
+    카드를 생성한다. 프롬프트/스키마는 이 도메인(콘텐츠 생성)이 직접 소유한다 — Gateway는
+    이를 대신하지 않는다.
 
     "기타"(5대질환에 안 걸리는 질환 등록자용)는 특정 질환을 짚을 수 없으므로, 질환 특정이
     아닌 일반적인 건강관리 팁으로 생성한다."""
     gateway = AIWorkerGateway()
-    system_prompt = (
-        "당신은 ReMedi의 건강 콘텐츠 작가입니다. 주어진 질환과 카테고리에 맞는 짧고 실용적인 건강 팁 카드를 작성하세요."
-    )
-    user_input = (
-        f"주제: 특정 질환에 한정되지 않는 일반적인 건강관리 정보, 카테고리: {category}"
-        if disease_code == "기타"
-        else f"질환: {disease_code}, 카테고리: {category}"
-    )
+    system_prompt = "당신은 ReMedi의 건강 콘텐츠 작가입니다. 주어진 질환과 카테고리, 세부 주제에 맞는 짧고 실용적인 건강 팁 카드를 작성하세요."
+    subject = "특정 질환에 한정되지 않는 일반적인 건강관리 정보" if disease_code == "기타" else f"질환: {disease_code}"
+    user_input = f"{subject}, 카테고리: {category}, 세부 주제: {topic}"
     card = await gateway.call_structured(
         system_prompt=system_prompt,
         user_input=user_input,
@@ -56,11 +53,24 @@ async def generate_content_card(disease_code: str, category: str) -> dict:
 
 
 async def build_fixture_entries(content_generator: ContentGenerator) -> list[dict]:
+    """질환 x 카테고리마다 `CATEGORY_TOPICS`의 소주제 3개를 각각 생성해 "정보" 탭에서
+    장르당 최소 3장이 보이게 한다. 같은 (질환, 카테고리) 안에서 유니크 제약을 지키면서
+    공존하도록, 소주제 순서대로 하루씩 과거로 backdate한 `content_date`를 함께 기록한다
+    (조회 API는 날짜로 거르지 않으므로 화면에는 3장 모두 그대로 보인다)."""
+    today = _today_kst()
     entries = []
     for disease_code in POPULAR_DISEASES:
         for category in CATEGORIES:
-            card = await content_generator(disease_code, category)
-            entries.append({"disease_code": disease_code, "category": category, **card})
+            for offset, topic in enumerate(CATEGORY_TOPICS[category]):
+                card = await content_generator(disease_code, category, topic)
+                entries.append(
+                    {
+                        "disease_code": disease_code,
+                        "category": category,
+                        "content_date": (today - timedelta(days=offset)).isoformat(),
+                        **card,
+                    }
+                )
     return entries
 
 
