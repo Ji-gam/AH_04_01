@@ -92,3 +92,22 @@ def test_build_chain_keeps_existing_title(monkeypatch):
     generate_structured_module._build_chain({"title": "Custom", "type": "object"}, "fake-key")
 
     assert FakeChatOpenAI.received_schema["title"] == "Custom"
+
+
+class CapturingChatOpenAI:
+    """ChatOpenAI 생성자에 넘어온 kwargs(temperature 포함)를 캡처한다."""
+
+    def __init__(self, **kwargs) -> None:
+        CapturingChatOpenAI.received_kwargs = kwargs
+
+    def with_structured_output(self, json_schema):
+        return FakeChain({})
+
+
+def test_build_chain_uses_temperature_zero(monkeypatch):
+    """구조화 추출은 결정적이어야 하므로 temperature=0으로 생성해야 한다(기본 0.7 방지)."""
+    monkeypatch.setattr(generate_structured_module, "ChatOpenAI", CapturingChatOpenAI)
+
+    generate_structured_module._build_chain({"type": "object"}, "fake-key")
+
+    assert CapturingChatOpenAI.received_kwargs["temperature"] == 0

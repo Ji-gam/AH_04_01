@@ -106,6 +106,22 @@ async def test_paper_agent_returns_503_without_api_key(monkeypatch):
     assert response.status_code == 503
 
 
+def test_build_llm_uses_temperature_zero(monkeypatch):
+    """분류/답변 생성은 결정적이어야 하므로 temperature=0으로 생성해야 한다(기본 0.7 방지)."""
+    captured: dict = {}
+
+    class CapturingChatOpenAI:
+        def __init__(self, **kwargs) -> None:
+            captured.update(kwargs)
+
+    monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
+    monkeypatch.setattr(paper_agent_module, "ChatOpenAI", CapturingChatOpenAI)
+
+    paper_agent_module._build_llm()
+
+    assert captured["temperature"] == 0
+
+
 def test_is_valid_disease_rejects_literal_null_string():
     """with_structured_output이 이따금 실제 None 대신 문자열 "null"을 반환하는 경우 방어."""
     assert paper_agent_module._is_valid_disease("null") is False

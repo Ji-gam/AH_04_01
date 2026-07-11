@@ -28,7 +28,7 @@ def _build_chain(json_schema: dict[str, Any], api_key: str):
     # 이 엔드포인트는 범용이라 title 없는 스키마를 보내는 호출자가 있을 수 있어 방어적으로 채운다.
     if "title" not in json_schema:
         json_schema = {**json_schema, "title": "GeneratedResponse"}
-    llm = ChatOpenAI(model=settings.OPENAI_MODEL, api_key=SecretStr(api_key))
+    llm = ChatOpenAI(model=settings.OPENAI_MODEL, api_key=SecretStr(api_key), temperature=settings.OPENAI_TEMPERATURE)
     return llm.with_structured_output(json_schema)
 
 
