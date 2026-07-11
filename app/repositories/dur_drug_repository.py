@@ -47,7 +47,10 @@ class DurDrugRepository:
                 "SELECT item_seq, item_name, entp_name FROM products WHERE item_name LIKE ?",
                 (f"%{item_name}%",),
             )
-            return [self._build_profile(cursor, item_seq, name, entp_name) for item_seq, name, entp_name in cursor.fetchall()]
+            return [
+                self._build_profile(cursor, item_seq, name, entp_name)
+                for item_seq, name, entp_name in cursor.fetchall()
+            ]
         finally:
             conn.close()
 
