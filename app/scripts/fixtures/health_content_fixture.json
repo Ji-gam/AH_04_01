@@ -118,5 +118,29 @@
     "summary": "간질환 예방을 위한 새로운 연구 결과가 발표되었습니다. 이러한 정보는 건강 관리에 큰 도움이 될 것입니다.",
     "body": "최근 연구에 따르면, 규칙적인 운동과 건강한 식습관이 간질환 예방에 매우 효과적이라는 결과가 도출되었습니다. 특히, 과도한 알코올 소비를 줄이고, 채소와 과일을 충분히 섭취하는 것이 간 건강에 긍정적인 영향을 미친다는 사실이 밝혀졌습니다. 또한, 정기적인 건강 검진과 간 기능 검사도 간질환의 조기 발견에 중요한 역할을 합니다. 건강한 라이프스타일을 유지하여 간을 보호하세요!",
     "image_prompt": "people exercising in a park, healthy food options on a table"
+  },
+  {
+    "disease_code": "기타",
+    "category": "LIFESTYLE",
+    "title": "누구에게나 도움이 되는 건강한 생활 습관",
+    "summary": "특정 질환과 상관없이 꾸준히 실천하면 좋은 기본 건강 습관입니다.",
+    "body": "규칙적인 운동, 충분한 수면, 균형 잡힌 식사는 어떤 질환이 있든 전반적인 건강을 지키는 데 도움이 됩니다. 하루 30분 정도의 걷기, 정해진 시간에 자고 일어나기, 물 충분히 마시기부터 실천해보세요.",
+    "image_prompt": "general healthy lifestyle illustration, walking, water bottle, sleep"
+  },
+  {
+    "disease_code": "기타",
+    "category": "FOOD",
+    "title": "균형 잡힌 식사의 기본",
+    "summary": "특정 질환에 한정되지 않는 일반적인 식습관 관리 팁입니다.",
+    "body": "탄수화물, 단백질, 지방을 골고루 포함한 식사를 하고, 가공식품과 과도한 나트륨·당분 섭취는 줄이세요. 신선한 채소와 과일을 매 끼니 포함시키는 것만으로도 전반적인 건강 관리에 도움이 됩니다.",
+    "image_prompt": "balanced meal plate with vegetables, protein, and grains"
+  },
+  {
+    "disease_code": "기타",
+    "category": "MEDICAL_NEWS",
+    "title": "정기 건강검진의 중요성",
+    "summary": "특정 질환 여부와 관계없이 정기 검진은 조기 발견에 중요합니다.",
+    "body": "특정 질환으로 진단받지 않았더라도, 정기적인 건강검진은 잠재적인 건강 문제를 조기에 발견하는 데 큰 도움이 됩니다. 연 1회 기본 건강검진을 받는 것을 권장합니다.",
+    "image_prompt": "general medical checkup illustration"
   }
 ]
