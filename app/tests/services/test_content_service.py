@@ -5,7 +5,6 @@ from typing import cast
 from app.repositories.content_repository import ContentRepository
 from app.services.content_service import ContentService, _today_kst
 from app.services.safety_service import DISCLAIMER_TEXT
-from app.services.user_health_context_service import UserHealthContextService
 
 
 @dataclass
@@ -43,7 +42,7 @@ class FakeContentRepository:
         return content
 
     async def list_by_diseases(
-        self, session, disease_codes: list[str] | None, category: str | None
+        self, session, disease_codes: list[str] | None, category: str | None, limit: int | None = None
     ) -> list[FakeHealthContent]:
         results = [
             item
@@ -51,7 +50,8 @@ class FakeContentRepository:
             if (disease_codes is None or item.disease_code in disease_codes)
             and (category is None or item.category == category)
         ]
-        return sorted(results, key=lambda item: item.content_date, reverse=True)
+        results = sorted(results, key=lambda item: item.content_date, reverse=True)
+        return results[:limit] if limit is not None else results
 
     def seed(self, disease_code: str, category: str, content_date: date, title: str = "캐시된 제목") -> None:
         self.items.append(
@@ -66,89 +66,76 @@ class FakeContentRepository:
         )
 
 
-class FakeHealthContextService:
-    def __init__(self, conditions: list[str]) -> None:
-        self._conditions = conditions
-
-    def get_context(self, profile_id: int) -> dict:
-        return {"profile_id": profile_id, "conditions": self._conditions, "family_history": [], "medications": []}
+def _build_service(repository: FakeContentRepository) -> ContentService:
+    return ContentService(repository=cast(ContentRepository, repository))
 
 
-def _build_service(repository: FakeContentRepository, conditions: list[str]) -> ContentService:
-    return ContentService(
-        repository=cast(ContentRepository, repository),
-        health_context_service=cast(UserHealthContextService, FakeHealthContextService(conditions)),
-    )
-
-
-async def test_personalized_profile_returns_only_own_conditions():
+async def test_disease_filter_returns_only_matching_diseases():
     repository = FakeContentRepository()
     today = _today_kst()
     repository.seed("당뇨", "LIFESTYLE", today)
     repository.seed("당뇨", "FOOD", today)
     repository.seed("고혈압", "LIFESTYLE", today)
-    service = _build_service(repository, ["당뇨"])
+    service = _build_service(repository)
 
-    result = await service.get_contents(session=None, profile_id=1)
+    items = await service.get_contents(session=None, diseases=["당뇨"])
 
-    assert result["personalized"] is True
-    assert len(result["items"]) == 2
-    assert {item["disease_code"] for item in result["items"]} == {"당뇨"}
+    assert len(items) == 2
+    assert {item["disease_code"] for item in items} == {"당뇨"}
 
 
 async def test_missing_combo_is_silently_skipped_not_generated():
     repository = FakeContentRepository()
     today = _today_kst()
     repository.seed("당뇨", "LIFESTYLE", today)
-    service = _build_service(repository, ["당뇨"])
+    service = _build_service(repository)
 
-    result = await service.get_contents(session=None, profile_id=1)
+    items = await service.get_contents(session=None, diseases=["당뇨"])
 
-    assert len(result["items"]) == 1
-    assert result["items"][0]["category"] == "LIFESTYLE"
+    assert len(items) == 1
+    assert items[0]["category"] == "LIFESTYLE"
     assert repository.save_calls == 0
 
 
-async def test_anonymous_request_returns_all_cached_content_and_not_personalized():
-    """profile_id=None(비로그인)이면 등록된 질환과 무관하게 전체를 반환한다."""
+async def test_diseases_none_returns_all_cached_content():
+    """diseases=None이면 질환과 무관하게 전체를 반환한다(비로그인/개인화 판단은 호출자 몫)."""
     repository = FakeContentRepository()
     today = _today_kst()
     repository.seed("당뇨", "LIFESTYLE", today)
     repository.seed("고혈압", "FOOD", today)
-    service = _build_service(repository, conditions=["당뇨"])  # 어차피 profile_id=None이라 무시됨
+    service = _build_service(repository)
 
-    result = await service.get_contents(session=None, profile_id=None)
+    items = await service.get_contents(session=None, diseases=None)
 
-    assert result["personalized"] is False
-    assert {item["disease_code"] for item in result["items"]} == {"당뇨", "고혈압"}
-
-
-async def test_profile_without_registered_conditions_returns_all_cached_content_and_not_personalized():
-    """질환 미등록 프로필은 비로그인과 동일하게 전체 콘텐츠를 본다."""
-    repository = FakeContentRepository()
-    today = _today_kst()
-    repository.seed("당뇨", "LIFESTYLE", today)
-    repository.seed("고혈압", "FOOD", today)
-    service = _build_service(repository, conditions=[])
-
-    result = await service.get_contents(session=None, profile_id=1)
-
-    assert result["personalized"] is False
-    assert {item["disease_code"] for item in result["items"]} == {"당뇨", "고혈압"}
+    assert {item["disease_code"] for item in items} == {"당뇨", "고혈압"}
 
 
-async def test_category_filter_applies_regardless_of_personalization():
+async def test_category_filter_applies_regardless_of_disease_filter():
     repository = FakeContentRepository()
     today = _today_kst()
     repository.seed("당뇨", "LIFESTYLE", today)
     repository.seed("당뇨", "FOOD", today)
     repository.seed("고혈압", "FOOD", today)
-    service = _build_service(repository, conditions=[])
+    service = _build_service(repository)
 
-    result = await service.get_contents(session=None, profile_id=None, category="FOOD")
+    items = await service.get_contents(session=None, diseases=None, category="FOOD")
 
-    assert {item["disease_code"] for item in result["items"]} == {"당뇨", "고혈압"}
-    assert all(item["category"] == "FOOD" for item in result["items"])
+    assert {item["disease_code"] for item in items} == {"당뇨", "고혈압"}
+    assert all(item["category"] == "FOOD" for item in items)
+
+
+async def test_limit_caps_number_of_items_returned():
+    repository = FakeContentRepository()
+    today = _today_kst()
+    yesterday = today - timedelta(days=1)
+    repository.seed("당뇨", "LIFESTYLE", today, title="오늘 카드")
+    repository.seed("당뇨", "FOOD", yesterday, title="어제 카드")
+    service = _build_service(repository)
+
+    items = await service.get_contents(session=None, diseases=None, limit=1)
+
+    assert len(items) == 1
+    assert items[0]["title"] == "오늘 카드"
 
 
 async def test_feed_accumulates_across_dates_newest_first():
@@ -157,22 +144,22 @@ async def test_feed_accumulates_across_dates_newest_first():
     yesterday = today - timedelta(days=1)
     repository.seed("당뇨", "LIFESTYLE", yesterday, title="어제 카드")
     repository.seed("당뇨", "LIFESTYLE", today, title="오늘 카드")
-    service = _build_service(repository, ["당뇨"])
+    service = _build_service(repository)
 
-    result = await service.get_contents(session=None, profile_id=1)
+    items = await service.get_contents(session=None, diseases=["당뇨"])
 
-    assert [item["title"] for item in result["items"]] == ["오늘 카드", "어제 카드"]
+    assert [item["title"] for item in items] == ["오늘 카드", "어제 카드"]
 
 
 async def test_response_includes_disclaimer_from_safety_service():
     repository = FakeContentRepository()
     today = _today_kst()
     repository.seed("당뇨", "FOOD", today)
-    service = _build_service(repository, ["당뇨"])
+    service = _build_service(repository)
 
-    result = await service.get_contents(session=None, profile_id=1, category="FOOD")
+    items = await service.get_contents(session=None, diseases=["당뇨"], category="FOOD")
 
-    assert result["items"][0]["disclaimer"] == DISCLAIMER_TEXT
+    assert items[0]["disclaimer"] == DISCLAIMER_TEXT
 
 
 async def test_seed_from_fixture_inserts_new_entries():
@@ -216,3 +203,42 @@ async def test_seed_from_fixture_skips_already_cached_combo():
 
     assert inserted == 0
     assert repository.save_calls == 0
+
+
+async def test_seed_from_fixture_honors_explicit_content_date_for_same_day_variety():
+    """소주제별로 backdate된 `content_date`가 있으면, 같은 (질환, 카테고리)라도 날짜가
+    다르면 유니크 제약에 걸리지 않고 셋 다 삽입돼야 한다(장르당 3장 요구사항)."""
+    repository = FakeContentRepository()
+    today = _today_kst()
+    service = ContentService(repository=cast(ContentRepository, repository))
+    entries = [
+        {
+            "disease_code": "당뇨",
+            "category": "LIFESTYLE",
+            "title": f"t{i}",
+            "summary": "s",
+            "body": "b",
+            "image_prompt": None,
+            "content_date": (today - timedelta(days=i)).isoformat(),
+        }
+        for i in range(3)
+    ]
+
+    inserted = await service.seed_from_fixture(session=None, entries=entries)
+
+    assert inserted == 3
+    assert repository.save_calls == 3
+    assert {item.content_date for item in repository.items} == {today - timedelta(days=i) for i in range(3)}
+
+
+async def test_seed_from_fixture_without_content_date_defaults_to_today():
+    repository = FakeContentRepository()
+    today = _today_kst()
+    service = ContentService(repository=cast(ContentRepository, repository))
+    entries = [
+        {"disease_code": "당뇨", "category": "FOOD", "title": "t", "summary": "s", "body": "b", "image_prompt": None},
+    ]
+
+    await service.seed_from_fixture(session=None, entries=entries)
+
+    assert repository.items[0].content_date == today

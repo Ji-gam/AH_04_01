@@ -1,5 +1,5 @@
 """
-T-LLM-7: 질환 논문 검색 도구/에이전트 회귀 테스트.
+T-LLM-7/7-1/7-2: 질환 논문 검색 파이프라인 회귀 테스트.
 
 주의(중요) — 이 테스트들은 "판단력 시험"의 회귀 방지용일 뿐이다. LLM 호출을
 모킹하므로 우리가 짠 시나리오만 검증하며, 실제 LLM이 무관한 질문에 도구를 정말
@@ -14,6 +14,7 @@ from httpx import ASGITransport, AsyncClient
 
 from ai_worker.main import app
 from ai_worker.tasks import paper_agent as paper_agent_module
+from ai_worker.tasks.paper_agent import QueryClassification
 from ai_worker.tools.paper_search import search_disease_paper
 
 
@@ -42,29 +43,27 @@ class _FakeMessage:
         self.content = content
 
 
-class FakeAgentExecutor:
-    """실제 LangChain 에이전트(create_agent) 대신, "이 질문엔 도구를 불렀을 것"을 시뮬레이션한다."""
+def _fake_classify(disease: str | None, is_information_request: bool):
+    async def _classify(question: str) -> QueryClassification:
+        return QueryClassification(disease=disease, is_information_request=is_information_request)
 
-    def __init__(self, should_call_tool: bool, disease: str | None = None) -> None:
-        self._should_call_tool = should_call_tool
-        self._disease = disease
-
-    async def ainvoke(self, state: dict) -> dict:
-        if self._should_call_tool:
-            paper = search_disease_paper.invoke({"disease": self._disease})
-            content = f"논문을 찾았습니다.\n{paper}"
-        else:
-            content = "논문 검색 범위 밖의 질문입니다."
-        return {"messages": [*state["messages"], _FakeMessage(content)]}
+    return _classify
 
 
-async def test_paper_agent_calls_tool_for_relevant_question(monkeypatch):
+class FakeAnswerLLM:
+    """_build_llm()이 만드는 실제 ChatOpenAI 대신, 고정된 답변을 돌려준다."""
+
+    def __init__(self, content: str) -> None:
+        self._content = content
+
+    async def ainvoke(self, messages: list[dict]) -> _FakeMessage:
+        return _FakeMessage(self._content)
+
+
+async def test_paper_agent_searches_when_disease_and_information_request(monkeypatch):
     monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
-    monkeypatch.setattr(
-        paper_agent_module,
-        "_build_agent_executor",
-        lambda: FakeAgentExecutor(should_call_tool=True, disease="당뇨"),
-    )
+    monkeypatch.setattr(paper_agent_module, "classify_query", _fake_classify("당뇨", True))
+    monkeypatch.setattr(paper_agent_module, "_build_llm", lambda: FakeAnswerLLM("HbA1c가 감소했습니다."))
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/agent/paper-search", json={"question": "당뇨병 논문 알려줘"})
@@ -73,13 +72,23 @@ async def test_paper_agent_calls_tool_for_relevant_question(monkeypatch):
     assert "HbA1c" in response.json()["answer"]
 
 
-async def test_paper_agent_skips_tool_for_irrelevant_question(monkeypatch):
+async def test_paper_agent_refuses_when_disease_mentioned_but_not_information_request(monkeypatch):
+    """관용구 케이스: 질환 단어는 감지돼도(예: "심장") 정보 요청이 아니면 도구를 안 부른다."""
     monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
-    monkeypatch.setattr(
-        paper_agent_module,
-        "_build_agent_executor",
-        lambda: FakeAgentExecutor(should_call_tool=False),
-    )
+    monkeypatch.setattr(paper_agent_module, "classify_query", _fake_classify("심장질환", False))
+    monkeypatch.setattr(paper_agent_module, "_build_llm", lambda: FakeAnswerLLM("도움이 필요하시면 말씀해 주세요."))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/agent/paper-search", json={"question": "나 심장이 너무 쫄려..."})
+
+    assert response.status_code == 200
+    assert response.json()["answer"] == "도움이 필요하시면 말씀해 주세요."
+
+
+async def test_paper_agent_refuses_when_no_disease_mentioned(monkeypatch):
+    monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
+    monkeypatch.setattr(paper_agent_module, "classify_query", _fake_classify(None, False))
+    monkeypatch.setattr(paper_agent_module, "_build_llm", lambda: FakeAnswerLLM("논문 검색 범위 밖의 질문입니다."))
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/agent/paper-search", json={"question": "오늘 날씨 어때"})
@@ -95,3 +104,11 @@ async def test_paper_agent_returns_503_without_api_key(monkeypatch):
         response = await client.post("/agent/paper-search", json={"question": "당뇨 논문 알려줘"})
 
     assert response.status_code == 503
+
+
+def test_is_valid_disease_rejects_literal_null_string():
+    """with_structured_output이 이따금 실제 None 대신 문자열 "null"을 반환하는 경우 방어."""
+    assert paper_agent_module._is_valid_disease("null") is False
+    assert paper_agent_module._is_valid_disease("NONE") is False
+    assert paper_agent_module._is_valid_disease(None) is False
+    assert paper_agent_module._is_valid_disease("당뇨") is True

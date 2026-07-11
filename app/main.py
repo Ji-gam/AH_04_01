@@ -1,7 +1,13 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.responses import ORJSONResponse
 
 from app.apis.v1 import v1_routers
+from app.core import config
+from app.core.config import Env
+from app.scripts.seed_health_content import seed_health_content
 
 OPENAPI_TAGS = [
     {
@@ -18,6 +24,17 @@ OPENAPI_TAGS = [
     },
 ]
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """`ENV=local`에서는 서버 기동 시 건강 콘텐츠 픽스처를 자동으로 시드한다 — 셀러리/LLM
+    키가 없는 팀원도 별도 스크립트 실행 없이 곧장 개인화 콘텐츠를 확인할 수 있게 하기 위함.
+    dev/prod는 실제 생성 파이프라인이 채운 MySQL을 그대로 조회하므로 건너뛴다."""
+    if config.ENV == Env.LOCAL:
+        await seed_health_content()
+    yield
+
+
 app = FastAPI(
     title="AI HealthCare API",
     summary="복약·건강관리 서비스(ReMedi) 백엔드 API",
@@ -32,6 +49,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 app.include_router(v1_routers)
