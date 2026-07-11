@@ -9,30 +9,15 @@ T-LLM-2: 챗봇 LLM 프롬프트에 넘길 사용자 건강 컨텍스트 조립.
 판별할 방법이 없다(#71에서 스키마 추가 요청 중). 필드가 생기기 전까지 임부금기 DUR 경고는
 구조적으로 비활성 상태다.
 
-[중복 알림] 질환 한글 코드 매핑이 `ContentPersonalizationService`(T-LLM-3, PR #70)와
-겹친다 — 스택 PR로 인한 머지 리스크를 피하려고 이번엔 의도적으로 중복시켰다. #70이 dev에
-머지되면 공용 모듈로 추출해서 정리한다.
+질환 한글 코드 매핑은 `disease_code_mapper`가 전담한다 — `ContentPersonalizationService`
+(T-LLM-3)와 공유한다.
 """
 
 from app.models.medication_model import MedicationSchedule
-from app.models.profiles import Disease, Profile
-
-_DISEASE_CODE_MAP: dict[str, str] = {
-    Disease.CANCER.value: "암",
-    Disease.HEART_DISEASE.value: "심장질환",
-    Disease.CEREBROVASCULAR_DISEASE.value: "뇌혈관질환",
-    Disease.DIABETES.value: "당뇨",
-    Disease.LIVER_DISEASE.value: "간질환",
-    Disease.OTHER.value: "기타",
-}
+from app.models.profiles import Profile
+from app.services.disease_code_mapper import map_diagnosis_entries
 
 _GERIATRIC_AGE_THRESHOLD = 65
-
-
-def _map_diseases(entries: list[dict] | None) -> list[str]:
-    if not entries:
-        return []
-    return list(dict.fromkeys(_DISEASE_CODE_MAP[e["disease"]] for e in entries if e.get("disease") in _DISEASE_CODE_MAP))
 
 
 class ChatContextService:
@@ -51,11 +36,9 @@ class ChatContextService:
         return {
             "profile_id": profile.id,
             "name": profile.name,
-            "conditions": _map_diseases(profile.diagnosis_history),
-            "family_history": _map_diseases(profile.family_history),
-            "medications": [
-                {"name": m.medication.medication_name, "times_per_day": len(m.times)} for m in medications
-            ],
+            "conditions": map_diagnosis_entries(profile.diagnosis_history),
+            "family_history": map_diagnosis_entries(profile.family_history),
+            "medications": [{"name": m.medication.medication_name, "times_per_day": len(m.times)} for m in medications],
             "goals": [],
             "is_pregnant": False,
             "is_geriatric": profile.age is not None and profile.age >= _GERIATRIC_AGE_THRESHOLD,
