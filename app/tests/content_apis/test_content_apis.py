@@ -75,3 +75,33 @@ async def test_get_contents_with_invalid_category_returns_422():
         response = await client.get("/api/v1/contents/me", params={"category": "NOT_A_CATEGORY"})
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_get_contents_with_limit_returns_only_that_many_newest_items():
+    await _seed_one_content(disease_code="당뇨", category="LIFESTYLE")
+    await _seed_one_content(disease_code="암", category="FOOD")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/contents/me", params={"limit": 1})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()["items"]) == 1
+
+
+async def test_get_contents_for_profile_with_registered_disease_returns_personalized_content():
+    """등록된 진단병력(diagnosis_history)이 있으면 그 질환 콘텐츠만 personalized=true로 받는다."""
+    await _seed_one_content(disease_code="당뇨", category="LIFESTYLE")
+    await _seed_one_content(disease_code="암", category="FOOD")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "content-diabetes@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.patch(
+            "/api/v1/users/me/health-info",
+            json={"diagnosis_history": [{"disease": "DIABETES", "detail": None}]},
+            headers=headers,
+        )
+        response = await client.get("/api/v1/contents/me", headers=headers)
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["personalized"] is True
+    assert {item["disease_code"] for item in body["items"]} == {"당뇨"}

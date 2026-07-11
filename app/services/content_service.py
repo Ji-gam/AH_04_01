@@ -6,6 +6,11 @@ T-LLM-3: 건강 콘텐츠 생성 파이프라인.
 제거함). 실제 LLM 생성은 `app/scripts/generate_health_content.py`가 오프라인으로 1회
 실행해 JSON 픽스처를 만들고, `app/scripts/seed_health_content.py`가 그 픽스처를 이
 서비스의 `seed_from_fixture`를 통해 DB에 채운다.
+
+profile/개인화 개념을 전혀 모르는 순수 조회 모듈이다 — "누구의 질환인지" 판단은
+`ContentPersonalizationService`가 전담하고, 이 서비스는 disease_code 목록만 받아
+mysql을 조회한다. 그래야 다른 모듈(예: 메인화면 미리보기)도 profile/session 없이
+"질환+개수"만으로 이 서비스를 바로 재사용할 수 있다.
 """
 
 import datetime as dt
@@ -16,9 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import config
 from app.repositories.content_repository import ContentRepository
 from app.services import safety_service
-from app.services.user_health_context_service import UserHealthContextService
 
-POPULAR_DISEASES = ["암", "심장질환", "뇌혈관질환", "당뇨", "간질환"]
+POPULAR_DISEASES = ["암", "심장질환", "뇌혈관질환", "당뇨", "간질환", "기타"]
 CATEGORIES = ["LIFESTYLE", "FOOD", "MEDICAL_NEWS"]
 
 
@@ -27,27 +31,21 @@ def _today_kst() -> date:
 
 
 class ContentService:
-    def __init__(
-        self,
-        repository: ContentRepository | None = None,
-        health_context_service: UserHealthContextService | None = None,
-    ) -> None:
+    def __init__(self, repository: ContentRepository | None = None) -> None:
         self._repository = repository or ContentRepository()
-        self._health_context_service = health_context_service or UserHealthContextService()
 
-    async def get_contents(self, session: AsyncSession, profile_id: int | None, category: str | None = None) -> dict:
+    async def get_contents(
+        self,
+        session: AsyncSession,
+        diseases: list[str] | None,
+        category: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict]:
         """캐시에 있는 것만 반환하는 누적 피드(라이브 생성 없음).
-        비로그인(profile_id=None)이거나 등록된 질환이 없으면 전체 질환의 콘텐츠를 그대로
-        반환한다 — "정보" 탭은 로그인/질환 등록 여부와 무관하게 볼 수 있어야 하기 때문이다.
-        `personalized`로 두 경우를 프론트가 구분할 수 있게 한다(질환 등록 유도 배너 표시 판단용)."""
-        conditions = self._health_context_service.get_context(profile_id)["conditions"] if profile_id else []
-        personalized = bool(conditions)
-        disease_filter = conditions if personalized else None
-        contents = await self._repository.list_by_diseases(session, disease_filter, category)
-        return {
-            "personalized": personalized,
-            "items": [self._to_response(content) for content in contents],
-        }
+        `diseases`가 None이면 질환 필터 없이 전체를 반환한다 — 호출자가 비로그인/질환
+        미등록 여부를 판단해서 넘겨준다(이 서비스는 그 판단을 하지 않는다)."""
+        contents = await self._repository.list_by_diseases(session, diseases, category, limit=limit)
+        return [self._to_response(content) for content in contents]
 
     async def seed_from_fixture(self, session: AsyncSession, entries: list[dict]) -> int:
         """오프라인 생성 스크립트가 만든 픽스처 항목들을 오늘 날짜로 DB에 채운다.

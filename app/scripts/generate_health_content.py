@@ -34,14 +34,22 @@ class HealthContentCard(BaseModel):
 
 async def generate_content_card(disease_code: str, category: str) -> dict:
     """`AIWorkerGateway.call_structured()`로 질환+카테고리 하나에 대한 건강 콘텐츠 카드를 생성한다.
-    프롬프트/스키마는 이 도메인(콘텐츠 생성)이 직접 소유한다 — Gateway는 이를 대신하지 않는다."""
+    프롬프트/스키마는 이 도메인(콘텐츠 생성)이 직접 소유한다 — Gateway는 이를 대신하지 않는다.
+
+    "기타"(5대질환에 안 걸리는 질환 등록자용)는 특정 질환을 짚을 수 없으므로, 질환 특정이
+    아닌 일반적인 건강관리 팁으로 생성한다."""
     gateway = AIWorkerGateway()
     system_prompt = (
         "당신은 ReMedi의 건강 콘텐츠 작가입니다. 주어진 질환과 카테고리에 맞는 짧고 실용적인 건강 팁 카드를 작성하세요."
     )
+    user_input = (
+        f"주제: 특정 질환에 한정되지 않는 일반적인 건강관리 정보, 카테고리: {category}"
+        if disease_code == "기타"
+        else f"질환: {disease_code}, 카테고리: {category}"
+    )
     card = await gateway.call_structured(
         system_prompt=system_prompt,
-        user_input=f"질환: {disease_code}, 카테고리: {category}",
+        user_input=user_input,
         schema=HealthContentCard,
     )
     return card.model_dump()
