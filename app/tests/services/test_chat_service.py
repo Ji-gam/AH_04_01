@@ -1,13 +1,15 @@
 from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from typing import cast
 
 from app.models.chat import MessageRole
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.dur_drug_repository import DurDrugRepository
+from app.repositories.medication_repository import MedicationRepository
+from app.repositories.profile_repository import ProfileRepository
 from app.services.ai_worker_gateway import AIWorkerGateway
 from app.services.chat_service import ChatService
 from app.services.safety_service import DISCLAIMER_TEXT, EMERGENCY_FALLBACK_MESSAGE
-from app.services.user_health_context_service import UserHealthContextService
 
 
 class FakeChatRepository:
@@ -21,9 +23,40 @@ class FakeChatRepository:
         return []
 
 
-class FakeUserHealthContextService:
-    def get_context(self, profile_id: int) -> dict:
-        return {"conditions": [], "medications": [], "goals": [], "profile_id": profile_id}
+@dataclass
+class FakeProfile:
+    id: int
+    name: str = "사용자"
+    age: int | None = None
+    diagnosis_history: list[dict] | None = None
+    family_history: list[dict] | None = None
+
+
+class FakeProfileRepository:
+    def __init__(self, profiles: dict[int, FakeProfile] | None = None) -> None:
+        self._profiles = profiles or {}
+
+    async def get_profile(self, session, profile_id: int) -> FakeProfile | None:
+        return self._profiles.get(profile_id)
+
+
+@dataclass
+class FakeMedication:
+    medication_name: str
+
+
+@dataclass
+class FakeMedicationSchedule:
+    medication: FakeMedication
+    times: list[str] = field(default_factory=lambda: ["08:00"])
+
+
+class FakeMedicationRepository:
+    def __init__(self, schedules: dict[int, list[FakeMedicationSchedule]] | None = None) -> None:
+        self._schedules = schedules or {}
+
+    async def list_schedules_by_profile(self, session, profile_id: int) -> list[FakeMedicationSchedule]:
+        return self._schedules.get(profile_id, [])
 
 
 class FakeRetriever:
@@ -36,14 +69,24 @@ async def fake_llm_stream(message: str, context: dict, chunks: list[str]):
         yield char
 
 
-def _build_service(repository: FakeChatRepository) -> ChatService:
+def _build_service(
+    repository: FakeChatRepository,
+    profile_repository: FakeProfileRepository | None = None,
+    medication_repository: FakeMedicationRepository | None = None,
+    llm_stream=fake_llm_stream,
+    dur_drug_repository=None,
+) -> ChatService:
     # Fake들은 실제 클래스와 시그니처만 맞춘 덕타이핑 객체라 mypy 통과용으로 cast한다.
-    return ChatService(
+    kwargs = dict(
         repository=cast(ChatRepository, repository),
-        health_context_service=cast(UserHealthContextService, FakeUserHealthContextService()),
         retriever=cast(AIWorkerGateway, FakeRetriever()),
-        llm_stream=fake_llm_stream,
+        llm_stream=llm_stream,
+        profile_repository=cast(ProfileRepository, profile_repository or FakeProfileRepository()),
+        medication_repository=cast(MedicationRepository, medication_repository or FakeMedicationRepository()),
     )
+    if dur_drug_repository is not None:
+        kwargs["dur_drug_repository"] = cast(DurDrugRepository, dur_drug_repository)
+    return ChatService(**kwargs)
 
 
 async def _collect(stream: AsyncIterator[dict]) -> list[dict]:
@@ -64,7 +107,8 @@ async def test_emergency_keyword_short_circuits_without_saving():
 
 async def test_normal_message_streams_tokens_and_saves_conversation():
     repository = FakeChatRepository()
-    service = _build_service(repository)
+    profiles = FakeProfileRepository({1: FakeProfile(id=1, name="사용자")})
+    service = _build_service(repository, profile_repository=profiles)
 
     chunks = await _collect(
         service.stream_reply(session=None, profile_id=1, session_id=10, message="두통약 뭐가 좋아요?")
@@ -82,16 +126,6 @@ async def test_normal_message_streams_tokens_and_saves_conversation():
     ]
 
 
-class FakePregnantUserHealthContextService:
-    def get_context(self, profile_id: int) -> dict:
-        return {
-            "profile_id": profile_id,
-            "conditions": ["ADHD", "당뇨"],
-            "medications": [{"condition": "ADHD", "name": "콘서타", "dose": "18mg", "times_per_day": 1}],
-            "goals": [],
-        }
-
-
 def test_is_medical_related_fallback():
     service = ChatService()
 
@@ -105,34 +139,6 @@ def test_is_medical_related_fallback():
         service._is_medical_related_fallback("초코칩 쿠키 레시피 알려줘", "밀가루와 설탕을 섞어 구우면 됩니다.")
         is False
     )
-
-
-async def test_dur_warning_injected_for_pregnant_user():
-    repository = FakeChatRepository()
-    spy_llm = SpyLlmStream()
-
-    # 임산부(콘서타) 건강 정보를 반환하는 Fake 서비스 주입
-    service = ChatService(
-        repository=cast(ChatRepository, repository),
-        health_context_service=cast(UserHealthContextService, FakePregnantUserHealthContextService()),
-        retriever=cast(AIWorkerGateway, FakeRetriever()),
-        llm_stream=spy_llm,
-    )
-
-    # profile_id가 2(임산부) 혹은 profile_name을 Mock 처리하기 위해 Fake DB 세션 등을 모킹하는 대신,
-    # chat_service의 로직에 맞게 profile_id = 2 번(임산부) 데이터를 target_mock으로 매핑하도록 실행
-    chunks = await _collect(
-        service.stream_reply(session=None, profile_id=2, session_id=11, message="콘서타 먹어도 괜찮은지 물어봅니다.")
-    )
-
-    # done 청크에 면책조항이 들어가 있는지 확인
-    assert chunks[-1]["type"] == "done"
-    assert chunks[-1]["disclaimer"] == DISCLAIMER_TEXT
-
-    # LLM 스트림에 넘겨진 content_chunks에 DUR 경고가 포함되었는지 확인
-    assert len(spy_llm.received_chunks) > 0
-    assert any("[임부금기 경고]" in c for c in spy_llm.received_chunks)
-    assert any("콘서타" in c for c in spy_llm.received_chunks)
 
 
 class SpyLlmStream:
@@ -155,26 +161,40 @@ class FakeDurDrugRepository:
         return self._warnings
 
 
-async def test_dur_warning_uses_injected_repository_not_real_db():
-    """`_collect_dur_warnings`가 실제 DB를 직접 쿼리하지 않고, 주입된
-    DurDrugRepository를 통해서만 경고를 얻는지 검증한다(T-LLM-2-dur-repository)."""
+async def test_dur_warning_injected_for_geriatric_profile():
+    """실제 Profile.age(>=65)로 판별되는 고령자는 복용 약물에 DUR 경고가 있으면 주입된다.
+    (임신 여부는 Profile 스키마에 실제 데이터가 없어 이 경로로 테스트할 수 없다 — #71 참고,
+    게이팅 로직 자체는 test_collect_dur_warnings_gates_on_pregnant_flag가 커버한다.)"""
     repository = FakeChatRepository()
     spy_llm = SpyLlmStream()
-    fake_dur_repo = FakeDurDrugRepository(["[임부금기 경고] 가짜약: 테스트용 경고 문구"])
+    profiles = FakeProfileRepository({2: FakeProfile(id=2, name="어르신", age=75)})
+    medications = FakeMedicationRepository({2: [FakeMedicationSchedule(medication=FakeMedication("아스피린"))]})
+    fake_dur_repo = FakeDurDrugRepository(["[노인주의 경고] 아스피린: 테스트용 경고 문구"])
 
-    service = ChatService(
-        repository=cast(ChatRepository, repository),
-        health_context_service=cast(UserHealthContextService, FakePregnantUserHealthContextService()),
-        retriever=cast(AIWorkerGateway, FakeRetriever()),
+    service = _build_service(
+        repository,
+        profile_repository=profiles,
+        medication_repository=medications,
         llm_stream=spy_llm,
-        dur_drug_repository=cast(DurDrugRepository, fake_dur_repo),
+        dur_drug_repository=fake_dur_repo,
     )
 
-    await _collect(
-        service.stream_reply(session=None, profile_id=2, session_id=11, message="콘서타 먹어도 괜찮은지 물어봅니다.")
+    chunks = await _collect(
+        service.stream_reply(session=None, profile_id=2, session_id=11, message="아스피린 먹어도 괜찮은지 물어봅니다.")
     )
 
-    assert any("가짜약: 테스트용 경고 문구" in c for c in spy_llm.received_chunks)
-    # 임산부 목 프로필(profile_id=2)은 콘서타·메트포르민 두 약을 보유하므로, 주입된 repo가
-    # 두 약 모두에 대해 (pregnant=True, geriatric=False)로 호출되어야 한다(실제 DB 직접 조회 아님).
-    assert fake_dur_repo.received_calls == [("콘서타", True, False), ("메트포르민", True, False)]
+    assert chunks[-1]["type"] == "done"
+    assert chunks[-1]["disclaimer"] == DISCLAIMER_TEXT
+    assert any("[노인주의 경고]" in c for c in spy_llm.received_chunks)
+    assert fake_dur_repo.received_calls == [("아스피린", False, True)]
+
+
+def test_collect_dur_warnings_gates_on_pregnant_flag():
+    """임부금기 게이팅 로직 자체(진짜 프로필로는 재현 불가)를 직접 검증한다."""
+    fake_dur_repo = FakeDurDrugRepository(["[임부금기 경고] 콘서타: 테스트용 경고 문구"])
+    service = ChatService(dur_drug_repository=cast(DurDrugRepository, fake_dur_repo))
+
+    warnings = service._collect_dur_warnings([{"name": "콘서타"}], is_pregnant=True, is_geriatric=False)
+
+    assert warnings == ["[임부금기 경고] 콘서타: 테스트용 경고 문구"]
+    assert fake_dur_repo.received_calls == [("콘서타", True, False)]
