@@ -72,7 +72,7 @@ class ChatService:
 
         context["history"] = [{"role": m.role, "content": m.content} for m in history]
 
-        chunks = await self._search_chunks(message, context)
+        chunks = await self._search_chunks(message)
         content_chunks = [chunk.get("content", "") for chunk in chunks]
         sources = sorted(
             {
@@ -112,11 +112,11 @@ class ChatService:
 
         yield {"type": "done", "content": "", "disclaimer": safety_service.DISCLAIMER_TEXT if is_medical else ""}
 
-    async def _search_chunks(self, message: str, context: dict) -> list[dict]:
+    async def _search_chunks(self, message: str) -> list[dict]:
         """ai_worker 검색 실패는 조용히 삼키지 않고 로깅 후 빈 컨텍스트로 계속 진행한다
         (`AIWorkerGateway`가 실패를 예외로 알리므로, 그 예외를 여기서만 흡수한다)."""
         try:
-            return await self._retriever.search(message, context)
+            return await self._retriever.search(message)
         except (AIWorkerUnavailableError, AIWorkerProcessingError) as e:
             logger.error(f"ai_worker 검색 실패, 컨텍스트 없이 계속 진행: {e}")
             return []

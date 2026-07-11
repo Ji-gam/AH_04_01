@@ -51,5 +51,11 @@ class Config(BaseSettings):
     # AIWorkerGateway가 여기에 /retrieve, /generate-structured 경로를 붙여 호출한다.
     AI_WORKER_BASE_URL: str = "http://ai-worker:8001"
 
+    # ai-worker 호출 타임아웃을 용도별로 분리한다. /retrieve는 벡터 검색이라 짧게,
+    # /generate-structured는 LLM 생성이라 5초를 흔히 넘기므로 넉넉히 둔다(정상 생성이
+    # 타임아웃으로 오인돼 AIWorkerUnavailableError가 나던 문제 방지).
+    AI_WORKER_RETRIEVE_TIMEOUT: float = 5.0
+    AI_WORKER_GENERATE_TIMEOUT: float = 60.0
+
     # T-LLM-2-async-gateway: Celery 브로커. docker-compose의 기존 redis 서비스를 재사용한다.
     CELERY_BROKER_URL: str = "redis://redis:6379/0"

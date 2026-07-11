@@ -33,7 +33,7 @@ async def test_search_returns_chunks_on_success(monkeypatch):
 
     gateway = _gateway_with_handler(monkeypatch, handler)
 
-    chunks = await gateway.search("query", {})
+    chunks = await gateway.search("query")
 
     assert chunks == [{"content": "c", "metadata": {}}]
 
@@ -45,7 +45,7 @@ async def test_search_raises_unavailable_on_5xx(monkeypatch):
     gateway = _gateway_with_handler(monkeypatch, handler)
 
     with pytest.raises(AIWorkerUnavailableError):
-        await gateway.search("query", {})
+        await gateway.search("query")
 
 
 async def test_search_raises_invalid_request_on_422(monkeypatch):
@@ -55,7 +55,40 @@ async def test_search_raises_invalid_request_on_422(monkeypatch):
     gateway = _gateway_with_handler(monkeypatch, handler)
 
     with pytest.raises(AIWorkerInvalidRequestError):
-        await gateway.search("query", {})
+        await gateway.search("query")
+
+
+def _capture_timeout(monkeypatch, captured: dict, response: httpx.Response) -> None:
+    real_async_client = httpx.AsyncClient
+
+    def _patched_client(*args, **kwargs):
+        captured["timeout"] = kwargs.get("timeout")
+        kwargs["transport"] = httpx.MockTransport(lambda request: response)
+        return real_async_client(*args, **kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", _patched_client)
+
+
+async def test_search_uses_retrieve_timeout(monkeypatch):
+    """검색(/retrieve)은 짧은 retrieve 타임아웃을 쓴다."""
+    captured: dict = {}
+    _capture_timeout(monkeypatch, captured, httpx.Response(200, json={"chunks": []}))
+    gateway = AIWorkerGateway(base_url="http://x", retrieve_timeout=3.0, generate_timeout=90.0)
+
+    await gateway.search("query")
+
+    assert captured["timeout"] == 3.0
+
+
+async def test_call_structured_uses_generate_timeout(monkeypatch):
+    """생성(/generate-structured)은 긴 generate 타임아웃을 쓴다(5초 초과 정상 생성 보호)."""
+    captured: dict = {}
+    _capture_timeout(monkeypatch, captured, httpx.Response(200, json={"data": {"title": "t", "body": "b"}}))
+    gateway = AIWorkerGateway(base_url="http://x", retrieve_timeout=3.0, generate_timeout=90.0)
+
+    await gateway.call_structured("system", "user", FakeCardSchema)
+
+    assert captured["timeout"] == 90.0
 
 
 async def test_call_structured_validates_response_against_schema(monkeypatch):
