@@ -25,6 +25,15 @@ from app.services import safety_service
 POPULAR_DISEASES = ["암", "심장질환", "뇌혈관질환", "당뇨", "간질환", "기타"]
 CATEGORIES = ["LIFESTYLE", "FOOD", "MEDICAL_NEWS"]
 
+# 카테고리마다 최소 3장은 보여야 한다는 요구에 맞춰, 질환당 카테고리별로 이 소주제 3개를
+# 각각 생성한다(`generate_health_content.py`가 사용). "기타"도 동일한 소주제 축을 쓰되,
+# 프롬프트에서 특정 질환명 대신 일반 건강정보로 치환된다.
+CATEGORY_TOPICS: dict[str, list[str]] = {
+    "LIFESTYLE": ["운동과 활동량 관리", "수면 위생", "스트레스 관리"],
+    "FOOD": ["식단 구성 원칙", "피해야 할 음식과 성분", "챙겨 먹으면 좋은 영양소"],
+    "MEDICAL_NEWS": ["최신 치료 동향", "예방·관리 연구 결과", "진료 가이드라인 업데이트"],
+}
+
 
 def _today_kst() -> date:
     return dt.datetime.now(config.TIMEZONE).date()
@@ -48,17 +57,24 @@ class ContentService:
         return [self._to_response(content) for content in contents]
 
     async def seed_from_fixture(self, session: AsyncSession, entries: list[dict]) -> int:
-        """오프라인 생성 스크립트가 만든 픽스처 항목들을 오늘 날짜로 DB에 채운다.
-        이미 오늘자 캐시가 있는 (질환, 카테고리) 조합은 건너뛴다."""
+        """오프라인 생성 스크립트가 만든 픽스처 항목들을 DB에 채운다.
+        항목에 `content_date`(ISO 문자열)가 있으면 그 날짜로, 없으면 오늘 날짜로 시드한다 —
+        같은 (질환, 카테고리) 안에서 여러 소주제 카드를 유니크 제약 위반 없이 공존시키려면
+        생성 스크립트가 소주제별로 날짜를 하루씩 다르게 배정해야 하기 때문이다(조회 API는
+        날짜로 거르지 않으므로 화면에는 그대로 다 보인다). 이미 같은 (질환, 카테고리, 날짜)
+        캐시가 있으면 건너뛴다."""
         today = _today_kst()
         inserted = 0
         for entry in entries:
+            entry = dict(entry)
+            content_date_str = entry.pop("content_date", None)
+            content_date = date.fromisoformat(content_date_str) if content_date_str else today
             existing = await self._repository.get_by_disease_category_date(
-                session, entry["disease_code"], entry["category"], today
+                session, entry["disease_code"], entry["category"], content_date
             )
             if existing is not None:
                 continue
-            await self._repository.save(session, content_date=today, **entry)
+            await self._repository.save(session, content_date=content_date, **entry)
             inserted += 1
         return inserted
 

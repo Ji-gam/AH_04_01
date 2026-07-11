@@ -203,3 +203,42 @@ async def test_seed_from_fixture_skips_already_cached_combo():
 
     assert inserted == 0
     assert repository.save_calls == 0
+
+
+async def test_seed_from_fixture_honors_explicit_content_date_for_same_day_variety():
+    """소주제별로 backdate된 `content_date`가 있으면, 같은 (질환, 카테고리)라도 날짜가
+    다르면 유니크 제약에 걸리지 않고 셋 다 삽입돼야 한다(장르당 3장 요구사항)."""
+    repository = FakeContentRepository()
+    today = _today_kst()
+    service = ContentService(repository=cast(ContentRepository, repository))
+    entries = [
+        {
+            "disease_code": "당뇨",
+            "category": "LIFESTYLE",
+            "title": f"t{i}",
+            "summary": "s",
+            "body": "b",
+            "image_prompt": None,
+            "content_date": (today - timedelta(days=i)).isoformat(),
+        }
+        for i in range(3)
+    ]
+
+    inserted = await service.seed_from_fixture(session=None, entries=entries)
+
+    assert inserted == 3
+    assert repository.save_calls == 3
+    assert {item.content_date for item in repository.items} == {today - timedelta(days=i) for i in range(3)}
+
+
+async def test_seed_from_fixture_without_content_date_defaults_to_today():
+    repository = FakeContentRepository()
+    today = _today_kst()
+    service = ContentService(repository=cast(ContentRepository, repository))
+    entries = [
+        {"disease_code": "당뇨", "category": "FOOD", "title": "t", "summary": "s", "body": "b", "image_prompt": None},
+    ]
+
+    await service.seed_from_fixture(session=None, entries=entries)
+
+    assert repository.items[0].content_date == today
