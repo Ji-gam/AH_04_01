@@ -77,7 +77,7 @@ FastAPI + Uvicorn, SQLAlchemy 2.0(AsyncSession) + Alembic, MySQL 8.0(Docker) + R
 
 | 이미 결정됨 (재확인 불필요) | 반드시 멈추고 물어야 함 |
 | --- | --- |
-| 모든 LLM 응답에 면책조항 강제 노출 (T-LLM-1) | 공유 구역 파일이나 DB 공통 스키마를 직접 수정해야만 작업 가능한 경우 |
+| 면책조항은 **의료 관련 응답에 조건부 노출** (T-LLM-1, 근거: `docs/decision_log/2026-07-12-disclaimer-conditional.md`) | 공유 구역 파일이나 DB 공통 스키마를 직접 수정해야만 작업 가능한 경우 |
 | User/Profile 분리, 신규 테이블은 `profile_id` 기준 (T-ARCH-1) | Task Contract에 없는 새 외부 API/서비스 연동 |
 | PII 비식별화는 정규식+NER 기반 실질 마스킹 (F-PRIV-1) | 성공요건(TRD) 충족에 "허용 경로" 밖 수정이 불가피한 경우 |
 | CORS `allow_origins=["*"]`는 로컬 전용, 배포 시 명확히 제어 | 개인정보/보안 비가역적 작업(암호화 방식, PII 로직, 영구 삭제) |
