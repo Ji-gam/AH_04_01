@@ -3,6 +3,7 @@ from typing import cast
 
 from app.models.chat import MessageRole
 from app.repositories.chat_repository import ChatRepository
+from app.repositories.dur_drug_repository import DurDrugRepository
 from app.services.ai_worker_gateway import AIWorkerGateway
 from app.services.chat_service import ChatService
 from app.services.safety_service import DISCLAIMER_TEXT, EMERGENCY_FALLBACK_MESSAGE
@@ -142,3 +143,38 @@ class SpyLlmStream:
         self.received_chunks = chunks
         for char in "fake-llm-reply":
             yield char
+
+
+class FakeDurDrugRepository:
+    def __init__(self, warnings: list[str]) -> None:
+        self._warnings = warnings
+        self.received_calls: list[tuple[str, bool, bool]] = []
+
+    def find_dur_warnings(self, item_name: str, *, pregnant: bool, geriatric: bool) -> list[str]:
+        self.received_calls.append((item_name, pregnant, geriatric))
+        return self._warnings
+
+
+async def test_dur_warning_uses_injected_repository_not_real_db():
+    """`_collect_dur_warnings`가 실제 DB를 직접 쿼리하지 않고, 주입된
+    DurDrugRepository를 통해서만 경고를 얻는지 검증한다(T-LLM-2-dur-repository)."""
+    repository = FakeChatRepository()
+    spy_llm = SpyLlmStream()
+    fake_dur_repo = FakeDurDrugRepository(["[임부금기 경고] 가짜약: 테스트용 경고 문구"])
+
+    service = ChatService(
+        repository=cast(ChatRepository, repository),
+        health_context_service=cast(UserHealthContextService, FakePregnantUserHealthContextService()),
+        retriever=cast(AIWorkerGateway, FakeRetriever()),
+        llm_stream=spy_llm,
+        dur_drug_repository=cast(DurDrugRepository, fake_dur_repo),
+    )
+
+    await _collect(
+        service.stream_reply(session=None, profile_id=2, session_id=11, message="콘서타 먹어도 괜찮은지 물어봅니다.")
+    )
+
+    assert any("가짜약: 테스트용 경고 문구" in c for c in spy_llm.received_chunks)
+    # 임산부 목 프로필(profile_id=2)은 콘서타·메트포르민 두 약을 보유하므로, 주입된 repo가
+    # 두 약 모두에 대해 (pregnant=True, geriatric=False)로 호출되어야 한다(실제 DB 직접 조회 아님).
+    assert fake_dur_repo.received_calls == [("콘서타", True, False), ("메트포르민", True, False)]

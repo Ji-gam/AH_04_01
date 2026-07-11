@@ -34,9 +34,9 @@
     "branch": "feature/T-MED-5-clova-ocr-error-handling",
     "started": "2026-07-10"
   },
-  "T-LLM-7-2": {
+  "T-LLM-2-dur-repository": {
     "owner": "agent-Claude",
-    "branch": "feat/64-router-classification",
-    "started": "2026-07-10"
+    "branch": "feat/67-dur-repository",
+    "started": "2026-07-11"
   }
 }
