@@ -41,9 +41,7 @@ async def generate_content_card(disease_code: str, category: str, topic: str) ->
     "기타"(5대질환에 안 걸리는 질환 등록자용)는 특정 질환을 짚을 수 없으므로, 질환 특정이
     아닌 일반적인 건강관리 팁으로 생성한다."""
     gateway = AIWorkerGateway()
-    system_prompt = (
-        "당신은 ReMedi의 건강 콘텐츠 작가입니다. 주어진 질환과 카테고리, 세부 주제에 맞는 짧고 실용적인 건강 팁 카드를 작성하세요."
-    )
+    system_prompt = "당신은 ReMedi의 건강 콘텐츠 작가입니다. 주어진 질환과 카테고리, 세부 주제에 맞는 짧고 실용적인 건강 팁 카드를 작성하세요."
     subject = "특정 질환에 한정되지 않는 일반적인 건강관리 정보" if disease_code == "기타" else f"질환: {disease_code}"
     user_input = f"{subject}, 카테고리: {category}, 세부 주제: {topic}"
     card = await gateway.call_structured(

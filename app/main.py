@@ -24,6 +24,7 @@ OPENAPI_TAGS = [
     },
 ]
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """`ENV=local`에서는 서버 기동 시 건강 콘텐츠 픽스처를 자동으로 시드한다 — 셀러리/LLM

@@ -26,6 +26,8 @@ async def test_build_fixture_entries_backdates_content_date_per_topic_to_avoid_c
     피하도록 서로 다른 날짜가 배정돼야 한다."""
     entries = await build_fixture_entries(fake_generate)
 
-    diabetes_lifestyle_dates = {e["content_date"] for e in entries if e["disease_code"] == "당뇨" and e["category"] == "LIFESTYLE"}
+    diabetes_lifestyle_dates = {
+        e["content_date"] for e in entries if e["disease_code"] == "당뇨" and e["category"] == "LIFESTYLE"
+    }
 
     assert len(diabetes_lifestyle_dates) == len(CATEGORY_TOPICS["LIFESTYLE"])
