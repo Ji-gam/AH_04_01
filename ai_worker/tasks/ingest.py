@@ -15,6 +15,20 @@ BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "mock_data_for_rag"
 CHROMA_DIR = BASE_DIR / "chroma_data"
 
+# T-LLM-2-rag-source-label: 원본 CSV 파일명이 챗봇 답변의 [출처: ...]에 그대로 노출되지
+# 않도록, Chroma 메타데이터 source에는 이 한글 라벨을 대신 넣는다. 매핑에 없는 파일은
+# raw 파일명으로 폴백한다(조용히 사라지는 대신, 매핑 추가가 필요하다는 신호로 남긴다).
+_SOURCE_LABELS = {
+    "dur_pwnm_taboo.csv": "식약처 DUR 임부금기 정보",
+    "dur_odsn_atent.csv": "식약처 DUR 노인주의 정보",
+    "dur_mdctn_pd_atent.csv": "식약처 DUR 투여기간주의 정보",
+    "dur_efcy_dplct.csv": "식약처 DUR 효능군중복 정보",
+}
+
+
+def _display_source_label(file_name: str) -> str:
+    return _SOURCE_LABELS.get(file_name, file_name)
+
 
 def get_embeddings():
     """
@@ -92,7 +106,7 @@ def _load_docs_from_csv(csv_file: Path):
             page_content = _build_page_content(file_name, row, ingr_name, ingr_eng_name, prohbt_content)
             # 크로마 메타데이터에는 문자열, 정수, 실수, 부울만 허용되므로 모두 문자열 형태로 바인딩
             metadata = {
-                "source": csv_file.name,
+                "source": _display_source_label(csv_file.name),
                 "ingr_name": ingr_name,
                 "type_name": type_name,
                 "dur_seq": dur_seq,

@@ -43,5 +43,10 @@
     "owner": "agent-Claude",
     "branch": "feat/75-drug-gateway",
     "started": "2026-07-11"
+  },
+  "T-LLM-2-rag-source-label": {
+    "owner": "agent-Claude",
+    "branch": "feat/77-rag-source-label",
+    "started": "2026-07-11"
   }
 }
