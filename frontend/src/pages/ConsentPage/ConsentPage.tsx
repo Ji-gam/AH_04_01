@@ -46,6 +46,21 @@ export default function ConsentPage() {
           padding: "24px",
         }}
       >
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          style={{
+            background: "none",
+            border: "none",
+            color: pinkTheme.textMuted,
+            padding: 0,
+            marginBottom: 12,
+            cursor: "pointer",
+          }}
+        >
+          ← 뒤로가기
+        </button>
+
         <h1 style={{ fontSize: 18, color: pinkTheme.text, marginTop: 0 }}>
           개인정보(건강정보) 제공동의
         </h1>

@@ -158,6 +158,10 @@ export default function HealthInfoPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  // 처음 불러왔을 때 이미 정보가 있었는지 - 있었다면 수정 화면에서 "뒤로가기"는 홈으로 나가지 않고
+  // 그냥 보기 화면으로 돌아간다(취소랑 같은 동작). 원래부터 비어서 자동으로 입력화면에 들어온 거면
+  // 홈으로 나간다.
+  const [hadDataOnLoad, setHadDataOnLoad] = useState(false);
 
   const [age, setAge] = useState("");
   const [gender, setGender] = useState<"MALE" | "FEMALE">("MALE");
@@ -195,6 +199,7 @@ export default function HealthInfoPage() {
         !data.special_notes &&
         !data.other_notes;
       setMode(isEmpty ? "edit" : "view");
+      setHadDataOnLoad(!isEmpty);
     } catch (err) {
       setError(err instanceof Error ? err.message : "정보를 불러오지 못했습니다.");
     } finally {
@@ -216,6 +221,17 @@ export default function HealthInfoPage() {
     setError(null);
     setSavedMessage(null);
     setMode("edit");
+  }
+
+  // 상단 "뒤로가기" 버튼 전용. 원래 정보가 있었는데 수정하러 들어온 거면 그냥 보기 화면으로
+  // 돌아가고(취소하고 보기로 돌아가기와 동일), 애초에 정보가 없어서 자동으로 입력화면에
+  // 들어온 거거나 처음부터 보기 화면이었으면 홈으로 나간다.
+  function handleTopBack() {
+    if (mode === "edit" && hadDataOnLoad) {
+      handleCancelEdit();
+    } else {
+      navigate("/");
+    }
   }
 
   function handleCancelEdit() {
@@ -281,7 +297,7 @@ export default function HealthInfoPage() {
       <div style={{ maxWidth: 400, margin: "0 auto" }}>
         <button
           type="button"
-          onClick={() => navigate("/more")}
+          onClick={handleTopBack}
           style={{
             background: "none",
             border: "none",

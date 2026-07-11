@@ -50,8 +50,8 @@ class AuthService:
                 status_code=status.HTTP_400_BAD_REQUEST, detail="이메일 또는 비밀번호가 올바르지 않습니다."
             )
 
-        # 비밀번호 검증
-        if not verify_password(data.password, user.hashed_password):
+        # 비밀번호 검증 (소셜 가입자는 hashed_password가 없다 - 이메일/비번 로그인 자체가 대상이 아니므로 동일한 에러로 막는다)
+        if user.hashed_password is None or not verify_password(data.password, user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="이메일 또는 비밀번호가 올바르지 않습니다."
             )
@@ -80,8 +80,9 @@ class AuthService:
 
     async def withdraw(self, session: AsyncSession, user: User, password: str) -> None:
         """회원탈퇴. 개인정보보호법상 탈퇴 시 지체없이 파기해야 하므로 소프트삭제가 아니라
-        즉시 완전 삭제한다. User를 지우면 Profile도 cascade(delete-orphan)로 같이 삭제된다."""
-        if not verify_password(password, user.hashed_password):
+        즉시 완전 삭제한다. User를 지우면 Profile도 cascade(delete-orphan)로 같이 삭제된다.
+        소셜 가입자는 비밀번호가 없다 - 이 메서드는 아직 이메일 가입자 전용이다(소셜 탈퇴는 다음 단계에서 다룬다)."""
+        if user.hashed_password is None or not verify_password(password, user.hashed_password):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="비밀번호가 올바르지 않습니다.")
 
         await session.delete(user)

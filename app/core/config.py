@@ -47,9 +47,22 @@ class Config(BaseSettings):
     # app/services/medication_open_api_client.py가 빈 리스트를 반환한다.
     PUBLIC_DATA_API_KEY: str | None = None
 
-    # T-LLM-2-async-gateway: ai-worker 서비스 기본 URL (docker-compose 네트워크 내부 호스트명).
-    # AIWorkerGateway가 여기에 /retrieve, /generate-structured 경로를 붙여 호출한다.
-    AI_WORKER_BASE_URL: str = "http://ai-worker:8001"
+    # T-LLM-2: RAG 검색을 담당하는 ai-worker 서비스의 /retrieve 엔드포인트 (docker-compose 네트워크 내부 호스트명)
+    AI_WORKER_RETRIEVE_URL: str = "http://ai-worker:8001/retrieve"
 
-    # T-LLM-2-async-gateway: Celery 브로커. docker-compose의 기존 redis 서비스를 재사용한다.
-    CELERY_BROKER_URL: str = "redis://redis:6379/0"
+    # 소셜 로그인 콜백 처리 후 리다이렉트할 프론트엔드 주소. 로컬 dev 서버(vite) 기준 기본값.
+    FRONTEND_URL: str = "http://localhost:5174"
+
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
+
+    # 카카오는 비즈앱 전환 전이라 이메일을 거의 못 받는다 (oauth_clients.py의 parse_kakao_userinfo 참고).
+    # CLIENT_SECRET은 카카오 콘솔에서 "Client Secret" 보안 기능을 켠 경우에만 필요 - 안 켰으면 빈 값으로 둔다.
+    KAKAO_CLIENT_ID: str = ""
+    KAKAO_CLIENT_SECRET: str = ""
+    KAKAO_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/kakao/callback"
+
+    NAVER_CLIENT_ID: str = ""
+    NAVER_CLIENT_SECRET: str = ""
+    NAVER_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/naver/callback"

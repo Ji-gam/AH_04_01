@@ -2,18 +2,38 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, status
 from fastapi.responses import JSONResponse as Response
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import config
 from app.core.config import Env
 from app.core.db.databases import get_db
+from app.core.jwt.tokens import AccessToken, RefreshToken
 from app.dependencies.security import get_request_user
 from app.dtos.auth import LoginRequest, LoginResponse, SignUpRequest, TokenRefreshResponse, WithdrawRequest
 from app.models.users import User
 from app.services.auth import AuthService
 from app.services.jwt import JwtService
+from app.services.oauth_clients import get_oauth_client, supported_providers
+from app.services.social_auth import SocialAuthService
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _login_response(tokens: dict[str, AccessToken | RefreshToken], status_code: int = status.HTTP_200_OK) -> Response:
+    """Access Token은 body, Refresh Token은 httpOnly 쿠키 - 이메일 로그인/소셜 로그인 공통으로 쓴다."""
+    resp = Response(
+        content=LoginResponse(access_token=str(tokens["access_token"])).model_dump(), status_code=status_code
+    )
+    resp.set_cookie(
+        key="refresh_token",
+        value=str(tokens["refresh_token"]),
+        httponly=True,
+        secure=True if config.ENV == Env.PROD else False,
+        domain=config.COOKIE_DOMAIN or None,
+        expires=tokens["access_token"].payload["exp"],
+    )
+    return resp
 
 
 @auth_router.post(
@@ -56,18 +76,7 @@ async def login(
 ) -> Response:
     user = await auth_service.authenticate(session, request)
     tokens = await auth_service.login(session, user)
-    resp = Response(
-        content=LoginResponse(access_token=str(tokens["access_token"])).model_dump(), status_code=status.HTTP_200_OK
-    )
-    resp.set_cookie(
-        key="refresh_token",
-        value=str(tokens["refresh_token"]),
-        httponly=True,
-        secure=True if config.ENV == Env.PROD else False,
-        domain=config.COOKIE_DOMAIN or None,
-        expires=tokens["access_token"].payload["exp"],
-    )
-    return resp
+    return _login_response(tokens)
 
 
 @auth_router.get(
@@ -113,3 +122,60 @@ async def withdraw(
     auth_service: Annotated[AuthService, Depends(AuthService)],
 ) -> None:
     await auth_service.withdraw(session, user, request.password)
+
+
+@auth_router.get(
+    "/{provider}/login",
+    summary="소셜 로그인 시작",
+    description="해당 provider의 동의 화면으로 리다이렉트한다. 지원 provider: "
+    + ", ".join(supported_providers())
+    + ".",
+    responses={status.HTTP_404_NOT_FOUND: {"description": "지원하지 않는 provider"}},
+)
+async def social_login(provider: str) -> RedirectResponse:
+    if provider not in supported_providers():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"지원하지 않는 provider입니다: {provider}")
+    client = get_oauth_client(provider)
+    return RedirectResponse(client.get_authorize_url())
+
+
+@auth_router.get(
+    "/{provider}/callback",
+    summary="소셜 로그인 콜백",
+    description=(
+        "provider가 이 주소로 code를 담아 리다이렉트해온다. 기존 계정이면 로그인, 신규면 이 시점에 "
+        "곧바로 계정을 생성한다(닉네임+이메일은 provider가 이미 주므로 별도 입력 화면 없음). "
+        "처리 후 refresh_token 쿠키를 심고 FRONTEND_URL(홈)로 리다이렉트한다. "
+        "브라우저 리다이렉트로만 동작해서 Swagger에서는 직접 테스트할 수 없다."
+    ),
+    responses={
+        status.HTTP_404_NOT_FOUND: {"description": "지원하지 않는 provider"},
+        status.HTTP_409_CONFLICT: {"description": "이미 다른 방식(이메일 등)으로 가입된 이메일"},
+    },
+)
+async def social_callback(
+    provider: str,
+    code: str,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    social_auth_service: Annotated[SocialAuthService, Depends(SocialAuthService)],
+) -> RedirectResponse:
+    if provider not in supported_providers():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"지원하지 않는 provider입니다: {provider}")
+
+    client = get_oauth_client(provider)
+    userinfo = await client.fetch_userinfo(code)
+    tokens = await social_auth_service.handle_callback(session, provider, userinfo)
+
+    # Access Token은 body로 못 내려준다(브라우저 리다이렉트라 body를 못 읽음) - refresh_token 쿠키만
+    # 심어두면, 프론트가 홈 로딩 시 useAuth 초기화 과정에서 자동으로 /auth/token/refresh를 호출해서
+    # access_token을 받아간다(기존 새로고침 로그인유지 로직 재사용).
+    redirect = RedirectResponse(config.FRONTEND_URL + "/")
+    redirect.set_cookie(
+        key="refresh_token",
+        value=str(tokens["refresh_token"]),
+        httponly=True,
+        secure=True if config.ENV == Env.PROD else False,
+        domain=config.COOKIE_DOMAIN or None,
+        expires=tokens["access_token"].payload["exp"],
+    )
+    return redirect

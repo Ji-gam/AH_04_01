@@ -1,6 +1,11 @@
 import { apiFetch, apiFetchRaw } from "./client";
 import type { AuthTokenResult, SignupPayload, UserInfoResult, UserUpdatePayload } from "./types";
 
+/** 소셜 로그인 시작 주소. <a href>로 브라우저를 그대로 이동시키는 용도 (fetch 아님 - OAuth는 리다이렉트라서 fetch로 못 함). */
+export function socialLoginUrl(provider: "google" | "kakao" | "naver"): string {
+  return `/api/v1/auth/${provider}/login`;
+}
+
 export const authApi = {
   signup: (payload: SignupPayload) =>
     apiFetch<{ detail: string }>("/auth/signup", {
