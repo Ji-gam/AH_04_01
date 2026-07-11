@@ -38,5 +38,10 @@
     "owner": "agent-Claude",
     "branch": "feat/67-dur-repository",
     "started": "2026-07-11"
+  },
+  "T-LLM-2-drug-gateway": {
+    "owner": "agent-Claude",
+    "branch": "feat/75-drug-gateway",
+    "started": "2026-07-11"
   }
 }
