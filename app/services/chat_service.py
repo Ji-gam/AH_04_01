@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import MessageRole
 from app.repositories.chat_repository import ChatRepository
+from app.repositories.dur_drug_repository import DurDrugRepository
 from app.services import safety_service
 from app.services.ai_worker_gateway import AIWorkerGateway, AIWorkerProcessingError, AIWorkerUnavailableError
 from app.services.llm_stub import stream_llm_reply
@@ -28,11 +29,13 @@ class ChatService:
         health_context_service: UserHealthContextService | None = None,
         retriever: AIWorkerGateway | None = None,
         llm_stream: LlmStream | None = None,
+        dur_drug_repository: DurDrugRepository | None = None,
     ) -> None:
         self._repository = repository or ChatRepository()
         self._health_context_service = health_context_service or UserHealthContextService()
         self._retriever = retriever or AIWorkerGateway()
         self._llm_stream = llm_stream or stream_llm_reply
+        self._dur_drug_repository = dur_drug_repository or DurDrugRepository()
 
     async def create_session(self, session: AsyncSession, profile_id: int):
         return await self._repository.create_session(session, profile_id)
@@ -188,40 +191,16 @@ class ChatService:
 
         return is_pregnant, is_geriatric, profile_name, target_mock
 
-    @staticmethod
-    def _collect_dur_warnings(meds: list[dict], is_pregnant: bool, is_geriatric: bool) -> list[str]:
-        dur_warnings: list[str] = []
+    def _collect_dur_warnings(self, meds: list[dict], is_pregnant: bool, is_geriatric: bool) -> list[str]:
         if not ((is_pregnant or is_geriatric) and meds):
-            return dur_warnings
+            return []
 
-        import os
-        import sqlite3
-
-        db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../database/dur_drug_light.db"))
-        try:
-            conn = sqlite3.connect(db_path)
-            cursor = conn.cursor()
-            for med in meds:
-                med_name = med.get("name", "")
-                query = """
-                    SELECT p.item_name, r.rule_type, r.prohbt_content
-                    FROM dur_product_rules r
-                    JOIN products p ON r.item_seq = p.item_seq
-                    WHERE (p.item_name LIKE ? OR ? LIKE '%' || p.item_name || '%')
-                      AND (
-                          (r.rule_type = 'PWNM' AND ? = 1)
-                          OR (r.rule_type = 'ODSN' AND ? = 1)
-                      );
-                """
-                cursor.execute(query, (f"%{med_name}%", med_name, 1 if is_pregnant else 0, 1 if is_geriatric else 0))
-                for row in cursor.fetchall():
-                    item_name, rule_type, content = row
-                    prefix = "[임부금기 경고]" if rule_type == "PWNM" else "[노인주의 경고]"
-                    dur_warnings.append(f"{prefix} {item_name}: {content}")
-            conn.close()
-        except Exception:
-            pass
-
+        dur_warnings: list[str] = []
+        for med in meds:
+            med_name = med.get("name", "")
+            dur_warnings.extend(
+                self._dur_drug_repository.find_dur_warnings(med_name, pregnant=is_pregnant, geriatric=is_geriatric)
+            )
         return list(set(dur_warnings))
 
     async def _check_if_medical_related_via_llm(self, message: str, response: str) -> bool:
