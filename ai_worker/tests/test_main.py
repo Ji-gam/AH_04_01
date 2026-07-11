@@ -71,3 +71,29 @@ async def test_retrieve_returns_empty_chunks_when_no_document_matches():
 
     assert response.status_code == 200
     assert response.json() == {"chunks": []}
+
+
+class _FakeCollectionWithMetadata:
+    def __init__(self, metadata: dict) -> None:
+        self.metadata = metadata
+
+
+class FakeChromaDbWithEmbeddingMetadata(FakeChromaDb):
+    def __init__(self, docs_with_scores, embedding_model: str) -> None:
+        super().__init__(docs_with_scores)
+        self._collection = _FakeCollectionWithMetadata({"embedding_model": embedding_model})
+
+
+async def test_retrieve_rejects_when_embedding_model_mismatches(monkeypatch):
+    """저장된 벡터의 임베딩 모델과 현재 백엔드가 다르면 무음 오필터 대신 503으로 거부한다."""
+    from ai_worker.tasks import ingest as ingest_module
+
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_EMBEDDING_API_KEY", None)
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_API_KEY", None)  # 현재 백엔드=HF
+    db_holder["db"] = FakeChromaDbWithEmbeddingMetadata([], embedding_model="openai:text-embedding-3-small")
+    db_holder["ingr_names"] = set()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/retrieve", json={"query": "졸피뎀", "limit": 3})
+
+    assert response.status_code == 503

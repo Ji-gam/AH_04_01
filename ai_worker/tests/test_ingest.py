@@ -1,11 +1,21 @@
 """
 T-LLM-2-rag-source-label: `_load_docs_from_csv`가 Chroma 메타데이터 `source`에
 원본 CSV 파일명 대신 사람이 읽기 좋은 한글 라벨을 넣는지 검증한다.
+
+T-LLM-7-embedding-guard: 런타임에 교체되는 임베딩 백엔드(OpenAI 1536차원 ↔ HF 384차원)와
+저장된 벡터의 임베딩 모델이 불일치하면 무음 오필터 대신 명시적으로 거부하는지 검증한다.
 """
 
 import pytest
 
-from ai_worker.tasks.ingest import _display_source_label, _load_docs_from_csv
+from ai_worker.tasks import ingest as ingest_module
+from ai_worker.tasks.ingest import (
+    EmbeddingMismatchError,
+    _display_source_label,
+    _load_docs_from_csv,
+    active_embedding_model,
+    assert_embedding_compatible,
+)
 
 
 @pytest.mark.parametrize(
@@ -37,3 +47,45 @@ def test_load_docs_from_csv_uses_display_label_in_metadata_source(tmp_path):
 
     assert len(docs) == 1
     assert docs[0].metadata["source"] == "식약처 DUR 임부금기 정보"
+
+
+def test_active_embedding_model_switches_with_api_key(monkeypatch):
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_EMBEDDING_API_KEY", None)
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_API_KEY", "sk-key")
+    assert "text-embedding-3-small" in active_embedding_model()
+
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_API_KEY", None)
+    assert "MiniLM" in active_embedding_model()
+
+
+class _FakeCollection:
+    def __init__(self, metadata: dict | None) -> None:
+        self.metadata = metadata
+
+
+class _FakeDb:
+    def __init__(self, metadata: dict | None) -> None:
+        self._collection = _FakeCollection(metadata)
+
+
+def test_assert_embedding_compatible_raises_on_mismatch(monkeypatch):
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_EMBEDDING_API_KEY", None)
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_API_KEY", None)  # 현재 HF
+    db = _FakeDb({"embedding_model": "openai:text-embedding-3-small"})  # 저장은 OpenAI
+
+    with pytest.raises(EmbeddingMismatchError):
+        assert_embedding_compatible(db)
+
+
+def test_assert_embedding_compatible_passes_on_match(monkeypatch):
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_EMBEDDING_API_KEY", None)
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_API_KEY", None)
+    db = _FakeDb({"embedding_model": active_embedding_model()})
+
+    assert_embedding_compatible(db)  # 예외 없음
+
+
+def test_assert_embedding_compatible_skips_when_metadata_absent():
+    """임베딩 모델명이 저장되지 않은 기존 컬렉션은 검증할 수 없으므로 통과시킨다(무음 차단 방지)."""
+    assert_embedding_compatible(_FakeDb(None))
+    assert_embedding_compatible(_FakeDb({}))
