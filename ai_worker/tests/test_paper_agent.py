@@ -38,6 +38,26 @@ def test_search_disease_paper_reports_unsupported_disease():
     assert "찾지 못했습니다" in result
 
 
+@pytest.mark.parametrize("malicious", ["../../etc/passwd", "당뇨/../../secret", "..", "/etc/hosts"])
+def test_search_disease_paper_rejects_path_traversal(malicious):
+    """LLM이 만든 disease 문자열이 파일 경로에 그대로 삽입되지 않는다(화이트리스트 거부)."""
+    result = search_disease_paper.invoke({"disease": malicious})
+
+    assert "찾지 못했습니다" in result
+
+
+def test_search_disease_paper_rejects_unsupported_even_if_file_exists(tmp_path, monkeypatch):
+    """화이트리스트 밖 disease는, 설령 그 이름의 .json 파일이 존재해도 읽지 않고 거부한다."""
+    evil = tmp_path / "해킹.json"
+    evil.write_text('{"title": "LEAK", "abstract": "LEAK"}', encoding="utf-8")
+    monkeypatch.setattr("ai_worker.tools.paper_search.DATA_DIR", tmp_path)
+
+    result = search_disease_paper.invoke({"disease": "해킹"})
+
+    assert "LEAK" not in result
+    assert "찾지 못했습니다" in result
+
+
 class _FakeMessage:
     def __init__(self, content: str) -> None:
         self.content = content
