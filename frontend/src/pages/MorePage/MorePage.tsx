@@ -129,6 +129,29 @@ export default function MorePage() {
           </span>
           <span aria-hidden>›</span>
         </Link>
+
+        <Link
+          to="/content-generation"
+          style={{
+            background: "#FFF8FA",
+            border: "1px solid #FFE3EB",
+            borderRadius: "8px",
+            padding: "14px 16px",
+            textDecoration: "none",
+            color: "inherit",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>
+            🛠️ 관리자 컨텐츠생성
+            <span style={{ display: "block", fontSize: "12px", color: "#888", marginTop: "2px" }}>
+              실제 LLM으로 건강 콘텐츠 카드를 즉시 생성해 "정보" 탭에 반영해요
+            </span>
+          </span>
+          <span aria-hidden>›</span>
+        </Link>
       </div>
 
       {/* 검색 모달 오버레이 (디자인 제거, 베어본) */}

@@ -114,60 +114,49 @@ async def test_list_chat_messages_success():
         assert msg_list_response.status_code == status.HTTP_200_OK
         messages = msg_list_response.json()
         assert len(messages) >= 2
-        assert messages[0]["role"].lower() == "user"
+        # 프론트(useChatStream.ts)가 role을 소문자로 비교해 정렬 방향을 정하므로
+        # (chat/ChatPage.tsx: m.role === "user"), API는 반드시 소문자로 내려야 한다.
+        # DTO(app/dtos/chat.py)의 문서화된 예시도 "user"/"assistant"(소문자)다.
+        assert messages[0]["role"] == "user"
+        assert messages[1]["role"] == "assistant"
         assert "두통약" in messages[0]["content"]
 
 
-async def test_pregnant_concerta_dur_warning_in_chat():
-    from sqlalchemy import select
-
-    from app.models.profiles import Profile
-    from app.tests.conftest import TestSessionLocal
-
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
-        token = await _signup_and_login(client, "preg_dur@example.com")
-        headers = {"Authorization": f"Bearer {token}"}
-
-        # DB에서 해당 프로필의 이름을 "임산부"로 업데이트
-        async with TestSessionLocal() as session:
-            result = await session.execute(select(Profile).order_by(Profile.id.desc()))
-            profile = result.scalars().first()
-            assert profile is not None
-            profile.name = "임산부"
-            await session.commit()
-
-        # 세션 생성
-        session_response = await client.post("/api/v1/chat/sessions", headers=headers)
-        session_id = session_response.json()["session_id"]
-
-        # 질문 전송
-        message_response = await client.post(
-            f"/api/v1/chat/sessions/{session_id}/messages",
-            headers=headers,
-            json={"message": "임신 중에 콘서타정 먹어도 괜찮나요?"},
-        )
-
-    assert message_response.status_code == status.HTTP_200_OK
-    assert "식약처 DUR 안전 정보" in message_response.text
+# [주의] "임산부" 이름 기반 DUR 경고 통합테스트는 삭제했다 — Profile 스키마에 임신 여부
+# 필드가 없어(#71에서 추가 요청 중) is_pregnant가 항상 False로 고정되는 한 이 경로는
+# 구조적으로 재현 불가능하다. 임부금기 게이팅 로직 자체의 커버리지는
+# app/tests/services/test_chat_service.py::test_collect_dur_warnings_gates_on_pregnant_flag가 담당한다.
 
 
 async def test_geriatric_diazepam_dur_warning_in_chat():
     from sqlalchemy import select
 
+    from app.models.medication_model import Medication, MedicationSchedule
     from app.models.profiles import Profile
+    from app.repositories.medication_repository import MedicationRepository
     from app.tests.conftest import TestSessionLocal
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         token = await _signup_and_login(client, "elder_dur@example.com")
         headers = {"Authorization": f"Bearer {token}"}
 
-        # DB에서 해당 프로필을 만 65세 이상 노인 상태로 업데이트
+        # DB에서 해당 프로필을 만 65세 이상 노인 상태로 업데이트하고, 실제 복약 스케줄을 등록한다.
         async with TestSessionLocal() as session:
             result = await session.execute(select(Profile).order_by(Profile.id.desc()))
             profile = result.scalars().first()
             assert profile is not None
             profile.age = 76
             await session.commit()
+
+            repo = MedicationRepository()
+            medication = await repo.create_medication(
+                session,
+                Medication(medication_name="디아제팜", form_type="TABLET"),
+            )
+            await repo.create_schedule(
+                session,
+                MedicationSchedule(profile_id=profile.id, medication_id=medication.id, times=["08:00"]),
+            )
 
         session_response = await client.post("/api/v1/chat/sessions", headers=headers)
         session_id = session_response.json()["session_id"]

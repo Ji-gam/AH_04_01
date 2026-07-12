@@ -28,5 +28,25 @@
     "owner": "agent-Claude",
     "branch": "feature/T-MED-2-2-drug-interaction-check",
     "started": "2026-07-09"
+  },
+  "T-MED-5": {
+    "owner": "claude",
+    "branch": "feature/T-MED-5-clova-ocr-error-handling",
+    "started": "2026-07-10"
+  },
+  "T-LLM-2-dur-repository": {
+    "owner": "agent-Claude",
+    "branch": "feat/67-dur-repository",
+    "started": "2026-07-11"
+  },
+  "T-LLM-2-drug-gateway": {
+    "owner": "agent-Claude",
+    "branch": "feat/75-drug-gateway",
+    "started": "2026-07-11"
+  },
+  "T-LLM-2-rag-source-label": {
+    "owner": "agent-Claude",
+    "branch": "feat/77-rag-source-label",
+    "started": "2026-07-11"
   }
 }

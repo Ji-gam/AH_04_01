@@ -12,6 +12,13 @@ class Config(BaseSettings):
     OPENAI_API_KEY: str | None = None
     OPENAI_EMBEDDING_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
+    # 분류·구조화 추출·논문 답변은 결정적이어야 하므로 기본 0. 창의성이 필요한
+    # 용도가 생기면 호출부에서 개별적으로 올린다(기본값은 결정성 우선).
+    OPENAI_TEMPERATURE: float = 0.0
+
+    # RAG 검색 유사도 임계값(Chroma L2 거리, score < threshold만 통과). 임베딩 백엔드가
+    # 바뀌면 거리 스케일도 달라지므로 값이 코드에 박히지 않도록 config로 뺀다.
+    RAG_SIMILARITY_THRESHOLD: float = 1.4
 
 
 # 글로벌 싱글톤 인스턴스 생성

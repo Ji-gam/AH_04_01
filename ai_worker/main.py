@@ -1,14 +1,21 @@
 import logging
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from langchain_chroma import Chroma
 from pydantic import BaseModel
 
+from ai_worker.core.config import settings
 from ai_worker.schemas.generation_schema import GenerateStructuredRequest, GenerateStructuredResponse
 from ai_worker.tasks.generate_structured import GenerationUnavailableError, generate_structured
-from ai_worker.tasks.ingest import get_embeddings, ingest_csv_data
+from ai_worker.tasks.ingest import (
+    EmbeddingMismatchError,
+    EmbeddingUnavailableError,
+    assert_embedding_compatible,
+    build_vector_store,
+    ingest_csv_data,
+)
+from ai_worker.tasks.paper_agent import ask_paper_agent
 
 # 로거 설정
 logger = logging.getLogger("ai_worker.main")
@@ -24,8 +31,6 @@ app = FastAPI(
 # 값 타입을 Any로 둔 이유: 테스트에서 이 딕셔너리에 실제 Chroma 대신 duck-typed
 # fake 객체를 직접 대입해 모킹하므로(ai_worker/tests/test_main.py 참고), Chroma로
 # 좁히면 오히려 모킹이 막힌다.
-CHROMA_DIR = Path(__file__).parent / "chroma_data"
-
 db_holder: dict[str, Any] = {
     "db": None,
     "ingr_names": set(),
@@ -93,12 +98,19 @@ async def retrieve_documents(payload: RetrieveRequest) -> RetrieveResponse:
     db = db_holder["db"]
     if db is None:
         try:
-            embeddings = get_embeddings()
-            db = Chroma(collection_name="dur_rules", embedding_function=embeddings, persist_directory=str(CHROMA_DIR))
+            db = build_vector_store()
             db_holder["db"] = db
             cache_ingr_names(db)
+        except EmbeddingUnavailableError as e:
+            raise HTTPException(status_code=503, detail=str(e)) from e
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Vector DB is not initialized. Error: {e}") from e
+
+    # 저장된 벡터의 임베딩 모델과 현재 백엔드가 다르면 무음 오필터 대신 503으로 거부한다.
+    try:
+        assert_embedding_compatible(db)
+    except EmbeddingMismatchError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
 
     try:
         logger.info(f"Retrieving documents for query: '{payload.query}' (limit: {payload.limit})")
@@ -128,8 +140,9 @@ async def retrieve_documents(payload: RetrieveRequest) -> RetrieveResponse:
                 f"DEBUG_SCORE: INGR={doc.metadata.get('ingr_name')}, score={score}, source={doc.metadata.get('source')}"
             )
 
-        # 임계값(score < 1.4)을 만족하는 유효한 문서만 반환합니다.
-        threshold = 1.4
+        # 임계값(score < threshold)을 만족하는 유효한 문서만 반환합니다. 값은 config에서
+        # 가져와 임베딩 백엔드별로 튜닝할 수 있게 한다(거리 스케일이 백엔드마다 다름).
+        threshold = settings.RAG_SIMILARITY_THRESHOLD
         valid_docs = [doc for doc, score in docs_with_scores if score < threshold]
 
         # 문서의 내용과 메타데이터를 함께 추출
@@ -159,6 +172,31 @@ async def generate_structured_endpoint(payload: GenerateStructuredRequest) -> Ge
     except GenerationUnavailableError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     return GenerateStructuredResponse(data=data)
+
+
+class PaperAgentRequest(BaseModel):
+    question: str
+
+
+class PaperAgentResponse(BaseModel):
+    answer: str
+
+
+@app.post(
+    "/agent/paper-search",
+    response_model=PaperAgentResponse,
+    summary="질환 논문 검색 에이전트 (T-LLM-7, 스텁)",
+    description=(
+        "T-LLM-7: 도구 1개(질환 논문 검색 스텁)를 쥔 LangChain 에이전트. "
+        "기존 /retrieve(DUR 검색)와는 완전히 별개 파이프라인이다."
+    ),
+)
+async def paper_agent_endpoint(payload: PaperAgentRequest) -> PaperAgentResponse:
+    try:
+        answer = await ask_paper_agent(payload.question)
+    except GenerationUnavailableError as e:
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    return PaperAgentResponse(answer=answer)
 
 
 @app.get("/health")

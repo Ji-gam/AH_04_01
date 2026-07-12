@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import logging
 import os
 import re
 import time
@@ -29,8 +30,15 @@ from app.models.medication_model import Medication, MedicationRecognitionJob, Me
 from app.repositories.medication_repository import MedicationRepository
 from app.services import medication_open_api_client
 
+logger = logging.getLogger("app.medication_service")
+
 CLOVA_OCR_SECRET_KEY = os.getenv("CLOVA_OCR_SECRET_KEY")
 CLOVA_OCR_INVOKE_URL = os.getenv("CLOVA_OCR_INVOKE_URL")
+
+# 타임아웃/5xx처럼 재시도하면 성공할 여지가 있는 실패에 한해서만 재시도한다.
+# 401/403 같은 인증 오류나 응답 파싱 실패는 재시도해도 결과가 같으므로 즉시 실패 처리한다.
+_CLOVA_OCR_MAX_ATTEMPTS = 2
+_CLOVA_OCR_RETRY_DELAY_SECONDS = 0.5
 
 # 약품명 후보로 볼 만한 OCR 텍스트 블록 판별 기준.
 # "정"/"캡슐" 같은 제형 접미사만으로는 "환자정보", "서방정"(잘린 조각) 등 일반 텍스트도
@@ -276,37 +284,83 @@ async def _match_or_create_medications(
     return matched_meds, auto_created_ids
 
 
+def _build_clova_ocr_request(file_bytes: bytes, file_name: str) -> tuple[dict, dict]:
+    base64_data = base64.b64encode(file_bytes).decode("utf-8")
+    file_format = file_name.split(".")[-1].lower()
+    if file_format not in ["jpg", "jpeg", "png", "pdf"]:
+        file_format = "jpg"
+
+    payload = {
+        "images": [{"format": file_format, "name": "medication_doc", "data": base64_data}],
+        "requestId": str(uuid.uuid4()),
+        "timestamp": int(time.time() * 1000),
+        "version": "V2",
+    }
+    headers = {"X-OCR-SECRET": CLOVA_OCR_SECRET_KEY, "Content-Type": "application/json"}
+    return payload, headers
+
+
+def _parse_clova_ocr_response(response: httpx.Response) -> list[str]:
+    """2xx 응답의 JSON 구조가 기대와 다르면(필드 누락/타입 불일치) 재시도해도 결과가 같으므로
+    빈 리스트로 처리하되, 어떤 응답이 문제였는지 알 수 있게 로그를 남긴다."""
+    try:
+        res_json = response.json()
+        images = res_json.get("images", [])
+        if not images:
+            return []
+        fields = images[0].get("fields", [])
+        return [field.get("inferText", "") for field in fields if field.get("inferText")]
+    except (ValueError, AttributeError, TypeError) as exc:
+        logger.error("CLOVA OCR 응답 파싱 실패 (status=%s): %s", response.status_code, exc)
+        return []
+
+
 async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[str]:
     """CLOVA OCR을 호출해 인식된 텍스트 조각 목록을 반환한다. 호출 실패/빈 응답이면 빈 리스트.
-    호출 전 `_clova_configured()`로 키/URL이 설정됐음을 확인했다는 전제 하에만 호출된다."""
+    호출 전 `_clova_configured()`로 키/URL이 설정됐음을 확인했다는 전제 하에만 호출된다.
+
+    타임아웃/네트워크 오류/5xx는 일시적일 수 있어 짧게 재시도하고, 인증 오류(401/403) 같은
+    4xx는 재시도해도 결과가 같으므로 즉시 포기한다. 모든 실패 경로에 로그를 남겨 조용히
+    더미 폴백으로 넘어가는 일이 없도록 한다(운영 중 CLOVA 키 만료 등을 감지하기 위함)."""
     assert CLOVA_OCR_SECRET_KEY is not None
     assert CLOVA_OCR_INVOKE_URL is not None
-    raw_text_list: list[str] = []
-    try:
-        base64_data = base64.b64encode(file_bytes).decode("utf-8")
-        file_format = file_name.split(".")[-1].lower()
-        if file_format not in ["jpg", "jpeg", "png", "pdf"]:
-            file_format = "jpg"
+    payload, headers = _build_clova_ocr_request(file_bytes, file_name)
 
-        payload = {
-            "images": [{"format": file_format, "name": "medication_doc", "data": base64_data}],
-            "requestId": str(uuid.uuid4()),
-            "timestamp": int(time.time() * 1000),
-            "version": "V2",
-        }
-        headers = {"X-OCR-SECRET": CLOVA_OCR_SECRET_KEY, "Content-Type": "application/json"}
+    for attempt in range(1, _CLOVA_OCR_MAX_ATTEMPTS + 1):
+        is_last_attempt = attempt == _CLOVA_OCR_MAX_ATTEMPTS
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
+        except httpx.TimeoutException as exc:
+            logger.warning("CLOVA OCR 호출 타임아웃 (attempt=%d/%d): %s", attempt, _CLOVA_OCR_MAX_ATTEMPTS, exc)
+            if is_last_attempt:
+                return []
+            await asyncio.sleep(_CLOVA_OCR_RETRY_DELAY_SECONDS)
+            continue
+        except httpx.HTTPError as exc:
+            logger.warning("CLOVA OCR 호출 네트워크 오류 (attempt=%d/%d): %s", attempt, _CLOVA_OCR_MAX_ATTEMPTS, exc)
+            if is_last_attempt:
+                return []
+            await asyncio.sleep(_CLOVA_OCR_RETRY_DELAY_SECONDS)
+            continue
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
-            if response.status_code == 200:
-                res_json = response.json()
-                images = res_json.get("images", [])
-                if images:
-                    fields = images[0].get("fields", [])
-                    raw_text_list = [field.get("inferText", "") for field in fields if field.get("inferText")]
-    except Exception:
-        pass
-    return raw_text_list
+        if response.status_code == 200:
+            return _parse_clova_ocr_response(response)
+
+        if response.status_code >= 500 and not is_last_attempt:
+            logger.warning(
+                "CLOVA OCR 서버 오류 (status=%d, attempt=%d/%d), 재시도합니다.",
+                response.status_code,
+                attempt,
+                _CLOVA_OCR_MAX_ATTEMPTS,
+            )
+            await asyncio.sleep(_CLOVA_OCR_RETRY_DELAY_SECONDS)
+            continue
+
+        logger.error("CLOVA OCR 호출 실패 (status=%d): %s", response.status_code, response.text[:500])
+        return []
+
+    return []
 
 
 def _clova_configured() -> bool:
@@ -321,11 +375,13 @@ async def _resolve_ocr_raw_text(file_bytes: bytes, file_name: str, dummy_mode: b
     if dummy_mode:
         return list(DUMMY_OCR_RAW_TEXT), True
 
-    raw_text_list: list[str] = []
-    if _clova_configured():
-        raw_text_list = await _call_clova_ocr(file_bytes, file_name)
+    if not _clova_configured():
+        logger.warning("CLOVA OCR 키/URL이 설정되지 않아 더미 텍스트로 폴백합니다.")
+        return list(DUMMY_OCR_RAW_TEXT), True
 
+    raw_text_list = await _call_clova_ocr(file_bytes, file_name)
     if not raw_text_list:
+        logger.warning("CLOVA OCR 호출 결과가 비어 있어 더미 텍스트로 폴백합니다.")
         return list(DUMMY_OCR_RAW_TEXT), True
     return raw_text_list, False
 

@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 
 from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings
 
 from ai_worker.core.config import settings
@@ -15,22 +14,85 @@ BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "mock_data_for_rag"
 CHROMA_DIR = BASE_DIR / "chroma_data"
 
+# T-LLM-2-rag-source-label: 원본 CSV 파일명이 챗봇 답변의 [출처: ...]에 그대로 노출되지
+# 않도록, Chroma 메타데이터 source에는 이 한글 라벨을 대신 넣는다. 매핑에 없는 파일은
+# raw 파일명으로 폴백한다(조용히 사라지는 대신, 매핑 추가가 필요하다는 신호로 남긴다).
+_SOURCE_LABELS = {
+    "dur_pwnm_taboo.csv": "식약처 DUR 임부금기 정보",
+    "dur_odsn_atent.csv": "식약처 DUR 노인주의 정보",
+    "dur_mdctn_pd_atent.csv": "식약처 DUR 투여기간주의 정보",
+    "dur_efcy_dplct.csv": "식약처 DUR 효능군중복 정보",
+}
+
+
+def _display_source_label(file_name: str) -> str:
+    return _SOURCE_LABELS.get(file_name, file_name)
+
+
+COLLECTION_NAME = "dur_rules"
+
+# 임베딩 모델 식별자(컬렉션 메타데이터에 저장되는 값).
+_EMBEDDING_MODEL_NAME = "openai:text-embedding-3-small"
+
+
+class EmbeddingMismatchError(Exception):
+    """저장된 벡터의 임베딩 모델과 현재 백엔드가 달라 검색이 무의미할 때 발생.
+    (레거시: HF 폴백이 있던 시절에 임베딩된 컬렉션을 감지하기 위한 안전망으로 유지한다.)"""
+
+
+class EmbeddingUnavailableError(Exception):
+    """`OPENAI_API_KEY`/`OPENAI_EMBEDDING_API_KEY`가 없어 임베딩을 생성할 수 없을 때 발생.
+    과거엔 키가 없으면 로컬 HuggingFace로 조용히 폴백했으나, 검색 정확도가 실서비스와
+    달라져 무음 성능저하를 낳았다. 팀이 `.env`를 공유해 키 부재가 일어날 일이 없으므로,
+    조용히 저하되는 대신 설정 오류로 간주해 즉시 실패한다(결정 2026-07-13)."""
+
+
+def _require_api_key() -> str:
+    api_key = settings.OPENAI_EMBEDDING_API_KEY or settings.OPENAI_API_KEY
+    if not api_key:
+        raise EmbeddingUnavailableError(
+            "OPENAI_API_KEY/OPENAI_EMBEDDING_API_KEY가 설정되지 않아 임베딩을 생성할 수 없습니다."
+        )
+    return api_key
+
+
+def active_embedding_model() -> str:
+    """현재 사용 중인 임베딩 모델 식별자(컬렉션 메타데이터에 저장되는 값). 키가 없으면 실패한다."""
+    _require_api_key()
+    return _EMBEDDING_MODEL_NAME
+
 
 def get_embeddings():
-    """
-    OpenAI text-embedding-3-small 모델을 기본 임베딩으로 사용하며,
-    설정된 API Key 유무에 따라 적절한 객체를 반환합니다.
-    API Key가 모두 없을 경우 로컬 HuggingFace Embeddings로 폴백합니다.
-    """
-    # 1. 임베딩 전용 API Key 확인
-    api_key = settings.OPENAI_EMBEDDING_API_KEY or settings.OPENAI_API_KEY
+    """OpenAI text-embedding-3-small로 임베딩을 생성한다. API 키가 없으면 즉시 실패한다
+    (로컬 HuggingFace 폴백 없음 — `EmbeddingUnavailableError` 참고)."""
+    api_key = _require_api_key()
+    logger.info("Using OpenAIEmbeddings (text-embedding-3-small) for RAG Ingestion")
+    return OpenAIEmbeddings(openai_api_key=api_key, model="text-embedding-3-small")
 
-    if api_key:
-        logger.info("Using OpenAIEmbeddings (text-embedding-3-small) for RAG Ingestion")
-        return OpenAIEmbeddings(openai_api_key=api_key, model="text-embedding-3-small")
-    else:
-        logger.warning("No OpenAI API Key found. Falling back to local HuggingFaceEmbeddings (all-MiniLM-L6-v2)")
-        return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+
+def build_vector_store() -> Chroma:
+    """ingest·query가 공유하는 Chroma 스토어 팩토리. 컬렉션 메타데이터에 임베딩 모델명을
+    함께 기록해, 나중에 백엔드가 바뀌면 불일치를 감지할 수 있게 한다."""
+    return Chroma(
+        collection_name=COLLECTION_NAME,
+        embedding_function=get_embeddings(),
+        persist_directory=str(CHROMA_DIR),
+        collection_metadata={"embedding_model": active_embedding_model()},
+    )
+
+
+def assert_embedding_compatible(db) -> None:
+    """컬렉션에 저장된 임베딩 모델명과 현재 백엔드가 다르면 예외로 명시적 거부한다.
+    모델명이 저장되지 않은 (라벨 도입 이전) 컬렉션은 검증할 수 없어 통과시킨다 —
+    무음 오필터를 막는 게 목적이지, 검증 불가를 차단으로 오인하지 않기 위함."""
+    collection = getattr(db, "_collection", None)
+    metadata = getattr(collection, "metadata", None) if collection is not None else None
+    stored = (metadata or {}).get("embedding_model")
+    if stored is not None and stored != active_embedding_model():
+        raise EmbeddingMismatchError(
+            f"컬렉션은 '{stored}'로 임베딩됐는데 현재 백엔드는 '{active_embedding_model()}'입니다. "
+            "벡터공간이 달라 검색 결과가 무의미하므로 재인제스트가 필요합니다."
+        )
 
 
 def _build_page_content(file_name: str, row: dict, ingr_name: str, ingr_eng_name: str, prohbt_content: str) -> str:
@@ -92,7 +154,7 @@ def _load_docs_from_csv(csv_file: Path):
             page_content = _build_page_content(file_name, row, ingr_name, ingr_eng_name, prohbt_content)
             # 크로마 메타데이터에는 문자열, 정수, 실수, 부울만 허용되므로 모두 문자열 형태로 바인딩
             metadata = {
-                "source": csv_file.name,
+                "source": _display_source_label(csv_file.name),
                 "ingr_name": ingr_name,
                 "type_name": type_name,
                 "dur_seq": dur_seq,
@@ -109,11 +171,9 @@ def ingest_csv_data():
     # 크로마 데이터 디렉토리 생성
     CHROMA_DIR.mkdir(parents=True, exist_ok=True)
 
-    embeddings = get_embeddings()
-
-    # Chroma 스토어 연결 (PERSIST_DIRECTORY 옵션 역할)
-    # 랭체인 0.1+ 이상 버전에서는 Chroma 생성자에 persist_directory를 인자로 직접 전달합니다.
-    db = Chroma(collection_name="dur_rules", embedding_function=embeddings, persist_directory=str(CHROMA_DIR))
+    # Chroma 스토어 연결 (PERSIST_DIRECTORY 옵션 역할). 컬렉션 메타데이터에 임베딩 모델명을
+    # 함께 기록하기 위해 공용 팩토리를 거친다.
+    db = build_vector_store()
 
     # 이미 데이터가 적재되어 있는지 확인 (컬렉션 카운트)
     try:
