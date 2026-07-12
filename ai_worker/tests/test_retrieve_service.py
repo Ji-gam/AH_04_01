@@ -6,8 +6,17 @@ from ai_worker.services import retrieve_service
 
 
 class FakeChromaDb:
-    def __init__(self, docs_with_scores: list[tuple[Document, float]]) -> None:
+    """langchain-chroma의 공개 API(`get`/`similarity_search_with_score`)만 흉내낸다.
+    `_collection` 같은 사설 속성은 일부러 두지 않는다 — 프로덕션 코드가 사설 접근을
+    시도하면 이 fake에서 AttributeError로 곧장 드러나야 한다."""
+
+    def __init__(
+        self,
+        docs_with_scores: list[tuple[Document, float]],
+        metadatas: list[dict] | None = None,
+    ) -> None:
         self._docs_with_scores = docs_with_scores
+        self._metadatas = metadatas or []
 
     def similarity_search_with_score(self, query: str, k: int, filter: dict | None = None):
         if filter is None:
@@ -18,24 +27,19 @@ class FakeChromaDb:
             if doc.metadata.get("ingr_name") == filter.get("ingr_name")
         ][:k]
 
-
-class _FakeCollection:
-    def __init__(self, metadatas: list[dict]) -> None:
-        self._metadatas = metadatas
-
     def get(self, include: list[str]):
         return {"metadatas": self._metadatas}
 
 
 def test_cache_ingr_names_extracts_unique_names():
-    db = FakeChromaDb([])
-    db._collection = _FakeCollection(
-        [
+    db = FakeChromaDb(
+        [],
+        metadatas=[
             {"ingr_name": "졸피뎀타르타르산염"},
             {"ingr_name": " 졸피뎀타르타르산염 "},
             {"ingr_name": "무관성분"},
             {},
-        ]
+        ],
     )
 
     retrieve_service.cache_ingr_names(db)
