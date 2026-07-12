@@ -18,6 +18,7 @@ from ai_worker.tasks.ingest import (
     EmbeddingUnavailableError,
     _display_source_label,
     _load_docs_from_csv,
+    _read_collection_metadata,
     active_embedding_model,
     assert_embedding_compatible,
     get_embeddings,
@@ -127,6 +128,19 @@ class _FakeDbWithPublicGet:
 
     def add_documents(self, docs):
         self.add_documents_called = True
+
+
+def test_read_collection_metadata_returns_stored_metadata():
+    """langchain-chroma 1.1.0엔 컬렉션 메타데이터 공개 접근자가 없어, 사설 `_collection`
+    접근이 이 헬퍼 한 곳에만 격리돼 있는지 검증한다."""
+    db = _FakeDb({"embedding_model": "openai:text-embedding-3-small"})
+
+    assert _read_collection_metadata(db) == {"embedding_model": "openai:text-embedding-3-small"}
+
+
+def test_read_collection_metadata_returns_empty_dict_when_absent():
+    assert _read_collection_metadata(_FakeDb(None)) == {}
+    assert _read_collection_metadata(_FakeDbWithPublicGet(ids=[])) == {}
 
 
 def test_ingest_csv_data_skips_when_documents_already_exist(monkeypatch):

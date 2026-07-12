@@ -81,13 +81,20 @@ def build_vector_store() -> Chroma:
     )
 
 
+def _read_collection_metadata(db) -> dict:
+    """컬렉션 메타데이터(임베딩 모델명 등)를 읽는다. langchain-chroma 1.1.0엔 이를 읽는
+    공개 접근자가 없어, 사설 속성 `_collection.metadata` 접근을 이 함수 하나로 격리한다 —
+    나중에 langchain이 공개 접근자를 열면 이 함수만 교체하면 된다."""
+    collection = getattr(db, "_collection", None)
+    metadata = getattr(collection, "metadata", None) if collection is not None else None
+    return metadata or {}
+
+
 def assert_embedding_compatible(db) -> None:
     """컬렉션에 저장된 임베딩 모델명과 현재 백엔드가 다르면 예외로 명시적 거부한다.
     모델명이 저장되지 않은 (라벨 도입 이전) 컬렉션은 검증할 수 없어 통과시킨다 —
     무음 오필터를 막는 게 목적이지, 검증 불가를 차단으로 오인하지 않기 위함."""
-    collection = getattr(db, "_collection", None)
-    metadata = getattr(collection, "metadata", None) if collection is not None else None
-    stored = (metadata or {}).get("embedding_model")
+    stored = _read_collection_metadata(db).get("embedding_model")
     if stored is not None and stored != active_embedding_model():
         raise EmbeddingMismatchError(
             f"컬렉션은 '{stored}'로 임베딩됐는데 현재 백엔드는 '{active_embedding_model()}'입니다. "
