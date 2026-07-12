@@ -80,6 +80,7 @@ class ContentService:
 
     def _to_response(self, content) -> dict:
         return {
+            "id": content.id,
             "disease_code": content.disease_code,
             "category": content.category,
             "content_date": content.content_date,

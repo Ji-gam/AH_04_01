@@ -26,6 +26,26 @@ class ContentRepository:
         await session.refresh(content)
         return content
 
+    async def update_card(
+        self,
+        session: AsyncSession,
+        content: HealthContent,
+        *,
+        title: str,
+        summary: str,
+        body: str,
+        image_prompt: str | None,
+    ) -> HealthContent:
+        """카드 본문만 갱신한다(질환/카테고리/날짜는 유니크 제약 키라 안 바꾼다) —
+        수동 재생성 시 새 행을 만드는 대신 같은 (질환, 카테고리, 날짜) 캐시를 덮어쓴다."""
+        content.title = title
+        content.summary = summary
+        content.body = body
+        content.image_prompt = image_prompt
+        await session.commit()
+        await session.refresh(content)
+        return content
+
     async def list_by_diseases(
         self,
         session: AsyncSession,

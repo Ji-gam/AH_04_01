@@ -3,6 +3,12 @@ from starlette import status
 
 from app.main import app
 from app.repositories.content_repository import ContentRepository
+from app.services import content_generation_service as content_generation_service_module
+from app.services.ai_worker_gateway import (
+    AIWorkerInvalidRequestError,
+    AIWorkerProcessingError,
+    AIWorkerUnavailableError,
+)
 from app.services.content_service import _today_kst
 from app.tests.conftest import TestSessionLocal
 
@@ -105,3 +111,96 @@ async def test_get_contents_for_profile_with_registered_disease_returns_personal
     body = response.json()
     assert body["personalized"] is True
     assert {item["disease_code"] for item in body["items"]} == {"당뇨"}
+
+
+async def _fake_generate_content_card(disease_code: str, category: str, topic: str) -> dict:
+    return {"title": f"{disease_code}-{category}-{topic}", "summary": "요약", "body": "본문", "image_prompt": None}
+
+
+def _failing_generator(exc: Exception):
+    async def _raise(disease_code: str, category: str, topic: str) -> dict:
+        raise exc
+
+    return _raise
+
+
+async def test_generate_content_creates_card_with_specified_combo(monkeypatch):
+    monkeypatch.setattr(content_generation_service_module, "generate_content_card", _fake_generate_content_card)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/contents/generate", json={"disease_code": "당뇨", "category": "LIFESTYLE", "topic": "운동"}
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["disease_code"] == "당뇨"
+    assert body["category"] == "LIFESTYLE"
+    assert body["title"] == "당뇨-LIFESTYLE-운동"
+    assert "id" in body
+
+
+async def test_generate_content_picks_random_combo_when_body_omitted(monkeypatch):
+    monkeypatch.setattr(content_generation_service_module, "generate_content_card", _fake_generate_content_card)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/contents/generate", json={})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["disease_code"]
+
+
+async def test_generate_content_second_click_updates_same_card_not_a_new_row(monkeypatch):
+    """버튼을 반복 클릭해도(같은 질환/카테고리/오늘) 유니크 제약 위반 없이 같은 카드가 갱신된다."""
+    monkeypatch.setattr(content_generation_service_module, "generate_content_card", _fake_generate_content_card)
+    payload = {"disease_code": "간질환", "category": "FOOD", "topic": "1차"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        first = await client.post("/api/v1/contents/generate", json=payload)
+        second = await client.post("/api/v1/contents/generate", json={**payload, "topic": "2차"})
+
+    assert first.status_code == second.status_code == status.HTTP_200_OK
+    assert first.json()["id"] == second.json()["id"]
+    assert second.json()["title"] == "간질환-FOOD-2차"
+
+
+async def test_generate_content_returns_503_with_friendly_message_when_ai_worker_unavailable(monkeypatch):
+    """ai_worker가 응답하지 않거나 생성 불가 상태(예: API 키 미설정)면, 기술적 에러 대신
+    사용자 친화적 문구로 응답한다."""
+    monkeypatch.setattr(
+        content_generation_service_module,
+        "generate_content_card",
+        _failing_generator(AIWorkerUnavailableError("ai_worker 생성 불가")),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/contents/generate", json={})
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert "상담사가 잠시 자리를 비웠습니다" in response.json()["detail"]
+
+
+async def test_generate_content_returns_400_on_invalid_request_to_ai_worker(monkeypatch):
+    monkeypatch.setattr(
+        content_generation_service_module,
+        "generate_content_card",
+        _failing_generator(AIWorkerInvalidRequestError("잘못된 요청")),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/contents/generate", json={})
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_generate_content_returns_502_on_malformed_ai_worker_response(monkeypatch):
+    monkeypatch.setattr(
+        content_generation_service_module,
+        "generate_content_card",
+        _failing_generator(AIWorkerProcessingError("형식 이상")),
+    )
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/contents/generate", json={})
+
+    assert response.status_code == status.HTTP_502_BAD_GATEWAY
