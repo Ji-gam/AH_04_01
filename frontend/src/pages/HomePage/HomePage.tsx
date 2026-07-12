@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
-import { contentApi } from "../../api/contentApi";
+import { habitApi } from "../../api/habitApi";
 import { healthInfoApi } from "../../api/healthInfoApi";
 import { notificationApi } from "../../api/notificationApi";
 import type {
-  HealthContentResult,
   HealthInfoResult,
+  HabitsTodayResult,
   NotificationScheduleResult,
 } from "../../api/types";
 import { useAuth } from "../../hooks/useAuth";
@@ -36,8 +36,9 @@ export default function HomePage() {
   const [alarms, setAlarms] = useState<NotificationScheduleResult[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 질환 등록자에게만 내려오는 맞춤 라이프스타일 추천(정보 탭과 같은 소스). 없으면 카드 숨김.
-  const [lifestyleTips, setLifestyleTips] = useState<HealthContentResult[]>([]);
+  // 오늘의 습관 트래커 — 기본 세트(물/산책) + 등록 질환별 맞춤 습관. 클릭할 때마다 1씩 채운다.
+  const [habitsToday, setHabitsToday] = useState<HabitsTodayResult | null>(null);
+  const [showCongrats, setShowCongrats] = useState(false);
 
   useEffect(() => {
     if (user && localStorage.getItem(DISMISS_KEY_PREFIX + user.profile_id) !== "true") {
@@ -73,16 +74,28 @@ export default function HomePage() {
   }, [user]);
 
   useEffect(() => {
-    // personalized=false는 질환 미등록 폴백(전체 공통 콘텐츠)이므로 홈 추천 카드는 띄우지 않는다.
     if (!user) {
-      setLifestyleTips([]);
+      setHabitsToday(null);
       return;
     }
-    contentApi
-      .getContents("LIFESTYLE", 3)
-      .then((feed) => setLifestyleTips(feed.personalized ? feed.items.slice(0, 3) : []))
-      .catch(() => setLifestyleTips([]));
+    habitApi
+      .getToday()
+      .then(setHabitsToday)
+      .catch(() => setHabitsToday(null));
   }, [user]);
+
+  function handleCheckHabit(habitKey: string) {
+    const wasAllDone = habitsToday?.all_completed ?? false;
+    habitApi
+      .check(habitKey)
+      .then((res) => {
+        setHabitsToday(res);
+        if (!wasAllDone && res.all_completed) setShowCongrats(true);
+      })
+      .catch(() => {
+        // 습관 체크는 부가 기능이라 실패해도 조용히 무시 - 다음 클릭에서 다시 시도하면 된다.
+      });
+  }
 
   function handleDismiss() {
     if (user) localStorage.setItem(DISMISS_KEY_PREFIX + user.profile_id, "true");
@@ -241,51 +254,134 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* 질환 등록자 맞춤 라이프스타일 추천 — 정보 탭(라이프스타일)과 같은 콘텐츠에서 3개 */}
-        {user && lifestyleTips.length > 0 && (
-          <Link to="/info" style={{ textDecoration: "none" }}>
+        {/* 오늘의 습관 트래커 — 기본 세트(물 마시기/산책) + 등록 질환별 맞춤 습관.
+            항목마다 target개의 아이콘 슬롯을 그려서, 누를 때마다 하나씩 채워지는 게 바로 보이게 한다. */}
+        {user && habitsToday && habitsToday.habits.length > 0 && (
+          <div
+            style={{
+              background: pinkTheme.cardBg,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 16,
+              padding: 18,
+              marginBottom: 16,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.primary }}>
+              🌿 {user.name}님을 위한 추천 라이프스타일
+            </p>
+            <p style={{ margin: "4px 0 14px", fontSize: 12, color: pinkTheme.textMuted }}>
+              오늘의 당신, 할 수 있어요!
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {habitsToday.habits.map((habit) => (
+                <div
+                  key={habit.key}
+                  style={{
+                    background: pinkTheme.primarySoft,
+                    borderRadius: 12,
+                    padding: "10px 14px",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: 6,
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 700, color: pinkTheme.text }}>
+                      {habit.label}
+                    </span>
+                    <span style={{ fontSize: 12, color: pinkTheme.textMuted }}>
+                      {habit.progress}/{habit.target}
+                      {habit.unit}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ display: "flex", gap: 4, flex: 1, flexWrap: "wrap" }}>
+                      {Array.from({ length: habit.target }, (_, i) => (
+                        <span
+                          key={i}
+                          aria-hidden
+                          style={{
+                            fontSize: 18,
+                            opacity: i < habit.progress ? 1 : 0.25,
+                            filter: i < habit.progress ? "none" : "grayscale(100%)",
+                          }}
+                        >
+                          {habit.icon}
+                        </span>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={habit.completed}
+                      onClick={() => handleCheckHabit(habit.key)}
+                      style={{
+                        flexShrink: 0,
+                        border: "none",
+                        borderRadius: 999,
+                        padding: "6px 14px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: habit.completed ? "default" : "pointer",
+                        background: habit.completed ? pinkTheme.success : pinkTheme.primary,
+                        color: "#fff",
+                      }}
+                    >
+                      {habit.completed ? "완료!" : "체크"}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 오늘의 습관을 전부 목표치까지 채웠을 때만 뜨는 칭찬 화면 */}
+        {showCongrats && (
+          <Modal onClose={() => setShowCongrats(false)}>
             <div
               style={{
                 background: pinkTheme.cardBg,
-                border: `1px solid ${pinkTheme.border}`,
-                borderRadius: 16,
-                padding: 18,
-                marginBottom: 16,
-                boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+                borderRadius: 20,
+                padding: "36px 24px",
+                textAlign: "center",
               }}
             >
+              <p style={{ fontSize: 48, margin: 0 }}>🎉</p>
               <p
                 style={{
-                  margin: 0,
-                  fontSize: 14,
+                  fontSize: 18,
                   fontWeight: 700,
                   color: pinkTheme.primary,
+                  margin: "12px 0 4px",
                 }}
               >
-                🌿 {user.name}님을 위한 추천 라이프스타일
+                오늘의 습관을 모두 해냈어요!
               </p>
-              <p style={{ margin: "4px 0 12px", fontSize: 12, color: pinkTheme.textMuted }}>
-                오늘의 당신, 할 수 있어요!
+              <p style={{ fontSize: 13, color: pinkTheme.textMuted, margin: "0 0 20px" }}>
+                작은 실천이 쌓이면 큰 변화가 돼요. 정말 잘하고 있어요 💗
               </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {lifestyleTips.map((tip) => (
-                  <div
-                    key={`${tip.disease_code}-${tip.content_date}-${tip.title}`}
-                    style={{
-                      background: pinkTheme.primarySoft,
-                      borderRadius: 12,
-                      padding: "10px 14px",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: pinkTheme.text,
-                    }}
-                  >
-                    🌱 {tip.title}
-                  </div>
-                ))}
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowCongrats(false)}
+                style={{
+                  border: "none",
+                  borderRadius: 10,
+                  padding: "11px 28px",
+                  background: pinkTheme.primary,
+                  color: "#fff",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                좋아요!
+              </button>
             </div>
-          </Link>
+          </Modal>
         )}
 
         {showBanner && (
