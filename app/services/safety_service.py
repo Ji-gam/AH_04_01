@@ -14,7 +14,42 @@ EMERGENCY_FALLBACK_MESSAGE = (
     "이 답변은 의학적 조언이 아닙니다."
 )
 
-_EMERGENCY_KEYWORDS = ["가슴 통증", "숨이 안 쉬어져", "의식이 없어요"]
+# 공백 제거 후 부분 문자열로 매칭하는 단일 응급 표현.
+# 한국어 조사/어미 변형을 전부 열거할 수 없으므로, 어미가 붙어도 살아남는 어간 위주로 둔다
+# (예: "쓰러" → 쓰러졌다/쓰러질 것 같다 모두 매칭).
+_EMERGENCY_KEYWORDS = (
+    "흉통",
+    "호흡곤란",
+    "심장마비",
+    "심정지",
+    "각혈",
+    "실신",
+    "의식이없",
+    "의식없",
+    "의식을잃",
+    "의식잃",
+    "정신을잃",
+    "정신잃",
+    "쓰러",
+    "경련",
+    "발작",
+    "자살",
+    "죽고싶",
+    "극단적선택",
+    "목을매",
+)
+
+# 신체부위 어간 + 증상 어간이 함께 있을 때만 응급으로 판정한다(오탐 최소화).
+# 응급 폴백은 정상 답변을 가로채므로, 부위/증상 단독으로는 트리거하지 않는다.
+_EMERGENCY_COMBINATIONS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("가슴",), ("아파", "아프", "답답", "조여", "쥐어", "짓눌", "통증")),
+    (("숨",), ("안쉬", "못쉬", "쉬기힘", "차올", "막힌", "막혀", "가빠", "가쁘", "안쉼")),
+)
+
+
+def _normalize(text: str) -> str:
+    """공백을 모두 제거해 "가슴 통증"과 "가슴통증"을 동일하게 취급한다."""
+    return "".join(text.split())
 
 
 def apply_disclaimer(reply: str) -> str:
@@ -22,4 +57,10 @@ def apply_disclaimer(reply: str) -> str:
 
 
 def check_emergency(message: str) -> bool:
-    return any(keyword in message for keyword in _EMERGENCY_KEYWORDS)
+    normalized = _normalize(message)
+    if any(keyword in normalized for keyword in _EMERGENCY_KEYWORDS):
+        return True
+    for parts, symptoms in _EMERGENCY_COMBINATIONS:
+        if all(part in normalized for part in parts) and any(symptom in normalized for symptom in symptoms):
+            return True
+    return False
