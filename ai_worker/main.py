@@ -1,207 +1,26 @@
-import logging
-from typing import Any
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
-from langchain_chroma import Chroma
-from pydantic import BaseModel
+from fastapi import FastAPI
 
-from ai_worker.core.config import settings
-from ai_worker.schemas.generation_schema import GenerateStructuredRequest, GenerateStructuredResponse
-from ai_worker.tasks.generate_structured import GenerationUnavailableError, generate_structured
-from ai_worker.tasks.ingest import (
-    EmbeddingMismatchError,
-    EmbeddingUnavailableError,
-    assert_embedding_compatible,
-    build_vector_store,
-    ingest_csv_data,
-)
-from ai_worker.tasks.paper_agent import ask_paper_agent
+from ai_worker.core.logger import setup_logger
+from ai_worker.routers import api_router
+from ai_worker.services.retrieve_service import db_holder, initialize_rag  # noqa: F401 (테스트 주입 지점 재노출)
 
-# 로거 설정
-logger = logging.getLogger("ai_worker.main")
-logging.basicConfig(level=logging.INFO)
+logger = setup_logger("ai_worker.main")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    initialize_rag()
+    yield
+
 
 app = FastAPI(
     title="ReMedi AI Worker Service",
     description="RAG 파이프라인 및 Vector DB 검색 서비스를 제공하는 백그라운드 워커 API",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
-# 싱글톤 데이터베이스 인스턴스 및 성분명 캐시 홀더.
-# 값 타입을 Any로 둔 이유: 테스트에서 이 딕셔너리에 실제 Chroma 대신 duck-typed
-# fake 객체를 직접 대입해 모킹하므로(ai_worker/tests/test_main.py 참고), Chroma로
-# 좁히면 오히려 모킹이 막힌다.
-db_holder: dict[str, Any] = {
-    "db": None,
-    "ingr_names": set(),
-}
-
-
-class RetrieveRequest(BaseModel):
-    query: str
-    limit: int = 3
-
-
-class DocumentChunk(BaseModel):
-    content: str
-    metadata: dict
-
-
-class RetrieveResponse(BaseModel):
-    chunks: list[DocumentChunk]
-
-
-def cache_ingr_names(db: Chroma):
-    """ChromaDB 적재 문서로부터 모든 성분명을 추출하여 캐싱합니다."""
-    try:
-        logger.info("Extracting and caching unique drug ingredients from ChromaDB...")
-        collection = db._collection
-        # metadatas만 조회
-        data = collection.get(include=["metadatas"])
-        metadatas = (data.get("metadatas") or []) if data else []
-        names = set()
-        for meta in metadatas:
-            if not meta:
-                continue
-            ingr_name = meta.get("ingr_name")
-            if isinstance(ingr_name, str) and ingr_name:
-                names.add(ingr_name.strip())
-        db_holder["ingr_names"] = names
-        logger.info(f"Cached {len(names)} unique ingredients (e.g., {list(names)[:5]})")
-    except Exception as e:
-        logger.error(f"Failed to cache ingredient names: {e}")
-
-
-@app.on_event("startup")
-async def startup_event():
-    """
-    서비스 기동 시 데이터 인덱싱(Ingestion)을 자동 수행하고,
-    크로마 DB 연결 객체와 성분명 인덱스를 캐싱합니다.
-    """
-    logger.info("Initializing RAG Ingestion on startup...")
-    try:
-        # 동기 Ingestion 함수 실행
-        db = ingest_csv_data()
-        db_holder["db"] = db
-        cache_ingr_names(db)
-        logger.info("RAG Initialization completed.")
-    except Exception as e:
-        logger.error(f"Failed to initialize RAG on startup: {e}")
-
-
-@app.post("/retrieve", response_model=RetrieveResponse)
-async def retrieve_documents(payload: RetrieveRequest) -> RetrieveResponse:
-    """
-    입력된 쿼리에 대해 ChromaDB에서 가장 유사한 의약 안전 정보 문서(chunk)들을 검색합니다.
-    쿼리 내에 성분명이 식별될 경우 메타데이터 필터링을 우선 적용합니다.
-    """
-    db = db_holder["db"]
-    if db is None:
-        try:
-            db = build_vector_store()
-            db_holder["db"] = db
-            cache_ingr_names(db)
-        except EmbeddingUnavailableError as e:
-            raise HTTPException(status_code=503, detail=str(e)) from e
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Vector DB is not initialized. Error: {e}") from e
-
-    # 저장된 벡터의 임베딩 모델과 현재 백엔드가 다르면 무음 오필터 대신 503으로 거부한다.
-    try:
-        assert_embedding_compatible(db)
-    except EmbeddingMismatchError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-
-    try:
-        logger.info(f"Retrieving documents for query: '{payload.query}' (limit: {payload.limit})")
-
-        # 쿼리 내 성분명 매칭 기반 동적 메타데이터 필터링
-        filter_dict = None
-        query_text = payload.query.replace(" ", "")
-        ingr_names = db_holder["ingr_names"]
-
-        # 가장 긴 성분명부터 매칭을 시도하여 정확도를 높입니다.
-        sorted_ingrs = sorted(list(ingr_names), key=len, reverse=True)
-        for ingr in sorted_ingrs:
-            # 양방향 부분 매칭 검사:
-            # 1. 쿼리 텍스트가 성분명의 일부인 경우 (예: "졸피뎀" -> "졸피뎀타르타르산염")
-            # 2. 성분명이 쿼리 텍스트의 일부인 경우 (예: "졸피뎀타르타르산염에 대해" -> "졸피뎀타르타르산염")
-            if (ingr in query_text) or (len(query_text) >= 2 and query_text in ingr):
-                filter_dict = {"ingr_name": ingr}
-                logger.info(f"Dynamic metadata filter applied: ingr_name='{ingr}'")
-                break
-
-        # 유사도 점수(Score)를 포함한 검색 수행
-        docs_with_scores = db.similarity_search_with_score(payload.query, k=payload.limit, filter=filter_dict)
-
-        # 디버깅 로그 출력 (유사도 거리 분석용)
-        for doc, score in docs_with_scores:
-            logger.info(
-                f"DEBUG_SCORE: INGR={doc.metadata.get('ingr_name')}, score={score}, source={doc.metadata.get('source')}"
-            )
-
-        # 임계값(score < threshold)을 만족하는 유효한 문서만 반환합니다. 값은 config에서
-        # 가져와 임베딩 백엔드별로 튜닝할 수 있게 한다(거리 스케일이 백엔드마다 다름).
-        threshold = settings.RAG_SIMILARITY_THRESHOLD
-        valid_docs = [doc for doc, score in docs_with_scores if score < threshold]
-
-        # 문서의 내용과 메타데이터를 함께 추출
-        chunks = [DocumentChunk(content=doc.page_content, metadata=doc.metadata) for doc in valid_docs]
-        logger.info(
-            f"Found {len(chunks)} relevant chunks after filter and threshold (candidates: {len(docs_with_scores)})"
-        )
-        return RetrieveResponse(chunks=chunks)
-    except Exception as e:
-        logger.error(f"Error during retrieval: {e}")
-        raise HTTPException(status_code=500, detail=f"Error occurred during vector retrieval: {e}") from e
-
-
-@app.post(
-    "/generate-structured",
-    response_model=GenerateStructuredResponse,
-    summary="범용 구조화 생성",
-    description=(
-        "T-LLM-2-async-gateway: system_prompt + user_input + json_schema를 받아 그 스키마를 "
-        "만족하는 JSON을 생성한다. 도메인 프롬프트/스키마는 호출하는 쪽(AIWorkerGateway.call_structured)이 "
-        "소유하며, 이 엔드포인트는 도메인 지식을 갖지 않는다."
-    ),
-)
-async def generate_structured_endpoint(payload: GenerateStructuredRequest) -> GenerateStructuredResponse:
-    try:
-        data = await generate_structured(payload.system_prompt, payload.user_input, payload.json_schema)
-    except GenerationUnavailableError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-    return GenerateStructuredResponse(data=data)
-
-
-class PaperAgentRequest(BaseModel):
-    question: str
-
-
-class PaperAgentResponse(BaseModel):
-    answer: str
-
-
-@app.post(
-    "/agent/paper-search",
-    response_model=PaperAgentResponse,
-    summary="질환 논문 검색 에이전트 (T-LLM-7, 스텁)",
-    description=(
-        "T-LLM-7: 도구 1개(질환 논문 검색 스텁)를 쥔 LangChain 에이전트. "
-        "기존 /retrieve(DUR 검색)와는 완전히 별개 파이프라인이다."
-    ),
-)
-async def paper_agent_endpoint(payload: PaperAgentRequest) -> PaperAgentResponse:
-    try:
-        answer = await ask_paper_agent(payload.question)
-    except GenerationUnavailableError as e:
-        raise HTTPException(status_code=503, detail=str(e)) from e
-    return PaperAgentResponse(answer=answer)
-
-
-@app.get("/health")
-async def health_check():
-    """
-    컨테이너 헬스체크용 엔드포인트
-    """
-    return {"status": "healthy", "db_loaded": db_holder["db"] is not None}
+app.include_router(api_router)
