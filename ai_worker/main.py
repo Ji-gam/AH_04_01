@@ -10,6 +10,7 @@ from ai_worker.schemas.generation_schema import GenerateStructuredRequest, Gener
 from ai_worker.tasks.generate_structured import GenerationUnavailableError, generate_structured
 from ai_worker.tasks.ingest import (
     EmbeddingMismatchError,
+    EmbeddingUnavailableError,
     assert_embedding_compatible,
     build_vector_store,
     ingest_csv_data,
@@ -100,6 +101,8 @@ async def retrieve_documents(payload: RetrieveRequest) -> RetrieveResponse:
             db = build_vector_store()
             db_holder["db"] = db
             cache_ingr_names(db)
+        except EmbeddingUnavailableError as e:
+            raise HTTPException(status_code=503, detail=str(e)) from e
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Vector DB is not initialized. Error: {e}") from e
 

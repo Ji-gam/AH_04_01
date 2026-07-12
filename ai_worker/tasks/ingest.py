@@ -2,7 +2,6 @@ import logging
 from pathlib import Path
 
 from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings
 
 from ai_worker.core.config import settings
@@ -32,44 +31,43 @@ def _display_source_label(file_name: str) -> str:
 
 COLLECTION_NAME = "dur_rules"
 
-# 임베딩 백엔드 식별자 → 실제 모델명. OpenAI(1536차원)와 HF(384차원)는 거리 스케일이
-# 달라, 저장 시점과 검색 시점의 백엔드가 다르면 검색 결과가 무의미해진다.
-_EMBEDDING_MODELS = {
-    "openai": "openai:text-embedding-3-small",
-    "hf": "hf:sentence-transformers/all-MiniLM-L6-v2",
-}
+# 임베딩 모델 식별자(컬렉션 메타데이터에 저장되는 값).
+_EMBEDDING_MODEL_NAME = "openai:text-embedding-3-small"
 
 
 class EmbeddingMismatchError(Exception):
-    """저장된 벡터의 임베딩 모델과 현재 백엔드가 달라 검색이 무의미할 때 발생."""
+    """저장된 벡터의 임베딩 모델과 현재 백엔드가 달라 검색이 무의미할 때 발생.
+    (레거시: HF 폴백이 있던 시절에 임베딩된 컬렉션을 감지하기 위한 안전망으로 유지한다.)"""
 
 
-def _embedding_backend() -> str:
-    """현재 사용 가능한 임베딩 백엔드('openai' 또는 'hf')를 결정한다."""
+class EmbeddingUnavailableError(Exception):
+    """`OPENAI_API_KEY`/`OPENAI_EMBEDDING_API_KEY`가 없어 임베딩을 생성할 수 없을 때 발생.
+    과거엔 키가 없으면 로컬 HuggingFace로 조용히 폴백했으나, 검색 정확도가 실서비스와
+    달라져 무음 성능저하를 낳았다. 팀이 `.env`를 공유해 키 부재가 일어날 일이 없으므로,
+    조용히 저하되는 대신 설정 오류로 간주해 즉시 실패한다(결정 2026-07-13)."""
+
+
+def _require_api_key() -> str:
     api_key = settings.OPENAI_EMBEDDING_API_KEY or settings.OPENAI_API_KEY
-    return "openai" if api_key else "hf"
+    if not api_key:
+        raise EmbeddingUnavailableError(
+            "OPENAI_API_KEY/OPENAI_EMBEDDING_API_KEY가 설정되지 않아 임베딩을 생성할 수 없습니다."
+        )
+    return api_key
 
 
 def active_embedding_model() -> str:
-    """현재 백엔드가 사용하는 임베딩 모델 식별자(컬렉션 메타데이터에 저장되는 값)."""
-    return _EMBEDDING_MODELS[_embedding_backend()]
+    """현재 사용 중인 임베딩 모델 식별자(컬렉션 메타데이터에 저장되는 값). 키가 없으면 실패한다."""
+    _require_api_key()
+    return _EMBEDDING_MODEL_NAME
 
 
 def get_embeddings():
-    """
-    OpenAI text-embedding-3-small 모델을 기본 임베딩으로 사용하며,
-    설정된 API Key 유무에 따라 적절한 객체를 반환합니다.
-    API Key가 모두 없을 경우 로컬 HuggingFace Embeddings로 폴백합니다.
-    """
-    # 1. 임베딩 전용 API Key 확인
-    api_key = settings.OPENAI_EMBEDDING_API_KEY or settings.OPENAI_API_KEY
-
-    if api_key:
-        logger.info("Using OpenAIEmbeddings (text-embedding-3-small) for RAG Ingestion")
-        return OpenAIEmbeddings(openai_api_key=api_key, model="text-embedding-3-small")
-    else:
-        logger.warning("No OpenAI API Key found. Falling back to local HuggingFaceEmbeddings (all-MiniLM-L6-v2)")
-        return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    """OpenAI text-embedding-3-small로 임베딩을 생성한다. API 키가 없으면 즉시 실패한다
+    (로컬 HuggingFace 폴백 없음 — `EmbeddingUnavailableError` 참고)."""
+    api_key = _require_api_key()
+    logger.info("Using OpenAIEmbeddings (text-embedding-3-small) for RAG Ingestion")
+    return OpenAIEmbeddings(openai_api_key=api_key, model="text-embedding-3-small")
 
 
 def build_vector_store() -> Chroma:
