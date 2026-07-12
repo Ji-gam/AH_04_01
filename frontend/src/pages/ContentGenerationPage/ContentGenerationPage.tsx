@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { contentApi } from "../../api/contentApi";
@@ -12,23 +12,37 @@ const cardStyle: React.CSSProperties = {
   padding: "16px",
 };
 
-/** [QA 전용] 더보기 > 컨텐츠생성.
+/** 더보기 > 관리자 컨텐츠생성.
  * 버튼을 누르면 실제로 ai_worker의 LLM 생성(/generate-structured)을 호출해 콘텐츠 카드를
- * 만든다 — 게이트웨이 생성 타임아웃 분리 수정을 수동으로 검증하기 위한 화면이다.
- * 생성 결과는 이 페이지의 메모리(state)에만 쌓인다(새로고침하면 목록이 비워진다) —
- * 영구 저장/조회는 "정보" 탭(InfoPage)의 몫이고, 이 화면은 순수 QA 스크래치 용도다. */
+ * 만들고 즉시 DB(health_contents)에 저장한다 — 오프라인 배치 생성을 보완하는 온라인 단건
+ * 생성 관리 도구다. 저장된 카드는 "정보" 탭에도 그대로 반영된다.
+ * 진입 시 기존 생성물을 GET /contents/me로 불러와 목록에 채우므로, 새로고침해도
+ * 이전에 만든 카드들이 그대로 보인다. */
 export default function ContentGenerationPage() {
   const navigate = useNavigate();
   const [items, setItems] = useState<HealthContentResult[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    contentApi
+      .getContents()
+      .then((feed) => setItems(feed.items))
+      .catch(() => {
+        // 목록 조회 실패는 조용히 빈 목록으로 시작한다 - 생성 자체는 계속 가능해야 하므로.
+      })
+      .finally(() => setIsLoading(false));
+  }, []);
 
   async function handleGenerate() {
     setIsGenerating(true);
     setError(null);
     try {
       const item = await contentApi.generate();
-      setItems((prev) => [item, ...prev]);
+      // 같은 (질환,카테고리,오늘) 카드를 다시 생성한 경우 갱신된 것이므로, 기존 항목은
+      // 지우고 최신 내용을 맨 위로 올린다(중복 표시 방지).
+      setItems((prev) => [item, ...prev.filter((existing) => existing.id !== item.id)]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "생성 중 오류가 발생했습니다.");
     } finally {
@@ -54,9 +68,10 @@ export default function ContentGenerationPage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ color: pinkTheme.text, fontSize: 20 }}>컨텐츠생성 (QA)</h1>
+        <h1 style={{ color: pinkTheme.text, fontSize: 20 }}>관리자 컨텐츠생성</h1>
         <p style={{ color: pinkTheme.textMuted, fontSize: 13, marginTop: 4 }}>
-          버튼을 누르면 실제 LLM 생성이 호출됩니다. 5초를 넘겨도 정상 완료되는지 확인해보세요.
+          버튼을 누르면 실제 LLM으로 건강 콘텐츠 카드를 생성해 저장합니다. "정보" 탭에 바로
+          반영돼요.
         </p>
 
         <button
@@ -81,7 +96,19 @@ export default function ContentGenerationPage() {
         {error && <p style={{ color: pinkTheme.danger, marginTop: 12 }}>{error}</p>}
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "20px" }}>
-          {items.length === 0 && !isGenerating && (
+          {isLoading && (
+            <p
+              style={{
+                color: pinkTheme.textMuted,
+                fontSize: 13,
+                textAlign: "center",
+                marginTop: 20,
+              }}
+            >
+              불러오는 중...
+            </p>
+          )}
+          {!isLoading && items.length === 0 && !isGenerating && (
             <p
               style={{
                 color: pinkTheme.textMuted,

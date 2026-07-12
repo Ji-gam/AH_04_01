@@ -10,10 +10,10 @@ const cardStyle: React.CSSProperties = {
   padding: "16px",
 };
 
-/** [QA 전용] 컨텐츠생성 목록 아이템의 상세화면.
+/** 관리자 컨텐츠생성 목록 아이템의 상세화면.
  * 별도 상세조회 API 없이, 목록에서 클릭할 때 라우터 state로 넘겨받은 데이터만 그린다 —
- * 이 화면은 세션 메모리 목록의 상세보기일 뿐이라, 새로고침/직접 URL 접근 시에는
- * "목록에서 다시 눌러달라"는 안내만 보여준다. */
+ * 새 탭이나 URL 직접 접근처럼 state 없이 들어오면 "목록에서 다시 눌러달라"는 안내만
+ * 보여준다(카드 자체는 DB에 남아있고 "정보" 탭/목록 재조회로 다시 볼 수 있다). */
 export default function ContentDetailPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -38,7 +38,7 @@ export default function ContentDetailPage() {
             ← 뒤로가기
           </button>
           <p style={{ color: pinkTheme.textMuted }}>
-            이 화면은 QA 목록에서만 접근할 수 있어요(새로고침 시 사라짐). 목록에서 다시 눌러주세요.
+            이 상세화면은 목록에서 클릭해야 볼 수 있어요. 목록에서 다시 눌러주세요.
           </p>
         </div>
       </div>

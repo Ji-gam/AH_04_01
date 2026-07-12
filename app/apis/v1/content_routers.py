@@ -50,11 +50,12 @@ async def get_my_contents(
 @content_router.post(
     "/generate",
     response_model=HealthContentResponse,
-    summary="[QA] 건강 콘텐츠 수동 생성 트리거",
+    summary="[관리자] 건강 콘텐츠 생성",
     description=(
         "실제로 ai_worker의 `/generate-structured`(LLM 생성)를 호출해 콘텐츠 카드 1건을 만들고 "
-        "즉시 저장한다. 프로덕션 사용자 플로우가 아니라, 게이트웨이 생성 타임아웃 분리 수정을 "
-        "수동으로 검증하기 위한 QA 전용 엔드포인트다(더보기 > 컨텐츠생성 화면 전용). "
+        "`health_contents`에 즉시 저장한다(더보기 > 관리자 컨텐츠생성 화면 전용). 저장된 카드는 "
+        '"정보" 탭(`GET /contents/me`)에도 그대로 반영된다 — 오프라인 배치 생성(`generate_'
+        "health_content.py`)을 보완하는 온라인 단건 생성 경로다. "
         "disease_code/category/topic을 생략하면 서버가 무작위로 고른다. 같은 (질환, 카테고리, "
         "오늘 날짜) 캐시가 있으면 새로 만들지 않고 그 카드를 갱신한다."
     ),

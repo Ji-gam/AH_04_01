@@ -1,11 +1,12 @@
 """
-T-LLM-3-manual-content-generation: QA 전용 수동 콘텐츠 생성 트리거.
+T-LLM-3-manual-content-generation: 관리자용 온라인 단건 콘텐츠 생성.
 
 `ContentService`는 DB 캐시만 읽고 LLM을 직접 호출하지 않는다(2026-07-08 확정: 요청 안에서
 매번 LLM을 부르는 건 지연/비용 문제가 있어 제거함). 이 서비스는 그 원칙을 의도적으로
-벗어난다 — 프로덕션 사용자 플로우가 아니라, "더보기 > 컨텐츠생성" 화면에서 사람이 버튼을
-눌러 실제로 ai_worker LLM 생성을 트리거하는 **QA 전용** 경로다. 목적: #83(게이트웨이
-생성 타임아웃 분리) 수정이 실제 환경에서 동작하는지 수동으로 검증한다.
+벗어난다 — 일반 사용자 플로우가 아니라, "더보기 > 관리자 컨텐츠생성" 화면에서 관리자가
+버튼을 눌러 그 자리에서 ai_worker LLM 생성을 트리거하고 즉시 DB에 반영하는 관리 도구
+경로다. 오프라인 배치 생성(`generate_health_content.py` + `seed_health_content.py`)이
+커버 못 하는 "지금 바로 이 조합 하나만" 요청에 쓴다.
 
 실패(AIWorkerUnavailableError 등)는 조용히 삼키지 않고 그대로 호출자(라우터)에게
 전파한다 — ContentService._search_chunks류의 "실패해도 계속 진행" 정책과 다르다.

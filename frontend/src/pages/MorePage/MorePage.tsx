@@ -145,9 +145,9 @@ export default function MorePage() {
           }}
         >
           <span>
-            🧪 컨텐츠생성 (QA)
+            🛠️ 관리자 컨텐츠생성
             <span style={{ display: "block", fontSize: "12px", color: "#888", marginTop: "2px" }}>
-              실제 LLM으로 건강 콘텐츠를 생성해 게이트웨이 동작을 수동 검증해요
+              실제 LLM으로 건강 콘텐츠 카드를 즉시 생성해 "정보" 탭에 반영해요
             </span>
           </span>
           <span aria-hidden>›</span>
