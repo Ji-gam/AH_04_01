@@ -85,13 +85,27 @@ class FakeChromaDbWithEmbeddingMetadata(FakeChromaDb):
 
 
 async def test_retrieve_rejects_when_embedding_model_mismatches(monkeypatch):
-    """저장된 벡터의 임베딩 모델과 현재 백엔드가 다르면 무음 오필터 대신 503으로 거부한다."""
+    """레거시(HF 폴백이 있던 시절 임베딩된) 컬렉션을 지금 다시 열면 503으로 거부한다."""
     from ai_worker.tasks import ingest as ingest_module
 
     monkeypatch.setattr(ingest_module.settings, "OPENAI_EMBEDDING_API_KEY", None)
-    monkeypatch.setattr(ingest_module.settings, "OPENAI_API_KEY", None)  # 현재 백엔드=HF
-    db_holder["db"] = FakeChromaDbWithEmbeddingMetadata([], embedding_model="openai:text-embedding-3-small")
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_API_KEY", "sk-key")  # 현재는 OpenAI만 존재
+    db_holder["db"] = FakeChromaDbWithEmbeddingMetadata([], embedding_model="hf:sentence-transformers/all-MiniLM-L6-v2")
     db_holder["ingr_names"] = set()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/retrieve", json={"query": "졸피뎀", "limit": 3})
+
+    assert response.status_code == 503
+
+
+async def test_retrieve_returns_503_when_embedding_key_missing(monkeypatch):
+    """임베딩 키가 아예 없으면(로컬 HF 폴백 없음) 500이 아니라 503으로 명확히 실패한다."""
+    from ai_worker.tasks import ingest as ingest_module
+
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_EMBEDDING_API_KEY", None)
+    monkeypatch.setattr(ingest_module.settings, "OPENAI_API_KEY", None)
+    db_holder["db"] = None
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/retrieve", json={"query": "졸피뎀", "limit": 3})
