@@ -175,9 +175,10 @@ def ingest_csv_data():
     # 함께 기록하기 위해 공용 팩토리를 거친다.
     db = build_vector_store()
 
-    # 이미 데이터가 적재되어 있는지 확인 (컬렉션 카운트)
+    # 이미 데이터가 적재되어 있는지 확인. wrapper엔 공개 count()가 없어 id만 조회해 개수를 센다
+    # (include=[]로 임베딩/문서/메타데이터는 안 불러옴 — id는 chroma가 항상 반환).
     try:
-        existing_count = db._collection.count()
+        existing_count = len(db.get(include=[])["ids"])
         if existing_count > 0:
             logger.info(f"ChromaDB already has {existing_count} documents. Skipping ingestion.")
             return db
