@@ -23,9 +23,8 @@ def cache_ingr_names(db: Chroma) -> None:
     """ChromaDB 적재 문서로부터 모든 성분명을 추출하여 캐싱합니다."""
     try:
         logger.info("Extracting and caching unique drug ingredients from ChromaDB...")
-        collection = db._collection
-        # metadatas만 조회
-        data = collection.get(include=["metadatas"])
+        # metadatas만 조회 (langchain-chroma의 공개 API — 사설 `_collection` 미사용)
+        data = db.get(include=["metadatas"])
         metadatas = (data.get("metadatas") or []) if data else []
         names = set()
         for meta in metadatas:

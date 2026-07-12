@@ -18,9 +18,11 @@ from ai_worker.tasks.ingest import (
     EmbeddingUnavailableError,
     _display_source_label,
     _load_docs_from_csv,
+    _read_collection_metadata,
     active_embedding_model,
     assert_embedding_compatible,
     get_embeddings,
+    ingest_csv_data,
 )
 
 
@@ -111,3 +113,42 @@ def test_assert_embedding_compatible_skips_when_metadata_absent():
     """임베딩 모델명이 저장되지 않은 기존 컬렉션은 검증할 수 없으므로 통과시킨다(무음 차단 방지)."""
     assert_embedding_compatible(_FakeDb(None))
     assert_embedding_compatible(_FakeDb({}))
+
+
+class _FakeDbWithPublicGet:
+    """langchain-chroma의 공개 API(`get`)만 흉내낸다. `_collection`은 일부러 두지 않는다 —
+    프로덕션 코드가 사설 접근을 시도하면 AttributeError로 곧장 드러나야 한다."""
+
+    def __init__(self, ids: list[str]) -> None:
+        self._ids = ids
+        self.add_documents_called = False
+
+    def get(self, include: list[str]):
+        return {"ids": self._ids}
+
+    def add_documents(self, docs):
+        self.add_documents_called = True
+
+
+def test_read_collection_metadata_returns_stored_metadata():
+    """langchain-chroma 1.1.0엔 컬렉션 메타데이터 공개 접근자가 없어, 사설 `_collection`
+    접근이 이 헬퍼 한 곳에만 격리돼 있는지 검증한다."""
+    db = _FakeDb({"embedding_model": "openai:text-embedding-3-small"})
+
+    assert _read_collection_metadata(db) == {"embedding_model": "openai:text-embedding-3-small"}
+
+
+def test_read_collection_metadata_returns_empty_dict_when_absent():
+    assert _read_collection_metadata(_FakeDb(None)) == {}
+    assert _read_collection_metadata(_FakeDbWithPublicGet(ids=[])) == {}
+
+
+def test_ingest_csv_data_skips_when_documents_already_exist(monkeypatch):
+    """이미 적재된 컬렉션은 공개 get()으로 개수를 확인해 재인제스트를 건너뛴다."""
+    fake_db = _FakeDbWithPublicGet(ids=["1", "2", "3"])
+    monkeypatch.setattr(ingest_module, "build_vector_store", lambda: fake_db)
+
+    result = ingest_csv_data()
+
+    assert result is fake_db
+    assert fake_db.add_documents_called is False
