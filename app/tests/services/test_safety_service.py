@@ -34,6 +34,29 @@ def test_check_emergency_ignores_non_emergency(message):
     assert safety_service.check_emergency(message) is False
 
 
+@pytest.mark.parametrize(
+    "message,response",
+    [
+        ("콘서타 먹어도 되나요?", "임산부는 복용 시 주의해야 합니다."),
+        ("감기약 처방전 질문", "이 약물은 부작용이..."),
+        ("당뇨 관리 어떻게", "혈당 관리가 중요합니다."),
+    ],
+)
+def test_is_medical_related_detects_medical_conversation(message, response):
+    assert safety_service.is_medical_related(message, response) is True
+
+
+@pytest.mark.parametrize(
+    "message,response",
+    [
+        ("오늘 날씨 어때?", "오늘 날씨는 매우 맑고 따뜻할 예정입니다."),
+        ("초코칩 쿠키 레시피 알려줘", "밀가루와 설탕을 섞어 구우면 됩니다."),
+    ],
+)
+def test_is_medical_related_ignores_non_medical(message, response):
+    assert safety_service.is_medical_related(message, response) is False
+
+
 def test_apply_disclaimer_appends_disclaimer_text():
     reply = "복약 시간을 놓치셨다면 다음 복용 시간에 정량만 드세요."
 

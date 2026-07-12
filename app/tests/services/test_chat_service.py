@@ -141,6 +141,19 @@ def test_is_medical_related_fallback():
     )
 
 
+async def test_check_if_medical_uses_keyword_fallback_without_api_key(monkeypatch):
+    """OPENAI_API_KEY가 없으면(config 경유) LLM 호출 없이 키워드 폴백으로 판정한다."""
+    from app.core import config
+
+    monkeypatch.setattr(config, "OPENAI_API_KEY", None)
+    service = ChatService()
+
+    assert (
+        await service._check_if_medical_related_via_llm("아스피린 부작용 있나요?", "부작용이 있을 수 있습니다.") is True
+    )
+    assert await service._check_if_medical_related_via_llm("오늘 날씨 어때?", "맑고 따뜻합니다.") is False
+
+
 class SpyLlmStream:
     def __init__(self):
         self.received_chunks = []
