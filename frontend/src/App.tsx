@@ -12,6 +12,8 @@ import AccountSettingsPage from "./pages/AccountSettingsPage/AccountSettingsPage
 import AlarmPage from "./pages/AlarmPage/AlarmPage";
 import ChatPage from "./pages/ChatPage/ChatPage";
 import ConsentPage from "./pages/ConsentPage/ConsentPage";
+import ContentDetailPage from "./pages/ContentGenerationPage/ContentDetailPage";
+import ContentGenerationPage from "./pages/ContentGenerationPage/ContentGenerationPage";
 import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
 import HomePage from "./pages/HomePage/HomePage";
 import InfoPage from "./pages/InfoPage/InfoPage";
@@ -40,6 +42,8 @@ export const router = createBrowserRouter([
       { path: "/chat", element: <ChatPage /> },
       { path: "/info", element: <InfoPage /> },
       { path: "/more", element: <MorePage /> },
+      { path: "/content-generation", element: <ContentGenerationPage /> },
+      { path: "/content-generation/:id", element: <ContentDetailPage /> },
       {
         // 개인건강정보는 민감정보(건강정보)라 로그인이 꼭 필요하다.
         element: <RequireAuth />,

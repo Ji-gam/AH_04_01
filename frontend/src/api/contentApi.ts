@@ -1,5 +1,10 @@
 import { apiFetch } from "./client";
-import type { ContentCategory, ContentsFeedResult } from "./types";
+import type {
+  ContentCategory,
+  ContentsFeedResult,
+  GenerateContentPayload,
+  HealthContentResult,
+} from "./types";
 
 export const contentApi = {
   // 로그인 없이도 호출 가능한 공개 엔드포인트다(T-LLM-3, app/apis/v1/content_routers.py 참고).
@@ -10,4 +15,10 @@ export const contentApi = {
     const query = params.toString();
     return apiFetch<ContentsFeedResult>(`/contents/me${query ? `?${query}` : ""}`);
   },
+  // [QA 전용] 실제로 ai_worker LLM 생성을 호출한다. 더보기 > 컨텐츠생성 화면 전용.
+  generate: (payload: GenerateContentPayload = {}) =>
+    apiFetch<HealthContentResult>("/contents/generate", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 };
