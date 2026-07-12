@@ -27,6 +27,11 @@ def search_disease_paper(disease: str) -> str:
     "뇌혈관질환"으로 바꿔서 호출한다.
     의학 논문과 무관한 질문(날씨, 잡담 등)에는 이 도구를 호출하지 않는다.
     """
+    # disease는 LLM이 산출한 값이라 파일 경로에 그대로 삽입하면 path traversal 위험이 있다.
+    # 파일 경로를 조립하기 전에 화이트리스트로 먼저 검증한다.
+    if disease not in SUPPORTED_DISEASES:
+        return f"'{disease}'에 대한 논문 자료를 찾지 못했습니다. 지원 질환: {', '.join(SUPPORTED_DISEASES)}"
+
     stub_path = DATA_DIR / f"{disease}.json"
     if not stub_path.exists():
         return f"'{disease}'에 대한 논문 자료를 찾지 못했습니다. 지원 질환: {', '.join(SUPPORTED_DISEASES)}"
