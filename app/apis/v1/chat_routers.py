@@ -96,4 +96,8 @@ async def list_chat_messages(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="채팅 세션을 찾을 수 없습니다.")
 
     messages = await ChatRepository().list_messages(session, session_id)
-    return [ChatMessageResponse(role=m.role, content=m.content, created_at=m.created_at) for m in messages]
+    # MessageRole enum 값 자체가 "USER"/"ASSISTANT"(대문자)라, 프론트(useChatStream.ts)가
+    # 기대하는 소문자 "user"/"assistant"로 API 경계에서 변환한다(DB/모델은 그대로 둠).
+    return [
+        ChatMessageResponse(role=m.role.value.lower(), content=m.content, created_at=m.created_at) for m in messages
+    ]
