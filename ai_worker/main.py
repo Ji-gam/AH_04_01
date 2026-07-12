@@ -3,10 +3,16 @@ from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from langchain_chroma import Chroma
-from pydantic import BaseModel
 
 from ai_worker.core.config import settings
 from ai_worker.schemas.generation_schema import GenerateStructuredRequest, GenerateStructuredResponse
+from ai_worker.schemas.retrieval_schema import (
+    DocumentChunk,
+    PaperAgentRequest,
+    PaperAgentResponse,
+    RetrieveRequest,
+    RetrieveResponse,
+)
 from ai_worker.tasks.generate_structured import GenerationUnavailableError, generate_structured
 from ai_worker.tasks.ingest import (
     EmbeddingMismatchError,
@@ -35,20 +41,6 @@ db_holder: dict[str, Any] = {
     "db": None,
     "ingr_names": set(),
 }
-
-
-class RetrieveRequest(BaseModel):
-    query: str
-    limit: int = 3
-
-
-class DocumentChunk(BaseModel):
-    content: str
-    metadata: dict
-
-
-class RetrieveResponse(BaseModel):
-    chunks: list[DocumentChunk]
 
 
 def cache_ingr_names(db: Chroma):
@@ -172,14 +164,6 @@ async def generate_structured_endpoint(payload: GenerateStructuredRequest) -> Ge
     except GenerationUnavailableError as e:
         raise HTTPException(status_code=503, detail=str(e)) from e
     return GenerateStructuredResponse(data=data)
-
-
-class PaperAgentRequest(BaseModel):
-    question: str
-
-
-class PaperAgentResponse(BaseModel):
-    answer: str
 
 
 @app.post(
