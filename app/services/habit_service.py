@@ -1,3 +1,4 @@
+import hashlib
 from dataclasses import dataclass
 from datetime import date
 
@@ -7,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.dtos.habit import HabitItemResponse, HabitsTodayResponse
 from app.models.profiles import Disease, Profile
 from app.repositories.habit_repository import HabitRepository
+
+DAILY_PICK_COUNT = 3
 
 
 @dataclass(frozen=True)
@@ -38,9 +41,10 @@ DISEASE_HABITS: dict[Disease, HabitDef] = {
 }
 
 
-def build_catalog(profile: Profile) -> list[HabitDef]:
-    """오늘의 습관 세트 = 기본 세트 + 등록된 질환마다 맞춤 습관 1개(같은 질환 중복 등록은 1개로 합침)."""
-    catalog = list(BASE_HABITS)
+def build_full_pool(profile: Profile) -> list[HabitDef]:
+    """가능한 전체 습관 후보 = 기본 세트 + 등록된 질환마다 맞춤 습관 1개(중복 질환은 1개로 합침).
+    오늘 실제로 보여줄 3개는 이 후보군에서 pick_todays_habits()가 날짜 기준으로 골라낸다."""
+    pool = list(BASE_HABITS)
     seen: set[Disease] = set()
     for entry in profile.diagnosis_history or []:
         disease = Disease(entry["disease"])
@@ -49,8 +53,18 @@ def build_catalog(profile: Profile) -> list[HabitDef]:
         seen.add(disease)
         habit_def = DISEASE_HABITS.get(disease)
         if habit_def:
-            catalog.append(habit_def)
-    return catalog
+            pool.append(habit_def)
+    return pool
+
+
+def pick_todays_habits(pool: list[HabitDef], profile_id: int, today: date) -> list[HabitDef]:
+    """후보군이 3개 이하면 전부 보여주고, 그보다 많으면 날짜+profile_id로 결정론적으로 3개를 고른다
+    (같은 날엔 항상 같은 3개, 자정이 지나면 자동으로 다른 3개로 로테이션)."""
+    if len(pool) <= DAILY_PICK_COUNT:
+        return pool
+    seed = int(hashlib.sha256(f"{profile_id}:{today.isoformat()}".encode()).hexdigest(), 16)
+    start = seed % len(pool)
+    return [pool[(start + i) % len(pool)] for i in range(DAILY_PICK_COUNT)]
 
 
 class HabitService:
@@ -59,14 +73,14 @@ class HabitService:
 
     async def get_today(self, session: AsyncSession, profile: Profile) -> HabitsTodayResponse:
         today = date.today()
-        catalog = build_catalog(profile)
+        catalog = pick_todays_habits(build_full_pool(profile), profile.id, today)
         logs = await self._repository.list_logs_for_date(session, profile.id, today)
         progress_by_key = {log.habit_key: log.progress for log in logs}
         return self._to_response(catalog, progress_by_key)
 
     async def check_habit(self, session: AsyncSession, profile: Profile, habit_key: str) -> HabitsTodayResponse:
         today = date.today()
-        catalog = build_catalog(profile)
+        catalog = pick_todays_habits(build_full_pool(profile), profile.id, today)
         habit_def = next((h for h in catalog if h.key == habit_key), None)
         if habit_def is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="오늘의 습관 목록에 없는 항목입니다.")

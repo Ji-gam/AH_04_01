@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
+import { contentApi } from "../../api/contentApi";
 import { habitApi } from "../../api/habitApi";
 import { healthInfoApi } from "../../api/healthInfoApi";
 import { notificationApi } from "../../api/notificationApi";
 import type {
-  HealthInfoResult,
   HabitsTodayResult,
+  HealthContentResult,
+  HealthInfoResult,
   NotificationScheduleResult,
 } from "../../api/types";
 import { useAuth } from "../../hooks/useAuth";
@@ -16,6 +18,14 @@ import { pinkTheme } from "../../theme/pinkTheme";
 import Modal from "../AlarmPage/components/Modal";
 import { toDateString } from "../AlarmPage/dateUtils";
 import { buildGroups, loadChecked } from "../SchedulePage/scheduleData";
+
+/** 홈 화면 2x2 바로가기 그리드 항목. */
+const QUICK_LINKS: { to: string; icon: string; label: string }[] = [
+  { to: "/alarms", icon: "🔔", label: "복약알림" },
+  { to: "/chat", icon: "💬", label: "AI 상담" },
+  { to: "/info", icon: "📖", label: "건강정보" },
+  { to: "/medication", icon: "➕", label: "약 등록" },
+];
 
 const DISMISS_KEY_PREFIX = "healthBannerDismissed_";
 
@@ -36,9 +46,15 @@ export default function HomePage() {
   const [alarms, setAlarms] = useState<NotificationScheduleResult[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 오늘의 습관 트래커 — 기본 세트(물/산책) + 등록 질환별 맞춤 습관. 클릭할 때마다 1씩 채운다.
+  // 오늘의 습관 트래커 — 기본 세트(물/산책) + 등록 질환별 맞춤 습관(날짜 기준 하루 3개 로테이션).
+  // 홈에는 미리보기 카드만 두고, 클릭하면 모달에서 실제로 체크한다.
   const [habitsToday, setHabitsToday] = useState<HabitsTodayResult | null>(null);
   const [showCongrats, setShowCongrats] = useState(false);
+  const [showLifestyleModal, setShowLifestyleModal] = useState(false);
+
+  // 정보 탭과 같은 소스 — 의학뉴스 최신 1건 헤드라인만 미리보기로 보여준다.
+  const [newsHeadline, setNewsHeadline] = useState<HealthContentResult | null>(null);
+  const [chatInput, setChatInput] = useState("");
 
   useEffect(() => {
     if (user && localStorage.getItem(DISMISS_KEY_PREFIX + user.profile_id) !== "true") {
@@ -83,6 +99,20 @@ export default function HomePage() {
       .then(setHabitsToday)
       .catch(() => setHabitsToday(null));
   }, [user]);
+
+  useEffect(() => {
+    contentApi
+      .getContents("MEDICAL_NEWS", 1)
+      .then((result) => setNewsHeadline(result.items[0] ?? null))
+      .catch(() => setNewsHeadline(null));
+  }, []);
+
+  function handleAskAi() {
+    const text = chatInput.trim();
+    if (!text) return;
+    setChatInput("");
+    navigate("/chat", { state: { autoMessage: text } });
+  }
 
   function handleCheckHabit(habitKey: string) {
     const wasAllDone = habitsToday?.all_completed ?? false;
@@ -254,9 +284,212 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* 오늘의 습관 트래커 — 기본 세트(물 마시기/산책) + 등록 질환별 맞춤 습관.
-            항목마다 target개의 아이콘 슬롯을 그려서, 누를 때마다 하나씩 채워지는 게 바로 보이게 한다. */}
+        {/* 오늘의 습관 트래커 미리보기 — 누르면 모달로 실제 체크 화면이 뜬다. */}
         {user && habitsToday && habitsToday.habits.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowLifestyleModal(true)}
+            style={{
+              display: "block",
+              width: "100%",
+              textAlign: "left",
+              background: pinkTheme.cardBg,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 16,
+              padding: 18,
+              marginBottom: 16,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.primary }}>
+                  🌿 {user.name}님을 위한 추천 라이프스타일
+                </p>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: pinkTheme.textMuted }}>
+                  오늘의 당신, 할 수 있어요! ·{" "}
+                  {habitsToday.habits.filter((h) => h.completed).length}/{habitsToday.habits.length}
+                  개 완료
+                </p>
+              </div>
+              <span style={{ color: pinkTheme.primary, fontSize: 18 }} aria-hidden>
+                →
+              </span>
+            </div>
+          </button>
+        )}
+
+        {/* 라이프스타일 습관 체크 모달 — 실제 아이콘 채우기/완료 체크는 여기서 한다 */}
+        {user && habitsToday && showLifestyleModal && (
+          <Modal onClose={() => setShowLifestyleModal(false)}>
+            <div
+              style={{
+                background: pinkTheme.cardBg,
+                border: `1px solid ${pinkTheme.border}`,
+                borderRadius: 16,
+                padding: 18,
+                boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.primary }}>
+                🌿 {user.name}님을 위한 추천 라이프스타일
+              </p>
+              <p style={{ margin: "4px 0 14px", fontSize: 12, color: pinkTheme.textMuted }}>
+                오늘의 당신, 할 수 있어요!
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {habitsToday.habits.map((habit) => (
+                  <div
+                    key={habit.key}
+                    style={{
+                      background: pinkTheme.primarySoft,
+                      borderRadius: 12,
+                      padding: "10px 14px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        marginBottom: 6,
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 700, color: pinkTheme.text }}>
+                        {habit.label}
+                      </span>
+                      <span style={{ fontSize: 12, color: pinkTheme.textMuted }}>
+                        {habit.progress}/{habit.target}
+                        {habit.unit}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 4, flex: 1, flexWrap: "wrap" }}>
+                        {Array.from({ length: habit.target }, (_, i) => (
+                          <span
+                            key={i}
+                            aria-hidden
+                            style={{
+                              fontSize: 18,
+                              opacity: i < habit.progress ? 1 : 0.25,
+                              filter: i < habit.progress ? "none" : "grayscale(100%)",
+                            }}
+                          >
+                            {habit.icon}
+                          </span>
+                        ))}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={habit.completed}
+                        onClick={() => handleCheckHabit(habit.key)}
+                        style={{
+                          flexShrink: 0,
+                          border: "none",
+                          borderRadius: 999,
+                          padding: "6px 14px",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: habit.completed ? "default" : "pointer",
+                          background: habit.completed ? pinkTheme.success : pinkTheme.primary,
+                          color: "#fff",
+                        }}
+                      >
+                        {habit.completed ? "완료!" : "체크"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* 빠른 메뉴 2x2 + AI 건강 상담 질문창 + 건강 정보 미리보기 */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 10,
+            marginBottom: 16,
+          }}
+        >
+          {QUICK_LINKS.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              style={{
+                background: pinkTheme.cardBg,
+                border: `1px solid ${pinkTheme.border}`,
+                borderRadius: 16,
+                padding: "16px 14px",
+                textDecoration: "none",
+                boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
+              }}
+            >
+              <p style={{ margin: "0 0 8px", fontSize: 20 }}>{link.icon}</p>
+              <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: pinkTheme.text }}>
+                {link.label}
+              </p>
+            </Link>
+          ))}
+        </div>
+
+        <div
+          style={{
+            background: pinkTheme.cardBg,
+            border: `1px solid ${pinkTheme.border}`,
+            borderRadius: 16,
+            padding: 18,
+            marginBottom: 16,
+            boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+          }}
+        >
+          <p style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: pinkTheme.text }}>
+            AI 건강 상담
+          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleAskAi();
+              }}
+              placeholder="복약 시간을 놓쳤을 때는 어떻게 하나요?"
+              style={{
+                flex: 1,
+                padding: "11px 14px",
+                borderRadius: 999,
+                border: `1px solid ${pinkTheme.border}`,
+                fontSize: 13,
+                outline: "none",
+                color: pinkTheme.text,
+              }}
+            />
+            <button
+              type="button"
+              onClick={handleAskAi}
+              aria-label="AI 건강 상담에 질문 보내기"
+              style={{
+                flexShrink: 0,
+                width: 38,
+                height: 38,
+                borderRadius: "50%",
+                border: "none",
+                background: pinkTheme.primary,
+                color: "#fff",
+                fontSize: 15,
+                cursor: "pointer",
+              }}
+            >
+              →
+            </button>
+          </div>
+        </div>
+
+        {newsHeadline && (
           <div
             style={{
               background: pinkTheme.cardBg,
@@ -267,76 +500,27 @@ export default function HomePage() {
               boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
             }}
           >
-            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.primary }}>
-              🌿 {user.name}님을 위한 추천 라이프스타일
-            </p>
-            <p style={{ margin: "4px 0 14px", fontSize: 12, color: pinkTheme.textMuted }}>
-              오늘의 당신, 할 수 있어요!
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {habitsToday.habits.map((habit) => (
-                <div
-                  key={habit.key}
-                  style={{
-                    background: pinkTheme.primarySoft,
-                    borderRadius: 12,
-                    padding: "10px 14px",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: 6,
-                    }}
-                  >
-                    <span style={{ fontSize: 13, fontWeight: 700, color: pinkTheme.text }}>
-                      {habit.label}
-                    </span>
-                    <span style={{ fontSize: 12, color: pinkTheme.textMuted }}>
-                      {habit.progress}/{habit.target}
-                      {habit.unit}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ display: "flex", gap: 4, flex: 1, flexWrap: "wrap" }}>
-                      {Array.from({ length: habit.target }, (_, i) => (
-                        <span
-                          key={i}
-                          aria-hidden
-                          style={{
-                            fontSize: 18,
-                            opacity: i < habit.progress ? 1 : 0.25,
-                            filter: i < habit.progress ? "none" : "grayscale(100%)",
-                          }}
-                        >
-                          {habit.icon}
-                        </span>
-                      ))}
-                    </div>
-                    <button
-                      type="button"
-                      disabled={habit.completed}
-                      onClick={() => handleCheckHabit(habit.key)}
-                      style={{
-                        flexShrink: 0,
-                        border: "none",
-                        borderRadius: 999,
-                        padding: "6px 14px",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        cursor: habit.completed ? "default" : "pointer",
-                        background: habit.completed ? pinkTheme.success : pinkTheme.primary,
-                        color: "#fff",
-                      }}
-                    >
-                      {habit.completed ? "완료!" : "체크"}
-                    </button>
-                  </div>
-                </div>
-              ))}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 8,
+              }}
+            >
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.text }}>
+                건강 정보
+              </p>
+              <Link
+                to="/info"
+                style={{ fontSize: 12, color: pinkTheme.primary, textDecoration: "none" }}
+              >
+                더보기 →
+              </Link>
             </div>
+            <p style={{ margin: 0, fontSize: 13, color: pinkTheme.textMuted }}>
+              {newsHeadline.title}
+            </p>
           </div>
         )}
 

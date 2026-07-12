@@ -63,6 +63,32 @@ async def test_check_habit_increments_progress_and_caps_at_target():
     assert water["completed"] is True
 
 
+async def test_get_today_habits_picks_only_3_when_candidate_pool_exceeds_3():
+    """질환을 2개 등록하면 후보(기본 2개+질환 2개=4개) 중 오늘 3개만 나오고,
+    같은 날 다시 조회해도 같은 3개가 나와야 한다(자정 전까지는 안 바뀜)."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "habit_rotation@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.patch(
+            "/api/v1/users/me/health-info",
+            json={
+                "diagnosis_history": [
+                    {"disease": "DIABETES", "detail": None},
+                    {"disease": "HEART_DISEASE", "detail": None},
+                ]
+            },
+            headers=headers,
+        )
+
+        response1 = await client.get("/api/v1/habits/today", headers=headers)
+        response2 = await client.get("/api/v1/habits/today", headers=headers)
+
+    keys1 = [h["key"] for h in response1.json()["habits"]]
+    keys2 = [h["key"] for h in response2.json()["habits"]]
+    assert len(keys1) == 3
+    assert keys1 == keys2
+
+
 async def test_check_habit_with_unknown_key_returns_404():
     """지금 프로필이 갖고 있지 않은 습관 키(예: 등록 안 한 질환의 습관)로 체크하면 404여야 한다."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import DisclaimerBanner from "../../components/common/DisclaimerBanner";
 import { useChatStream } from "../../hooks/useChatStream";
@@ -15,6 +16,20 @@ export default function ChatPage() {
   } = useChatStream();
   const [input, setInput] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // 홈 화면 "AI 건강 상담" 입력창에서 넘어온 질문을 도착하자마자 자동으로 전송한다.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const autoSentRef = useRef(false);
+  useEffect(() => {
+    const autoMessage = (location.state as { autoMessage?: string } | null)?.autoMessage;
+    if (autoMessage && !autoSentRef.current) {
+      autoSentRef.current = true;
+      void sendMessage(autoMessage);
+      navigate(location.pathname, { replace: true, state: null });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   async function handleSend() {
     const text = input;

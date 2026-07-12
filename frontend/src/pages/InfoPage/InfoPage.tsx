@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import { contentApi } from "../../api/contentApi";
 import type { ContentCategory, HealthContentResult } from "../../api/types";
+import { useAuth } from "../../hooks/useAuth";
 
 import { Button } from "@/components/ui/button";
 
@@ -18,11 +19,23 @@ const CATEGORY_TABS: { label: string; value: ContentCategory | undefined }[] = [
 ];
 
 export default function InfoPage() {
+  const { user } = useAuth();
   const [category, setCategory] = useState<ContentCategory | undefined>(undefined);
   const [items, setItems] = useState<HealthContentResult[]>([]);
   const [personalized, setPersonalized] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // 상단 개인화 헤드라인 — 의학뉴스 중 가장 최근 1개 헤드라인만. 새 콘텐츠가 매일 시드되므로
+  // 자연히 "오늘의 헤드라인"이 된다. 기존 카테고리 탭/누적 피드와는 별개로 항상 노출.
+  const [headline, setHeadline] = useState<HealthContentResult | null>(null);
+
+  useEffect(() => {
+    contentApi
+      .getContents("MEDICAL_NEWS", 1)
+      .then((result) => setHeadline(result.items[0] ?? null))
+      .catch(() => setHeadline(null));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +66,15 @@ export default function InfoPage() {
       <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-2">
         <h1 className="text-lg font-semibold">정보</h1>
       </div>
+
+      {headline && (
+        <div className="mx-4 mb-3 rounded-2xl bg-secondary px-4 py-3">
+          <p className="text-xs font-medium text-muted-foreground">
+            {user?.name ?? "회원"}님을 위한 컨텐츠
+          </p>
+          <p className="mt-1 text-sm font-semibold text-secondary-foreground">{headline.title}</p>
+        </div>
+      )}
 
       <div className="flex gap-2 overflow-x-auto px-4 pb-2">
         {CATEGORY_TABS.map((tab) => (
