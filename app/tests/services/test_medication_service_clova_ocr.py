@@ -49,12 +49,14 @@ def _patch_clova_client(monkeypatch, plan: list):
 
 
 async def test_call_clova_ocr_retries_on_timeout_then_succeeds(monkeypatch):
-    success = _FakeResponse(200, json_data={"images": [{"fields": [{"inferText": "타이레놀정"}]}]})
+    success = _FakeResponse(
+        200, json_data={"images": [{"fields": [{"inferText": "타이레놀정", "inferConfidence": 0.97}]}]}
+    )
     _patch_clova_client(monkeypatch, [httpx.TimeoutException("timed out"), success])
 
     result = await medication_service._call_clova_ocr(b"bytes", "pill.jpg")
 
-    assert result == ["타이레놀정"]
+    assert result == [medication_service.OcrField(text="타이레놀정", confidence=0.97)]
 
 
 async def test_call_clova_ocr_gives_up_after_max_attempts_on_repeated_timeout(monkeypatch):
@@ -66,12 +68,14 @@ async def test_call_clova_ocr_gives_up_after_max_attempts_on_repeated_timeout(mo
 
 
 async def test_call_clova_ocr_retries_on_server_error_then_succeeds(monkeypatch):
-    success = _FakeResponse(200, json_data={"images": [{"fields": [{"inferText": "아스피린정"}]}]})
+    success = _FakeResponse(
+        200, json_data={"images": [{"fields": [{"inferText": "아스피린정", "inferConfidence": 0.8}]}]}
+    )
     _patch_clova_client(monkeypatch, [_FakeResponse(503, text="server busy"), success])
 
     result = await medication_service._call_clova_ocr(b"bytes", "pill.jpg")
 
-    assert result == ["아스피린정"]
+    assert result == [medication_service.OcrField(text="아스피린정", confidence=0.8)]
 
 
 async def test_call_clova_ocr_does_not_retry_on_auth_error(monkeypatch):
@@ -90,3 +94,29 @@ async def test_call_clova_ocr_returns_empty_on_malformed_response_body(monkeypat
     result = await medication_service._call_clova_ocr(b"bytes", "pill.jpg")
 
     assert result == []
+
+
+async def test_call_clova_ocr_defaults_confidence_to_zero_when_missing_or_invalid(monkeypatch):
+    """(T-MED-6) `inferConfidence`가 아예 없거나 숫자로 변환할 수 없으면 매칭률 계산이 죽지
+    않도록 0.0으로 취급해야 한다."""
+    response = _FakeResponse(
+        200,
+        json_data={
+            "images": [
+                {
+                    "fields": [
+                        {"inferText": "신뢰도없음정"},
+                        {"inferText": "신뢰도이상함정", "inferConfidence": "not-a-number"},
+                    ]
+                }
+            ]
+        },
+    )
+    _patch_clova_client(monkeypatch, [response])
+
+    result = await medication_service._call_clova_ocr(b"bytes", "pill.jpg")
+
+    assert result == [
+        medication_service.OcrField(text="신뢰도없음정", confidence=0.0),
+        medication_service.OcrField(text="신뢰도이상함정", confidence=0.0),
+    ]

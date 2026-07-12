@@ -1,5 +1,6 @@
 from app.repositories.medication_repository import MedicationRepository
 from app.services import medication_open_api_client, medication_service
+from app.services.medication_service import OcrField
 from app.tests.conftest import TestSessionLocal
 
 
@@ -26,13 +27,14 @@ async def test_unmatched_drug_uses_public_api_data_when_available(monkeypatch):
 
     async with TestSessionLocal() as session:
         repo = MedicationRepository()
-        matched, auto_created_ids = await medication_service._match_or_create_medications(
-            session, repo, ["*낫모르는약100mg"]
+        matched, auto_created_ids, match_confidence = await medication_service._match_or_create_medications(
+            session, repo, [OcrField(text="*낫모르는약100mg", confidence=0.9)]
         )
 
     assert len(matched) == 1
     med = matched[0]
     assert med.id not in auto_created_ids
+    assert match_confidence[med.id] == 0.9
     assert med.standard_code == "PDP_200000001"
     assert med.shape == "원형"
     assert med.color == "하양"
@@ -54,8 +56,8 @@ async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_has_no_da
 
     async with TestSessionLocal() as session:
         repo = MedicationRepository()
-        matched, auto_created_ids = await medication_service._match_or_create_medications(
-            session, repo, ["*아무데이터도없는약999mg"]
+        matched, auto_created_ids, _ = await medication_service._match_or_create_medications(
+            session, repo, [OcrField(text="*아무데이터도없는약999mg", confidence=0.9)]
         )
 
     assert len(matched) == 1
@@ -77,8 +79,8 @@ async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_errors(mo
 
     async with TestSessionLocal() as session:
         repo = MedicationRepository()
-        matched, auto_created_ids = await medication_service._match_or_create_medications(
-            session, repo, ["*API장애약500mg"]
+        matched, auto_created_ids, _ = await medication_service._match_or_create_medications(
+            session, repo, [OcrField(text="*API장애약500mg", confidence=0.9)]
         )
 
     assert len(matched) == 1

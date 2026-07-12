@@ -43,5 +43,10 @@
     "owner": "agent-Claude",
     "branch": "feat/77-rag-source-label",
     "started": "2026-07-11"
+  },
+  "T-MED-6": {
+    "owner": "claude",
+    "branch": "feature/T-MED-6-ocr-confidence-matching",
+    "started": "2026-07-12"
   }
 }

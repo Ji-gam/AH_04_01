@@ -143,6 +143,11 @@ async def test_recognition_job_dummy_mode_returns_deterministic_candidates_and_i
         drug_names = [c["drug_name"] for c in result_data["candidates"]]
         assert any("타이레놀정 500mg" in name for name in drug_names)
         assert any("아스피린정 100mg" in name for name in drug_names)
+        # (T-MED-6) 더미 텍스트는 confidence=1.0으로 취급되므로, 마스터 DB에 이미 등록된 이
+        # 두 약(코드로 식별)의 match_rate도 1.0이어야 한다(하드코딩된 "타이레놀만 1.0" 로직이 아님을 확인).
+        seeded_candidates = [c for c in result_data["candidates"] if c["drug_code"] in ("KD_T3001", "KD_A4002")]
+        assert len(seeded_candidates) == 2
+        assert all(c["match_rate"] == 1.0 for c in seeded_candidates)
 
         # 더미 후보도 기존 confirm 플로우를 그대로 통과해 스케줄 등록까지 이어져야 한다
         top_candidate = result_data["candidates"][0]
