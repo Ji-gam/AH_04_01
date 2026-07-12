@@ -115,16 +115,62 @@ export default function HomePage() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "space-between",
+                  gap: 16,
                   background: pinkTheme.primarySoft,
                   borderRadius: 12,
-                  padding: "12px 14px",
+                  padding: "14px 16px",
                 }}
               >
-                <span style={{ fontSize: 14, color: pinkTheme.text }}>⏰ 금일 약 복용</span>
-                <span style={{ fontSize: 15, fontWeight: 700, color: pinkTheme.primary }}>
-                  {doneCount} / {totalCount} 완료
-                </span>
+                {/* 원형 진행률 — 오늘 몇 회 중 몇 번 복용했는지 도넛 안에 크게 표시 */}
+                <svg
+                  width="88"
+                  height="88"
+                  viewBox="0 0 88 88"
+                  role="img"
+                  aria-label="금일 복용 진행률"
+                >
+                  <circle
+                    cx="44"
+                    cy="44"
+                    r="36"
+                    fill="white"
+                    stroke={pinkTheme.border}
+                    strokeWidth="9"
+                  />
+                  <circle
+                    cx="44"
+                    cy="44"
+                    r="36"
+                    fill="none"
+                    stroke={pinkTheme.primary}
+                    strokeWidth="9"
+                    strokeLinecap="round"
+                    strokeDasharray={2 * Math.PI * 36}
+                    strokeDashoffset={
+                      2 * Math.PI * 36 * (1 - (totalCount ? doneCount / totalCount : 0))
+                    }
+                    transform="rotate(-90 44 44)"
+                  />
+                  <text
+                    x="44"
+                    y="50"
+                    textAnchor="middle"
+                    fontSize="19"
+                    fontWeight="700"
+                    fill={pinkTheme.primary}
+                  >
+                    {doneCount}/{totalCount}
+                  </text>
+                </svg>
+                <div>
+                  <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.text }}>
+                    ⏰ 금일 약 복용
+                  </p>
+                  <p style={{ margin: "4px 0 0", fontSize: 13, color: pinkTheme.textMuted }}>
+                    {totalCount}회 중 <b style={{ color: pinkTheme.primary }}>{doneCount}번</b>{" "}
+                    복용했어요
+                  </p>
+                </div>
               </div>
             </div>
           </Link>
@@ -204,56 +250,77 @@ export default function HomePage() {
         {user && (
           <div
             style={{
-              border: "1px solid black",
-              padding: "10px",
-              fontFamily: "monospace",
-              fontSize: "12px",
-              whiteSpace: "pre-wrap",
+              background: pinkTheme.cardBg,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 16,
+              padding: 18,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
             }}
           >
-            <strong>[QA 디버그] 현재 로그인 계정 전체 정보</strong>
-            <br />
-            --- 계정(User) ---
-            <br />
-            id: {user.id}
-            <br />
-            profile_id: {user.profile_id}
-            <br />
-            name: {user.name}
-            <br />
-            email: {user.email}
-            <br />
-            phone_number: {user.phone_number ?? "(없음)"}
-            <br />
-            gender: {user.gender ?? "(없음)"}
-            <br />
-            created_at: {user.created_at}
-            <br />
-            --- 개인건강정보(HealthInfo) ---
-            <br />
-            {healthInfo ? (
-              <>
-                age: {healthInfo.age ?? "(없음)"}
-                <br />
-                gender: {healthInfo.gender ?? "(없음)"}
-                <br />
-                height_cm: {healthInfo.height_cm ?? "(없음)"}
-                <br />
-                weight_kg: {healthInfo.weight_kg ?? "(없음)"}
-                <br />
-                bmi: {healthInfo.bmi ?? "(없음)"}
-                <br />
-                diagnosis_history: {JSON.stringify(healthInfo.diagnosis_history)}
-                <br />
-                family_history: {JSON.stringify(healthInfo.family_history)}
-                <br />
-                special_notes: {healthInfo.special_notes || "(없음)"}
-                <br />
-                other_notes: {healthInfo.other_notes || "(없음)"}
-              </>
-            ) : (
-              "(건강정보 불러오는 중 또는 없음)"
-            )}
+            <p
+              style={{
+                margin: "0 0 12px",
+                fontSize: 14,
+                fontWeight: 700,
+                color: pinkTheme.primary,
+              }}
+            >
+              🙋 내 정보
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[
+                { label: "닉네임", value: user.name },
+                {
+                  label: "성별",
+                  value:
+                    healthInfo?.gender === "MALE"
+                      ? "남성"
+                      : healthInfo?.gender === "FEMALE"
+                        ? "여성"
+                        : "미입력",
+                },
+                {
+                  label: "키 / 몸무게",
+                  value:
+                    healthInfo?.height_cm || healthInfo?.weight_kg
+                      ? `${healthInfo?.height_cm ?? "-"} cm / ${healthInfo?.weight_kg ?? "-"} kg`
+                      : "미입력",
+                },
+                {
+                  label: "BMI",
+                  value: healthInfo?.bmi != null ? String(healthInfo.bmi) : "미입력",
+                },
+                { label: "알레르기", value: healthInfo?.special_notes || "없음" },
+              ].map((row) => (
+                <div
+                  key={row.label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    background: pinkTheme.primarySoft,
+                    borderRadius: 12,
+                    padding: "10px 14px",
+                  }}
+                >
+                  <span style={{ fontSize: 13, color: pinkTheme.textMuted, flexShrink: 0 }}>
+                    {row.label}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      color: pinkTheme.text,
+                      textAlign: "right",
+                      wordBreak: "break-all",
+                    }}
+                  >
+                    {row.value}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
