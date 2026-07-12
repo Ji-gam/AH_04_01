@@ -2,8 +2,11 @@ from datetime import date
 
 from pydantic import BaseModel, Field
 
+from app.models.content import ContentCategory
+
 
 class HealthContentResponse(BaseModel):
+    id: int = Field(description="콘텐츠 ID(상세조회용)")
     disease_code: str = Field(description="질환 코드(질환명)", examples=["당뇨"])
     category: str = Field(description="콘텐츠 카테고리", examples=["LIFESTYLE"])
     content_date: date = Field(description="콘텐츠 기준 날짜")
@@ -19,3 +22,13 @@ class ContentsFeedResponse(BaseModel):
         description="true면 로그인한 프로필의 등록 질환 기준 결과, false면 비로그인/질환 미등록으로 전체 콘텐츠를 폴백한 결과"
     )
     items: list[HealthContentResponse] = Field(description="누적 피드 카드 목록(최신 날짜순)")
+
+
+class GenerateContentRequest(BaseModel):
+    """[QA 전용] 생략된 필드는 서버가 무작위로 고른다."""
+
+    disease_code: str | None = Field(
+        default=None, description="질환 코드. 미지정 시 5대 질환+기타 중 무작위 선택.", examples=["당뇨"]
+    )
+    category: ContentCategory | None = Field(default=None, description="콘텐츠 카테고리. 미지정 시 무작위 선택.")
+    topic: str | None = Field(default=None, description="세부 주제. 미지정 시 카테고리의 소주제 중 무작위 선택.")

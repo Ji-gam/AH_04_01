@@ -1,13 +1,19 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile_optional
-from app.dtos.content_dto import ContentsFeedResponse, HealthContentResponse
+from app.dtos.content_dto import ContentsFeedResponse, GenerateContentRequest, HealthContentResponse
 from app.models.content import ContentCategory
 from app.models.profiles import Profile
+from app.services.ai_worker_gateway import (
+    AIWorkerInvalidRequestError,
+    AIWorkerProcessingError,
+    AIWorkerUnavailableError,
+)
+from app.services.content_generation_service import ContentGenerationService
 from app.services.content_personalization_service import ContentPersonalizationService
 from app.services.content_service import ContentService
 
@@ -39,3 +45,43 @@ async def get_my_contents(
         personalized=personalized,
         items=[HealthContentResponse(**item) for item in items],
     )
+
+
+@content_router.post(
+    "/generate",
+    response_model=HealthContentResponse,
+    summary="[QA] 건강 콘텐츠 수동 생성 트리거",
+    description=(
+        "실제로 ai_worker의 `/generate-structured`(LLM 생성)를 호출해 콘텐츠 카드 1건을 만들고 "
+        "즉시 저장한다. 프로덕션 사용자 플로우가 아니라, 게이트웨이 생성 타임아웃 분리 수정을 "
+        "수동으로 검증하기 위한 QA 전용 엔드포인트다(더보기 > 컨텐츠생성 화면 전용). "
+        "disease_code/category/topic을 생략하면 서버가 무작위로 고른다. 같은 (질환, 카테고리, "
+        "오늘 날짜) 캐시가 있으면 새로 만들지 않고 그 카드를 갱신한다."
+    ),
+    responses={
+        503: {"description": "ai_worker가 응답하지 않거나 생성 불가 상태(예: API 키 미설정)."},
+        400: {"description": "ai_worker에 잘못된 생성 요청을 보냄(내부 버그 가능성)."},
+        502: {"description": "ai_worker 응답은 왔으나 형식이 예상과 다름."},
+    },
+)
+async def generate_content(
+    payload: GenerateContentRequest,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> HealthContentResponse:
+    try:
+        item = await ContentGenerationService().generate_and_save(
+            session,
+            disease_code=payload.disease_code,
+            category=payload.category.value if payload.category else None,
+            topic=payload.topic,
+        )
+    except AIWorkerUnavailableError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="상담사가 잠시 자리를 비웠습니다. 조금 뒤에 다시 방문해주세요.",
+        ) from e
+    except AIWorkerInvalidRequestError as e:
+        raise HTTPException(status_code=400, detail=f"잘못된 생성 요청: {e}") from e
+    except AIWorkerProcessingError as e:
+        raise HTTPException(status_code=502, detail=f"생성 응답 형식 이상: {e}") from e
+    return HealthContentResponse(**item)

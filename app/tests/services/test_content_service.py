@@ -9,6 +9,7 @@ from app.services.safety_service import DISCLAIMER_TEXT
 
 @dataclass
 class FakeHealthContent:
+    id: int
     disease_code: str
     category: str
     content_date: date
@@ -26,6 +27,7 @@ class FakeContentRepository:
     def __init__(self) -> None:
         self.items: list[FakeHealthContent] = []
         self.save_calls = 0
+        self._next_id = 1
 
     async def get_by_disease_category_date(
         self, session, disease_code: str, category: str, content_date: date
@@ -37,7 +39,8 @@ class FakeContentRepository:
 
     async def save(self, session, **fields) -> FakeHealthContent:
         self.save_calls += 1
-        content = FakeHealthContent(**fields)
+        content = FakeHealthContent(id=self._next_id, **fields)
+        self._next_id += 1
         self.items.append(content)
         return content
 
@@ -56,6 +59,7 @@ class FakeContentRepository:
     def seed(self, disease_code: str, category: str, content_date: date, title: str = "캐시된 제목") -> None:
         self.items.append(
             FakeHealthContent(
+                id=self._next_id,
                 disease_code=disease_code,
                 category=category,
                 content_date=content_date,
@@ -64,6 +68,7 @@ class FakeContentRepository:
                 body="본문",
             )
         )
+        self._next_id += 1
 
 
 def _build_service(repository: FakeContentRepository) -> ContentService:
