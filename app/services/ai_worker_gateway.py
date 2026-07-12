@@ -28,15 +28,22 @@ class AIWorkerProcessingError(Exception):
 
 
 class AIWorkerGateway:
-    def __init__(self, base_url: str | None = None, timeout: float = 5.0) -> None:
+    def __init__(
+        self,
+        base_url: str | None = None,
+        retrieve_timeout: float | None = None,
+        generate_timeout: float | None = None,
+    ) -> None:
         self._base_url = base_url or config.AI_WORKER_BASE_URL
-        self._timeout = timeout
+        # 검색과 생성은 응답 특성이 달라 타임아웃을 분리한다(생성은 LLM이라 훨씬 김).
+        self._retrieve_timeout = retrieve_timeout if retrieve_timeout is not None else config.AI_WORKER_RETRIEVE_TIMEOUT
+        self._generate_timeout = generate_timeout if generate_timeout is not None else config.AI_WORKER_GENERATE_TIMEOUT
 
-    async def search(self, query: str, context: dict) -> list[dict]:
+    async def search(self, query: str) -> list[dict]:
         """`ai_worker`의 `/retrieve`를 동기 HTTP로 호출한다. 실패는 조용히 삼키지 않고
         예외로 알린다 — 빈 결과(정상, 매칭 0건)와 실패(예외)를 명확히 구분한다."""
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(timeout=self._retrieve_timeout) as client:
                 response = await client.post(f"{self._base_url}/retrieve", json={"query": query, "limit": 3})
         except httpx.HTTPError as e:
             raise AIWorkerUnavailableError(f"ai_worker 검색 요청 실패: {e}") from e
@@ -60,7 +67,7 @@ class AIWorkerGateway:
             "json_schema": schema.model_json_schema(),
         }
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(timeout=self._generate_timeout) as client:
                 response = await client.post(f"{self._base_url}/generate-structured", json=payload)
         except httpx.HTTPError as e:
             raise AIWorkerUnavailableError(f"ai_worker 생성 요청 실패: {e}") from e

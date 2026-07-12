@@ -60,7 +60,7 @@ class FakeMedicationRepository:
 
 
 class FakeRetriever:
-    async def search(self, query: str, context: dict) -> list[dict]:
+    async def search(self, query: str) -> list[dict]:
         return [{"content": "fake-chunk-1", "metadata": {"source": "fake_source.csv"}}]
 
 
