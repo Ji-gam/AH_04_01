@@ -2,12 +2,18 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
+import { contentApi } from "../../api/contentApi";
 import { healthInfoApi } from "../../api/healthInfoApi";
 import { notificationApi } from "../../api/notificationApi";
-import type { HealthInfoResult, NotificationScheduleResult } from "../../api/types";
+import type {
+  HealthContentResult,
+  HealthInfoResult,
+  NotificationScheduleResult,
+} from "../../api/types";
 import { useAuth } from "../../hooks/useAuth";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { pinkTheme } from "../../theme/pinkTheme";
+import Modal from "../AlarmPage/components/Modal";
 import { toDateString } from "../AlarmPage/dateUtils";
 import { buildGroups, loadChecked } from "../SchedulePage/scheduleData";
 
@@ -24,10 +30,14 @@ export default function HomePage() {
   const navigate = useNavigate();
   const [showBanner, setShowBanner] = useState(false);
   const [healthInfo, setHealthInfo] = useState<HealthInfoResult | null>(null);
+  const [showMyInfo, setShowMyInfo] = useState(false);
 
   const [meds, setMeds] = useState<MedicationSchedule[]>([]);
   const [alarms, setAlarms] = useState<NotificationScheduleResult[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // 질환 등록자에게만 내려오는 맞춤 라이프스타일 추천(정보 탭과 같은 소스). 없으면 카드 숨김.
+  const [lifestyleTips, setLifestyleTips] = useState<HealthContentResult[]>([]);
 
   useEffect(() => {
     if (user && localStorage.getItem(DISMISS_KEY_PREFIX + user.profile_id) !== "true") {
@@ -62,6 +72,18 @@ export default function HomePage() {
       .catch(() => setHealthInfo(null));
   }, [user]);
 
+  useEffect(() => {
+    // personalized=false는 질환 미등록 폴백(전체 공통 콘텐츠)이므로 홈 추천 카드는 띄우지 않는다.
+    if (!user) {
+      setLifestyleTips([]);
+      return;
+    }
+    contentApi
+      .getContents("LIFESTYLE", 3)
+      .then((feed) => setLifestyleTips(feed.personalized ? feed.items.slice(0, 3) : []))
+      .catch(() => setLifestyleTips([]));
+  }, [user]);
+
   function handleDismiss() {
     if (user) localStorage.setItem(DISMISS_KEY_PREFIX + user.profile_id, "true");
     setShowBanner(false);
@@ -85,9 +107,30 @@ export default function HomePage() {
   return (
     <div style={{ background: pinkTheme.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 20px" }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 10px" }}>
           👋 안녕하세요{user ? `, ${user.name}님` : ""}!
         </h1>
+
+        {user && (
+          <button
+            type="button"
+            onClick={() => setShowMyInfo(true)}
+            style={{
+              border: `1px solid ${pinkTheme.border}`,
+              background: pinkTheme.cardBg,
+              color: pinkTheme.primary,
+              borderRadius: 999,
+              padding: "7px 16px",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+              marginBottom: 20,
+              boxShadow: "0 2px 6px rgba(255, 111, 145, 0.1)",
+            }}
+          >
+            🙋 내 정보
+          </button>
+        )}
 
         {user && !loading && totalCount > 0 && (
           <Link to="/schedule" style={{ textDecoration: "none" }}>
@@ -198,6 +241,53 @@ export default function HomePage() {
           </div>
         )}
 
+        {/* 질환 등록자 맞춤 라이프스타일 추천 — 정보 탭(라이프스타일)과 같은 콘텐츠에서 3개 */}
+        {user && lifestyleTips.length > 0 && (
+          <Link to="/info" style={{ textDecoration: "none" }}>
+            <div
+              style={{
+                background: pinkTheme.cardBg,
+                border: `1px solid ${pinkTheme.border}`,
+                borderRadius: 16,
+                padding: 18,
+                marginBottom: 16,
+                boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: pinkTheme.primary,
+                }}
+              >
+                🌿 {user.name}님을 위한 추천 라이프스타일
+              </p>
+              <p style={{ margin: "4px 0 12px", fontSize: 12, color: pinkTheme.textMuted }}>
+                오늘의 당신, 할 수 있어요!
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {lifestyleTips.map((tip) => (
+                  <div
+                    key={`${tip.disease_code}-${tip.content_date}-${tip.title}`}
+                    style={{
+                      background: pinkTheme.primarySoft,
+                      borderRadius: 12,
+                      padding: "10px 14px",
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: pinkTheme.text,
+                    }}
+                  >
+                    🌱 {tip.title}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Link>
+        )}
+
         {showBanner && (
           <div
             style={{
@@ -247,81 +337,119 @@ export default function HomePage() {
           </div>
         )}
 
-        {user && (
-          <div
-            style={{
-              background: pinkTheme.cardBg,
-              border: `1px solid ${pinkTheme.border}`,
-              borderRadius: 16,
-              padding: 18,
-              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
-            }}
-          >
-            <p
+        {/* 내 정보 모달 — 상단 "🙋 내 정보" 버튼으로 연다. 수정은 개인건강정보 화면에서. */}
+        {user && showMyInfo && (
+          <Modal onClose={() => setShowMyInfo(false)}>
+            <div
               style={{
-                margin: "0 0 12px",
-                fontSize: 14,
-                fontWeight: 700,
-                color: pinkTheme.primary,
+                background: pinkTheme.cardBg,
+                border: `1px solid ${pinkTheme.border}`,
+                borderRadius: 16,
+                padding: 18,
+                boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
               }}
             >
-              🙋 내 정보
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {[
-                { label: "닉네임", value: user.name },
-                {
-                  label: "성별",
-                  value:
-                    healthInfo?.gender === "MALE"
-                      ? "남성"
-                      : healthInfo?.gender === "FEMALE"
-                        ? "여성"
+              <p
+                style={{
+                  margin: "0 0 12px",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: pinkTheme.primary,
+                }}
+              >
+                🙋 내 정보
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {[
+                  { label: "닉네임", value: user.name },
+                  {
+                    label: "성별",
+                    value:
+                      healthInfo?.gender === "MALE"
+                        ? "남성"
+                        : healthInfo?.gender === "FEMALE"
+                          ? "여성"
+                          : "미입력",
+                  },
+                  {
+                    label: "키 / 몸무게",
+                    value:
+                      healthInfo?.height_cm || healthInfo?.weight_kg
+                        ? `${healthInfo?.height_cm ?? "-"} cm / ${healthInfo?.weight_kg ?? "-"} kg`
                         : "미입력",
-                },
-                {
-                  label: "키 / 몸무게",
-                  value:
-                    healthInfo?.height_cm || healthInfo?.weight_kg
-                      ? `${healthInfo?.height_cm ?? "-"} cm / ${healthInfo?.weight_kg ?? "-"} kg`
-                      : "미입력",
-                },
-                {
-                  label: "BMI",
-                  value: healthInfo?.bmi != null ? String(healthInfo.bmi) : "미입력",
-                },
-                { label: "알레르기", value: healthInfo?.special_notes || "없음" },
-              ].map((row) => (
-                <div
-                  key={row.label}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 12,
-                    background: pinkTheme.primarySoft,
-                    borderRadius: 12,
-                    padding: "10px 14px",
-                  }}
-                >
-                  <span style={{ fontSize: 13, color: pinkTheme.textMuted, flexShrink: 0 }}>
-                    {row.label}
-                  </span>
-                  <span
+                  },
+                  {
+                    label: "BMI",
+                    value: healthInfo?.bmi != null ? String(healthInfo.bmi) : "미입력",
+                  },
+                  { label: "알레르기", value: healthInfo?.special_notes || "없음" },
+                ].map((row) => (
+                  <div
+                    key={row.label}
                     style={{
-                      fontSize: 14,
-                      fontWeight: 700,
-                      color: pinkTheme.text,
-                      textAlign: "right",
-                      wordBreak: "break-all",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      background: pinkTheme.primarySoft,
+                      borderRadius: 12,
+                      padding: "10px 14px",
                     }}
                   >
-                    {row.value}
-                  </span>
-                </div>
-              ))}
+                    <span style={{ fontSize: 13, color: pinkTheme.textMuted, flexShrink: 0 }}>
+                      {row.label}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: pinkTheme.text,
+                        textAlign: "right",
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      {row.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMyInfo(false);
+                    navigate("/health-info");
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: "11px 0",
+                    border: "none",
+                    borderRadius: 10,
+                    background: pinkTheme.primary,
+                    color: "#fff",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  수정
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowMyInfo(false)}
+                  style={{
+                    padding: "11px 18px",
+                    borderRadius: 10,
+                    border: `1px solid ${pinkTheme.border}`,
+                    background: pinkTheme.cardBg,
+                    color: pinkTheme.textMuted,
+                    cursor: "pointer",
+                  }}
+                >
+                  닫기
+                </button>
+              </div>
             </div>
-          </div>
+          </Modal>
         )}
       </div>
     </div>
