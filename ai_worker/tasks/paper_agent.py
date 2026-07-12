@@ -54,7 +54,11 @@ _REFUSE_SYSTEM_PROMPT = "당신은 의학 논문 검색 비서입니다. 이 질
 def _build_llm() -> ChatOpenAI:
     if settings.OPENAI_API_KEY is None:
         raise GenerationUnavailableError("OPENAI_API_KEY가 설정되지 않았습니다.")
-    return ChatOpenAI(model=settings.OPENAI_MODEL, api_key=SecretStr(settings.OPENAI_API_KEY))
+    return ChatOpenAI(
+        model=settings.OPENAI_MODEL,
+        api_key=SecretStr(settings.OPENAI_API_KEY),
+        temperature=settings.OPENAI_TEMPERATURE,
+    )
 
 
 async def classify_query(question: str) -> QueryClassification:
