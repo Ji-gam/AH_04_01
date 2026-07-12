@@ -18,6 +18,7 @@ import { pinkTheme } from "../../theme/pinkTheme";
 import Modal from "../AlarmPage/components/Modal";
 import { toDateString } from "../AlarmPage/dateUtils";
 import { buildGroups, loadChecked } from "../SchedulePage/scheduleData";
+import SchedulePage from "../SchedulePage/SchedulePage";
 
 /** 홈 화면 2x2 바로가기 그리드 항목. */
 const QUICK_LINKS: { to: string; icon: string; label: string }[] = [
@@ -51,6 +52,7 @@ export default function HomePage() {
   const [habitsToday, setHabitsToday] = useState<HabitsTodayResult | null>(null);
   const [showCongrats, setShowCongrats] = useState(false);
   const [showLifestyleModal, setShowLifestyleModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   // 정보 탭과 같은 소스 — 의학뉴스 최신 1건 헤드라인만 미리보기로 보여준다.
   const [newsHeadline, setNewsHeadline] = useState<HealthContentResult | null>(null);
@@ -176,7 +178,19 @@ export default function HomePage() {
         )}
 
         {user && !loading && totalCount > 0 && (
-          <Link to="/schedule" style={{ textDecoration: "none" }}>
+          <button
+            type="button"
+            onClick={() => setShowScheduleModal(true)}
+            style={{
+              display: "block",
+              width: "100%",
+              textAlign: "left",
+              border: "none",
+              padding: 0,
+              cursor: "pointer",
+              background: "transparent",
+            }}
+          >
             <div
               style={{
                 background: pinkTheme.cardBg,
@@ -259,7 +273,14 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
-          </Link>
+          </button>
+        )}
+
+        {/* 오늘의 건강 카드를 누르면 페이지 이동 대신 복약 시간표를 모달로 띄운다 */}
+        {showScheduleModal && (
+          <Modal onClose={() => setShowScheduleModal(false)}>
+            <SchedulePage embedded />
+          </Modal>
         )}
 
         {user && !loading && totalCount === 0 && (
