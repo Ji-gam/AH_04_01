@@ -114,7 +114,11 @@ async def test_list_chat_messages_success():
         assert msg_list_response.status_code == status.HTTP_200_OK
         messages = msg_list_response.json()
         assert len(messages) >= 2
-        assert messages[0]["role"].lower() == "user"
+        # 프론트(useChatStream.ts)가 role을 소문자로 비교해 정렬 방향을 정하므로
+        # (chat/ChatPage.tsx: m.role === "user"), API는 반드시 소문자로 내려야 한다.
+        # DTO(app/dtos/chat.py)의 문서화된 예시도 "user"/"assistant"(소문자)다.
+        assert messages[0]["role"] == "user"
+        assert messages[1]["role"] == "assistant"
         assert "두통약" in messages[0]["content"]
 
 
