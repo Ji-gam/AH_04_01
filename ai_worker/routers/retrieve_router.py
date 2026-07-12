@@ -1,12 +1,11 @@
-import logging
-
 from fastapi import APIRouter, HTTPException
 
+from ai_worker.core.logger import setup_logger
 from ai_worker.schemas.retrieval_schema import RetrieveRequest, RetrieveResponse
 from ai_worker.services.retrieve_service import db_holder, ensure_db, search_documents
 from ai_worker.tasks.ingest import EmbeddingMismatchError, EmbeddingUnavailableError, assert_embedding_compatible
 
-logger = logging.getLogger("ai_worker.retrieve_router")
+logger = setup_logger("ai_worker.retrieve_router")
 
 retrieve_router = APIRouter()
 
