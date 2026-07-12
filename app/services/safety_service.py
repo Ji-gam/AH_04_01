@@ -64,3 +64,50 @@ def check_emergency(message: str) -> bool:
         if all(part in normalized for part in parts) and any(symptom in normalized for symptom in symptoms):
             return True
     return False
+
+
+# 의료 관련성 판정용 키워드. LLM 분류가 불가하거나 실패할 때(키 없음/오류) 폴백으로 쓴다.
+# "판단은 여기서만" 원칙에 따라 목록을 이 파일에 단일화한다(호출부에서 복제 금지).
+_MEDICAL_KEYWORDS = (
+    "약",
+    "복용",
+    "약물",
+    "부작용",
+    "처방",
+    "dur",
+    "치료",
+    "복약",
+    "먹어",
+    "먹는",
+    "정제",
+    "알약",
+    "콘서타",
+    "디아제팜",
+    "메트포르민",
+    "암로디핀",
+    "아스피린",
+    "타이레놀",
+    "졸피뎀",
+    "병",
+    "질환",
+    "의사",
+    "진단",
+    "당뇨",
+    "고혈압",
+    "임신",
+    "임산부",
+    "노인",
+    "고령",
+    "증상",
+    "의료",
+    "병원",
+    "진료",
+    "의학",
+)
+
+
+def is_medical_related(message: str, response: str) -> bool:
+    """대화(질문+응답)가 의료 관련인지 키워드 기반으로 판정한다.
+    면책조항 조건부 노출(T-LLM-1)의 폴백 경로 — LLM 분류가 불가할 때 사용한다."""
+    text_to_check = (message + " " + response).lower()
+    return any(keyword in text_to_check for keyword in _MEDICAL_KEYWORDS)

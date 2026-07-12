@@ -4,11 +4,14 @@ T-LLM-2: 응급 감지 → (아니면) 컨텍스트 조회 → RAG 검색 → LL
 SQLAlchemy(AsyncSession) 기반으로 옮긴 것 — 흐름 구조 자체는 동일하다.
 """
 
+import json
 import logging
 from collections.abc import AsyncIterator, Callable
 
+from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import config
 from app.models.chat import MessageRole
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.dur_drug_repository import DurDrugRepository
@@ -134,19 +137,14 @@ class ChatService:
         return list(set(dur_warnings))
 
     async def _check_if_medical_related_via_llm(self, message: str, response: str) -> bool:
-        import json
-        import os
-
-        from openai import AsyncOpenAI
-
-        api_key = os.getenv("OPENAI_API_KEY")
+        api_key = config.OPENAI_API_KEY
         if not api_key:
             return self._is_medical_related_fallback(message, response)
 
         try:
             client = AsyncOpenAI(api_key=api_key)
             chat_completion = await client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=config.OPENAI_MODEL,
                 messages=[
                     {
                         "role": "system",
@@ -168,47 +166,11 @@ class ChatService:
             if result_text:
                 result_json = json.loads(result_text)
                 return bool(result_json.get("is_medical_related", False))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"의료 관련성 LLM 분류 실패, 키워드 폴백으로 전환: {e}")
 
         return self._is_medical_related_fallback(message, response)
 
     def _is_medical_related_fallback(self, message: str, response: str) -> bool:
-        medical_keywords = [
-            "약",
-            "복용",
-            "약물",
-            "부작용",
-            "처방",
-            "dur",
-            "치료",
-            "복약",
-            "먹어",
-            "먹는",
-            "정제",
-            "알약",
-            "콘서타",
-            "디아제팜",
-            "메트포르민",
-            "암로디핀",
-            "아스피린",
-            "타이레놀",
-            "졸피뎀",
-            "병",
-            "질환",
-            "의사",
-            "진단",
-            "당뇨",
-            "고혈압",
-            "임신",
-            "임산부",
-            "노인",
-            "고령",
-            "증상",
-            "의료",
-            "병원",
-            "진료",
-            "의학",
-        ]
-        text_to_check = (message + " " + response).lower()
-        return any(kw in text_to_check for kw in medical_keywords)
+        # 의료 키워드 목록은 safety_service가 단일 소유한다("판단은 여기서만" 원칙).
+        return safety_service.is_medical_related(message, response)
