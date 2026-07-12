@@ -97,6 +97,8 @@ def test_build_chain_keeps_existing_title(monkeypatch):
 class CapturingChatOpenAI:
     """ChatOpenAI 생성자에 넘어온 kwargs(temperature 포함)를 캡처한다."""
 
+    received_kwargs: dict = {}
+
     def __init__(self, **kwargs) -> None:
         CapturingChatOpenAI.received_kwargs = kwargs
 
