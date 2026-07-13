@@ -30,3 +30,4 @@ ai_worker/chroma_data/
 # local raw-data staging (source CSVs/DB for app/database/*.db builds)
 _data/
 
+batch_worker/data/

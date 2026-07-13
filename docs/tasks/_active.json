@@ -48,5 +48,10 @@
     "owner": "claude",
     "branch": "feature/T-MED-6-ocr-confidence-matching",
     "started": "2026-07-12"
+  },
+  "T-BATCH-1": {
+    "owner": "agent-Antigravity",
+    "branch": "feat/116-celery-batch-poc",
+    "started": "2026-07-13"
   }
 }
