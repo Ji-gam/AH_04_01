@@ -128,6 +128,34 @@ class DurDrugRepository:
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self._db_path)
 
+    def search_item_names(self, item_name: str, limit: int) -> list[tuple[str, str]]:
+        """(#108) 이름 부분일치로 (item_seq, item_name)만 가볍게 조회한다. `find_drug_info`는
+        성분/DUR규칙/최대투여량 등 여러 join을 동반해 이름 매칭용으로 쓰기엔 무겁다."""
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT item_seq, item_name FROM products WHERE item_name LIKE ? LIMIT ?",
+                (f"%{item_name}%", limit),
+            )
+            return cursor.fetchall()
+        finally:
+            conn.close()
+
+    def search_item_names_by_prefix(self, prefix: str, limit: int) -> list[tuple[str, str]]:
+        """(#108) 27,000여 개 전체를 매번 스캔하지 않도록, OCR 텍스트 앞 몇 글자를 접두어로
+        후보를 좁힌 뒤(SQLite 인덱스 활용) 그 안에서만 유사도 비교를 하기 위한 조회."""
+        conn = self._connect()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT item_seq, item_name FROM products WHERE item_name LIKE ? LIMIT ?",
+                (f"{prefix}%", limit),
+            )
+            return cursor.fetchall()
+        finally:
+            conn.close()
+
     def find_drug_info(self, item_name: str) -> list[DrugProfile]:
         """제품명 부분 일치로 검색해, 매칭된 제품마다 관련 데이터를 모두 모아 반환한다."""
         conn = self._connect()
