@@ -34,6 +34,7 @@ app = [
     "httpx>=0.28.1",
     "orjson>=3.11.5",
     "passlib[bcrypt]>=1.7.4",
+    "pillow>=11.0.0",
     "pyjwt>=2.10.1",
     "sqlalchemy[asyncio]>=2.0.36",
     "tzdata>=2026.2",
