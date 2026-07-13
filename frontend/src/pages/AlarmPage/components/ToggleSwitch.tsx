@@ -1,4 +1,4 @@
-import { alarmTheme as t } from "../theme";
+import { pinkTheme as t } from "../../../theme/pinkTheme";
 
 interface Props {
   checked: boolean;

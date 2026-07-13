@@ -22,7 +22,8 @@ export default function Layout() {
           display: "flex",
           gap: "12px",
           padding: "8px 12px",
-          borderBottom: "1px solid #ccc",
+          borderBottom: `1px solid ${pinkTheme.border}`,
+          background: pinkTheme.cardBg,
           alignItems: "center",
         }}
       >
@@ -44,16 +45,42 @@ export default function Layout() {
         <Link to="/more" style={navLinkStyle}>
           더보기
         </Link>
-        <span style={{ marginLeft: "auto" }}>
+        <span
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontSize: 13,
+            color: pinkTheme.text,
+          }}
+        >
           {user ? (
             <>
-              {user.name}님 <Link to="/account-settings">개인정보수정</Link>{" "}
-              <button type="button" onClick={logout}>
+              {user.name}님{" "}
+              <Link to="/account-settings" style={{ color: pinkTheme.textMuted, fontSize: 12 }}>
+                개인정보수정
+              </Link>
+              <button
+                type="button"
+                onClick={logout}
+                style={{
+                  border: `1px solid ${pinkTheme.border}`,
+                  borderRadius: 8,
+                  background: pinkTheme.cardBg,
+                  color: pinkTheme.textMuted,
+                  fontSize: 12,
+                  padding: "4px 10px",
+                  cursor: "pointer",
+                }}
+              >
                 로그아웃
               </button>
             </>
           ) : (
-            <Link to="/login">로그인</Link>
+            <Link to="/login" style={navLinkStyle}>
+              로그인
+            </Link>
           )}
         </span>
       </nav>

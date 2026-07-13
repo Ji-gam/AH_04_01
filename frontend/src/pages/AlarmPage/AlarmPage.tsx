@@ -4,6 +4,7 @@ import { apiFetch } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
 import type { MedicationSchedule } from "../../hooks/useMedication";
+import { pinkTheme as t } from "../../theme/pinkTheme";
 import SchedulePage from "../SchedulePage/SchedulePage";
 
 import AlarmCalendar from "./components/AlarmCalendar";
@@ -12,7 +13,6 @@ import MedTimeForm from "./components/MedTimeForm";
 import Modal from "./components/Modal";
 import ToggleSwitch from "./components/ToggleSwitch";
 import { isScheduleDueOnDate, toDateString } from "./dateUtils";
-import { alarmTheme as t } from "./theme";
 
 function getCurrentHHMM(): string {
   const now = new Date();

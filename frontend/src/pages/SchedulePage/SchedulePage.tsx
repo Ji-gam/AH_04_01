@@ -5,22 +5,23 @@ import { apiFetch } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
 import type { MedicationSchedule } from "../../hooks/useMedication";
+import { pinkTheme } from "../../theme/pinkTheme";
 import { toDateString } from "../AlarmPage/dateUtils";
 
 import { buildGroups, loadChecked, saveChecked, type TimeGroup } from "./scheduleData";
 
-/** 레퍼런스 레이아웃 + 앱 공통 연핑크 테마 (복약알림 화면과 동일 계열) */
+/** 공용 pinkTheme 별칭 — 팁 박스(노란 안내)만 이 화면 전용 색으로 유지한다. */
 const c = {
-  pageBg: "#FFF5F8",
-  cardBg: "#FFFFFF",
-  cardBorder: "#FFE3EB",
-  text: "#4A3F44",
-  textMuted: "#A8969E",
-  pink: "#FF6F91",
-  pinkSoft: "#FFEDF2",
+  pageBg: pinkTheme.pageBg,
+  cardBg: pinkTheme.cardBg,
+  cardBorder: pinkTheme.border,
+  text: pinkTheme.text,
+  textMuted: pinkTheme.textMuted,
+  pink: pinkTheme.primary,
+  pinkSoft: pinkTheme.primarySoft,
   tipBg: "#FFFBEA",
   tipText: "#8A7B4F",
-  line: "#F3DCE3",
+  line: pinkTheme.border,
 };
 
 interface DurSearchResultItem {

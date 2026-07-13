@@ -82,8 +82,11 @@ export default function InfoPage() {
             key={tab.label}
             type="button"
             size="sm"
-            variant={category === tab.value ? "default" : "secondary"}
+            variant="secondary"
             onClick={() => setCategory(tab.value)}
+            className={`border border-white bg-white hover:bg-white ${
+              category === tab.value ? "font-semibold text-primary" : "text-muted-foreground"
+            }`}
           >
             {tab.label}
           </Button>

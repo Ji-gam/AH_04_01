@@ -1,6 +1,6 @@
 import type { NotificationScheduleResult } from "../../../api/types";
+import { pinkTheme as t } from "../../../theme/pinkTheme";
 import { KOREAN_DAYS, isScheduleDueOnDate, toDateString } from "../dateUtils";
-import { alarmTheme as t } from "../theme";
 
 /** month는 0부터 시작(1월=0). 1일 이전 자리는 null로 채워 그리드 정렬을 맞춘다. */
 function getMonthCells(year: number, month: number): (Date | null)[] {

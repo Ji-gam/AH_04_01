@@ -3,21 +3,35 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 앱 공통 연핑크 팔레트(theme/pinkTheme.ts)와 1:1 대응하는 HSL 값 — 두 파일을 항상 같이 수정한다.
+   pageBg #FFF5F8 / text #5A4A4E / primary #FF6F91 / primarySoft #FFE3EC / textMuted #B98A9A
+   / danger #E85D75 / border #FFD6E4 */
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
-  --primary: 211 100% 50%;
+  --background: 342 100% 98%;
+  --foreground: 345 10% 32%;
+  --primary: 346 100% 72%;
   --primary-foreground: 0 0% 100%;
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  --destructive: 0 84% 60%;
+  --secondary: 341 100% 94%;
+  --secondary-foreground: 345 10% 32%;
+  --muted: 341 100% 94%;
+  --muted-foreground: 340 25% 63%;
+  --destructive: 350 75% 64%;
   --destructive-foreground: 0 0% 100%;
-  --border: 214 32% 91%;
+  --border: 340 100% 92%;
   --radius: 1rem;
 }
 
 body {
   @apply bg-background text-foreground;
+}
+
+/* 파일 업로드(복약관리 분석)의 '파일 선택' 버튼 — 브라우저 기본 회색 대신 흰 배경으로 통일 */
+input[type="file"]::file-selector-button {
+  background: #fff;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  padding: 6px 12px;
+  margin-right: 8px;
+  color: hsl(var(--foreground));
+  cursor: pointer;
 }
