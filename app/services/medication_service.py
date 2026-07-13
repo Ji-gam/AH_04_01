@@ -99,11 +99,20 @@ def _korean_only(text: str) -> str:
 def _best_fuzzy_candidate(query: str, candidates: list[tuple[str, str]], threshold: float) -> str | None:
     """`candidates`((key, 이름)) 중 `query`(한글만 남긴 OCR 텍스트)와 가장 유사하면서 임계값
     이상인 것의 key를 반환한다. key는 호출부에 따라 MySQL Medication.id(문자열화) 또는 Tier1
-    item_seq일 수 있다 — 이 함수는 키의 의미를 모른 채 순수 문자열 유사도만 비교한다."""
+    item_seq일 수 있다 — 이 함수는 키의 의미를 모른 채 순수 문자열 유사도만 비교한다.
+
+    (#120) 후보와 길이가 같은 것만 비교한다 — 이 함수의 목적은 "글자 하나가 비슷한 다른 글자로
+    잘못 읽힌" 같은-길이 치환 오류 구제(T-MED-9)이지, "성분명만 언급되고 제형 접미사가 없는"
+    더 짧은 텍스트를 임의로 늘려 다른 약과 매칭하는 것이 아니다. 예: "아스피린"(성분명 단독
+    언급, 4자)은 "아스피린정"(5자)과 글자 하나 차이로 보이지만(ratio≈0.89), 실제로는 완전히
+    무관한 다른 약의 성분명 언급일 뿐이다 — 길이가 다르면 애초에 비교 대상에서 제외한다."""
     best_key: str | None = None
     best_ratio = 0.0
     for key, name in candidates:
-        ratio = difflib.SequenceMatcher(None, query, _korean_only(name)).ratio()
+        korean_name = _korean_only(name)
+        if len(korean_name) != len(query):
+            continue
+        ratio = difflib.SequenceMatcher(None, query, korean_name).ratio()
         if ratio > best_ratio:
             best_ratio, best_key = ratio, key
     return best_key if best_ratio >= threshold else None

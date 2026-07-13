@@ -71,6 +71,25 @@ async def test_ingredient_mention_with_particle_does_not_fuzzy_match_unrelated_d
     assert real_drug.id not in {med.id for med in matched}
 
 
+async def test_bare_ingredient_mention_does_not_fuzzy_match_longer_unrelated_drug():
+    """(#120) "아스피린 100mg"처럼 다른 약의 성분란에 적힌 성분명 단독 언급("아스피린", 조사도
+    없음)이, 우연히 접미사만 다른(제형 접미사가 더 붙은) 무관한 실제 약("아스피린정")과 글자
+    하나 차이로 보여(ratio≈0.89) 오매칭되던 문제. 퍼지 매칭은 "같은 길이의 글자 치환 오류"만
+    구제해야 하므로, 길이가 다르면 애초에 후보에서 제외되어야 한다."""
+    repo = MedicationRepository()
+
+    async with TestSessionLocal() as session:
+        real_drug = await repo.create_medication(
+            session, Medication(medication_name="아스피린정", standard_code="PDP_TEST_ASPIRIN_TABLET")
+        )
+
+        matched, _confidences = await medication_service._fuzzy_match_unrecognized_fields(
+            session, repo, [OcrField(text="아스피린", confidence=0.99)], set()
+        )
+
+    assert real_drug.id not in {med.id for med in matched}
+
+
 class _FakeDurDrugRepository:
     def __init__(self, items: list[tuple[str, str]]):
         self._items = items
