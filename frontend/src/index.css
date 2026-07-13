@@ -24,3 +24,14 @@
 body {
   @apply bg-background text-foreground;
 }
+
+/* 파일 업로드(복약관리 분석)의 '파일 선택' 버튼 — 브라우저 기본 회색 대신 흰 배경으로 통일 */
+input[type="file"]::file-selector-button {
+  background: #fff;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.5rem;
+  padding: 6px 12px;
+  margin-right: 8px;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+}

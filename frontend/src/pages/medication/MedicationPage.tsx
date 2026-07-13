@@ -283,7 +283,18 @@ export default function MedicationPage() {
                     required
                   />
                 </div>
-                <button type="submit" disabled={isLoading}>
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  style={{
+                    background: "#fff",
+                    border: `1px solid ${pinkTheme.border}`,
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    color: pinkTheme.text,
+                    cursor: isLoading ? "not-allowed" : "pointer",
+                  }}
+                >
                   {isLoading ? "업로드 중..." : "처방전/알약 분석하기"}
                 </button>
               </form>
