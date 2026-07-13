@@ -60,6 +60,11 @@ _MIN_DRUG_NAME_LEN = 5
 # 경우만 제외) 인정하도록, 끝 앵커 대신 다음 글자가 한글이 아닌지만 확인한다.
 _DRUG_FORM_SUFFIX_PATTERN = re.compile(r"(정|캡슐|시럽|패취|점안액|디스커스|연고|겔|주)(?![가-힣])")
 
+# 약국/병원명은 처방전 헤더에 "*" 불릿과 함께 적히기도 해서 _looks_like_drug_name의 "*" 조건만으로는
+# 걸러지지 않는다("SAMPLE*약국" 등). 약품명이 아니라 기관명으로 끝나는 텍스트는 후보(퍼지 매칭 포함)에서
+# 제외한다.
+_INSTITUTION_SUFFIX_PATTERN = re.compile(r"(약국|병원|의원|한의원)$")
+
 # (#106) CLOVA OCR이 "패취"를 "매취"로 읽는 것처럼 글자 하나를 비슷한 글자로 잘못 읽으면,
 # 접미사/용량 패턴이 아예 안 맞아 _looks_like_drug_name을 통과하지 못한다. 이런 텍스트를
 # 구제하기 위해 숫자/기호를 떼고 한글만 남긴 뒤 마스터 DB 약품명(마찬가지로 한글만 남긴 것)과
@@ -269,6 +274,8 @@ def _looks_like_drug_name(word: str) -> bool:
         return False
     if _is_annotation_line(stripped):
         return False
+    if _INSTITUTION_SUFFIX_PATTERN.search(stripped):
+        return False
     if not _KOREAN_TOKEN_PATTERN.search(stripped):
         return False
     return (
@@ -419,6 +426,8 @@ async def _fuzzy_match_unrecognized_fields(
         stripped = field.text.lstrip("*").strip()
         if _is_annotation_line(stripped):
             continue  # 성분/제조사명 표기 줄은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
+        if _INSTITUTION_SUFFIX_PATTERN.search(stripped):
+            continue  # 약국/병원명은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
         query = _korean_only(field.text)
         if len(query) < _FUZZY_MATCH_MIN_KOREAN_LEN:
             continue
@@ -616,19 +625,20 @@ def _dummy_ocr_fields() -> list[OcrField]:
 async def _resolve_ocr_fields(file_bytes: bytes, file_name: str, dummy_mode: bool) -> tuple[list[OcrField], bool]:
     """OCR 인식 필드(텍스트+confidence) 목록과 "더미 폴백이 사용됐는지"를 반환한다(T-MED-3).
 
-    dummy_mode가 명시적으로 요청됐거나, 실제 OCR 호출이 불가능/실패/빈 응답이면
-    결정적인 더미 텍스트로 폴백해 등록 자체가 막히지 않게 한다."""
+    dummy_mode가 명시적으로 요청된 경우에만 결정적인 더미 텍스트로 폴백한다. CLOVA 미설정/호출
+    실패/빈 응답은 실제 인식이 실패한 것이므로, 더미 텍스트를 실제 인식 결과인 것처럼 섞어 넣지
+    않고 빈 필드 목록을 반환한다 — 호출부에서 candidates가 비어 status="failed"로 처리된다."""
     if dummy_mode:
         return _dummy_ocr_fields(), True
 
     if not _clova_configured():
-        logger.warning("CLOVA OCR 키/URL이 설정되지 않아 더미 텍스트로 폴백합니다.")
-        return _dummy_ocr_fields(), True
+        logger.warning("CLOVA OCR 키/URL이 설정되지 않아 인식에 실패했습니다.")
+        return [], False
 
     ocr_fields = await _call_clova_ocr(file_bytes, file_name)
     if not ocr_fields:
-        logger.warning("CLOVA OCR 호출 결과가 비어 있어 더미 텍스트로 폴백합니다.")
-        return _dummy_ocr_fields(), True
+        logger.warning("CLOVA OCR 호출 결과가 비어 있습니다.")
+        return [], False
     return ocr_fields, False
 
 
