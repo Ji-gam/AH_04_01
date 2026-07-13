@@ -48,5 +48,10 @@
     "owner": "claude",
     "branch": "feature/T-MED-6-ocr-confidence-matching",
     "started": "2026-07-12"
+  },
+  "T-MED-13": {
+    "owner": "claude",
+    "branch": "claude/ocr-dummy-values-fix-64b94e",
+    "started": "2026-07-13"
   }
 }
