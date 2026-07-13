@@ -48,10 +48,5 @@
     "owner": "claude",
     "branch": "feature/T-MED-6-ocr-confidence-matching",
     "started": "2026-07-12"
-  },
-  "T-MED-12": {
-    "owner": "claude",
-    "branch": "feature/T-MED-12-institution-filter-particle-fix",
-    "started": "2026-07-13"
   }
 }
