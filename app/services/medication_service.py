@@ -757,9 +757,7 @@ class MedicationService:
         await self._repository.create_recognition_job(session, job)
 
         # 백그라운드 태스크 등록 (요청 세션은 넘기지 않고, 태스크 내부에서 자체 세션을 생성한다)
-        background_tasks.add_task(
-            run_ocr_task, job_id, source_type, file_bytes, file_name, dummy_mode=dummy_mode
-        )
+        background_tasks.add_task(run_ocr_task, job_id, source_type, file_bytes, file_name, dummy_mode=dummy_mode)
 
         return RecognitionJobCreateResult(job_id=job_id, status="pending")
 
