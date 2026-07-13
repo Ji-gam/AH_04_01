@@ -131,6 +131,16 @@ export default function MorePage() {
             </span>
           </Link>
 
+          <Link to="/notification-settings" style={menuCardStyle}>
+            <span>
+              🔔 알림설정
+              <span style={menuDescStyle}>푸시·무음 시간대·알림 강도를 설정해요</span>
+            </span>
+            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+              ›
+            </span>
+          </Link>
+
           <Link to="/content-generation" style={menuCardStyle}>
             <span>
               🛠️ 관리자 컨텐츠생성
