@@ -5,7 +5,7 @@ import os
 import re
 import time
 import uuid
-from typing import cast
+from typing import NamedTuple, cast
 
 import httpx
 from fastapi import BackgroundTasks, HTTPException, status
@@ -52,6 +52,36 @@ _MIN_DRUG_NAME_LEN = 5
 # 쓰는 고정 더미 인식 텍스트. 처방전 목록 표기 관례("*" 불릿)를 그대로 따라야 기존 매칭 로직
 # (_looks_like_drug_name)을 그대로 태워서 "실제 인식됐을 때와 동일한 흐름"으로 검증할 수 있다.
 DUMMY_OCR_RAW_TEXT = ["*타이레놀정", "*아스피린정"]
+
+# T-MED-6: 더미 텍스트는 결정적 테스트 데이터라 confidence 개념이 없으므로, 실제 인식과 동일한
+# 코드 경로를 태우기 위해 confidence=1.0(완전 확신)으로 취급한다.
+_DUMMY_OCR_CONFIDENCE = 1.0
+
+# T-MED-6: OCR 텍스트가 약품명처럼 전혀 안 보여 매칭 후보가 하나도 없을 때(마스터 DB 상위 몇 개를
+# 참고용으로만 보여주는 경우) 부여하는 낮은 match_rate — 실제 OCR 근거가 없으므로 사용자 확인을
+# 강하게 유도해야 한다.
+_NO_OCR_EVIDENCE_MATCH_RATE = 0.3
+
+# T-MED-6: 마스터 DB에 없어 즉석 생성된(AUTO_ 더미) 약품은 OCR 신뢰도가 아무리 높아도 "검증되지
+# 않은 신규 등록"이라는 리스크가 남으므로, match_rate에 상한을 둬 사용자가 한 번 더 확인하게 한다.
+_AUTO_CREATED_MATCH_RATE_CAP = 0.5
+
+
+class OcrField(NamedTuple):
+    """CLOVA OCR General API `fields[]` 응답 원소 하나. `confidence`는 `inferConfidence`(0~1)."""
+
+    text: str
+    confidence: float
+
+
+def _compute_match_rate(confidence: float, *, is_auto_created: bool) -> float:
+    """(T-MED-6) OCR confidence를 실제 match_rate로 변환한다.
+
+    마스터 DB에 없어 즉석 생성된(AUTO_ 더미) 약품은 OCR이 아무리 확신해도 검증되지 않은
+    신규 등록이라는 리스크가 남으므로 상한을 둬 사용자 확인을 유도한다."""
+    if is_auto_created:
+        return min(confidence, _AUTO_CREATED_MATCH_RATE_CAP)
+    return confidence
 
 
 def _extract_item_seq(standard_code: str | None) -> str | None:
@@ -216,37 +246,51 @@ async def _create_medication_for_unmatched_name(
 
 
 async def _match_existing_by_word(
-    db_session: AsyncSession, repo: MedicationRepository, raw_text_list: list[str], seen_ids: set[int]
-) -> list[Medication]:
+    db_session: AsyncSession, repo: MedicationRepository, ocr_fields: list[OcrField], seen_ids: set[int]
+) -> tuple[list[Medication], dict[int, float]]:
     """짧은 숫자/용량 조각("100mg" 등)까지 LIKE 검색에 넣으면 우연히 다른 약의 용량과 겹쳐
     엉뚱한 약이 매칭되므로(예: "100mg"이 "아스피린정 100mg"에 우연히 포함), 약품명처럼
-    보이는 온전한 단어에 대해서만 실제 DB 매칭을 시도한다."""
+    보이는 온전한 단어에 대해서만 실제 DB 매칭을 시도한다.
+
+    반환값의 두 번째 요소는 (T-MED-6) 각 매칭 약품에 연결된 OCR 필드의 confidence —
+    같은 약이 여러 단어로 매칭되면 그중 가장 높은 confidence를 취한다."""
     matched: list[Medication] = []
-    for word in raw_text_list:
-        if not _looks_like_drug_name(word):
+    confidences: dict[int, float] = {}
+    for field in ocr_fields:
+        if not _looks_like_drug_name(field.text):
             continue
-        stripped = word.lstrip("*").strip()
+        stripped = field.text.lstrip("*").strip()
         for med in await repo.search_medication_by_name(db_session, stripped):
             if med.id not in seen_ids:
                 seen_ids.add(med.id)
                 matched.append(med)
-    return matched
+            confidences[med.id] = max(confidences.get(med.id, 0.0), field.confidence)
+    return matched, confidences
 
 
 async def _resolve_or_create_drug_like_names(
-    db_session: AsyncSession, repo: MedicationRepository, raw_text_list: list[str], seen_ids: set[int]
-) -> tuple[list[Medication], set[int]]:
+    db_session: AsyncSession, repo: MedicationRepository, ocr_fields: list[OcrField], seen_ids: set[int]
+) -> tuple[list[Medication], set[int], dict[int, float]]:
     """마스터 DB에 없는 약이어도, OCR 텍스트가 약품명 형태(용량단위 또는 "*" 불릿 표시)로
     보이면 등록이 막히지 않도록 새 마스터 레코드를 즉석에서 생성해 후보로 포함시킨다.
     "*"는 정규화 과정에서 제거하고, 잘려서 중복된 짧은 조각은 dedupe로 걸러낸다."""
     resolved: list[Medication] = []
     auto_created_ids: set[int] = set()
+    confidences: dict[int, float] = {}
 
-    drug_like_words = {w.lstrip("*").strip() for w in raw_text_list if _looks_like_drug_name(w)}
-    for name in _dedupe_drug_names(drug_like_words):
+    name_confidence: dict[str, float] = {}
+    for field in ocr_fields:
+        if not _looks_like_drug_name(field.text):
+            continue
+        name = field.text.lstrip("*").strip()
+        name_confidence[name] = max(name_confidence.get(name, 0.0), field.confidence)
+
+    for name in _dedupe_drug_names(set(name_confidence)):
+        confidence = name_confidence[name]
         existing = await repo.search_medication_by_name(db_session, name)
         exact = next((m for m in existing if m.medication_name == name), None)
         if exact:
+            confidences[exact.id] = max(confidences.get(exact.id, 0.0), confidence)
             if exact.id not in seen_ids:
                 seen_ids.add(exact.id)
                 resolved.append(exact)
@@ -257,23 +301,31 @@ async def _resolve_or_create_drug_like_names(
         if is_auto_dummy:
             auto_created_ids.add(new_med.id)
         resolved.append(new_med)
+        confidences[new_med.id] = confidence
 
-    return resolved, auto_created_ids
+    return resolved, auto_created_ids, confidences
 
 
 async def _match_or_create_medications(
-    db_session: AsyncSession, repo: MedicationRepository, raw_text_list: list[str]
-) -> tuple[list[Medication], set[int]]:
+    db_session: AsyncSession, repo: MedicationRepository, ocr_fields: list[OcrField]
+) -> tuple[list[Medication], set[int], dict[int, float]]:
     """OCR 텍스트에서 약품명으로 보이는 조각을 마스터 DB와 매칭하고, 없으면 새로 생성한다.
-    반환값: (매칭/생성된 약품 목록, 이번에 새로 생성된 약품의 id 집합)"""
+    반환값: (매칭/생성된 약품 목록, 이번에 새로 생성된 약품의 id 집합, 약품별 OCR confidence)"""
     matched_meds: list[Medication] = []
     auto_created_ids: set[int] = set()
     seen_ids: set[int] = set()
+    match_confidence: dict[int, float] = {}
 
-    if raw_text_list:
-        matched_meds.extend(await _match_existing_by_word(db_session, repo, raw_text_list, seen_ids))
-        resolved, auto_created_ids = await _resolve_or_create_drug_like_names(db_session, repo, raw_text_list, seen_ids)
+    if ocr_fields:
+        existing_matched, existing_confidence = await _match_existing_by_word(db_session, repo, ocr_fields, seen_ids)
+        matched_meds.extend(existing_matched)
+        match_confidence.update(existing_confidence)
+
+        resolved, auto_created_ids, resolved_confidence = await _resolve_or_create_drug_like_names(
+            db_session, repo, ocr_fields, seen_ids
+        )
         matched_meds.extend(resolved)
+        match_confidence.update(resolved_confidence)
 
     # 그래도 후보가 하나도 없으면(약품명으로 보이는 텍스트조차 없었던 경우)
     # 마스터 DB 상위 몇 개를 참고용으로 보여준다 — 이 경우엔 수동 검색으로의 전환을 기대한다.
@@ -281,7 +333,7 @@ async def _match_or_create_medications(
         all_meds = await repo.search_medication_by_name(db_session, "")
         matched_meds = all_meds[:3]
 
-    return matched_meds, auto_created_ids
+    return matched_meds, auto_created_ids, match_confidence
 
 
 def _build_clova_ocr_request(file_bytes: bytes, file_name: str) -> tuple[dict, dict]:
@@ -300,22 +352,35 @@ def _build_clova_ocr_request(file_bytes: bytes, file_name: str) -> tuple[dict, d
     return payload, headers
 
 
-def _parse_clova_ocr_response(response: httpx.Response) -> list[str]:
+def _parse_clova_ocr_response(response: httpx.Response) -> list[OcrField]:
     """2xx 응답의 JSON 구조가 기대와 다르면(필드 누락/타입 불일치) 재시도해도 결과가 같으므로
-    빈 리스트로 처리하되, 어떤 응답이 문제였는지 알 수 있게 로그를 남긴다."""
+    빈 리스트로 처리하되, 어떤 응답이 문제였는지 알 수 있게 로그를 남긴다.
+
+    (T-MED-6) `inferText`뿐 아니라 `inferConfidence`도 함께 뽑아, 매칭률 계산에 실제 OCR
+    신뢰도를 반영할 수 있게 한다. confidence 필드가 없거나 숫자가 아니면 0.0으로 취급."""
     try:
         res_json = response.json()
         images = res_json.get("images", [])
         if not images:
             return []
         fields = images[0].get("fields", [])
-        return [field.get("inferText", "") for field in fields if field.get("inferText")]
+        result = []
+        for field in fields:
+            text = field.get("inferText", "")
+            if not text:
+                continue
+            try:
+                confidence = float(field.get("inferConfidence", 0.0))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            result.append(OcrField(text=text, confidence=confidence))
+        return result
     except (ValueError, AttributeError, TypeError) as exc:
         logger.error("CLOVA OCR 응답 파싱 실패 (status=%s): %s", response.status_code, exc)
         return []
 
 
-async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[str]:
+async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[OcrField]:
     """CLOVA OCR을 호출해 인식된 텍스트 조각 목록을 반환한다. 호출 실패/빈 응답이면 빈 리스트.
     호출 전 `_clova_configured()`로 키/URL이 설정됐음을 확인했다는 전제 하에만 호출된다.
 
@@ -367,23 +432,27 @@ def _clova_configured() -> bool:
     return bool(CLOVA_OCR_SECRET_KEY and CLOVA_OCR_INVOKE_URL and not CLOVA_OCR_SECRET_KEY.startswith("your_"))
 
 
-async def _resolve_ocr_raw_text(file_bytes: bytes, file_name: str, dummy_mode: bool) -> tuple[list[str], bool]:
-    """OCR 인식 텍스트 목록과 "더미 폴백이 사용됐는지"를 반환한다(T-MED-3).
+def _dummy_ocr_fields() -> list[OcrField]:
+    return [OcrField(text=t, confidence=_DUMMY_OCR_CONFIDENCE) for t in DUMMY_OCR_RAW_TEXT]
+
+
+async def _resolve_ocr_fields(file_bytes: bytes, file_name: str, dummy_mode: bool) -> tuple[list[OcrField], bool]:
+    """OCR 인식 필드(텍스트+confidence) 목록과 "더미 폴백이 사용됐는지"를 반환한다(T-MED-3).
 
     dummy_mode가 명시적으로 요청됐거나, 실제 OCR 호출이 불가능/실패/빈 응답이면
     결정적인 더미 텍스트로 폴백해 등록 자체가 막히지 않게 한다."""
     if dummy_mode:
-        return list(DUMMY_OCR_RAW_TEXT), True
+        return _dummy_ocr_fields(), True
 
     if not _clova_configured():
         logger.warning("CLOVA OCR 키/URL이 설정되지 않아 더미 텍스트로 폴백합니다.")
-        return list(DUMMY_OCR_RAW_TEXT), True
+        return _dummy_ocr_fields(), True
 
-    raw_text_list = await _call_clova_ocr(file_bytes, file_name)
-    if not raw_text_list:
+    ocr_fields = await _call_clova_ocr(file_bytes, file_name)
+    if not ocr_fields:
         logger.warning("CLOVA OCR 호출 결과가 비어 있어 더미 텍스트로 폴백합니다.")
-        return list(DUMMY_OCR_RAW_TEXT), True
-    return raw_text_list, False
+        return _dummy_ocr_fields(), True
+    return ocr_fields, False
 
 
 async def _execute_ocr_logic(
@@ -400,7 +469,7 @@ async def _execute_ocr_logic(
     await repo.update_recognition_job(db_session, job_id, "processing")
 
     # 2. OCR 텍스트 확보 (dummy_mode 명시 요청 또는 실제 OCR 실패 시 결정적 더미로 폴백)
-    raw_text_list, used_dummy_fallback = await _resolve_ocr_raw_text(file_bytes, file_name, dummy_mode)
+    ocr_fields, used_dummy_fallback = await _resolve_ocr_fields(file_bytes, file_name, dummy_mode)
 
     # 3. OCR 파싱 결과 분석 & DB 매칭
     candidates = []
@@ -409,17 +478,15 @@ async def _execute_ocr_logic(
         "times": ["09:00", "13:00", "19:00"],
         "duration": "3일",
         "instruction": "식후 30분 복용",
-        "ocr_raw_text": " ".join(raw_text_list),
+        "ocr_raw_text": " ".join(f.text for f in ocr_fields),
         "dummy_mode": used_dummy_fallback,
     }
 
-    matched_meds, auto_created_ids = await _match_or_create_medications(db_session, repo, raw_text_list)
+    matched_meds, auto_created_ids, match_confidence = await _match_or_create_medications(db_session, repo, ocr_fields)
 
     for med in matched_meds:
-        if med.id in auto_created_ids:
-            match_rate = 0.5  # 마스터 DB에 없어 새로 생성된 미검증 약품
-        else:
-            match_rate = 1.0 if "타이레놀" in med.medication_name else 0.85
+        confidence = match_confidence.get(med.id, _NO_OCR_EVIDENCE_MATCH_RATE)
+        match_rate = _compute_match_rate(confidence, is_auto_created=med.id in auto_created_ids)
         candidates.append(
             {
                 "drug_name": med.medication_name,
