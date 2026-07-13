@@ -53,3 +53,8 @@ app = FastAPI(
 )
 
 app.include_router(v1_routers)
+
+if config.ENV == Env.LOCAL:
+    from app.admin import register_admin
+
+    register_admin(app)
