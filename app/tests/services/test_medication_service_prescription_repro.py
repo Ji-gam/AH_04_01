@@ -42,7 +42,8 @@ async def test_drug_name_without_dosage_unit_still_matches_by_form_suffix():
     repo = MedicationRepository()
     async with TestSessionLocal() as session:
         med = await repo.create_medication(
-            session, Medication(standard_code="KD_SERE001", medication_name="세레타이드500디스커스", form_type="INHALER")
+            session,
+            Medication(standard_code="KD_SERE001", medication_name="세레타이드500디스커스", form_type="INHALER"),
         )
 
         matched, _auto_created_ids, _match_confidence = await medication_service._match_or_create_medications(
