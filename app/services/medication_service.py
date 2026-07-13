@@ -67,6 +67,13 @@ _DRUG_FORM_SUFFIX_PATTERN = re.compile(r"(정|캡슐|시럽|패취|점안액|디
 # 부분문자열로 등장하는 경우는 없다고 봐도 안전하다).
 _INSTITUTION_SUFFIX_PATTERN = re.compile(r"약국|병원|의원|한의원")
 
+# (#120) "아스피린에 과민증이 있는 경우..."처럼 처방전 복약안내 문구에 성분명이 조사와 함께
+# 언급되면("아스피린에"), 실제로는 완결된 약품명이 아닌 문장 중간 단어인데도 편집거리상 다른
+# 실약품명("아스피린정")과 우연히 비슷해(1글자 차이) 임계값을 넘겨버릴 수 있다. 조사는 한국어에서
+# 띄어쓰기 없이 명사 바로 뒤에 붙으므로, 이런 조사로 끝나는 토큰은 완결된 약품명일 수 없다고 보고
+# 퍼지 매칭 대상에서 제외한다.
+_TRAILING_PARTICLE_PATTERN = re.compile(r"(?:에서|부터|까지|으로|처럼|이나|은|는|이|가|을|를|도|만|와|과|의|에|로|나)$")
+
 # (#106) CLOVA OCR이 "패취"를 "매취"로 읽는 것처럼 글자 하나를 비슷한 글자로 잘못 읽으면,
 # 접미사/용량 패턴이 아예 안 맞아 _looks_like_drug_name을 통과하지 못한다. 이런 텍스트를
 # 구제하기 위해 숫자/기호를 떼고 한글만 남긴 뒤 마스터 DB 약품명(마찬가지로 한글만 남긴 것)과
@@ -430,6 +437,8 @@ async def _fuzzy_match_unrecognized_fields(
             continue  # 성분/제조사명 표기 줄은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
         if _INSTITUTION_SUFFIX_PATTERN.search(stripped):
             continue  # 약국/병원명은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
+        if _TRAILING_PARTICLE_PATTERN.search(stripped):
+            continue  # 조사로 끝나는 문장 중간 단어는 완결된 약품명이 아니므로 퍼지 매칭도 제외
         query = _korean_only(field.text)
         if len(query) < _FUZZY_MATCH_MIN_KOREAN_LEN:
             continue

@@ -53,6 +53,24 @@ async def test_institution_name_with_trailing_particle_is_not_fuzzy_matched():
     assert stale.id not in {med.id for med in matched}
 
 
+async def test_ingredient_mention_with_particle_does_not_fuzzy_match_unrelated_drug():
+    """(#120) "아스피린에 과민증이 있는 경우..." 같은 복약안내 문구에서 "아스피린에"(성분명+조사)는
+    완결된 약품명이 아닌데도, 편집거리상 실제로 등록된 다른 약("아스피린정")과 1글자 차이라
+    임계값(0.8)을 넘겨 오매칭될 수 있었다. 조사로 끝나는 토큰은 퍼지 매칭에서 제외해야 한다."""
+    repo = MedicationRepository()
+
+    async with TestSessionLocal() as session:
+        real_drug = await repo.create_medication(
+            session, Medication(medication_name="아스피린정", standard_code="PDP_TEST_ASPIRIN")
+        )
+
+        matched, _confidences = await medication_service._fuzzy_match_unrecognized_fields(
+            session, repo, [OcrField(text="아스피린에", confidence=0.99)], set()
+        )
+
+    assert real_drug.id not in {med.id for med in matched}
+
+
 class _FakeDurDrugRepository:
     def __init__(self, items: list[tuple[str, str]]):
         self._items = items
