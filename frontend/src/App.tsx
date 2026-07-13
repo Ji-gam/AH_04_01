@@ -17,6 +17,7 @@ import ContentGenerationPage from "./pages/ContentGenerationPage/ContentGenerati
 import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
 import HomePage from "./pages/HomePage/HomePage";
 import InfoPage from "./pages/InfoPage/InfoPage";
+import LifestyleInfoPage from "./pages/LifestyleInfoPage/LifestyleInfoPage";
 import LoginPage from "./pages/LoginPage/LoginPage";
 import MedicationPage from "./pages/medication/MedicationPage";
 import MorePage from "./pages/MorePage/MorePage";
@@ -42,6 +43,7 @@ export const router = createBrowserRouter([
       { path: "/chat", element: <ChatPage /> },
       { path: "/info", element: <InfoPage /> },
       { path: "/more", element: <MorePage /> },
+      { path: "/lifestyle-info", element: <LifestyleInfoPage /> },
       { path: "/content-generation", element: <ContentGenerationPage /> },
       { path: "/content-generation/:id", element: <ContentDetailPage /> },
       {
