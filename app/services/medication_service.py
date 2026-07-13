@@ -43,10 +43,15 @@ _CLOVA_OCR_RETRY_DELAY_SECONDS = 0.5
 # 약품명 후보로 볼 만한 OCR 텍스트 블록 판별 기준.
 # "정"/"캡슐" 같은 제형 접미사만으로는 "환자정보", "서방정"(잘린 조각) 등 일반 텍스트도
 # 걸려버려서, 반드시 (a) 용량 숫자+단위(mg/g/ml)가 붙어 있거나 (b) 처방전 약품 목록에서
-# 흔히 쓰이는 "*" 불릿 표시가 있는 경우만 후보로 인정한다.
+# 흔히 쓰이는 "*" 불릿 표시가 있거나 (c) 흔한 약품 제형 접미사로 끝나는 경우만 후보로
+# 인정한다. (c)는 최소 길이(_MIN_DRUG_NAME_LEN) 조건과 함께 적용되므로 "환자정보"/"서방정"
+# 같은 짧은 일반 텍스트 조각은 그 단계에서 이미 걸러진다.
 _KOREAN_TOKEN_PATTERN = re.compile(r"[가-힣]{2,}")
 _DOSAGE_PATTERN = re.compile(r"\d+(mg|g|ml)", re.IGNORECASE)
 _MIN_DRUG_NAME_LEN = 5
+# 제형 접미사 뒤에 용량/단위 표기(숫자, ㎍/h 같은 비-한글 문자)가 더 붙어도 인정하되,
+# 접미사 뒤에 한글이 더 이어지면("서방정보"처럼) 약품명이 아닌 일반 문장으로 보고 제외한다.
+_DRUG_FORM_SUFFIX_PATTERN = re.compile(r"(정|캡슐|시럽|패취|점안액|디스커스|연고|겔|주)[^가-힣]*$")
 
 # T-MED-3: OCR이 실패했거나(키 미설정/호출 예외/빈 응답) QA가 dummy_mode를 명시적으로 요청했을 때
 # 쓰는 고정 더미 인식 텍스트. 처방전 목록 표기 관례("*" 불릿)를 그대로 따라야 기존 매칭 로직
@@ -201,9 +206,17 @@ def _looks_like_drug_name(word: str) -> bool:
     stripped = word.lstrip("*").strip()
     if len(stripped) < _MIN_DRUG_NAME_LEN:
         return False
+    # "(Buprenorphine 10mg)"처럼 괄호로 감싼 성분/일반명 표기 줄은 브랜드 약품명이 아니라
+    # 별도 후보로 취급하면 안 되므로 제외한다.
+    if stripped.startswith("(") or stripped.endswith(")"):
+        return False
     if not _KOREAN_TOKEN_PATTERN.search(stripped):
         return False
-    return bool(_DOSAGE_PATTERN.search(stripped)) or word.strip().startswith("*")
+    return (
+        bool(_DOSAGE_PATTERN.search(stripped))
+        or word.strip().startswith("*")
+        or bool(_DRUG_FORM_SUFFIX_PATTERN.search(stripped))
+    )
 
 
 def _dedupe_drug_names(names: set[str]) -> list[str]:
