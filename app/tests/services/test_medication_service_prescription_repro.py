@@ -81,3 +81,25 @@ async def test_all_six_prescription_items_are_recognized():
 
     matched_ids = {m.id for m in matched}
     assert {m.id for m in created} <= matched_ids
+
+
+def test_form_suffix_recognized_when_manufacturer_bracket_follows_on_same_line():
+    """(#103) 실제 처방전에서는 브랜드명+용량이 제조사명 대괄호와 한 줄에 같이 인쇄된다
+    (예: "노스판패취10ug/h [한국먼디파마]"). mg/g/ml 단위가 아닌 약(패취 등)은 제형 접미사
+    조건에만 의존하는데, 뒤따르는 제조사명(한글)이 문자열 끝에 오는 바람에 예전에는 후보로
+    인정되지 않았다(_looks_like_drug_name이 False). 접미사 뒤에 한글이 바로 이어지지만 않으면
+    인정하도록 고쳤으므로 이제는 후보로 인정돼야 한다."""
+    assert medication_service._looks_like_drug_name("노스판패취10ug/h [한국먼디파마]")
+    assert medication_service._looks_like_drug_name("노스판패취10㎍/h [한국먼디파마]")
+
+
+async def test_drug_with_manufacturer_bracket_and_non_mg_dosage_is_matched():
+    """제형 접미사만으로 후보 인정된 약도, 실제 DB 매칭/자동 생성 흐름까지 이어지는지 확인한다."""
+    repo = MedicationRepository()
+    async with TestSessionLocal() as session:
+        matched, auto_created_ids, _match_confidence = await medication_service._match_or_create_medications(
+            session, repo, [OcrField(text="노스판패취10ug/h [한국먼디파마]", confidence=0.9)]
+        )
+
+    assert len(matched) == 1
+    assert matched[0].id in auto_created_ids
