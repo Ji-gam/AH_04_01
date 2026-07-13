@@ -143,3 +143,19 @@ export interface UserUpdatePayload {
   phone_number?: string;
   gender?: "MALE" | "FEMALE";
 }
+
+// 백엔드 app/dtos/habit.py와 1:1로 수동 동기화. 홈 화면 습관 트래커.
+export interface HabitItemResult {
+  key: string;
+  label: string;
+  icon: string;
+  unit: string;
+  target: number;
+  progress: number;
+  completed: boolean;
+}
+
+export interface HabitsTodayResult {
+  habits: HabitItemResult[];
+  all_completed: boolean;
+}
