@@ -22,9 +22,7 @@ async def test_institution_name_with_bullet_is_not_registered_as_medication(monk
 
 
 async def test_institution_name_without_bullet_is_not_fuzzy_matched(monkeypatch):
-    monkeypatch.setattr(
-        medication_service, "DurDrugRepository", lambda: _FakeDurDrugRepository([("1", "필독정")])
-    )
+    monkeypatch.setattr(medication_service, "DurDrugRepository", lambda: _FakeDurDrugRepository([("1", "필독정")]))
     repo = MedicationRepository()
 
     async with TestSessionLocal() as session:
