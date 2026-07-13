@@ -149,6 +149,21 @@ _NO_OCR_EVIDENCE_MATCH_RATE = 0.3
 # 않은 신규 등록"이라는 리스크가 남으므로, match_rate에 상한을 둬 사용자가 한 번 더 확인하게 한다.
 _AUTO_CREATED_MATCH_RATE_CAP = 0.5
 
+# T-MED-13: dummy_mode(T-MED-3)는 confidence와 마찬가지로 용법 정보도 없는 결정적 테스트 데이터라,
+# 실제 인식과 동일한 흐름을 태우기 위해 대표적인 예시값을 그대로 둔다. `dummy_mode` 플래그로 이미
+# 실인식과 명시적으로 구분되므로, 실제 값처럼 오인될 위험이 없다.
+_DUMMY_DOSAGE = "1정"
+_DUMMY_TIMES = ["09:00", "13:00", "19:00"]
+_DUMMY_DURATION = "3일"
+_DUMMY_INSTRUCTION = "식후 30분 복용"
+
+# T-MED-13: 처방전 OCR 원문에서 실제 용법 정보를 뽑아내기 위한 패턴. 실경로에서 이 패턴에 맞는
+# 텍스트를 찾지 못하면, 확인되지 않은 값을 마치 인식된 것처럼 보여주지 않도록 None을 반환한다.
+_DOSAGE_COUNT_PATTERN = re.compile(r"1회\s*(\d+)\s*(정|캡슐|포)")
+_DURATION_PATTERN = re.compile(r"(\d+)\s*일분")
+_TIME_PATTERN = re.compile(r"\b([01]?\d|2[0-3]):([0-5]\d)\b")
+_INSTRUCTION_PATTERN = re.compile(r"(식후|식전|취침\s*전)\s*(\d+\s*분)?")
+
 
 class OcrField(NamedTuple):
     """CLOVA OCR General API `fields[]` 응답 원소 하나. `confidence`는 `inferConfidence`(0~1)."""
@@ -165,6 +180,34 @@ def _compute_match_rate(confidence: float, *, is_auto_created: bool) -> float:
     if is_auto_created:
         return min(confidence, _AUTO_CREATED_MATCH_RATE_CAP)
     return confidence
+
+
+def _parse_dosage_fields(raw_text: str) -> dict[str, str | list[str] | None]:
+    """(T-MED-13) OCR 원문에서 dosage/duration/times/instruction을 실제로 파싱한다.
+    패턴에 맞는 텍스트를 찾지 못하면, 확인되지 않은 값을 인식된 것처럼 보여주지 않도록
+    하드코딩된 대체값 대신 None을 반환한다."""
+    dosage_match = _DOSAGE_COUNT_PATTERN.search(raw_text)
+    dosage = f"{dosage_match.group(1)}{dosage_match.group(2)}" if dosage_match else None
+
+    duration_match = _DURATION_PATTERN.search(raw_text)
+    duration = f"{duration_match.group(1)}일" if duration_match else None
+
+    time_matches = [f"{hour}:{minute}" for hour, minute in _TIME_PATTERN.findall(raw_text)]
+    times = time_matches or None
+
+    instruction_match = _INSTRUCTION_PATTERN.search(raw_text)
+    instruction = instruction_match.group(0).strip() if instruction_match else None
+
+    return {"dosage": dosage, "times": times, "duration": duration, "instruction": instruction}
+
+
+def _dummy_dosage_fields() -> dict[str, str | list[str] | None]:
+    return {
+        "dosage": _DUMMY_DOSAGE,
+        "times": _DUMMY_TIMES,
+        "duration": _DUMMY_DURATION,
+        "instruction": _DUMMY_INSTRUCTION,
+    }
 
 
 def _extract_item_seq(standard_code: str | None) -> str | None:
@@ -680,12 +723,11 @@ async def _execute_ocr_logic(
 
     # 3. OCR 파싱 결과 분석 & DB 매칭
     candidates = []
+    ocr_raw_text = " ".join(f.text for f in ocr_fields)
+    dosage_fields = _dummy_dosage_fields() if used_dummy_fallback else _parse_dosage_fields(ocr_raw_text)
     extracted_fields = {
-        "dosage": "1정",
-        "times": ["09:00", "13:00", "19:00"],
-        "duration": "3일",
-        "instruction": "식후 30분 복용",
-        "ocr_raw_text": " ".join(f.text for f in ocr_fields),
+        **dosage_fields,
+        "ocr_raw_text": ocr_raw_text,
         "dummy_mode": used_dummy_fallback,
     }
 
@@ -813,7 +855,10 @@ class MedicationService:
                 times = ["09:00", "13:00", "19:00"]
                 if confirmed_fields and "times" in confirmed_fields:
                     times = confirmed_fields["times"]
-                elif job.extracted_fields and "times" in job.extracted_fields:
+                elif job.extracted_fields and job.extracted_fields.get("times"):
+                    # (T-MED-13) 실제 OCR에서 시간 파싱에 실패하면 extracted_fields["times"]가
+                    # None일 수 있다 — MedicationSchedule.times는 non-nullable이라 그 경우
+                    # 기본값(위 3줄)으로 폴백해야 한다.
                     times = job.extracted_fields["times"]
 
                 schedule = MedicationSchedule(
