@@ -75,7 +75,7 @@ def _column_label(column: Any) -> str:
     return f"{column.name} ({'/'.join(tags)})" if tags else column.name
 
 
-def _build_view(model: type) -> type[ModelView]:
+def _build_view(model: type[Any]) -> type[ModelView]:
     table_columns = model.__table__.columns
     columns = [c.name for c in table_columns]
     json_columns = [c.name for c in table_columns if isinstance(c.type, JSON)]
@@ -102,8 +102,10 @@ def register_admin(app: FastAPI) -> None:
     _import_all_model_modules()
 
     admin = Admin(app, engine, title="DB Raw Viewer (docker mysql, local only)")
+    existing_loader = admin.templates.env.loader
+    assert existing_loader is not None
     admin.templates.env.loader = ChoiceLoader(
-        [DictLoader({"sqladmin/list.html": _LIST_TEMPLATE_OVERRIDE}), admin.templates.env.loader]
+        [DictLoader({"sqladmin/list.html": _LIST_TEMPLATE_OVERRIDE}), existing_loader]
     )
 
     mapped_models = sorted(Base.registry.mappers, key=lambda m: m.class_.__tablename__)
