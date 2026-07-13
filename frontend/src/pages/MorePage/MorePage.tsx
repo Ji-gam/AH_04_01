@@ -121,6 +121,16 @@ export default function MorePage() {
             </span>
           </Link>
 
+          <Link to="/lifestyle-info" style={menuCardStyle}>
+            <span>
+              🌙 생활습관 정보
+              <span style={menuDescStyle}>기상·식사·취침 시간을 설정해 복약 리듬을 맞춰요</span>
+            </span>
+            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+              ›
+            </span>
+          </Link>
+
           <Link to="/content-generation" style={menuCardStyle}>
             <span>
               🛠️ 관리자 컨텐츠생성
