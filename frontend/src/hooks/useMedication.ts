@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { apiFetch, apiFetchRaw } from "../api/client";
+import { apiFetch, apiFetchRaw, getAccessToken, tryRefreshAccessToken } from "../api/client";
 
 export interface MedicationSchedule {
   id: number;
@@ -140,9 +140,10 @@ export function useMedication() {
     }
   };
 
-  // FormData 업로드는 client.ts(공유 구역, 수정 금지)의 apiFetch/apiFetchRaw를 거치면
+  // FormData 업로드는 client.ts의 apiFetch/apiFetchRaw를 거치면
   // Content-Type: application/json이 강제되어 multipart boundary가 빠지는 문제가 있다.
-  // client.ts를 고치지 않고 이 훅 안에서만 순수 fetch로 우회 처리한다.
+  // 그래서 이 훅 안에서 순수 fetch로 처리하되, 토큰은 client.ts가 export하는
+  // getAccessToken/tryRefreshAccessToken을 공유해서 프로덕션에서도 인증이 붙게 한다.
   const uploadJob = async (file: File, sourceType: string): Promise<string> => {
     setIsLoading(true);
     setError(null);
@@ -151,11 +152,8 @@ export function useMedication() {
       formData.append("file", file);
       formData.append("source_type", sourceType);
 
-      const getToken = () =>
-        (window as unknown as { __getToken?: () => string | null }).__getToken?.() || null;
-
       const doUpload = () => {
-        const token = getToken();
+        const token = getAccessToken();
         return fetch("/api/v1/recognition/jobs", {
           method: "POST",
           body: formData,
@@ -165,17 +163,8 @@ export function useMedication() {
       };
 
       let res = await doUpload();
-      if (res.status === 401) {
-        const refreshRes = await fetch("/api/v1/auth/token/refresh", { credentials: "include" });
-        if (refreshRes.ok) {
-          const body = (await refreshRes.json()) as { access_token?: string };
-          if (body.access_token) {
-            (window as unknown as { __setToken?: (t: string) => void }).__setToken?.(
-              body.access_token,
-            );
-            res = await doUpload();
-          }
-        }
+      if (res.status === 401 && (await tryRefreshAccessToken())) {
+        res = await doUpload();
       }
 
       if (!res.ok) {
