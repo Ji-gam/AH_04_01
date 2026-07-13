@@ -6,6 +6,7 @@ from app.core import config
 from app.core.db import databases
 from app.main import app
 from app.models.base import Base
+from app.services import medication_service
 
 TEST_DATABASE_URL = f"mysql+asyncmy://{config.DB_USER}:{config.DB_PASSWORD}@{config.DB_HOST}:{config.DB_PORT}/test"
 
@@ -31,6 +32,13 @@ async def override_get_db():
     app.dependency_overrides[databases.get_db] = _get_db
     yield
     app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def override_background_task_session(monkeypatch):
+    """run_ocr_task는 요청 세션을 재사용하지 않고 AsyncSessionLocal()로 자체 세션을 연다(BE-2).
+    테스트에서는 이 세션도 운영 DB가 아닌 test DB를 보게 해야 한다."""
+    monkeypatch.setattr(medication_service, "AsyncSessionLocal", TestSessionLocal)
 
 
 @pytest_asyncio.fixture(autouse=True)
