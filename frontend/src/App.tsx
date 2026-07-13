@@ -21,6 +21,7 @@ import LifestyleInfoPage from "./pages/LifestyleInfoPage/LifestyleInfoPage";
 import LoginPage from "./pages/LoginPage/LoginPage";
 import MedicationPage from "./pages/medication/MedicationPage";
 import MorePage from "./pages/MorePage/MorePage";
+import NotificationSettingsPage from "./pages/NotificationSettingsPage/NotificationSettingsPage";
 import SchedulePage from "./pages/SchedulePage/SchedulePage";
 import TrackPage from "./pages/TrackPage/TrackPage";
 
@@ -44,6 +45,7 @@ export const router = createBrowserRouter([
       { path: "/info", element: <InfoPage /> },
       { path: "/more", element: <MorePage /> },
       { path: "/lifestyle-info", element: <LifestyleInfoPage /> },
+      { path: "/notification-settings", element: <NotificationSettingsPage /> },
       { path: "/content-generation", element: <ContentGenerationPage /> },
       { path: "/content-generation/:id", element: <ContentDetailPage /> },
       {
