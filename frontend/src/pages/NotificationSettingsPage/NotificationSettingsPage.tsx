@@ -36,7 +36,9 @@ const DEFAULT_SETTINGS: NotificationSettings = {
 function loadSettings(): NotificationSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<NotificationSettings>) } : DEFAULT_SETTINGS;
+    return raw
+      ? { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<NotificationSettings>) }
+      : DEFAULT_SETTINGS;
   } catch {
     return DEFAULT_SETTINGS;
   }
@@ -45,7 +47,8 @@ function loadSettings(): NotificationSettings {
 /** 스피커 없이 짧게 "삐" 소리를 내는 테스트용 비프음 (오디오 파일 없이 Web Audio로 생성). */
 function playTestBeep() {
   const AudioContextClass =
-    window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!AudioContextClass) return;
   const ctx = new AudioContextClass();
   const oscillator = ctx.createOscillator();
@@ -165,7 +168,14 @@ export default function NotificationSettingsPage() {
             type="button"
             aria-label="뒤로"
             onClick={() => navigate("/more")}
-            style={{ border: "none", background: "none", color: t.text, fontSize: 20, cursor: "pointer", lineHeight: 1 }}
+            style={{
+              border: "none",
+              background: "none",
+              color: t.text,
+              fontSize: 20,
+              cursor: "pointer",
+              lineHeight: 1,
+            }}
           >
             ←
           </button>
@@ -209,7 +219,15 @@ export default function NotificationSettingsPage() {
           onChange={() => toggle("quietModeEnabled")}
         />
         {settings.quietModeEnabled && (
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 0", borderBottom: `1px solid ${t.border}` }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "14px 0",
+              borderBottom: `1px solid ${t.border}`,
+            }}
+          >
             <input
               type="time"
               aria-label="무음 시작 시간"
@@ -268,7 +286,9 @@ export default function NotificationSettingsPage() {
         </button>
 
         {testStatus && (
-          <p style={{ margin: "10px 0 0", fontSize: 13, color: t.textMuted, textAlign: "center" }}>{testStatus}</p>
+          <p style={{ margin: "10px 0 0", fontSize: 13, color: t.textMuted, textAlign: "center" }}>
+            {testStatus}
+          </p>
         )}
       </div>
     </div>
