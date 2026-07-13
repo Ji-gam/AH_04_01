@@ -716,20 +716,16 @@ async def run_ocr_task(
     source_type: str,
     file_bytes: bytes,
     file_name: str = "image.jpg",
-    session: AsyncSession | None = None,
     dummy_mode: bool = False,
 ):
     """
     비동기 OCR 및 약품 매칭 백그라운드 태스크.
-    session이 제공되면 해당 session을 재사용하고(테스트 환경용), 그렇지 않으면 자체 세션을 생성합니다.
+    요청 스코프 세션은 응답 전송 시 닫히므로, 항상 자체 세션을 새로 열어 사용한다(BE-2).
     dummy_mode=True면 실제 OCR 호출 없이 결정적인 더미 인식 결과를 반환한다(T-MED-3).
     """
-    if session is not None:
-        await _execute_ocr_logic(session, job_id, source_type, file_bytes, file_name, dummy_mode)
-    else:
-        async with AsyncSessionLocal() as db_session:
-            await _execute_ocr_logic(db_session, job_id, source_type, file_bytes, file_name, dummy_mode)
-            await db_session.commit()
+    async with AsyncSessionLocal() as db_session:
+        await _execute_ocr_logic(db_session, job_id, source_type, file_bytes, file_name, dummy_mode)
+        await db_session.commit()
 
 
 class MedicationService:
@@ -760,10 +756,8 @@ class MedicationService:
         )
         await self._repository.create_recognition_job(session, job)
 
-        # 백그라운드 태스크 등록
-        background_tasks.add_task(
-            run_ocr_task, job_id, source_type, file_bytes, file_name, session=session, dummy_mode=dummy_mode
-        )
+        # 백그라운드 태스크 등록 (요청 세션은 넘기지 않고, 태스크 내부에서 자체 세션을 생성한다)
+        background_tasks.add_task(run_ocr_task, job_id, source_type, file_bytes, file_name, dummy_mode=dummy_mode)
 
         return RecognitionJobCreateResult(job_id=job_id, status="pending")
 
