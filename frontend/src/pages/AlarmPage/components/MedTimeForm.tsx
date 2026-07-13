@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { alarmTheme as t } from "../theme";
+import { pinkTheme as t } from "../../../theme/pinkTheme";
 
 interface TimeParts {
   period: "오전" | "오후";

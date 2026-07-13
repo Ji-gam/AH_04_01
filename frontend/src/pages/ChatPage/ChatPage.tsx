@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import DisclaimerBanner from "../../components/common/DisclaimerBanner";
 import { useChatStream } from "../../hooks/useChatStream";
+import { pinkTheme } from "../../theme/pinkTheme";
 
 export default function ChatPage() {
   const {
@@ -54,7 +55,7 @@ export default function ChatPage() {
         display: "flex",
         height: "100%",
         overflow: "hidden",
-        fontFamily: "monospace",
+        background: pinkTheme.pageBg,
       }}
     >
       {/* 1. 데스크톱 사이드바 */}
@@ -62,23 +63,25 @@ export default function ChatPage() {
         className="chat-sidebar"
         style={{
           width: "250px",
-          borderRight: "1px solid black",
+          borderRight: `1px solid ${pinkTheme.border}`,
+          background: pinkTheme.cardBg,
           display: "flex",
           flexDirection: "column",
           height: "100%",
-          padding: "10px",
+          padding: "12px",
           boxSizing: "border-box",
         }}
       >
         <button
           onClick={startNewChat}
           style={{
-            background: "none",
-            color: "black",
-            border: "1px solid black",
-            padding: "10px",
+            background: pinkTheme.primary,
+            color: "#fff",
+            border: "none",
+            borderRadius: 10,
+            padding: "11px",
             fontSize: "14px",
-            fontWeight: "bold",
+            fontWeight: 700,
             cursor: "pointer",
             marginBottom: "15px",
           }}
@@ -86,7 +89,9 @@ export default function ChatPage() {
           + 새로운 상담 시작
         </button>
 
-        <h3 style={{ fontSize: "12px", marginBottom: "10px" }}>이전 상담 기록</h3>
+        <h3 style={{ fontSize: "12px", marginBottom: "10px", color: pinkTheme.textMuted }}>
+          이전 상담 기록
+        </h3>
 
         <div
           style={{
@@ -94,7 +99,7 @@ export default function ChatPage() {
             overflowY: "auto",
             display: "flex",
             flexDirection: "column",
-            gap: "5px",
+            gap: "6px",
           }}
         >
           {sessionList.map((session) => {
@@ -104,10 +109,14 @@ export default function ChatPage() {
                 key={session.id}
                 onClick={() => void selectSession(String(session.id))}
                 style={{
-                  padding: "10px",
-                  border: isActive ? "2px solid black" : "1px solid gray",
-                  color: "black",
-                  fontWeight: isActive ? "bold" : "normal",
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: isActive
+                    ? `1.5px solid ${pinkTheme.primary}`
+                    : `1px solid ${pinkTheme.border}`,
+                  background: isActive ? pinkTheme.primarySoft : pinkTheme.cardBg,
+                  color: pinkTheme.text,
+                  fontWeight: isActive ? 700 : 400,
                   cursor: "pointer",
                   display: "flex",
                   flexDirection: "column",
@@ -116,14 +125,14 @@ export default function ChatPage() {
                 className="session-item"
               >
                 <span style={{ fontSize: "13px" }}>상담 #{session.id}</span>
-                <span style={{ fontSize: "11px", color: "gray" }}>
+                <span style={{ fontSize: "11px", color: pinkTheme.textMuted }}>
                   {formatDate(session.created_at)}
                 </span>
               </div>
             );
           })}
           {sessionList.length === 0 && (
-            <p style={{ fontSize: "12px", color: "gray", textAlign: "center" }}>
+            <p style={{ fontSize: "12px", color: pinkTheme.textMuted, textAlign: "center" }}>
               이전 상담이 없습니다.
             </p>
           )}
@@ -139,7 +148,7 @@ export default function ChatPage() {
             left: 0,
             width: "100vw",
             height: "100vh",
-            background: "rgba(0, 0, 0, 0.5)",
+            background: "rgba(90, 74, 78, 0.45)",
             zIndex: 1000,
             display: "flex",
           }}
@@ -148,21 +157,28 @@ export default function ChatPage() {
           <div
             style={{
               width: "250px",
-              background: "white",
+              background: pinkTheme.cardBg,
               height: "100%",
               padding: "15px",
               boxSizing: "border-box",
               display: "flex",
               flexDirection: "column",
-              borderRight: "2px solid black",
+              borderRight: `1px solid ${pinkTheme.border}`,
             }}
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px" }}>
-              <strong>메뉴</strong>
+              <strong style={{ color: pinkTheme.text }}>메뉴</strong>
               <button
                 onClick={() => setIsMobileMenuOpen(false)}
-                style={{ border: "1px solid black", background: "none" }}
+                style={{
+                  border: `1px solid ${pinkTheme.border}`,
+                  borderRadius: 8,
+                  background: pinkTheme.cardBg,
+                  color: pinkTheme.textMuted,
+                  cursor: "pointer",
+                  padding: "2px 10px",
+                }}
               >
                 닫기
               </button>
@@ -174,24 +190,29 @@ export default function ChatPage() {
                 setIsMobileMenuOpen(false);
               }}
               style={{
-                background: "none",
-                border: "1px solid black",
-                padding: "10px",
-                fontWeight: "bold",
+                background: pinkTheme.primary,
+                color: "#fff",
+                border: "none",
+                borderRadius: 10,
+                padding: "11px",
+                fontWeight: 700,
+                cursor: "pointer",
                 marginBottom: "15px",
               }}
             >
               + 새로운 상담 시작
             </button>
 
-            <h3 style={{ fontSize: "12px", marginBottom: "10px" }}>이전 상담 기록</h3>
+            <h3 style={{ fontSize: "12px", marginBottom: "10px", color: pinkTheme.textMuted }}>
+              이전 상담 기록
+            </h3>
             <div
               style={{
                 flex: 1,
                 overflowY: "auto",
                 display: "flex",
                 flexDirection: "column",
-                gap: "5px",
+                gap: "6px",
               }}
             >
               {sessionList.map((session) => {
@@ -204,9 +225,14 @@ export default function ChatPage() {
                       setIsMobileMenuOpen(false);
                     }}
                     style={{
-                      padding: "10px",
-                      border: isActive ? "2px solid black" : "1px solid gray",
-                      fontWeight: isActive ? "bold" : "normal",
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: isActive
+                        ? `1.5px solid ${pinkTheme.primary}`
+                        : `1px solid ${pinkTheme.border}`,
+                      background: isActive ? pinkTheme.primarySoft : pinkTheme.cardBg,
+                      color: pinkTheme.text,
+                      fontWeight: isActive ? 700 : 400,
                       cursor: "pointer",
                       display: "flex",
                       flexDirection: "column",
@@ -214,7 +240,7 @@ export default function ChatPage() {
                     }}
                   >
                     <span style={{ fontSize: "13px" }}>상담 #{session.id}</span>
-                    <span style={{ fontSize: "11px", color: "gray" }}>
+                    <span style={{ fontSize: "11px", color: pinkTheme.textMuted }}>
                       {formatDate(session.created_at)}
                     </span>
                   </div>
@@ -232,7 +258,7 @@ export default function ChatPage() {
           display: "flex",
           flexDirection: "column",
           height: "100%",
-          background: "white",
+          background: pinkTheme.pageBg,
           position: "relative",
         }}
       >
@@ -242,24 +268,28 @@ export default function ChatPage() {
             display: "flex",
             alignItems: "center",
             gap: "10px",
-            padding: "10px",
-            borderBottom: "1px solid black",
+            padding: "12px 14px",
+            borderBottom: `1px solid ${pinkTheme.border}`,
+            background: pinkTheme.cardBg,
           }}
         >
           <button
             className="menu-toggle-btn"
             onClick={() => setIsMobileMenuOpen(true)}
             style={{
-              background: "none",
-              border: "1px solid black",
+              background: pinkTheme.cardBg,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 8,
+              color: pinkTheme.text,
               cursor: "pointer",
               display: "none",
+              padding: "4px 10px",
             }}
           >
             메뉴
           </button>
-          <h3 style={{ margin: 0 }}>
-            {currentSessionId ? `상담 (#${currentSessionId})` : "신규 상담방"}
+          <h3 style={{ margin: 0, fontSize: 15, color: pinkTheme.primary }}>
+            💬 {currentSessionId ? `상담 (#${currentSessionId})` : "신규 상담방"}
           </h3>
         </div>
 
@@ -270,7 +300,7 @@ export default function ChatPage() {
           style={{
             flex: 1,
             overflowY: "auto",
-            padding: "10px",
+            padding: "14px",
             display: "flex",
             flexDirection: "column",
             gap: "10px",
@@ -292,13 +322,15 @@ export default function ChatPage() {
                 <div
                   style={{
                     display: "inline-block",
-                    padding: "8px 12px",
-                    border: "1px solid black",
-                    background: isUser ? "#eee" : "none",
-                    color: "black",
+                    padding: "10px 14px",
+                    border: isUser ? "none" : `1px solid ${pinkTheme.border}`,
+                    borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                    background: isUser ? pinkTheme.primary : pinkTheme.cardBg,
+                    color: isUser ? "#fff" : pinkTheme.text,
                     fontSize: "13px",
                     whiteSpace: "pre-wrap",
                     textAlign: "left",
+                    boxShadow: "0 1px 4px rgba(255, 111, 145, 0.08)",
                   }}
                 >
                   {m.content}
@@ -308,7 +340,7 @@ export default function ChatPage() {
                     style={{
                       display: "block",
                       fontSize: "11px",
-                      color: "red",
+                      color: pinkTheme.danger,
                       marginTop: "4px",
                       maxWidth: "100%",
                       textAlign: "left",
@@ -324,7 +356,7 @@ export default function ChatPage() {
             <div
               style={{
                 alignSelf: "flex-start",
-                color: "gray",
+                color: pinkTheme.textMuted,
                 fontSize: "12px",
               }}
             >
@@ -339,10 +371,11 @@ export default function ChatPage() {
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
-                color: "gray",
+                color: pinkTheme.textMuted,
                 gap: "5px",
               }}
             >
+              <p style={{ margin: 0, fontSize: "26px" }}>💬</p>
               <p style={{ margin: 0, fontSize: "14px" }}>
                 궁금한 약 성분이나 DUR 기준을 물어보세요.
               </p>
@@ -357,11 +390,11 @@ export default function ChatPage() {
             void handleSend();
           }}
           style={{
-            padding: "10px",
-            background: "white",
-            borderTop: "1px solid black",
+            padding: "12px",
+            background: pinkTheme.cardBg,
+            borderTop: `1px solid ${pinkTheme.border}`,
             display: "flex",
-            gap: "5px",
+            gap: "8px",
             boxSizing: "border-box",
           }}
         >
@@ -372,9 +405,10 @@ export default function ChatPage() {
             disabled={isStreaming}
             style={{
               flex: 1,
-              padding: "10px",
+              padding: "11px 13px",
               fontSize: "13px",
-              border: "1px solid black",
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 10,
               outline: "none",
             }}
           />
@@ -382,12 +416,13 @@ export default function ChatPage() {
             type="submit"
             disabled={isStreaming || !input.trim()}
             style={{
-              padding: "0 15px",
+              padding: "0 18px",
               fontSize: "13px",
-              fontWeight: "bold",
-              background: "none",
-              color: "black",
-              border: "1px solid black",
+              fontWeight: 700,
+              background: isStreaming || !input.trim() ? pinkTheme.primarySoft : pinkTheme.primary,
+              color: isStreaming || !input.trim() ? pinkTheme.textMuted : "#fff",
+              border: "none",
+              borderRadius: 10,
               cursor: isStreaming || !input.trim() ? "default" : "pointer",
             }}
           >

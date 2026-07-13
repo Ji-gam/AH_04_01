@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import type { DayOfWeek, FrequencyType, NotificationScheduleResult } from "../../../api/types";
-import { alarmTheme as t } from "../theme";
+import { pinkTheme as t } from "../../../theme/pinkTheme";
 
 const DAYS: DayOfWeek[] = ["일", "월", "화", "수", "목", "금", "토"];
 
