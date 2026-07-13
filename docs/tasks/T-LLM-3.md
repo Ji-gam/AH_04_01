@@ -40,7 +40,7 @@ app/scripts/generate_health_content.py
 app/core/db/migrations/versions/000X_*content*.py  (신규 리비전 파일만 추가, 기존 리비전 수정 금지)
 docs/dev/ERD.dbml  (health_contents 테이블 추가분만)
 docs/tasks/T-LLM-3.md  (이 파일의 "완료 보고" 섹션만)
-docs/squad-map.md  (D 스쿼드 접두어에 content_* 추가 — 이미 반영됨)
+docs/SQUAD_MAP.md  (D 스쿼드 접두어에 content_* 추가 — 이미 반영됨)
 ```
 
 ### 금지 경로 (절대 수정하지 않음 — 필요해 보여도 "공유 파일 변경 필요"로 보고만)

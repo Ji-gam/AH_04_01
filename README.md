@@ -185,8 +185,8 @@ chmod +x scripts/certbot.sh
 | 단계 | 문서 | 언제 보는가 |
 | --- | --- | --- |
 | 1. 진입(매 세션) | `AGENTS.md`(`CLAUDE.md`는 여기로의 리다이렉트) | 작업 시작 전 항상 |
-| 2. 참조(필요할 때) | `docs/SESSION_START.md`, `docs/DEV_WORKFLOW.md`, `docs/TROUBLESHOOTING.md`, `docs/CODING_RULES.md`, `docs/CONTRIBUTING.md`, `docs/decision_log/`, `docs/squad-map.md` | T-ID 작업, 구조/소유권 확인, "왜 이렇게 됐는지" 찾을 때 |
+| 2. 참조(필요할 때) | `docs/CONTRIBUTING.md`, `docs/TROUBLESHOOTING.md`, `docs/CODING_RULES.md`, `docs/FRONTEND_UI_GUIDE.md`, `docs/decision_log/`, `docs/SQUAD_MAP.md` | T-ID 작업, 구조/소유권 확인, "왜 이렇게 됐는지" 찾을 때 |
 | 3. 개발설계 산출물 | `docs/dev/ERD.dbml`, `docs/dev/api_spec_core_v1_v1.1.yaml`, `docs/dev/sample_code_chat/`, `docs/dev/sample_code_recog/` | DB/스키마 변경, 새 도메인 구현 시 참고 예제 |
 | 4. 기획 원본 스냅샷 (수정 금지) | `docs/plan/PRD_ReMedi_v1.1.md`, `docs/plan/TRD_ReMedi_v1.1.md` | T-ID의 입력/출력/성공요건 확인 |
 
-문서 버전 관리 규칙(파일명 고정, 헤더 버전업)은 `AGENTS.md`의 "문서 버전 관리" 참고.
+문서 버전 관리: 파일명 고정, 내용 변경 시 헤더 버전만 올림(이력은 `git log`).
