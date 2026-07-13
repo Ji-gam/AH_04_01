@@ -103,3 +103,49 @@ async def test_drug_with_manufacturer_bracket_and_non_mg_dosage_is_matched():
 
     assert len(matched) == 1
     assert matched[0].id in auto_created_ids
+
+
+async def test_fuzzy_match_rescues_clova_character_misread():
+    """(#106) 실제 처방전 사진으로 검증한 결과, CLOVA가 "패취"를 "매취"로 잘못 읽어서
+    ("노스판매취10ug/h") 용량/접미사 패턴을 하나도 못 만족해 _looks_like_drug_name이 거르는
+    사례가 확인됐다(브랜드명 줄과 제조사명 대괄호는 실제로는 서로 다른 OCR 필드로 나뉘어
+    들어온다 — 서버 로그로 확인). 이런 한 글자 오인식은 마스터 DB 약품명과의 유사도 비교로
+    구제돼야 한다."""
+    repo = MedicationRepository()
+    async with TestSessionLocal() as session:
+        med = await repo.create_medication(
+            session, Medication(standard_code="KD_NOSP002", medication_name="노스판패취10㎍/h", form_type="PATCH")
+        )
+
+        matched, _auto_created_ids, match_confidence = await medication_service._match_or_create_medications(
+            session,
+            repo,
+            [
+                OcrField(text="노스판매취10ug/h", confidence=0.9),
+                OcrField(text="[한국먼디파마]", confidence=0.9),
+            ],
+        )
+
+    matched_ids = {m.id for m in matched}
+    assert med.id in matched_ids
+    assert match_confidence[med.id] == 0.9
+
+
+async def test_fuzzy_match_does_not_trigger_on_unrelated_prescription_text():
+    """처방전 설명 문구("혈압을 낮추고 심장 근육으로...") 같은 무관한 텍스트가 마스터 DB의
+    엉뚱한 약과 우연히 유사도가 높게 나와 오매칭되면 안 된다. (약이 하나뿐인 DB라 후보가
+    없을 때의 참고용 fallback으로는 나올 수 있지만, 그 경우 confidence 맵에는 없어야
+    한다 — 실제 유사도 매칭으로 인정된 게 아니라는 뜻)"""
+    repo = MedicationRepository()
+    async with TestSessionLocal() as session:
+        med = await repo.create_medication(
+            session, Medication(standard_code="KD_NOSP003", medication_name="노스판패취10㎍/h", form_type="PATCH")
+        )
+
+        matched, _auto_created_ids, match_confidence = await medication_service._match_or_create_medications(
+            session,
+            repo,
+            [OcrField(text="혈압을 낮추고 심장 근육으로 산소를 많이 공급합니다", confidence=0.9)],
+        )
+
+    assert med.id not in match_confidence

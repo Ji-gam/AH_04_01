@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import difflib
 import io
 import logging
 import os
@@ -57,6 +58,20 @@ _MIN_DRUG_NAME_LEN = 5
 # 깨진다 — 그래서 접미사 바로 다음 글자가 한글로 이어지지만 않으면("서방정보"처럼 붙어버리는
 # 경우만 제외) 인정하도록, 끝 앵커 대신 다음 글자가 한글이 아닌지만 확인한다.
 _DRUG_FORM_SUFFIX_PATTERN = re.compile(r"(정|캡슐|시럽|패취|점안액|디스커스|연고|겔|주)(?![가-힣])")
+
+# (#106) CLOVA OCR이 "패취"를 "매취"로 읽는 것처럼 글자 하나를 비슷한 글자로 잘못 읽으면,
+# 접미사/용량 패턴이 아예 안 맞아 _looks_like_drug_name을 통과하지 못한다. 이런 텍스트를
+# 구제하기 위해 숫자/기호를 떼고 한글만 남긴 뒤 마스터 DB 약품명(마찬가지로 한글만 남긴 것)과
+# 편집거리 기반 유사도를 비교한다. 임계값은 실제 오탈자 케이스("노스판매취" vs "노스판패취" ≈
+# 0.8)와 노이즈 텍스트(처방전 설명 문구 등, 대부분 0.3 미만)를 실측해 분리되는 지점으로 정했다.
+_FUZZY_MATCH_THRESHOLD = 0.8
+_FUZZY_MATCH_CANDIDATE_LIMIT = 2000
+_FUZZY_MATCH_MIN_KOREAN_LEN = 3
+
+
+def _korean_only(text: str) -> str:
+    return "".join(_KOREAN_TOKEN_PATTERN.findall(text))
+
 
 # T-MED-3: OCR이 실패했거나(키 미설정/호출 예외/빈 응답) QA가 dummy_mode를 명시적으로 요청했을 때
 # 쓰는 고정 더미 인식 텍스트. 처방전 목록 표기 관례("*" 불릿)를 그대로 따라야 기존 매칭 로직
@@ -207,13 +222,17 @@ async def _find_interaction_warnings(meds_with_seq: list[tuple[str, Medication]]
     return warnings
 
 
+def _is_annotation_line(stripped: str) -> bool:
+    """ "(Buprenorphine 10mg)"처럼 괄호로 감싼 성분/일반명 표기, "[한국먼디파마]"처럼
+    대괄호로 감싼 제조사명 표기는 브랜드 약품명이 아니므로 후보(퍼지 매칭 포함)에서 제외한다."""
+    return stripped.startswith("(") or stripped.endswith(")") or (stripped.startswith("[") and stripped.endswith("]"))
+
+
 def _looks_like_drug_name(word: str) -> bool:
     stripped = word.lstrip("*").strip()
     if len(stripped) < _MIN_DRUG_NAME_LEN:
         return False
-    # "(Buprenorphine 10mg)"처럼 괄호로 감싼 성분/일반명 표기 줄은 브랜드 약품명이 아니라
-    # 별도 후보로 취급하면 안 되므로 제외한다.
-    if stripped.startswith("(") or stripped.endswith(")"):
+    if _is_annotation_line(stripped):
         return False
     if not _KOREAN_TOKEN_PATTERN.search(stripped):
         return False
@@ -324,6 +343,60 @@ async def _resolve_or_create_drug_like_names(
     return resolved, auto_created_ids, confidences
 
 
+def _best_fuzzy_match(query: str, candidates: list[tuple[int, str]], seen_ids: set[int]) -> int | None:
+    """`candidates`(id, 약품명) 중 `query`(한글만 남긴 OCR 텍스트)와 가장 유사하면서
+    임계값 이상인 것의 id를 반환한다. 없으면 None."""
+    best_id: int | None = None
+    best_ratio = 0.0
+    for med_id, med_name in candidates:
+        if med_id in seen_ids:
+            continue
+        ratio = difflib.SequenceMatcher(None, query, _korean_only(med_name)).ratio()
+        if ratio > best_ratio:
+            best_ratio, best_id = ratio, med_id
+    return best_id if best_ratio >= _FUZZY_MATCH_THRESHOLD else None
+
+
+async def _fuzzy_match_unrecognized_fields(
+    db_session: AsyncSession, repo: MedicationRepository, ocr_fields: list[OcrField], seen_ids: set[int]
+) -> tuple[list[Medication], dict[int, float]]:
+    """(#106) `_looks_like_drug_name`이 걸러낸(=용량/불릿/제형 접미사 조건을 하나도 못 만족한)
+    텍스트 중, 한글 부분만 떼어 마스터 DB 약품명(마찬가지로 한글만 남긴 것)과 편집거리
+    유사도를 비교한다. CLOVA가 글자 하나를 잘못 읽은 경우(예: "패취"→"매취")를 구제하는
+    용도라, 기존 마스터 DB에 있는 것과 확실히 비슷할 때만(임계값 이상) 인정하고 새 레코드를
+    만들지는 않는다 — 애매한 텍스트로 엉뚱한 약을 만들어내는 위험을 피하기 위함이다."""
+    candidates = await repo.list_medication_names(db_session, limit=_FUZZY_MATCH_CANDIDATE_LIMIT)
+    if len(candidates) >= _FUZZY_MATCH_CANDIDATE_LIMIT:
+        logger.warning(
+            "퍼지 매칭 비교 대상을 %d개로 제한합니다 — 마스터 DB가 더 많으면 일부만 비교됩니다.",
+            _FUZZY_MATCH_CANDIDATE_LIMIT,
+        )
+
+    matched: list[Medication] = []
+    confidences: dict[int, float] = {}
+    for field in ocr_fields:
+        if _looks_like_drug_name(field.text):
+            continue  # 이미 기존 경로에서 처리 대상이 됨
+        stripped = field.text.lstrip("*").strip()
+        if _is_annotation_line(stripped):
+            continue  # 성분/제조사명 표기 줄은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
+        query = _korean_only(field.text)
+        if len(query) < _FUZZY_MATCH_MIN_KOREAN_LEN:
+            continue
+
+        best_id = _best_fuzzy_match(query, candidates, seen_ids)
+        if best_id is None:
+            continue
+        med = await repo.get_medication_by_id(db_session, best_id)
+        if med is None:
+            continue
+        seen_ids.add(med.id)
+        matched.append(med)
+        confidences[med.id] = max(confidences.get(med.id, 0.0), field.confidence)
+
+    return matched, confidences
+
+
 async def _match_or_create_medications(
     db_session: AsyncSession, repo: MedicationRepository, ocr_fields: list[OcrField]
 ) -> tuple[list[Medication], set[int], dict[int, float]]:
@@ -344,6 +417,10 @@ async def _match_or_create_medications(
         )
         matched_meds.extend(resolved)
         match_confidence.update(resolved_confidence)
+
+        fuzzy_matched, fuzzy_confidence = await _fuzzy_match_unrecognized_fields(db_session, repo, ocr_fields, seen_ids)
+        matched_meds.extend(fuzzy_matched)
+        match_confidence.update(fuzzy_confidence)
 
     # 그래도 후보가 하나도 없으면(약품명으로 보이는 텍스트조차 없었던 경우)
     # 마스터 DB 상위 몇 개를 참고용으로 보여준다 — 이 경우엔 수동 검색으로의 전환을 기대한다.

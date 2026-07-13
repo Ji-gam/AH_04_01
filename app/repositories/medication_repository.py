@@ -17,6 +17,12 @@ class MedicationRepository:
         result = await session.execute(select(Medication).where(Medication.medication_name.like(f"%{name}%")).limit(10))
         return list(result.scalars().all())
 
+    async def list_medication_names(self, session: AsyncSession, limit: int) -> list[tuple[int, str]]:
+        """(#106) OCR 글자 오인식(예: "패취"→"매취") 구제를 위한 유사도 매칭에서, 마스터 DB
+        약품명 전체와 비교할 (id, 이름) 목록을 가져온다. 비교 비용을 억제하기 위해 상한을 둔다."""
+        result = await session.execute(select(Medication.id, Medication.medication_name).limit(limit))
+        return [(row.id, row.medication_name) for row in result.all()]
+
     async def search_medications_by_appearance(
         self, session: AsyncSession, shape: str | None, color: str | None, letters: str | None
     ) -> list[Medication]:
