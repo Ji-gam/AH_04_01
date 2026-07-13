@@ -1,6 +1,9 @@
 import asyncio
+import base64
+import io
 
 import httpx
+from PIL import Image
 
 from app.services import medication_service
 
@@ -120,3 +123,34 @@ async def test_call_clova_ocr_defaults_confidence_to_zero_when_missing_or_invali
         medication_service.OcrField(text="신뢰도없음정", confidence=0.0),
         medication_service.OcrField(text="신뢰도이상함정", confidence=0.0),
     ]
+
+
+def _make_webp_bytes() -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (4, 4), color="red").save(buffer, format="WEBP")
+    return buffer.getvalue()
+
+
+def test_build_clova_ocr_request_converts_unsupported_format_to_png():
+    """(#101) webp처럼 CLOVA가 지원하지 않는 포맷을 "jpg"라고만 표시해서 그대로 보내면,
+    실제 바이트와 라벨이 달라 CLOVA가 400(Request invalid)을 반환하고 조용히 더미로
+    폴백되던 문제가 있었다. 이제는 실제로 png로 변환한 바이트를 보내야 한다."""
+    webp_bytes = _make_webp_bytes()
+
+    payload, _headers = medication_service._build_clova_ocr_request(webp_bytes, "prescription.webp")
+
+    assert payload["images"][0]["format"] == "png"
+    converted_bytes = base64.b64decode(payload["images"][0]["data"])
+    assert converted_bytes != webp_bytes
+    # 변환된 바이트가 실제로 유효한 PNG인지 재확인
+    Image.open(io.BytesIO(converted_bytes)).load()
+
+
+def test_build_clova_ocr_request_keeps_supported_format_untouched():
+    """jpg처럼 이미 지원되는 포맷은 변환 없이 원본 바이트를 그대로 보내야 한다."""
+    original_bytes = b"fake-jpeg-bytes"
+
+    payload, _headers = medication_service._build_clova_ocr_request(original_bytes, "prescription.jpg")
+
+    assert payload["images"][0]["format"] == "jpg"
+    assert base64.b64decode(payload["images"][0]["data"]) == original_bytes

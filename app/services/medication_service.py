@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import io
 import logging
 import os
 import re
@@ -9,6 +10,7 @@ from typing import NamedTuple, cast
 
 import httpx
 from fastapi import BackgroundTasks, HTTPException, status
+from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import AsyncSessionLocal
@@ -349,12 +351,32 @@ async def _match_or_create_medications(
     return matched_meds, auto_created_ids, match_confidence
 
 
-def _build_clova_ocr_request(file_bytes: bytes, file_name: str) -> tuple[dict, dict]:
-    base64_data = base64.b64encode(file_bytes).decode("utf-8")
-    file_format = file_name.split(".")[-1].lower()
-    if file_format not in ["jpg", "jpeg", "png", "pdf"]:
-        file_format = "jpg"
+_CLOVA_SUPPORTED_FORMATS = {"jpg", "jpeg", "png", "pdf"}
 
+
+def _convert_to_clova_supported_format(file_bytes: bytes) -> tuple[bytes, str]:
+    """webp 등 CLOVA가 지원하지 않는 포맷을 png로 변환한다. 예전에는 지원 목록에 없는
+    확장자를 실제 바이트 변환 없이 그냥 "jpg"라고만 표시해 보냈는데, CLOVA가 그 바이트를
+    jpg로 디코딩하지 못해 400(Request invalid)을 반환하고 조용히 더미 텍스트로 폴백되는
+    문제가 있었다(webp 업로드 시 실제 사진 내용과 무관하게 항상 같은 더미 결과가 나옴).
+    변환 자체가 실패하면(손상된 파일 등) 원본 바이트를 그대로 두고 호출부에서 CLOVA의
+    거부 응답으로 실패를 감지하게 한다."""
+    try:
+        image = Image.open(io.BytesIO(file_bytes))
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        return buffer.getvalue(), "png"
+    except Exception as exc:
+        logger.warning("이미지 포맷 변환 실패, 원본 바이트를 그대로 전송합니다: %s", exc)
+        return file_bytes, "jpg"
+
+
+def _build_clova_ocr_request(file_bytes: bytes, file_name: str) -> tuple[dict, dict]:
+    file_format = file_name.split(".")[-1].lower()
+    if file_format not in _CLOVA_SUPPORTED_FORMATS:
+        file_bytes, file_format = _convert_to_clova_supported_format(file_bytes)
+
+    base64_data = base64.b64encode(file_bytes).decode("utf-8")
     payload = {
         "images": [{"format": file_format, "name": "medication_doc", "data": base64_data}],
         "requestId": str(uuid.uuid4()),
