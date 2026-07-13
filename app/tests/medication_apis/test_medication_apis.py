@@ -160,9 +160,11 @@ async def test_recognition_job_dummy_mode_returns_deterministic_candidates_and_i
         assert confirm_response.json()["status"] == "confirmed"
 
 
-async def test_recognition_job_real_ocr_failure_falls_back_to_dummy_mode_marker():
-    """dummy_mode를 요청하지 않아도, 실제 OCR 호출이 안 되는/실패하는 환경(CLOVA 키 미설정 등)에서는
-    자동으로 더미 폴백이 걸리고 그 사실이 extracted_fields에 표시되어야 한다."""
+async def test_recognition_job_real_ocr_failure_does_not_silently_fall_back_to_dummy():
+    """dummy_mode를 요청하지 않았는데 실제 OCR 호출이 안 되는/실패하는 환경(CLOVA 키 미설정 등)이면,
+    더미 텍스트(*타이레놀정/*아스피린정)를 진짜 인식 결과인 것처럼 confidence=1.0으로 섞어 넣으면
+    안 된다 — "OCR 근거가 아예 없을 때"의 기존 폴백(마스터 DB 상위 몇 개를 낮은 match_rate로 참고
+    제시, T-MED-6)과 동일하게 처리되어야 한다."""
     await _seed_dummy_medications()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         token = await _signup_and_login(client, "ocr_failure_fallback@example.com")
@@ -178,9 +180,11 @@ async def test_recognition_job_real_ocr_failure_falls_back_to_dummy_mode_marker(
 
         get_response = await client.get(f"/api/v1/recognition/jobs/{job_id}", headers=headers)
         result_data = get_response.json()
-        assert result_data["status"] == "done"
-        # 테스트 환경에는 CLOVA_OCR_SECRET_KEY가 설정되어 있지 않으므로 자동 폴백이 걸려야 한다
-        assert result_data["extracted_fields"]["dummy_mode"] is True
+        # 테스트 환경에는 CLOVA_OCR_SECRET_KEY가 설정되어 있지 않다 — 더미로 위장한 결과가 아니라
+        # "근거 없음" 폴백(낮은 match_rate의 참고용 후보)이어야 한다
+        assert result_data["extracted_fields"]["dummy_mode"] is False
+        assert result_data["candidates"]
+        assert all(c["match_rate"] == 0.3 for c in result_data["candidates"])
 
 
 async def test_manual_schedule_registration_and_search():

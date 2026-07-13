@@ -48,5 +48,10 @@
     "owner": "claude",
     "branch": "feature/T-MED-6-ocr-confidence-matching",
     "started": "2026-07-12"
+  },
+  "T-MED-11": {
+    "owner": "claude",
+    "branch": "feature/T-MED-11-ocr-institution-name-dummy-fallback",
+    "started": "2026-07-13"
   }
 }
