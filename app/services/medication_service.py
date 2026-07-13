@@ -61,9 +61,18 @@ _MIN_DRUG_NAME_LEN = 5
 _DRUG_FORM_SUFFIX_PATTERN = re.compile(r"(정|캡슐|시럽|패취|점안액|디스커스|연고|겔|주)(?![가-힣])")
 
 # 약국/병원명은 처방전 헤더에 "*" 불릿과 함께 적히기도 해서 _looks_like_drug_name의 "*" 조건만으로는
-# 걸러지지 않는다("SAMPLE*약국" 등). 약품명이 아니라 기관명으로 끝나는 텍스트는 후보(퍼지 매칭 포함)에서
-# 제외한다.
-_INSTITUTION_SUFFIX_PATTERN = re.compile(r"(약국|병원|의원|한의원)$")
+# 걸러지지 않는다("SAMPLE*약국" 등). 문자열 "끝"에만 앵커링하면 "본 약국의 의견과는..."처럼 조사(의/은/는
+# 등)가 곧바로 붙은 실제 OCR 필드("약국의")를 놓친다 — 한국어 조사는 띄어쓰기 없이 명사에 붙으므로,
+# 끝 앵커 대신 텍스트 어디에든 기관명이 포함되면 제외한다(실제 드러그명에 약국/병원/의원/한의원이
+# 부분문자열로 등장하는 경우는 없다고 봐도 안전하다).
+_INSTITUTION_SUFFIX_PATTERN = re.compile(r"약국|병원|의원|한의원")
+
+# (#120) "아스피린에 과민증이 있는 경우..."처럼 처방전 복약안내 문구에 성분명이 조사와 함께
+# 언급되면("아스피린에"), 실제로는 완결된 약품명이 아닌 문장 중간 단어인데도 편집거리상 다른
+# 실약품명("아스피린정")과 우연히 비슷해(1글자 차이) 임계값을 넘겨버릴 수 있다. 조사는 한국어에서
+# 띄어쓰기 없이 명사 바로 뒤에 붙으므로, 이런 조사로 끝나는 토큰은 완결된 약품명일 수 없다고 보고
+# 퍼지 매칭 대상에서 제외한다.
+_TRAILING_PARTICLE_PATTERN = re.compile(r"(?:에서|부터|까지|으로|처럼|이나|은|는|이|가|을|를|도|만|와|과|의|에|로|나)$")
 
 # (#106) CLOVA OCR이 "패취"를 "매취"로 읽는 것처럼 글자 하나를 비슷한 글자로 잘못 읽으면,
 # 접미사/용량 패턴이 아예 안 맞아 _looks_like_drug_name을 통과하지 못한다. 이런 텍스트를
@@ -90,11 +99,20 @@ def _korean_only(text: str) -> str:
 def _best_fuzzy_candidate(query: str, candidates: list[tuple[str, str]], threshold: float) -> str | None:
     """`candidates`((key, 이름)) 중 `query`(한글만 남긴 OCR 텍스트)와 가장 유사하면서 임계값
     이상인 것의 key를 반환한다. key는 호출부에 따라 MySQL Medication.id(문자열화) 또는 Tier1
-    item_seq일 수 있다 — 이 함수는 키의 의미를 모른 채 순수 문자열 유사도만 비교한다."""
+    item_seq일 수 있다 — 이 함수는 키의 의미를 모른 채 순수 문자열 유사도만 비교한다.
+
+    (#120) 후보와 길이가 같은 것만 비교한다 — 이 함수의 목적은 "글자 하나가 비슷한 다른 글자로
+    잘못 읽힌" 같은-길이 치환 오류 구제(T-MED-9)이지, "성분명만 언급되고 제형 접미사가 없는"
+    더 짧은 텍스트를 임의로 늘려 다른 약과 매칭하는 것이 아니다. 예: "아스피린"(성분명 단독
+    언급, 4자)은 "아스피린정"(5자)과 글자 하나 차이로 보이지만(ratio≈0.89), 실제로는 완전히
+    무관한 다른 약의 성분명 언급일 뿐이다 — 길이가 다르면 애초에 비교 대상에서 제외한다."""
     best_key: str | None = None
     best_ratio = 0.0
     for key, name in candidates:
-        ratio = difflib.SequenceMatcher(None, query, _korean_only(name)).ratio()
+        korean_name = _korean_only(name)
+        if len(korean_name) != len(query):
+            continue
+        ratio = difflib.SequenceMatcher(None, query, korean_name).ratio()
         if ratio > best_ratio:
             best_ratio, best_key = ratio, key
     return best_key if best_ratio >= threshold else None
@@ -428,6 +446,8 @@ async def _fuzzy_match_unrecognized_fields(
             continue  # 성분/제조사명 표기 줄은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
         if _INSTITUTION_SUFFIX_PATTERN.search(stripped):
             continue  # 약국/병원명은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
+        if _TRAILING_PARTICLE_PATTERN.search(stripped):
+            continue  # 조사로 끝나는 문장 중간 단어는 완결된 약품명이 아니므로 퍼지 매칭도 제외
         query = _korean_only(field.text)
         if len(query) < _FUZZY_MATCH_MIN_KOREAN_LEN:
             continue
