@@ -53,5 +53,10 @@
     "owner": "agent-Antigravity",
     "branch": "feat/116-celery-batch-poc",
     "started": "2026-07-13"
+  },
+  "T-BATCH-2": {
+    "owner": "agent-Antigravity",
+    "branch": "feat/116-celery-batch-poc",
+    "started": "2026-07-13"
   }
 }
