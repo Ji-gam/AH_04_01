@@ -8,6 +8,7 @@ if current_dir not in sys.path:
     sys.path.append(current_dir)
 
 from config_db import API_SPECS, DEFAULT_WORKERS  # noqa: E402
+from mapping_ingredients import main as map_ingredients_main  # noqa: E402
 from mapping_recalls import main as map_recalls_main  # noqa: E402
 from run_db import execute_pipeline  # noqa: E402
 
@@ -50,6 +51,8 @@ def run_full_orchestration() -> dict:
     try:
         # mapping_recalls.py 의 main 로직 실행
         map_recalls_main()
+        # mapping_ingredients.py 의 main 로직 실행 (item_seq -> INGR_CODE 매핑)
+        map_ingredients_main()
         result_report["mapping_status"] = "SUCCESS"
     except Exception as e:
         print(f"\n❌ [Phase 2 Error] 후처리 맵핑 스크립트 실행 중 예외 발생: {e}")

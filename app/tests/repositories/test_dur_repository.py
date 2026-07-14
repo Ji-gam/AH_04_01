@@ -3,10 +3,13 @@ import pytest
 from app.database.database import dur_db_connection
 from app.repositories.dur_repository import DurScreeningRepository
 
-ACTIFED = "액티피드정"  # 197000053, 규칙 0건 (no-rule 케이스)
+ACTIFED = "액티피드정"  # 197000053, 규칙 0건이지만 item_ingredient_map(MATERIAL_NAME 매칭)으로 해결됨
 IBUPROFEN_200 = "부루펜정200밀리그램(이부프로펜)"  # 197700120, CPCTY/ODSN/PWNM/EFCY 보유
 IBUPROFEN_400 = "부루펜정400밀리그램(이부프로펜)"  # 198300343, EFCY(D000363) 공유
 NONEXISTENT = "존재하지않는의약품이름12345"
+# 195900034: 규칙도 0건이고 item_ingredient_map에도 없는 구조적으로 해결 불가능한 케이스
+# (dur_prod_master_list에 성분 정보 자체가 없어 22개 테이블 어디서도 INGR_CODE를 못 찾음)
+UNRESOLVABLE_ITEM_SEQ = "195900034"
 
 
 class _CountingConnection:
@@ -136,11 +139,27 @@ def test_get_ingredient_codes_for_items_derives_from_rule_hits(repo):
     assert ("D000363", "이부프로펜") in codes["197700120"] or any(code == "D000363" for code, _ in codes["197700120"])
 
 
-def test_get_ingredient_codes_for_items_empty_for_no_rule_drug(repo):
+def test_get_ingredient_codes_for_items_resolves_via_material_name_for_no_rule_drug(repo):
     repository, _ = repo
     codes = repository.get_ingredient_codes_for_items(["197000053"])
 
-    assert codes.get("197000053", set()) == set()
+    ingr_codes = {code for code, _ in codes["197000053"]}
+    assert {"D000316", "D001098"}.issubset(ingr_codes)
+
+
+def test_get_ingredient_codes_for_items_empty_when_truly_unresolvable(repo):
+    repository, _ = repo
+    codes = repository.get_ingredient_codes_for_items([UNRESOLVABLE_ITEM_SEQ])
+
+    assert codes.get(UNRESOLVABLE_ITEM_SEQ, set()) == set()
+
+
+def test_get_ingredient_codes_for_items_uses_at_most_two_queries(counting_repo):
+    repository, conn = counting_repo
+
+    repository.get_ingredient_codes_for_items(["197700120", "197000053", UNRESOLVABLE_ITEM_SEQ])
+
+    assert conn.execute_count <= 2
 
 
 def test_get_ingredient_level_rules_uses_one_query(counting_repo):

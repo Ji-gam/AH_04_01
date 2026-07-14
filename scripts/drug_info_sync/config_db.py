@@ -210,4 +210,40 @@ API_SPECS: dict[str, APISpec] = {
         primary_keys=["ITEM_SEQ", "INGR_CODE", "NOTIFICATION_DATE", "MIX_INGR", "REMARK", "PROHBT_CONTENT"],
         index_columns=["ITEM_SEQ", "INGR_CODE"],
     ),
+    # T-MED-14-1 후속(2026-07-14): 품목-성분 매핑용 신규 소스 3종. 22개 기존 소스 어디에도 없던
+    # "규칙 0건 품목도 포함한 전체 품목-성분코드" 매핑을 위해 추가 - mapping_ingredients.py가
+    # drug_prdt_mcpn_detail을 우선 소스로 사용한다.
+    "drug_prdt_prmsn_list": APISpec(
+        name="drug_prdt_prmsn_list",
+        base_url="https://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnInq07",
+        output_filename="drug_prdt_prmsn_list",
+        db_table="drug_prdt_prmsn_list",
+        primary_keys=["ITEM_SEQ"],
+        index_columns=["ITEM_SEQ"],
+    ),
+    "drug_prdt_prmsn_detail": APISpec(
+        name="drug_prdt_prmsn_detail",
+        base_url="https://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtPrmsnDtlInq06",
+        output_filename="drug_prdt_prmsn_detail",
+        db_table="drug_prdt_prmsn_detail",
+        primary_keys=["ITEM_SEQ"],
+        index_columns=["ITEM_SEQ"],
+        # 레코드당 데이터量이 커서(실측 500건=11.2MB) 기본 500행/페이지면 pipeline_db.py의 고정
+        # 15초 타임아웃을 넘겨 매번 30분 대기 재시도 루프에 빠진다(실제로 겪음, 2026-07-14).
+        # pipeline_db.py는 건드리지 않고 페이지당 행 수만 줄여서 우회.
+        num_of_rows=100,
+    ),
+    "drug_prdt_mcpn_detail": APISpec(
+        name="drug_prdt_mcpn_detail",
+        base_url="https://apis.data.go.kr/1471000/DrugPrdtPrmsnInfoService07/getDrugPrdtMcpnDtlInq07",
+        output_filename="drug_prdt_mcpn_detail",
+        db_table="drug_prdt_mcpn_detail",
+        # (ITEM_SEQ, MTRAL_SN, MTRAL_CODE)만으로는 부족했다 - 실제 첫 전수 수집에서 API가 준
+        # 126,637건 중 4,795건이 이 조합 중복으로 INSERT OR REPLACE에 조용히 덮어써져 121,842건만
+        # 남았다(2026-07-14 확인). ENTRPS_PRMISN_NO(허가/신고번호)·TAMT_SEQ(총량 일련번호)까지 더해
+        # 재구분 - 다음 전수 재동기화부터 적용됨(기존 121,842건 테이블은 그대로 둠, 재다운로드는
+        # 별도 승인 필요).
+        primary_keys=["ITEM_SEQ", "ENTRPS_PRMISN_NO", "TAMT_SEQ", "MTRAL_SN", "MTRAL_CODE"],
+        index_columns=["ITEM_SEQ", "MTRAL_CODE"],
+    ),
 }

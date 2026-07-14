@@ -10,6 +10,11 @@ if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
 from config_db import API_SPECS, APISpec  # type: ignore[import-not-found]  # noqa: E402
+from mapping_ingredients import (  # type: ignore[import-not-found]  # noqa: E402
+    INGREDIENT_NAME_TABLES,
+    build_ingredient_synonym_index,
+    parse_material_ingredients,
+)
 from mapping_recalls import clean_product_name, find_matching_item_seq  # type: ignore[import-not-found]  # noqa: E402
 from pipeline_db import APIPipeline  # type: ignore[import-not-found]  # noqa: E402
 from run_db import get_api_key  # type: ignore[import-not-found]  # noqa: E402
@@ -168,6 +173,72 @@ class TestFindMatchingItemSeq:
         drug_dict = {"부루펜정": "SEQ1"}
 
         assert find_matching_item_seq("타이레놀정", drug_dict) is None
+
+
+class TestParseMaterialIngredients:
+    def test_splits_combo_drug_into_first_token_per_ingredient(self):
+        material = "에날라프릴말레산염,,20,밀리그램,USP,/히드로클로로티아지드,,12.5,밀리그램,KP,"
+
+        assert parse_material_ingredients(material) == ["에날라프릴말레산염", "히드로클로로티아지드"]
+
+    def test_single_ingredient(self):
+        assert parse_material_ingredients("트라닐라스트,,100.0,밀리그램,별규,") == ["트라닐라스트"]
+
+    def test_returns_empty_list_for_falsy_input(self):
+        assert parse_material_ingredients("") == []
+        assert parse_material_ingredients(None) == []
+
+
+class TestBuildIngredientSynonymIndex:
+    def _make_conn(self):
+        conn = sqlite3.connect(":memory:")
+        cursor = conn.cursor()
+        for table in INGREDIENT_NAME_TABLES:
+            cursor.execute(f"CREATE TABLE {table} (INGR_CODE TEXT, INGR_NAME TEXT, ORI_INGR TEXT)")
+        cursor.execute(
+            """
+            CREATE TABLE dur_usjnt_taboo (
+                INGR_CODE TEXT, INGR_KOR_NAME TEXT, ORI TEXT,
+                MIXTURE_INGR_CODE TEXT, MIXTURE_INGR_KOR_NAME TEXT, MIXTURE_ORI TEXT
+            )
+            """
+        )
+        return conn, cursor
+
+    def test_indexes_ingr_name_and_ori_synonyms(self):
+        conn, cursor = self._make_conn()
+        cursor.execute(
+            "INSERT INTO dur_pwnm_taboo VALUES ('D000554', '에날라프릴', '[M223118]에날라프릴말레산염/[M082059]말레인산에날라프릴')"
+        )
+        conn.commit()
+
+        index = build_ingredient_synonym_index(cursor)
+
+        assert index["에날라프릴"] == "D000554"
+        assert index["에날라프릴말레산염"] == "D000554"
+        assert index["말레인산에날라프릴"] == "D000554"
+
+    def test_indexes_dur_usjnt_taboo_both_sides(self):
+        conn, cursor = self._make_conn()
+        cursor.execute(
+            "INSERT INTO dur_usjnt_taboo VALUES ('D000747', '에르고타민타르타르산염', NULL, 'D000171', '졸미트립탄', NULL)"
+        )
+        conn.commit()
+
+        index = build_ingredient_synonym_index(cursor)
+
+        assert index["에르고타민타르타르산염"] == "D000747"
+        assert index["졸미트립탄"] == "D000171"
+
+    def test_first_occurrence_wins_on_duplicate_name(self):
+        conn, cursor = self._make_conn()
+        cursor.execute("INSERT INTO dur_pwnm_taboo VALUES ('D000001', '아스피린', NULL)")
+        cursor.execute("INSERT INTO dur_odsn_atent VALUES ('D999999', '아스피린', NULL)")
+        conn.commit()
+
+        index = build_ingredient_synonym_index(cursor)
+
+        assert index["아스피린"] == "D000001"
 
 
 class TestGetApiKey:

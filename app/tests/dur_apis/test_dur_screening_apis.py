@@ -6,7 +6,7 @@ from app.main import app
 
 client = TestClient(app)
 
-ACTIFED = "액티피드정"  # 197000053, 규칙 0건
+ACTIFED = "액티피드정"  # 197000053, 품목 기준 규칙 0건이지만 item_ingredient_map으로 성분 해결됨
 IBUPROFEN_200 = "부루펜정200밀리그램(이부프로펜)"  # 197700120
 IBUPROFEN_400 = "부루펜정400밀리그램(이부프로펜)"  # 198300343, IBUPROFEN_200과 EFCY(D000363) 공유
 RECALLED_DRUG = "자모다정(독시라민숙신산염)"  # 202500644, medicine_recalls 보유
@@ -115,6 +115,19 @@ def test_ingredient_screening_returns_ingredient_detail():
 
     ingr_codes = {i["ingr_code"] for i in data["ingredients"]}
     assert "D000363" in ingr_codes
+
+
+def test_ingredient_screening_resolves_ingredients_for_zero_rule_drug():
+    """T-MED-14-1: 품목 기준 규칙이 0건인 약도 item_ingredient_map을 통해 3단계 성분 조회가 된다."""
+    response = client.post(
+        "/api/v1/dur/screening/ingredient",
+        json={"drug_names": [ACTIFED]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    ingr_codes = {i["ingr_code"] for i in data["ingredients"]}
+    assert {"D000316", "D001098"}.issubset(ingr_codes)
 
 
 def test_ingredient_screening_all_unmatched_returns_200_with_empty_ingredients():

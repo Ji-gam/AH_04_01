@@ -8,6 +8,11 @@ DUR 규칙 테이블은 22개 원본 API 테이블 중 "품목 기준(prod, ITEM
 (ITEM_SEQ 없이 INGR_CODE만 보유, prod보다 완성도 높음)" 7개로 나뉜다. 1~2단계는 품목 기준
 테이블을, 3단계는 성분 기준 테이블을 조회한다 — 품목 기준 데이터가 비어 있어도 성분 기준에는
 DUR 이슈가 남아있을 수 있기 때문이다.
+
+3단계의 item_seq -> INGR_CODE 변환(`get_ingredient_codes_for_items`)은 T-MED-14-1에서 추가된
+`item_ingredient_map`(파생 테이블, `scripts/drug_info_sync/mapping_ingredients.py` 참고)을
+우선 조회하고, 거기 없는 품목만 품목 기준 히트 테이블 역추적으로 폴백한다 — 후자만으로는 품목
+기준 규칙이 0건인 약이 3단계에서도 항상 빈 결과였기 때문.
 """
 
 import sqlite3
@@ -192,12 +197,31 @@ class DurScreeningRepository:
         return [dict(row) for row in rows]
 
     def get_ingredient_codes_for_items(self, item_seqs: list[str]) -> dict[str, set[tuple[str, str]]]:
-        """3단계 준비: 입력 약품들의 성분 코드를 품목 기준 DUR 히트 테이블들에서 역추적한다.
-        (제품-성분 매핑 테이블이 별도로 없어, DUR 규칙에 한 번이라도 걸린 적 있는 품목만 성분을
-        알아낼 수 있다 — 품목 기준에서 규칙이 0건인 약품은 3단계에서도 빈 결과가 된다.)
-        1개 UNION ALL 쿼리로 처리."""
+        """3단계 준비: 입력 약품들의 성분 코드를 알아낸다. item_ingredient_map(T-MED-14-1, 품목 마스터의
+        MATERIAL_NAME을 성분명 사전과 매칭해 만든 파생 테이블)을 우선 조회하고, 거기 없는 품목만 기존
+        품목 기준 DUR 히트 테이블 역추적으로 폴백한다 - 커버리지만 늘어나고 회귀는 없다.
+        1개(전부 직접 테이블에서 해결) 또는 2개(폴백 필요) 쿼리로 처리."""
         if not item_seqs:
             return {}
+
+        result: dict[str, set[tuple[str, str]]] = {seq: set() for seq in item_seqs}
+        placeholders = ",".join(["?"] * len(item_seqs))
+
+        direct_rows = self.conn.execute(
+            f"""
+            SELECT ITEM_SEQ AS item_seq, INGR_CODE AS ingr_code, INGR_NAME AS ingr_name
+            FROM item_ingredient_map
+            WHERE ITEM_SEQ IN ({placeholders})
+            """,
+            item_seqs,
+        ).fetchall()
+        for row in direct_rows:
+            if row["ingr_code"]:
+                result[row["item_seq"]].add((row["ingr_code"], row["ingr_name"] or ""))
+
+        item_seqs = [seq for seq in item_seqs if not result[seq]]
+        if not item_seqs:
+            return result
 
         placeholders = ",".join(["?"] * len(item_seqs))
         branches = [
@@ -227,7 +251,6 @@ class DurScreeningRepository:
         params = item_seqs * (len(INGREDIENT_SOURCE_TABLES) + 2)
         rows = self.conn.execute(union_query, params).fetchall()
 
-        result: dict[str, set[tuple[str, str]]] = {seq: set() for seq in item_seqs}
         for row in rows:
             ingr_code = row["ingr_code"]
             if not ingr_code:
