@@ -144,6 +144,67 @@ def execute_pipeline(target_apis, num_workers, is_once):
     return results
 
 
+# drugs_data(빈용 약품 목록)에 있는 품목만 남기기 위한 테이블별 필터 WHERE절.
+# 주의: drugs_data의 품목기준코드 컬럼명은 camelCase(itemSeq)라 다른 테이블들의 ITEM_SEQ와
+# 다르다 - 예전 버전은 이 차이를 놓쳐서 서브쿼리가 SELECT ITEM_SEQ FROM drugs_data가 아니라
+# 바깥 테이블 자기 자신의 ITEM_SEQ로 상관 서브쿼리 처리되어(SQLite가 컬럼을 못 찾으면 바깥
+# 스코프로 올라가서 찾는다) WHERE절이 사실상 "항상 참"이 되어 필터링이 전혀 안 먹혔었다
+# (dur_prod_usjnt_taboo가 798,696건 그대로 복사됨, 2026-07-15 확인). itemSeq로 고쳐서 반영.
+_LIGHT_DB_ITEM_SEQ_SUBQUERY = "(SELECT itemSeq FROM drugs_data)"
+_LIGHT_DB_INGR_CODE_SUBQUERY = (
+    f"(SELECT DISTINCT INGR_CODE FROM item_ingredient_map WHERE ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY})"
+)
+
+_LIGHT_DB_TABLE_FILTERS: dict[str, str] = {
+    # 품목기준코드(ITEM_SEQ) 보유 테이블
+    "medicine_recalls": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "drug_identification": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "dur_prod_master_list": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "dur_prod_odsn_atent": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "dur_prod_spcify_agrde_taboo": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "dur_prod_mdctn_pd_atent": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "dur_prod_seobang_partition": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "dur_prod_pwnm_taboo": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "dur_prod_efcy_dplct": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "dur_prod_cpcty_atent": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "drug_prdt_prmsn_list": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "drug_prdt_prmsn_detail": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "drug_prdt_mcpn_detail": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    "item_ingredient_map": f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    # 병용금기(양쪽 다 ITEM_SEQ/MIXTURE_ITEM_SEQ) - 어느 한쪽이라도 drugs_data에 있으면 유지
+    "dur_prod_usjnt_taboo": (
+        f"ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY} OR MIXTURE_ITEM_SEQ IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}"
+    ),
+    # 위탁생산 묶음정보 - cnsgnItemSeq(camelCase)가 품목기준코드
+    "drug_bundle_info": f"cnsgnItemSeq IN {_LIGHT_DB_ITEM_SEQ_SUBQUERY}",
+    # 성분(INGR_CODE) 기준 테이블 - item_ingredient_map으로 drugs_data 품목의 성분코드만 역산해서 필터
+    "dur_pwnm_taboo": f"INGR_CODE IN {_LIGHT_DB_INGR_CODE_SUBQUERY}",
+    "dur_odsn_atent": f"INGR_CODE IN {_LIGHT_DB_INGR_CODE_SUBQUERY}",
+    "dur_spcify_agrde_taboo": f"INGR_CODE IN {_LIGHT_DB_INGR_CODE_SUBQUERY}",
+    "dur_cpcty_atent": f"INGR_CODE IN {_LIGHT_DB_INGR_CODE_SUBQUERY}",
+    "dur_efcy_dplct": f"INGR_CODE IN {_LIGHT_DB_INGR_CODE_SUBQUERY}",
+    "dur_mdctn_pd_atent": f"INGR_CODE IN {_LIGHT_DB_INGR_CODE_SUBQUERY}",
+    "dur_usjnt_taboo": (
+        f"INGR_CODE IN {_LIGHT_DB_INGR_CODE_SUBQUERY} OR MIXTURE_INGR_CODE IN {_LIGHT_DB_INGR_CODE_SUBQUERY}"
+    ),
+    # drugs_data 자신은 이미 목표 범위 그 자체라 필터 불필요(아래 루프에서 전체 복사로 처리)
+    # drug_max_dosage는 CPNT_CD(별도 코드 체계)만 있어 ITEM_SEQ/INGR_CODE로 못 이어서 전체 복사
+}
+
+# CREATE TABLE ... AS SELECT는 원본 테이블의 인덱스/제약조건을 가져오지 않는다 - API_SPECS의
+# index_columns를 그대로 재사용해서 light DB에도 동일하게 인덱스를 건다. item_ingredient_map은
+# API 소스가 아니라 파생 테이블이라 API_SPECS에 없어서 별도로 추가.
+_LIGHT_DB_EXTRA_INDEX_COLUMNS: dict[str, list[str]] = {
+    "item_ingredient_map": ["ITEM_SEQ"],
+}
+
+
+def _light_db_index_columns() -> dict[str, list[str]]:
+    columns_by_table = {spec.db_table: spec.index_columns for spec in API_SPECS.values() if spec.index_columns}
+    columns_by_table.update(_LIGHT_DB_EXTRA_INDEX_COLUMNS)
+    return columns_by_table
+
+
 def create_lightweight_db():
     print("\n" + "=" * 80)
     print("🚀 [Step 2] 경량화 DB(drug_light.db) 생성 시작")
@@ -167,21 +228,24 @@ def create_lightweight_db():
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in cursor.fetchall()]
 
+        index_columns_by_table = _light_db_index_columns()
+
         for table in tables:
-            if table == "dur_prod_usjnt_taboo":
-                # drug_light.db: dur_prod_usjnt_taboo는 drugs_data에 있는 제품만 필터링
-                print(f"   - {table:<32} : 필터링 복사 중 (ITEM_SEQ 기반)...", end=" ", flush=True)
-                cursor.execute(f"""
-                    CREATE TABLE light_db.{table} AS
-                    SELECT * FROM {table}
-                    WHERE ITEM_SEQ IN (SELECT ITEM_SEQ FROM drugs_data)
-                """)
+            where_clause = _LIGHT_DB_TABLE_FILTERS.get(table)
+            try:
+                if where_clause:
+                    print(f"   - {table:<32} : 필터링 복사 중 (drugs_data 기준)...", end=" ", flush=True)
+                    cursor.execute(f"CREATE TABLE light_db.{table} AS SELECT * FROM {table} WHERE {where_clause}")
+                else:
+                    print(f"   - {table:<32} : 전체 복사 중...", end=" ", flush=True)
+                    cursor.execute(f"CREATE TABLE light_db.{table} AS SELECT * FROM {table}")
+
+                for idx_col in index_columns_by_table.get(table, []):
+                    idx_name = f"idx_{table}_{idx_col}"
+                    cursor.execute(f'CREATE INDEX IF NOT EXISTS light_db."{idx_name}" ON {table}("{idx_col}")')
                 print("완료!")
-            else:
-                # 나머지 테이블은 전체 복사
-                print(f"   - {table:<32} : 전체 복사 중...", end=" ", flush=True)
-                cursor.execute(f"CREATE TABLE light_db.{table} AS SELECT * FROM {table}")
-                print("완료!")
+            except Exception as e:
+                print(f"실패({e})")
 
         cursor.execute("DETACH DATABASE light_db")
         print("\n✅ 경량화 DB(drug_light.db) 생성이 성공적으로 완료되었습니다!")
