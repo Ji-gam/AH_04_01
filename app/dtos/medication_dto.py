@@ -95,3 +95,14 @@ class InteractionWarning(BaseModel):
 class InteractionCheckResult(BaseModel):
     warnings: list[InteractionWarning] = []
     checked_count: int  # item_seq가 있어 실제로 비교 대상이 된 등록약 수
+
+
+class FoodInteractionCheckResult(BaseModel):
+    """(T-DOC-2) 등록된 모든 약 기준으로 음식/음주 주의사항을 모아온 결과.
+
+    confirm_recognition_job의 guide_cards(문서 등록 확정 직후 1회성 안내)와 달리, 이 결과는
+    등록 방식(OCR/수동 등록)과 무관하게 "음식(13번)" 탭을 열 때마다 현재 등록약 전체를 대상으로
+    조회한다."""
+
+    guide_cards: list[GuideCard] = []
+    checked_count: int  # 대상이 된 등록약 수(중복 제거)

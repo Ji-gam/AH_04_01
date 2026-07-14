@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "../../hooks/useAuth";
 import {
   useMedication,
+  type FoodInteractionCheckResult,
   type InteractionCheckResult,
   type RecognitionCandidate,
   type RecognitionJobResult,
@@ -25,7 +26,6 @@ function tabStyle(isActive: boolean): React.CSSProperties {
 }
 
 type ExtractedFields = NonNullable<RecognitionJobResult["extracted_fields"]>;
-type GuideCard = { title: string; content: string; severity?: string; disclaimer?: string };
 
 export default function MedicationPage() {
   const { user } = useAuth();
@@ -41,6 +41,7 @@ export default function MedicationPage() {
     getJobStatus,
     confirmJob,
     checkInteractions,
+    checkFoodInteractions,
   } = useMedication();
 
   // 상태 관리
@@ -54,7 +55,6 @@ export default function MedicationPage() {
   // 사용자 확정 폼 입력 값 (처방전 한 장에 여러 약이 인식될 수 있어 다중 선택 지원)
   const [selectedDrugCodes, setSelectedDrugCodes] = useState<string[]>([]);
   const [confirmedTimes, setConfirmedTimes] = useState<string>("09:00, 13:00, 19:00");
-  const [guideCards, setGuideCards] = useState<GuideCard[]>([]);
 
   // 수동 등록용 상태 — 약품명을 입력하고 등록 버튼 한 번으로 끝나는 게 기본 플로우(T-MED-3),
   // 이름이 여러 약과 부분일치할 때만 후보 목록을 보여줘 그중 하나를 고르게 한다.
@@ -75,6 +75,14 @@ export default function MedicationPage() {
   const [interactionLoading, setInteractionLoading] = useState(false);
   const [interactionError, setInteractionError] = useState<string | null>(null);
 
+  // 음식(13번) — 등록약 전체 기준 음식/음주 주의사항. OCR로 등록했든 수동으로 등록했든 상관없이
+  // 등록약이 바뀌지 않는 한 다시 조회하지 않도록 캐시한다(조합 탭과 동일한 패턴, T-DOC-2).
+  const [foodInteractionResult, setFoodInteractionResult] = useState<FoodInteractionCheckResult | null>(
+    null,
+  );
+  const [foodInteractionLoading, setFoodInteractionLoading] = useState(false);
+  const [foodInteractionError, setFoodInteractionError] = useState<string | null>(null);
+
   useEffect(() => {
     fetchSchedules();
   }, []);
@@ -82,6 +90,7 @@ export default function MedicationPage() {
   // 등록약 목록이 바뀌면(추가/삭제) 캐시를 무효화해 다음에 탭을 열 때 재조회한다.
   useEffect(() => {
     setInteractionResult(null);
+    setFoodInteractionResult(null);
   }, [schedules.length]);
 
   useEffect(() => {
@@ -94,6 +103,19 @@ export default function MedicationPage() {
         setInteractionError(err instanceof Error ? err.message : "상호작용 확인에 실패했습니다.");
       })
       .finally(() => setInteractionLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== "food" || foodInteractionResult || foodInteractionLoading) return;
+    setFoodInteractionLoading(true);
+    setFoodInteractionError(null);
+    checkFoodInteractions()
+      .then(setFoodInteractionResult)
+      .catch((err: unknown) => {
+        setFoodInteractionError(err instanceof Error ? err.message : "음식 주의사항 확인에 실패했습니다.");
+      })
+      .finally(() => setFoodInteractionLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
 
@@ -135,7 +157,6 @@ export default function MedicationPage() {
     try {
       setCandidates([]);
       setExtractedFields(null);
-      setGuideCards([]);
       setJobStatus("pending");
       const jobId = await uploadJob(file, sourceType);
       setCurrentJobId(jobId);
@@ -152,12 +173,9 @@ export default function MedicationPage() {
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
-      const allGuideCards: GuideCard[] = [];
       for (const drugCode of selectedDrugCodes) {
-        const res = await confirmJob(currentJobId, drugCode, { times: timesArray });
-        allGuideCards.push(...res.guide_cards);
+        await confirmJob(currentJobId, drugCode, { times: timesArray });
       }
-      setGuideCards(allGuideCards);
       alert(`${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`);
       setCurrentJobId(null);
       setJobStatus(null);
@@ -615,35 +633,61 @@ export default function MedicationPage() {
 
         {activeTab === "food" && (
           <div style={{ padding: "15px", border: `1px solid ${pinkTheme.border}` }}>
-            {/* 13번 단계: 음식 주의사항 (T-DOC-2) — 방금 등록 확정한 약의 e약은요 상호작용
-              문항(intrcQesitm)에서 음식/음주 관련 주의사항을 그대로 보여준다. */}
+            {/* 13번 단계: 음식 주의사항 (T-DOC-2) — 등록된 약 전체(OCR/수동 등록 무관)의 e약은요
+              상호작용 문항(intrcQesitm)에서 음식/음주 관련 주의사항을 그대로 보여준다. */}
             <h3>복약 중 음식 주의사항</h3>
             <p style={{ color: pinkTheme.textMuted }}>
-              방금 등록한 약품 기준으로, 식약처 e약은요 정보에서 확인된 음식·음주 관련 주의사항을
-              보여줍니다. 처방전/알약 분석 탭에서 약을 새로 등록하면 이 목록이 갱신됩니다.
+              현재 등록된 약 전체를 기준으로, 식약처 e약은요 정보에서 확인된 음식·음주 관련
+              주의사항을 보여줍니다.
             </p>
 
-            {guideCards.length === 0 ? (
+            {foodInteractionLoading && <p>등록약을 확인하는 중입니다...</p>}
+
+            {!foodInteractionLoading && foodInteractionError && (
               <div
-                style={{ padding: "10px", backgroundColor: "#e3f2fd", border: "1px solid #90caf9" }}
+                style={{ padding: "10px", backgroundColor: "#fdecea", border: "1px solid #f5c6cb" }}
               >
-                아직 등록을 확정한 약이 없거나, 확인된 주의사항이 없습니다.
+                {foodInteractionError}
               </div>
-            ) : (
-              guideCards.map((g, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    border: `1px solid ${g.severity === "caution" ? "#f0ad4e" : pinkTheme.border}`,
-                    padding: "10px",
-                    marginBottom: "10px",
-                  }}
-                >
-                  <h5>{g.title}</h5>
-                  <p>{g.content}</p>
-                  <small style={{ color: pinkTheme.textMuted }}>{g.disclaimer}</small>
-                </div>
-              ))
+            )}
+
+            {!foodInteractionLoading && !foodInteractionError && foodInteractionResult && (
+              <>
+                {foodInteractionResult.checked_count === 0 ? (
+                  <div
+                    style={{ padding: "10px", backgroundColor: "#e3f2fd", border: "1px solid #90caf9" }}
+                  >
+                    등록된 약이 없습니다. 처방전/알약 분석 또는 수동 등록으로 약을 등록해보세요.
+                  </div>
+                ) : (
+                  // 등록약마다 반드시 카드 하나씩 나온다(찾은 정보가 없어도 "확인 불가" 카드로
+                  // 명시) — 일부만 카드가 사라지면 그 약은 검사 안 한 것처럼 보이기 때문.
+                  foodInteractionResult.guide_cards.map((g, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        border: `1px solid ${g.severity === "caution" ? "#f0ad4e" : pinkTheme.border}`,
+                        padding: "10px",
+                        marginBottom: "10px",
+                      }}
+                    >
+                      <h5>{g.title}</h5>
+                      {/* e약은요 원문은 항목이 빈 줄로 구분된 여러 문단이라, 하나의 <p>로 합치면
+                        줄글처럼 보인다 — 빈 줄 기준으로 나눠 문단별로 렌더링한다. */}
+                      {g.content
+                        .split(/\n\s*\n/)
+                        .map((s) => s.trim())
+                        .filter(Boolean)
+                        .map((paragraph, pIdx) => (
+                          <p key={pIdx} style={{ margin: "6px 0" }}>
+                            {paragraph}
+                          </p>
+                        ))}
+                      <small style={{ color: pinkTheme.textMuted }}>{g.disclaimer}</small>
+                    </div>
+                  ))
+                )}
+              </>
             )}
           </div>
         )}

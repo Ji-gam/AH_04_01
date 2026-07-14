@@ -7,6 +7,7 @@ from app.core import config
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
 from app.dtos.medication_dto import (
+    FoodInteractionCheckResult,
     InteractionCheckResult,
     MedicationScheduleCreateRequest,
     MedicationScheduleResponse,
@@ -132,6 +133,24 @@ async def check_medication_interactions(
 ) -> InteractionCheckResult:
     service = MedicationService()
     return await service.check_interactions(session, profile.id)
+
+
+@medication_router.get(
+    "/medications/food-interactions",
+    response_model=FoodInteractionCheckResult,
+    summary="등록약 기준 음식/음주 주의사항 체크",
+    description=(
+        "현재 프로필에 등록된 약 전체를 대상으로 식약처 e약은요 상호작용 문항(intrcQesitm)에서 "
+        "음식/음주 관련 주의사항을 모아 반환합니다. OCR로 등록했든 수동으로 등록했든 상관없이 "
+        "등록된 모든 약이 대상입니다(T-DOC-2)."
+    ),
+)
+async def check_medication_food_interactions(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> FoodInteractionCheckResult:
+    service = MedicationService()
+    return await service.check_food_interactions(session, profile.id)
 
 
 _LOCAL_DUR_SQL = """
