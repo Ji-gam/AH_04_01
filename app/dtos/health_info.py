@@ -60,6 +60,16 @@ class HealthInfoUpdateRequest(BaseModel):
         Field(None, description="생년월일. 만 나이는 이 값으로 항상 자동 계산된다.", examples=["1990-05-20"]),
     ]
     gender: Annotated[Gender | None, Field(None, description="'MALE' 또는 'FEMALE'.")]
+    is_pregnant: Annotated[
+        bool | None,
+        Field(
+            None,
+            description=(
+                "현재 임신 중인지(선택). 채팅 상담에서 임부금기 약물 경고(DUR)를 실제로 "
+                "판단하는 데 쓰인다 - 이 값이 없으면(None) 임부금기 경고는 발동하지 않는다."
+            ),
+        ),
+    ]
     height_cm: Annotated[
         float | None,
         Field(None, description="키(cm). 30~250 범위.", examples=[170.5]),
@@ -88,6 +98,7 @@ class HealthInfoResponse(BaseSerializerModel):
     age: Annotated[int | None, Field(description="만 나이 - birth_date로부터 자동 계산된 값. 미입력 시 null.")]
     birth_date: Annotated[date | None, Field(description="생년월일. 미입력 시 null.")]
     gender: Annotated[Gender | None, Field(description="Profile에 저장된 성별. 미입력 시 null.")]
+    is_pregnant: Annotated[bool | None, Field(description="현재 임신 중인지. 미입력 시 null.")]
     height_cm: Annotated[float | None, Field(description="키(cm). 미입력 시 null.")]
     weight_kg: Annotated[float | None, Field(description="체중(kg). 미입력 시 null.")]
     diagnosis_history: Annotated[list[DiagnosisEntry], Field(description="본인이 진단받은 질환 목록.")]

@@ -14,7 +14,37 @@ import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
 import { hasConsented } from "../../utils/healthInfoConsent";
 
+import BirthDateInput from "./BirthDateInput";
 import DiseaseSubtypeSearchInput from "./DiseaseSubtypeSearchInput";
+
+/** "YYYY-MM-DD" -> {year, month, day} 문자열 3개로 쪼갠다. 캘린더 위젯 대신 칸별 입력을 쓰는 이유:
+ * 옛날 생년(예: 1970년대)을 고를 때 브라우저 기본 날짜선택기는 달력을 한 달씩 눌러 넘겨야 해서
+ * 너무 오래 걸린다 - 숫자 직접입력이 훨씬 빠르다. */
+function splitBirthDate(birthDate: string | null): { year: string; month: string; day: string } {
+  if (!birthDate) return { year: "", month: "", day: "" };
+  const [year, month, day] = birthDate.split("-");
+  return { year: year ?? "", month: String(Number(month) || ""), day: String(Number(day) || "") };
+}
+
+/** 년/월/일 세 칸이 전부 채워졌을 때만 "YYYY-MM-DD"로 합친다(하나라도 비었으면 undefined - 미입력 처리). */
+function combineBirthDate(year: string, month: string, day: string): string | undefined {
+  if (year === "" || month === "" || day === "") return undefined;
+  const mm = month.padStart(2, "0");
+  const dd = day.padStart(2, "0");
+  return `${year}-${mm}-${dd}`;
+}
+
+/** is_pregnant(boolean | null)를 select용 문자열("", "true", "false")로 변환한다.
+ * ""는 "미입력(모름)" 상태를 뜻한다 - 임신 여부는 답하기 부담스러울 수 있어 강제하지 않는다. */
+function boolToSelectValue(value: boolean | null): string {
+  if (value === null) return "";
+  return value ? "true" : "false";
+}
+
+function selectValueToBool(value: string): boolean | undefined {
+  if (value === "") return undefined;
+  return value === "true";
+}
 
 const DISEASE_OPTIONS: { key: Disease; label: string }[] = [
   { key: "CANCER", label: "암" },
@@ -375,8 +405,12 @@ export default function HealthInfoPage() {
   // 홈으로 나간다.
   const [hadDataOnLoad, setHadDataOnLoad] = useState(false);
 
-  const [birthDate, setBirthDate] = useState("");
+  const [birthYear, setBirthYear] = useState("");
+  const [birthMonth, setBirthMonth] = useState("");
+  const [birthDay, setBirthDay] = useState("");
   const [gender, setGender] = useState<"MALE" | "FEMALE">("MALE");
+  // "" = 미입력(모름), "true"/"false" 문자열로 관리 - select 옵션값과 맞추기 위함.
+  const [isPregnant, setIsPregnant] = useState("");
   const [heightCm, setHeightCm] = useState("");
   const [weightKg, setWeightKg] = useState("");
   const [specialNotes, setSpecialNotes] = useState("");
@@ -402,9 +436,14 @@ export default function HealthInfoPage() {
     try {
       const data = await healthInfoApi.get();
       setInfo(data);
-      setBirthDate(data.birth_date ?? "");
+      {
+        const { year, month, day } = splitBirthDate(data.birth_date);
+        setBirthYear(year);
+        setBirthMonth(month);
+        setBirthDay(day);
+      }
       setGender(data.gender ?? "MALE");
-      setHeightCm(data.height_cm !== null ? String(data.height_cm) : "");
+      setIsPregnant(boolToSelectValue(data.is_pregnant));
       setWeightKg(data.weight_kg !== null ? String(data.weight_kg) : "");
       setSpecialNotes(data.special_notes ?? "");
       setOtherNotes(data.other_notes ?? "");
@@ -460,8 +499,14 @@ export default function HealthInfoPage() {
 
   function handleCancelEdit() {
     if (info) {
-      setBirthDate(info.birth_date ?? "");
+      {
+        const { year, month, day } = splitBirthDate(info.birth_date);
+        setBirthYear(year);
+        setBirthMonth(month);
+        setBirthDay(day);
+      }
       setGender(info.gender ?? "MALE");
+      setIsPregnant(boolToSelectValue(info.is_pregnant));
       setHeightCm(info.height_cm !== null ? String(info.height_cm) : "");
       setWeightKg(info.weight_kg !== null ? String(info.weight_kg) : "");
       setSpecialNotes(info.special_notes ?? "");
@@ -480,8 +525,9 @@ export default function HealthInfoPage() {
     setIsSaving(true);
     try {
       const updated = await healthInfoApi.update({
-        birth_date: birthDate !== "" ? birthDate : undefined,
+        birth_date: combineBirthDate(birthYear, birthMonth, birthDay),
         gender,
+        is_pregnant: selectValueToBool(isPregnant),
         height_cm: heightCm !== "" ? Number(heightCm) : undefined,
         weight_kg: weightKg !== "" ? Number(weightKg) : undefined,
         // "없음"이든 몇 개 선택했든, 매번 지금 선택 상태 그대로(빈 배열 포함) 보낸다 -
@@ -550,6 +596,16 @@ export default function HealthInfoPage() {
                 성별:{" "}
                 {info.gender === "MALE" ? "남성" : info.gender === "FEMALE" ? "여성" : "미입력"}
               </p>
+              {info.gender === "FEMALE" && (
+                <p style={{ margin: 0, color: pinkTheme.text }}>
+                  임신 여부:{" "}
+                  {info.is_pregnant === true
+                    ? "예"
+                    : info.is_pregnant === false
+                      ? "아니오"
+                      : "미입력"}
+                </p>
+              )}
             </div>
 
             <div style={cardStyle}>
@@ -618,44 +674,62 @@ export default function HealthInfoPage() {
             onSubmit={handleSave}
             style={{ display: "flex", flexDirection: "column", gap: "16px" }}
           >
-            <div style={{ display: "flex", gap: "8px" }}>
-              <label
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "4px",
-                  flex: 1,
-                  color: pinkTheme.text,
-                }}
-              >
+            <div>
+              <p style={{ margin: "0 0 4px", color: pinkTheme.text }}>
                 생년월일 (선택 - 입력하면 만 나이가 자동으로 계산돼요)
-                <input
-                  type="date"
-                  value={birthDate}
-                  onChange={(e) => setBirthDate(e.target.value)}
-                  style={inputStyle}
-                />
-              </label>
+              </p>
+              <BirthDateInput
+                year={birthYear}
+                month={birthMonth}
+                day={birthDay}
+                onChange={(y, m, d) => {
+                  setBirthYear(y);
+                  setBirthMonth(m);
+                  setBirthDay(d);
+                }}
+              />
+            </div>
+
+            <label
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "4px",
+                color: pinkTheme.text,
+              }}
+            >
+              성별
+              <select
+                value={gender}
+                onChange={(e) => setGender(e.target.value as "MALE" | "FEMALE")}
+                style={inputStyle}
+              >
+                <option value="MALE">남성</option>
+                <option value="FEMALE">여성</option>
+              </select>
+            </label>
+
+            {gender === "FEMALE" && (
               <label
                 style={{
                   display: "flex",
                   flexDirection: "column",
                   gap: "4px",
-                  flex: 1,
                   color: pinkTheme.text,
                 }}
               >
-                성별
+                현재 임신 중이신가요? (선택 - 답하기 부담스러우면 비워두셔도 돼요)
                 <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value as "MALE" | "FEMALE")}
+                  value={isPregnant}
+                  onChange={(e) => setIsPregnant(e.target.value)}
                   style={inputStyle}
                 >
-                  <option value="MALE">남성</option>
-                  <option value="FEMALE">여성</option>
+                  <option value="">미입력</option>
+                  <option value="true">예</option>
+                  <option value="false">아니오</option>
                 </select>
               </label>
-            </div>
+            )}
 
             <label
               style={{

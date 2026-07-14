@@ -141,6 +141,8 @@ export interface HealthInfoResult {
   age: number | null; // birth_date로 계산된 만 나이, birth_date 없으면 null
   birth_date: string | null; // "YYYY-MM-DD" 형식
   gender: "MALE" | "FEMALE" | null;
+  // [#71 해결] 채팅 임부금기 DUR 경고 실연동용. 선택 입력 - 미입력이면 null.
+  is_pregnant: boolean | null;
   height_cm: number | null;
   weight_kg: number | null;
   bmi: number | null; // height_cm/weight_kg 둘 다 있어야 값이 있음, 백엔드가 계산해서 내려줌
@@ -154,6 +156,7 @@ export interface HealthInfoResult {
 export interface HealthInfoUpdatePayload {
   birth_date?: string; // "YYYY-MM-DD"
   gender?: "MALE" | "FEMALE";
+  is_pregnant?: boolean;
   height_cm?: number;
   weight_kg?: number;
   diagnosis_history?: DiagnosisEntry[];

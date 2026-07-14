@@ -24,3 +24,14 @@ def resolve_display_age(birth_date: date | None, today: date | None = None) -> i
     if birth_date is None:
         return None
     return compute_age(birth_date, today)
+
+
+def age_group(birth_date: date | None, today: date | None = None) -> str | None:
+    """탈퇴 시 익명화 통계용 - 정확한 나이 대신 10년 단위 나이대("30대" 등)로 뭉갠다.
+    나이+성별+희귀질환 조합으로 개인이 간접 재식별되는 위험을 줄이기 위함
+    (app/models/withdrawn_stats.py 참고)."""
+    age = resolve_display_age(birth_date, today)
+    if age is None:
+        return None
+    decade = (age // 10) * 10
+    return f"{decade}대"

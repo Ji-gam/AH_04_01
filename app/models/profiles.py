@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Date, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -71,6 +71,10 @@ class Profile(Base):
     name: Mapped[str] = mapped_column(String(20), nullable=False)
     gender: Mapped[Gender | None] = mapped_column(SAEnum(Gender, native_enum=False, length=6), nullable=True)
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # [DUR 임부금기 경고 연동] 여태 채팅 쪽 임부금기 DUR 경고가 실제 데이터 없이 항상 False로
+    # 고정돼있던 문제(#71)를 해결하기 위해 추가. 성별과 무관하게 그냥 선택 입력(주로 여성에게만
+    # 화면에 노출하지만, 값 자체는 성별 제약 없이 저장 가능).
+    is_pregnant: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     phone_number: Mapped[str | None] = mapped_column(String(11), nullable=True)
     relation: Mapped[ProfileRelation] = mapped_column(
         SAEnum(ProfileRelation, native_enum=False, length=10), default=ProfileRelation.SELF, nullable=False

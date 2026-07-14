@@ -5,6 +5,7 @@ from starlette import status
 from app.core.jwt.tokens import AccessToken, RefreshToken
 from app.models.profiles import ProfileRelation
 from app.repositories.profile_repository import ProfileRepository
+from app.repositories.refresh_token_repository import RefreshTokenRepository
 from app.repositories.user_repository import UserRepository
 from app.services.jwt import JwtService
 from app.services.oauth_clients import SocialUserInfo
@@ -23,6 +24,7 @@ class SocialAuthService:
     def __init__(self):
         self.user_repo = UserRepository()
         self.profile_repo = ProfileRepository()
+        self.refresh_token_repo = RefreshTokenRepository()
         self.jwt_service = JwtService()
 
     async def handle_callback(
@@ -52,5 +54,9 @@ class SocialAuthService:
                 )
 
         await self.user_repo.update_last_login(session, user.id)
+        tokens = self.jwt_service.issue_jwt_pair(user, profile)
+        # [리프레시 토큰 로테이션] 이메일 로그인과 동일하게, 발급한 리프레시 토큰의 jti를 추적한다.
+        refresh_token = tokens["refresh_token"]
+        await self.refresh_token_repo.create(session, user.id, refresh_token.payload["jti"])
         await session.commit()
-        return self.jwt_service.issue_jwt_pair(user, profile)
+        return tokens

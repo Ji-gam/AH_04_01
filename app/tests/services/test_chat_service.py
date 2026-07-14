@@ -37,6 +37,7 @@ class FakeProfile:
     id: int
     name: str = "사용자"
     age: int | None = None
+    is_pregnant: bool | None = None
     diagnosis_entries: list[FakeDiagnosisEntry] = field(default_factory=list)
     family_history_entries: list[FakeDiagnosisEntry] = field(default_factory=list)
 

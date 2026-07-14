@@ -5,6 +5,7 @@ from starlette import status
 from app.main import app
 from app.models.profiles import Profile
 from app.models.users import User
+from app.models.withdrawn_stats import WithdrawnHealthStat
 from app.tests.conftest import TestSessionLocal
 
 
@@ -88,3 +89,55 @@ async def test_withdraw_then_reregister_with_same_email_and_phone():
             },
         )
     assert response.status_code == status.HTTP_201_CREATED
+
+
+async def test_withdraw_archives_anonymized_health_stats_and_leaves_no_identifying_link():
+    """탈퇴 시 진단병력/가족력이 익명화된 통계로 남고, 그 레코드에서 원래 계정으로 역추적할
+    수 있는 컬럼(profile_id/user_id/이름 등)이 전혀 없어야 한다."""
+    email = "withdraw_stats@example.com"
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, email)
+        headers = {"Authorization": f"Bearer {token}"}
+
+        await client.patch(
+            "/api/v1/users/me/health-info",
+            json={
+                "birth_date": "1990-01-01",
+                "diagnosis_history": [{"disease": "DIABETES", "detail": None}],
+                "family_history": [{"disease": "CANCER", "detail": None}],
+            },
+            headers=headers,
+        )
+
+        before_count = await _count_withdrawn_stats()
+
+        response = await client.request(
+            "DELETE", "/api/v1/auth/withdraw", json={"password": "Password123!"}, headers=headers
+        )
+
+    assert response.status_code == status.HTTP_204_NO_CONTENT
+
+    async with TestSessionLocal() as session:
+        stats = (await session.execute(select(WithdrawnHealthStat))).scalars().all()
+
+    new_stats = stats[before_count:]
+    assert len(new_stats) == 2
+
+    diagnosis_stat = next(s for s in new_stats if s.is_family_history is False)
+    assert diagnosis_stat.disease.value == "DIABETES"
+    assert diagnosis_stat.age_group == "30대"  # 1990-01-01생 -> 테스트 시점 기준 30대
+
+    family_stat = next(s for s in new_stats if s.is_family_history is True)
+    assert family_stat.disease.value == "CANCER"
+
+    # 이 테이블 컬럼 자체에 profile_id/user_id/이름 등 식별 컬럼이 없다는 것을 스키마 레벨로 확인
+    columns = {c.name for c in WithdrawnHealthStat.__table__.columns}
+    assert "profile_id" not in columns
+    assert "user_id" not in columns
+    assert "email" not in columns
+    assert "name" not in columns
+
+
+async def _count_withdrawn_stats() -> int:
+    async with TestSessionLocal() as session:
+        return len((await session.execute(select(WithdrawnHealthStat))).scalars().all())
