@@ -3,5 +3,9 @@
     "owner": "agent-Antigravity",
     "branch": "feat/T-MED-4-2-drug-db-sync",
     "started": "2026-07-14"
+  },
+  "T-DOC-3": {
+    "branch": "feat/145-doc3-food-drug-interaction-accuracy",
+    "issue": 145
   }
 }

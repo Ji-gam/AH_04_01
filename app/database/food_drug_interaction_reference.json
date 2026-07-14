@@ -1,0 +1,483 @@
+{
+  "source": {
+    "title": "약과 음식 상호작용을 피하는 복약안내서",
+    "publisher": "식품의약품안전처 식품의약품안전평가원 (National Institute of Food and Drug Safety Evaluation)",
+    "published": "2016-09-30",
+    "url": "https://www.mfds.go.kr/brd/m_227/view.do?seq=24670",
+    "note": "정부 발간 PDF 가이드북을 페이지 이미지로 렌더링한 뒤 육안으로 파싱해 구조화한 것이다. 원문은 질환/약효군 단위로 대표 성분과 음식물·알코올 상호작용을 서술하며, 개별 제품/성분 전체를 다루지 않는다(본문 3페이지 안내 참조: 의약품 간 상호작용, 비타민/생약/건강기능식품과의 상호작용은 이 문서의 범위 밖). food_interaction/alcohol_interaction 텍스트는 원문 그대로이며 재가공(요약)하지 않았다.",
+    "not_covered": "이 안내서는 41-42페이지에 전체 요약표(의약품-식품간 상호작용 요약서)도 싣고 있으나, 형식이 본문과 달라(개별 서술이 아닌 응축된 표) 이번 파싱에서는 옮기지 않았다 — 필요시 별도로 추출 가능."
+  },
+  "categories": [
+    {
+      "category": "01 알레르기(Allergy)",
+      "drug_class": "항히스타민제(Antihistamines)",
+      "ingredients": [
+        {"name_ko": "브롬페니라민", "name_en": "brompheniramine"},
+        {"name_ko": "클로르페니라민", "name_en": "chlorpheniramine"},
+        {"name_ko": "클레마스틴", "name_en": "clemastine"},
+        {"name_ko": "디펜히드라민", "name_en": "diphenhydramine"},
+        {"name_ko": "트리프롤리딘", "name_en": "triprolidine"},
+        {"name_ko": "세티리진", "name_en": "cetirizine"},
+        {"name_ko": "펙소페나딘", "name_en": "fexofenadine"},
+        {"name_ko": "아젤라스틴", "name_en": "azelastine"},
+        {"name_ko": "로라타딘", "name_en": "loratadine"},
+        {"name_ko": "데스로라타딘", "name_en": "desloratadine"},
+        {"name_ko": "레보세티리진", "name_en": "levocetirizine"}
+      ],
+      "food_interaction": "자몽주스, 오렌지주스 및 사과주스와 같은 과일주스는 위산도에 영향을 주어 펙소페나딘 등의 흡수를 방해하여 약효를 저하시키므로 물과 함께 복용해야 합니다.",
+      "alcohol_interaction": "술(알코올)은 이 약의 중추신경 억제효과나 졸음을 배가시켜 심하게 할 수 있으므로, 이 약 복용 시 음주는 피해야 합니다.",
+      "source_page": "page_06"
+    },
+    {
+      "category": "02 천식(Asthma)",
+      "drug_class": "기관지 확장제(Bronchodilators)",
+      "ingredients": [
+        {"name_ko": "알부테롤", "name_en": "albuterol; salbutamol"},
+        {"name_ko": "밤부테롤", "name_en": "bambuterol"},
+        {"name_ko": "클렌부테롤", "name_en": "clenbuterol"},
+        {"name_ko": "테오필린", "name_en": "theophylline"}
+      ],
+      "food_interaction": "테오필린은 제형(일반 방출형, 지연 방출형, 분사형 등)에 따라 다른 영향을 나타날 수 있습니다. 약사에게 어떤 형태의 약을 복용하고 어떤 음식이 약효에 영향을 미치는지 문의하세요. 고지방이나 고탄수화물 식품은 피하는 것이 좋습니다. 고지방 식품은 테오필린의 흡수량을 증가시켜 약효를 증가시키고 부작용을 초래하는 반면, 고탄수화물 식이는 테오필린의 흡수량을 감소시켜 약효를 저하시킵니다. 세인트존스워트(St John's Wort)에 의해 테오필린 대사가 촉진되어 혈중농도가 저하될 위험성이 있으므로 병용하지 않도록 주의해야 합니다. 기관지 확장제는 카페인이 함유된 음식이나 음료와 같이 복용하면, 중추신경계를 자극시켜, 흥분, 불안, 심박수 증가와 같은 부작용을 일으킬 수 있습니다. 카페인을 함유하고 있는 식품(초콜릿, 콜라, 커피, 차)과 음료를 많이 드시는 것은 피하는 것이 좋습니다.",
+      "alcohol_interaction": "테오필린이 함유된 약을 복용하고 있는 중에 음주는 메스꺼움, 구토, 두통, 과민성과 같은 부작용을 일으킬 수 있으므로 음주는 피해야 합니다.",
+      "source_page": "page_07"
+    },
+    {
+      "category": "03 관절염, 통증 또는 발열",
+      "drug_class": "1) 진통제(Analgesics)/해열제(Antipyretics)",
+      "ingredients": [
+        {"name_ko": "아세트아미노펜", "name_en": "acetaminophen"}
+      ],
+      "food_interaction": null,
+      "alcohol_interaction": "매일 3잔 이상의 음주를 한다면, 아세트아미노펜 또는 다른 해열진통제를 복용해야 할 때에는 의사나 약사와 반드시 상담하세요. 진통해열제는 위장출혈과 간에 손상을 일으킬 수 있으며, 매일 3잔 이상의 음주를 할 경우 심각한 간 손상을 초래할 수 있습니다.",
+      "source_page": "page_08"
+    },
+    {
+      "category": "03 관절염, 통증 또는 발열",
+      "drug_class": "2) 비스테로이드성 소염진통제(NSAIDs)",
+      "ingredients": [
+        {"name_ko": "아스피린", "name_en": "aspirin"},
+        {"name_ko": "아세클로페낙", "name_en": "aceclofenac"},
+        {"name_ko": "세레브렉스", "name_en": "celecoxib"},
+        {"name_ko": "디클로페낙", "name_en": "diclofenac"},
+        {"name_ko": "이부프로펜", "name_en": "ibuprofen"},
+        {"name_ko": "케토프로펜", "name_en": "ketoprofen"},
+        {"name_ko": "나프록센", "name_en": "naproxen"},
+        {"name_ko": "피록시캄", "name_en": "piroxicam"},
+        {"name_ko": "설린닥", "name_en": "sulindac"}
+      ],
+      "food_interaction": "이 약물들은 위를 자극할 수 있으므로, 복용으로 위장장애가 일어날 때에는 음식 또는 우유와 함께 복용하세요. 복합진통제의 경우 카페인이 함유되어 있는 경우가 많습니다. 약을 복용하면서 카페인이 함유된 커피나 드링크류 등을 너무 많이 마시게 되면 카페인 과잉 상태가 되어 가슴이 두근거리고 다리에 힘이 없어지는 증상이 나타나기도 하므로 주의해야합니다.",
+      "alcohol_interaction": "매일 3잔 이상의 음주를 하는 사람이 비스테로이드성 소염진통제 또는 다른 진통제/해열제를 복용해야 할 때에는 위출혈을 일으킬 수 있으며 간손상과 위출혈을 악화시킬 수 있으니 반드시 의사 또는 약사와 상담하세요.",
+      "source_page": "page_09"
+    },
+    {
+      "category": "03 관절염, 통증 또는 발열",
+      "drug_class": "3) 마약성 진통제(Narcotic Analgesics)",
+      "ingredients": [
+        {"name_ko": "코데인+아세트아미노펜", "name_en": "codeine+acetaminophen"},
+        {"name_ko": "히드로코돈+아세트아미노펜", "name_en": "hydrocodone+acetaminophen"},
+        {"name_ko": "메페리딘", "name_en": "meperidine"},
+        {"name_ko": "모르핀", "name_en": "morphine"},
+        {"name_ko": "옥시코돈+아세트아미노펜", "name_en": "oxycodone+acetaminophen"}
+      ],
+      "food_interaction": null,
+      "alcohol_interaction": "이 마약성 진통제를 복용할 때에는 금주하세요. 알코올로 인한 심각한 부작용, 혼수상태 또는 사망 등을 일으킬 수 있습니다.",
+      "source_page": "page_09"
+    },
+    {
+      "category": "04 통풍(Gout)",
+      "drug_class": "소염제 / 요산 배설 촉진제",
+      "ingredients": [
+        {"name_ko": "인도메타신", "name_en": "indomethacin"},
+        {"name_ko": "나프록센", "name_en": "naproxen"},
+        {"name_ko": "콜키신", "name_en": "colchicine"},
+        {"name_ko": "알로푸리놀", "name_en": "allopurinol"},
+        {"name_ko": "프로베네시드", "name_en": "probenecid"},
+        {"name_ko": "설핀피라존", "name_en": "sulfinpyrazone"}
+      ],
+      "food_interaction": "통풍은 고기, 등 푸른 생선, 조개, 멸치, 새우, 시금치, 아스파라간산 맥주 등 퓨린이 많은 식품을 과다 섭취할 경우 요산의 농도가 증가하게 되어 통풍이 악화될 수 있으므로 퓨린이 많이 함유된 식품은 피하는 것이 좋습니다. 과당(fructose)을 첨가한 빵류나 청량음료도 요산을 증가시켜 알코올만큼 위험하오니 삼가십시오. 물을 많이 마시면 요산 결정이 배설되는데 큰 도움이 되므로 물을 많이 드시는 것이 좋습니다.",
+      "alcohol_interaction": "알코올은 체내에서 요산 합성을 증가시키고 소변으로의 요산배설을 억제하므로 피해야합니다. 술중에서도 특히 효모가 들어 있는 맥주나 막걸리 같은 곡주에는 퓨린이 많이 함유되어 있어 혈중 요산치를 현저히 증가시키므로 더욱 주의해야합니다.",
+      "source_page": "page_10"
+    },
+    {
+      "category": "05 골다공증(Osteoporosis)",
+      "drug_class": "비스포스포네이트",
+      "ingredients": [
+        {"name_ko": "알렌드로네이트", "name_en": "alendronate"},
+        {"name_ko": "알렌드로네이트+콜레칼시페롤", "name_en": "alendronate+cholecalciferol"},
+        {"name_ko": "이반드로네이트", "name_en": "ibandronate"},
+        {"name_ko": "리세드로네이트", "name_en": "risedronate"},
+        {"name_ko": "리세드로네이트+탄산칼슘", "name_en": "risedronate+calcium carbonate"}
+      ],
+      "food_interaction": "이 약은 공복에 복용해야 약효를 발휘합니다. 아침에 일어나 앉거나 서 있는 상태에서 식도자극의 가능성을 줄이기 위해서 충분한 양의 물 약 200ml로 복용하세요. 순수한 물 이외는 흡수를 방해하므로 미네랄워터로도 복용하지마세요. 다른 약과도 같이 복용하지 마시고 씹어서도 안 됩니다. 알렌드로네이트와 리세드로네이트 복용 후 30~60분간, 또는 하루 첫번째 음식을 섭취하기 전까지는 눕지 마세요. 알렌드로네이트와 리세드로네이트 복용 후 적어도 30~60분까지는 제산제나 다른 약, 음식, 음료(우유포함), 칼슘제, 비타민제 또는 건강기능식품(식이보조제) 등은 섭취하지 마세요. 커피, 콜라, 홍차 등 카페인을 많이 함유한 음료는 신장에서 칼슘배설을 증가시켜 골다공증에 좋지 않은 영향을 줄 수 있으므로 삼가는 것이 좋습니다. 또한 탄산음료에는 인(燐)이 다량 함유되어 있어, 뼈의 칼슘을 빼내는 작용을 하므로 피하는 것이 좋습니다. 고지방 식이도 칼슘의 흡수를 저하시키고 칼슘의 배설을 증가시키므로 피하는 것이 좋습니다.",
+      "alcohol_interaction": "알코올은 칼슘 배설을 촉진시켜 골다공증을 악화시킬 수 있으니 음주는 피해야 합니다.",
+      "source_page": "page_12"
+    },
+    {
+      "category": "06 심혈관계 질환(Cardiovascular Disease)",
+      "drug_class": "1) 앤지오텐신전환효소저해제와 앤지오텐신 II 수용체 길항제(ACE inhibitor & ARB)",
+      "ingredients": [
+        {"name_ko": "캅토프릴", "name_en": "captopril"},
+        {"name_ko": "에날라프릴", "name_en": "enalapril"},
+        {"name_ko": "리시노프릴", "name_en": "lisinopril"},
+        {"name_ko": "모엑시프릴", "name_en": "moexipril"},
+        {"name_ko": "퀴나프릴", "name_en": "quinapril"},
+        {"name_ko": "라미프릴", "name_en": "ramipril"},
+        {"name_ko": "칸데사르탄", "name_en": "candesartan"},
+        {"name_ko": "에프로사르탄", "name_en": "eprosartan"},
+        {"name_ko": "로사르탄", "name_en": "losartan"},
+        {"name_ko": "텔미사르탄", "name_en": "telmisartan"},
+        {"name_ko": "발사르탄", "name_en": "valsartan"}
+      ],
+      "food_interaction": "캅토프릴, 모엑시프릴은 식사와 함께 복용할 경우 흡수가 감소되므로 약물의 흡수를 증진시키기 위해 공복(식사 1시간전)에 복용하는 것을 권장합니다. ACE 저해제와 ARB는 체내에 칼륨의 양을 증가시켜서 고칼륨혈증을 일으킬 수 있습니다. 많은 양의 칼륨은 인체에 해로울 수 있고, 부정맥과 심계항진(심박수 증가)을 일으킬 수 있습니다. 따라서 매실, 바나나, 오렌지, 녹황색 채소 및 저염소금(칼륨함유 식염 대용물) 등 칼륨이 다량 함유된 식품 섭취를 피해야 합니다. 칼륨보충제 또는 이뇨제를 섭취하고 있을 때에도 이들이 칼륨의 체내 농도를 배가시켜 높일 수 있기 때문에 의사나 약사에게 알려야합니다.",
+      "alcohol_interaction": "음주는 이 약의 작용을 상승시킬 수 있으며, 기립성 저혈압을 초래할 수 있으므로 주의해야 합니다.",
+      "source_page": "page_15"
+    },
+    {
+      "category": "06 심혈관계 질환(Cardiovascular Disease)",
+      "drug_class": "2) 베타 차단제(Beta Blockers)",
+      "ingredients": [
+        {"name_ko": "아테놀올", "name_en": "atenolol"},
+        {"name_ko": "카르베딜롤", "name_en": "carvedilol"},
+        {"name_ko": "나도롤", "name_en": "nadolol"},
+        {"name_ko": "메토프로롤", "name_en": "metoprolol"},
+        {"name_ko": "프로프라놀롤", "name_en": "propranolol"}
+      ],
+      "food_interaction": "카르베딜롤은 갑작스러운 심한 혈압저하를 방지하기 위해서 음식과 함께 복용하세요. 카르베딜롤 서방형 캡슐을 분할하거나 씹거나 부수지 말고 캡슐 그대로 음식과 함께 복용해야합니다. 메토프로롤은 식사를 하면서 복용하거나 식후 바로 복용합니다. 고기와 함께 복용하면 약효가 증가되어 어지럼증이나 저혈압을 발생시킬 수 있으므로 주의해야 합니다.",
+      "alcohol_interaction": "이 약을 복용시 알코올은 혈압강하 효과를 증강시켜 이상반응을 초래하므로 음주는 피해야 합니다.",
+      "source_page": "page_16"
+    },
+    {
+      "category": "06 심혈관계 질환(Cardiovascular Disease)",
+      "drug_class": "3) 알파 차단제(Alpha Blockers)",
+      "ingredients": [
+        {"name_ko": "독사조신", "name_en": "doxazosin"},
+        {"name_ko": "페녹시벤자민", "name_en": "phenoxybenzamine"},
+        {"name_ko": "펜톨라민", "name_en": "phentolamine"},
+        {"name_ko": "프라조신", "name_en": "prazosin"}
+      ],
+      "food_interaction": "첫 투약은 취침 전 최소량으로 하는 것이 바람직하며, 갑작스러운 심한 혈압저하(체위성 저혈압)로 어지러움, 심장 두근거림 등이 나타날 수 있으므로 이를 방지하기 위해서 음식과 함께 복용하세요.",
+      "alcohol_interaction": null,
+      "source_page": "page_17"
+    },
+    {
+      "category": "06 심혈관계 질환(Cardiovascular Disease)",
+      "drug_class": "4) 칼슘채널 차단제(Calcium Channel Inhibitors)",
+      "ingredients": [
+        {"name_ko": "암로디핀", "name_en": "amlodipine"},
+        {"name_ko": "딜티아젬", "name_en": "diltiazem"},
+        {"name_ko": "베라파밀", "name_en": "verapamil"},
+        {"name_ko": "니페디핀", "name_en": "nifedipine"},
+        {"name_ko": "니카르디핀", "name_en": "nicardipine"}
+      ],
+      "food_interaction": "자몽주스(포멜로 포함)와 복용할 경우 약효가 지나치게 증가하여 독성이 나타날 수 있으므로 함께 복용하지 않도록 하며, 적어도 약 복용 후 2시간 이후에 자몽주스를 마시는 것이 좋습니다. 니카르디핀은 음식물과 같이 섭취하면 흡수가 저하되므로 공복시에 약을 복용해야 합니다.",
+      "alcohol_interaction": null,
+      "source_page": "page_18"
+    },
+    {
+      "category": "06 심혈관계 질환(Cardiovascular Disease)",
+      "drug_class": "5) 이뇨제(Diuretics)",
+      "ingredients": [
+        {"name_ko": "히드로클로르치아지드", "name_en": "hydrochlorothiazide"},
+        {"name_ko": "메톨라존", "name_en": "metolazone"},
+        {"name_ko": "부메타니드", "name_en": "bumetanide"},
+        {"name_ko": "푸로세미드", "name_en": "furosemide"},
+        {"name_ko": "아밀로라이드", "name_en": "amiloride"},
+        {"name_ko": "스피로노락톤", "name_en": "spironolactone"},
+        {"name_ko": "트리암테렌", "name_en": "triamterene"},
+        {"name_ko": "트리암테렌+히드로클로르치아지드", "name_en": "triamterene + hydrochlorothiazide"}
+      ],
+      "food_interaction": "이 약의 복용으로 위장장애가 나타날 때에는 음식과 같이 복용하세요. 치아지드계 및 고리이뇨제들은 체내의 무기물과 칼륨, 칼슘과 마그네슘도 체외로 배출시키는 이뇨제입니다. 특히 치아지드나 고리 이뇨제와 알로에를 같이 복용하는 경우에는 체내의 칼륨량이 지나치게 감소될 수 있으므로 주의해야 하며, 과일과 야채를 많이 먹도록 해야 합니다. 치아지드계 이뇨제는 화학조미료 MSG(MonoSodium Glutamate)의 작용을 증가시켜 두통, 어지럼증, 입 주위 마비, 가슴이나 배의 통증 등의 증상을 나타낼 수 있으므로 주의가 필요합니다. 트리암테렌(triamterene)과 같은 칼륨 보존성 이뇨제는 칼륨을 제거시키는 신장의 기능을 약화시켜 혈류 속 칼륨의 수치를 급격히 증가시켜 고칼륨혈증을 초래할 수 있습니다. 많은 양의 칼륨은 부정맥과 심박수를 증가시킬 수 있으므로 체내 칼륨 농도를 증가시키는 이뇨제를 복용할 경우에는 칼륨을 다량 함유하고 있는 매실, 바나나, 토마토, 오렌지, 녹황색채소 또는 저염소금(칼륨이 고농도 함유된 식염 대용물(KCl))들을 많이 먹지 마시고, 만약 고칼륨이 함유된 식염대용물, 칼륨보충제를 섭취하고 있을 때에는 의사나 약사에게 알려줘야 합니다.",
+      "alcohol_interaction": "이 약을 복용시 알코올은 혈압강하 효과를 증강시켜 기립성 저혈압을 초래할 수 있으므로 음주는 피해야 합니다.",
+      "source_page": "page_18"
+    },
+    {
+      "category": "06 심혈관계 질환(Cardiovascular Disease)",
+      "drug_class": "6) 강심배당체(Cardiac Glycosides)",
+      "ingredients": [
+        {"name_ko": "디곡신", "name_en": "digoxin"}
+      ],
+      "food_interaction": "공복시(식사 1시간 전 또는 식후 2~3시간 후)에 디곡신(digoxin)을 복용하세요. 되도록 매일 같은 시간에 복용하시고 의약품 설명서 또는 의사의 지시에 주의 깊게 따라야 합니다. 식이섬유가 많이 함유된 음식과 섭취하면 체내의 디곡신은 감소하므로, 식이섬유가 많은 음식(곡류)을 섭취할 때에는 식사 2시간 전 또는 2시간 후에 이 약(digoxin)을 복용하세요. 차풀잎(senna;차풀잎을 말려서 만든 하제)이나 세인트존스워트 섭취를 피하십시오. 체내에 디곡신의 양과 효능이 떨어지게 됩니다. 감초나 검은 감초(black licorice: 글리시리진을 포함하고 사탕, 케이크에 감미제로 사용) 병용은 칼륨농도를 낮추어(저칼륨혈증) 부정맥과 심장마비를 일으킬 위험이 있습니다.",
+      "alcohol_interaction": null,
+      "source_page": "page_19"
+    },
+    {
+      "category": "06 심혈관계 질환(Cardiovascular Disease)",
+      "drug_class": "7) 고지혈증 치료제(콜레스테롤 저하제: Statins)",
+      "ingredients": [
+        {"name_ko": "아토르바스타틴", "name_en": "atorvastatin"},
+        {"name_ko": "플루바스타틴", "name_en": "fluvastatin"},
+        {"name_ko": "로바스타틴", "name_en": "lovastatin"},
+        {"name_ko": "프라바스타틴", "name_en": "pravastatin"},
+        {"name_ko": "로수바스타틴", "name_en": "rosuvastatin"},
+        {"name_ko": "심바스타틴", "name_en": "simvastatin"}
+      ],
+      "food_interaction": "이 약은 식사와 관계없이 복용할 수 있습니다. 다만, 로바스타틴은 저녁 식사와 같이 복용하면 더 좋은 효과를 보이며, 프라바스타틴은 식사와 함께 복용하면 흡수가 감소되므로 저녁 식후 투여가 보다 효과적입니다. 아토르바스타틴, 로바스타틴, 심바스타틴 등을 복용할 때에는 하루 250ml 이상의 자몽쥬스를 섭취하지 않도록 해야 합니다. 많은 양의 자몽쥬스는 스타틴의 체내 농도를 높여서 부작용을 일으킬 수 있습니다.",
+      "alcohol_interaction": "이 계통의 약물들은 부작용으로 간 손상이 유발될 수 있으므로 음주는 피해야 합니다.",
+      "source_page": "page_20"
+    },
+    {
+      "category": "06 심혈관계 질환(Cardiovascular Disease)",
+      "drug_class": "8) 혈관확장제/협심증치료제(Vasodilators-Nitrates)",
+      "ingredients": [
+        {"name_ko": "이소소르비드", "name_en": "isosorbide dinitrate or mononitrate"},
+        {"name_ko": "니트로글리세린", "name_en": "nitroglycerin"}
+      ],
+      "food_interaction": "혈관확장제 질산염은 식사와 관계없이 복용할 수 있습니다.",
+      "alcohol_interaction": "알코올은 혈관확장제의 혈관이완에 부가적 영향을 주어 혈압강화작용이 증강되어 위험한 수준의 저혈압을 일으킬 수 있으니 음주는 삼가십시오.",
+      "source_page": "page_21"
+    },
+    {
+      "category": "06 심혈관계 질환(Cardiovascular Disease)",
+      "drug_class": "9) 비타민K 길항제/혈액응고방지제(Anticoagulants)",
+      "ingredients": [
+        {"name_ko": "와파린", "name_en": "warfarin"}
+      ],
+      "food_interaction": "와파린은 식사와 관계없이 복용할 수 있습니다. 비타민 K는 와파린과 반대로 피가 잘 응고하도록 하므로, 비타민 K의 양에 따라 와파린의 작용도 영향을 받게 됩니다. 비타민 K를 많이 함유하고 있는 식품(녹색 채소, 해조류)의 양을 일정하게 유지하며 균형 있는 식사를 하십시오. 필요 이상 많이 섭취할 경우 와파린 작용이 방해 받을 수 있습니다. 조리를 하더라도 비타민 K의 함유량에는 큰 변화가 생기지 않는다는 사실에 유의해야 합니다. 브로콜리, 양배추, 케일 및 콜라드그린(케일 일종), 시금치, 아스파라거스, 무청과 미니양배추, 소간, 녹차, 콩류 및 김 등에는 비타민 K가 많이 함유되어 있습니다. 갑자기 많이 먹지 않도록 주의해야 합니다. 크랜베리 쥬스와 크랜베리 함유 식품은 와파린의 효능에 영향을 주므로 섭취하지 않도록 합니다. 많은 건강기능식품(식이보충제)과 비타민제는 혈액응고방지제와 상호작용을 하여 와파린의 효능을 낮추고 혈전이 발생하여 부작용 위험을 증가시킬 수 있습니다. 고용량의 비타민 E(400 IU 이상)를 섭취하면, 혈액 응고시간이 연장되어 출혈 위험성이 증가됩니다. 양파, 마늘, 생강, 은행잎 제제, 글루코사민, 인삼, 은행, 당귀, 백지, 감초, 정향, 동규자 등은 와파린과 병용하면 출혈 위험이 증가될 수 있으므로 섭취하지 않도록 합니다.",
+      "alcohol_interaction": "알코올은 와파린 대사에 영향을 미쳐 출혈 위험성을 증가시키는 영향을 주므로 음주를 삼가야하며, 음주를 했거나 남용을 하였을 때에는 의사나 약사와 상담하세요.",
+      "source_page": "page_22"
+    },
+    {
+      "category": "07 위·식도 역류질환(GERD)과 위궤양",
+      "drug_class": "1) 히스타민 길항제(Histamine 2 Receptor Antagonist)",
+      "ingredients": [
+        {"name_ko": "시메티딘", "name_en": "cimetidine"},
+        {"name_ko": "파모티딘", "name_en": "famotidine"},
+        {"name_ko": "니자티딘", "name_en": "nizatidine"},
+        {"name_ko": "라니티딘", "name_en": "ranitidine"}
+      ],
+      "food_interaction": "커피, 콜라, 차, 초콜릿 등에 함유된 카페인은 위의 염증을 악화시킬 수 있으므로 히스타민 길항제를 복용할 때에는 피하는 것이 좋습니다.",
+      "alcohol_interaction": "알코올은 위의 염증을 악화시켜 치료를 어렵게 만들고 치료기간이 길어질 수 있으므로 치료 중에는 음주는 삼가는 것이 좋습니다.",
+      "source_page": "page_23"
+    },
+    {
+      "category": "07 위·식도 역류질환(GERD)과 위궤양",
+      "drug_class": "2) 프로톤펌프억제제(Proton Pump Inhibitors)",
+      "ingredients": [
+        {"name_ko": "덱스란소프라졸", "name_en": "dexlansoprazole"},
+        {"name_ko": "에스오메프라졸", "name_en": "esomeprazole"},
+        {"name_ko": "란소프라졸", "name_en": "lansoprazole"},
+        {"name_ko": "오메프라졸", "name_en": "omeprazole"},
+        {"name_ko": "판토프라졸", "name_en": "pantoprazole"},
+        {"name_ko": "라베프라졸", "name_en": "rabeprazole"}
+      ],
+      "food_interaction": "덱스란소프라졸과 판토프라졸은 식사와 관계없이 복용할 수 있으며, 위벽세포가 산성 환경일 때 활성화되어 작용하므로 혈중농도에 도달하는 시간이 필요하여 식전복용이 권장됩니다. 에스오메프라졸은 적어도 식사 1시간 전에 복용해야 합니다. 란소프라졸과 오메프라졸은 식전에 복용하시고, 라베프라졸의 복용방법은 의사나 약사에게 문의하세요. 서방형 제제는 씹거나 나누어서 복용하면 안 되므로 한 번에 삼키기 힘들 경우에는 의사와 상담하세요.",
+      "alcohol_interaction": null,
+      "source_page": "page_24"
+    },
+    {
+      "category": "07 위·식도 역류질환(GERD)과 위궤양",
+      "drug_class": "3) 프로스타글란딘 제제",
+      "ingredients": [
+        {"name_ko": "미소프로스톨", "name_en": "misoprostol"},
+        {"name_ko": "레바미피드", "name_en": "rebamipide"}
+      ],
+      "food_interaction": "설사, 복통 등의 위장관계 약물유해반응이 있으면, 식사와 같이 복용 시(또는 식사직후) 완화되나, 증상이 심하면 의사나 약사와 상의하십시오. 커피, 콜라, 차, 초콜릿 등 카페인이 함유된 음식, 맵고 짜거나 자극적인 음식, 탄산음료 등은 위산분비를 자극하여 위의 염증을 악화 시킬 수 있으므로 피하는 것이 좋습니다.",
+      "alcohol_interaction": "알코올은 위의 염증을 악화시켜 치료를 어렵게 만들 수 있으므로 치료중에는 음주는 피해야 합니다.",
+      "source_page": "page_25"
+    },
+    {
+      "category": "07 위·식도 역류질환(GERD)과 위궤양",
+      "drug_class": "4) 제산제(Antacid)",
+      "ingredients": [
+        {"name_ko": "알마게이트", "name_en": "almagate"},
+        {"name_ko": "수산화알루미늄", "name_en": "aluminum hydroxide"},
+        {"name_ko": "인산알루미늄", "name_en": "aluminum phosphate"},
+        {"name_ko": "보에마이트", "name_en": "boehmite"},
+        {"name_ko": "디오마그나이트", "name_en": "diomagnite"},
+        {"name_ko": "산화마그네슘", "name_en": "magnesium oxide"}
+      ],
+      "food_interaction": "오렌지 주스를 알루미늄이 들어 있는 제산제와 함께 마실 경우 알루미늄 성분이 체내로 흡수될 수 있으므로 함께 복용하지 않는 것이 좋습니다. 과일 주스 및 콜라 등과 함께 복용하는 경우, 위의 산도를 높여 약효를 효과적으로 발휘할 수 없게 되므로 함께 복용하지 않도록 해야 합니다.",
+      "alcohol_interaction": null,
+      "source_page": "page_25"
+    },
+    {
+      "category": "08 갑상선기능저하증",
+      "drug_class": "갑상선 치료제",
+      "ingredients": [
+        {"name_ko": "레보티로신", "name_en": "levothyroxine"}
+      ],
+      "food_interaction": "음식은 레보티로신 흡수를 방해하므로 아침 공복에 하루 한번 복용하시고, 적어도 식사하기 1시간에서 한 시간 반 이전에 복용하도록 합니다. 칼슘이나 철 보충제, 콩 식품도 레보티로신 흡수를 방해하므로 이약 복용후 4시간후에 섭취하도록 권장합니다. 콩가루(콩유아조제분유), 목화씨 가루, 호두 및 식이섬유 등을 섭취할 경우 복용 양을 조절해야하기 때문에 의사에게 알리세요. 자몽주스나 커피도 이 약의 흡수를 지연시켜 기대하는 약효를 얻지 못할 수 있습니다.",
+      "alcohol_interaction": null,
+      "source_page": "page_26"
+    },
+    {
+      "category": "09 감염증",
+      "drug_class": "1) 항균제 - 가) 퀴놀론계 항균제(Quinolone Antibacterials)",
+      "ingredients": [
+        {"name_ko": "오플록사신", "name_en": "ofloxacin"},
+        {"name_ko": "시프로플록사신", "name_en": "ciprofloxacin"},
+        {"name_ko": "에녹사신", "name_en": "enoxacin"},
+        {"name_ko": "레보플록사신", "name_en": "levofloxacin"},
+        {"name_ko": "목시플록사신", "name_en": "moxifloxacin"}
+      ],
+      "food_interaction": "시프로플록사신, 목시플록사신, 레보플록사신 정제는 식사와 관계없이 복용할 수 있습니다. 다만 레보플록사신 액제는 공복(식전 1시간 전 또는 식후 2시간 후)상태에 복용하세요. 시프로플록사신 복용시 유제품(우유, 요구르트 등) 또는 무기질 강화 음료(칼슘강화 오렌지주스)들과 같이 복용하지 마세요. 이 약은 다가의 양이온을 가지고 있어 미네랄 비타민 복합제를 병용시 킬레이트 복합체 형성하여 흡수가 감소 될 수 있으니, 이 약 투여 전후 2시간 이내에 병용하지 않는 것이 바람직합니다. 시프로플록사신을 복용시 카페인이 함유된 음식이나 음료수를 섭취하면, 이 약물이 카페인의 배설을 억제하여 심장이 심하게 두근거리며 신경이 예민해지고 불면 증상이 나타날 수 있으니 주의해야 합니다.",
+      "alcohol_interaction": null,
+      "source_page": "page_27"
+    },
+    {
+      "category": "09 감염증",
+      "drug_class": "1) 항균제 - 나) 테트라사이클린계 항균제(Tetracycline Antibacterials)",
+      "ingredients": [
+        {"name_ko": "독시사이클린", "name_en": "doxycycline"},
+        {"name_ko": "미노사이클린", "name_en": "minocycline"},
+        {"name_ko": "테트라사이클린", "name_en": "tetracycline"}
+      ],
+      "food_interaction": "식사 1시간 전이나 2시간 후, 즉 공복 상태에 물 한잔과 함께 복용하세요. 약의 복용으로 위장장애가 나타날 때에는 음식과 같이 복용하시고, 약 복용 1시간 전이나 또는 2시간 안에는 유제품(우유, 치즈, 요거트, 아이스크림 등)을 삼가세요. 테트라사이클린의 경우에는 우유, 낙농제품, 제산제, 항생제, 철을 함유한 비타민과 함께 복용할 경우 성분이 체내에 흡수되지 않고 배출되어 약효가 떨어집니다. 그러므로 이 식품들은 약 복용 2시간 후에 드시는 것이 좋습니다.",
+      "alcohol_interaction": "알코올은 이 약의 반감기를 감소시켜 약효 소실을 빨라지게 합니다.",
+      "source_page": "page_28"
+    },
+    {
+      "category": "09 감염증",
+      "drug_class": "1) 항균제 - 다) 옥사졸리디논계 항균제(Oxazolidinone Antibacterials)",
+      "ingredients": [
+        {"name_ko": "리네졸리드", "name_en": "linezolid"}
+      ],
+      "food_interaction": "리네졸리드는 약한 모노아민산화효소억제제(MAOI)이므로 복용시 티라민이 다량 함유된 음식과 음료를 피하세요. 다량의 타라민은 혈압을 급작스럽게 위험한 수준으로 높일 수 있기 때문에 의사의 지시를 주의하여 따르십시오. 티라민이 함유된 식품: 적절히 취급·저장 또는 냉장보관하지 않아 상하거나, 오래되거나, 절이거나, 발효시키거나 또는 훈제한 식품 — 향이 강하고 오랜 기간 숙성·가공된 치즈(체다, 콜비, 블루, 브리, 모짜렐라, 파마산 등), 요거트, 사워크림(크림과 코티지치즈는 섭취 가능), 소고기·닭의 간, 말린 소시지(제노아 사라미, 경성 사라미, 페페로니, 레바론 볼로냐), 캐비아, 건청어, 청어젓, 멸치, 육즙, 연화 처리 육, 아보카도, 바나나, 통조림 돼지고기, 건과일(건포도, 건자두), 라즈베리, 지나치게 익은 과일, 독일식 김치(사우어크라우트), 된장, 간장, 효소추출물(맥주 효모), 누에콩(파바), 과도한 양의 초콜릿. 카페인이 함유된 많은 음식과 음료에는 티라민도 함유되어 있어 의사와 상담이 필요합니다.",
+      "alcohol_interaction": "리네졸리드 복용시 금주하세요. 생맥주, 레드와인, 화이트와인과 양주 등 많은 주류는 티라민을 함유하고 있습니다. 무알코올과 저알코올 맥주에도 티라민이 들어 있습니다.",
+      "source_page": "page_28"
+    },
+    {
+      "category": "09 감염증",
+      "drug_class": "1) 항균제 - 라) 메트로니다졸계 항균제(Metronidazole Antibacterials)",
+      "ingredients": [
+        {"name_ko": "메트로니다졸", "name_en": "metronidazole"}
+      ],
+      "food_interaction": null,
+      "alcohol_interaction": "메트로니다졸을 복용시 금주하시고, 마지막 복용 후 3일 동안은 음주를 피하는 것이 좋습니다. 이 약은 음주로 인한 알코올 부작용을 강하게 나타나게 하여, 메스꺼움, 위경련, 구토, 홍조, 두통 등 디설피람양 증상을 초래할 수 있습니다.",
+      "source_page": "page_29"
+    },
+    {
+      "category": "09 감염증",
+      "drug_class": "2) 항진균제(Antifungals)",
+      "ingredients": [
+        {"name_ko": "플루코나졸", "name_en": "fluconazole"},
+        {"name_ko": "이트라코나졸", "name_en": "itraconazole"},
+        {"name_ko": "포사코나졸", "name_en": "posaconazole"},
+        {"name_ko": "보리코나졸", "name_en": "voriconazole"},
+        {"name_ko": "케토코나졸", "name_en": "ketoconazole"},
+        {"name_ko": "테르비나핀", "name_en": "terbinafine"},
+        {"name_ko": "그리세오풀빈", "name_en": "griseofulvin"}
+      ],
+      "food_interaction": "이트라코나졸 캡슐은 식후 바로 포만상태에서 복용하면 약효가 뛰어나고, 이트라코나졸 액제는 공복에 복용하여야 됩니다. 포사코나졸은 흡수율을 고려하여 반드시 음식과 함께 또는 식후 20분 이내에 복용해야 합니다. 보리코나졸 정제는 식사 1시간 전 혹은 1시간 후에 복용하여야 하며, 세인트존스워트와 병용 금기입니다. 그리세오풀빈은 지방성 식사 후에 복용하면 흡수가 촉진되므로 식사 직후 복용하는 것이 좋습니다. 케토코나졸은 자몽주스에 의해 흡수 지연 및 대사가 촉진되므로 병용하지 않도록 합니다. 그 밖의 항진균제는 식사와 상관없이 복용할 수 있으나, 유제품이나 제산제와 함께 복용하면 흡수가 저해되어 약효가 떨어집니다.",
+      "alcohol_interaction": "그리세오풀빈 복용시 음주는 심장 박동을 매우 빠르게 하고 안면홍조, 오심, 구토, 복부경련, 두통 등 부작용을 악화 시킬 수 있으니, 마지막 복용 후 3일 동안은 금주하는 것이 좋습니다. 케토코나졸 복용시 음주는 디설피람양 작용(홍조, 피부발진, 말초부종, 구역, 두통)을 일으킬 수 있습니다.",
+      "source_page": "page_30"
+    },
+    {
+      "category": "09 감염증",
+      "drug_class": "3) 결핵치료제(항결핵제: Antimycobacterials)",
+      "ingredients": [
+        {"name_ko": "에탐부톨", "name_en": "ethambutol"},
+        {"name_ko": "이소니아짓", "name_en": "isoniazid"},
+        {"name_ko": "리팜핀", "name_en": "rifampin"},
+        {"name_ko": "리팜핀+이소니아짓", "name_en": "rifampin+isoniazid"},
+        {"name_ko": "리팜핀+이소니아짓+피라진아미드", "name_en": "rifampin+isoniazid+pyrazinamide"}
+      ],
+      "food_interaction": "에탐부톨은 음식과 함께 또는 단독으로 복용 가능합니다. 이 외의 약은 식전 1시간 또는 식후 2시간에 충분한 양의 물로 복용하세요. 이소니아지드를 단독 또는 다른 항결핵제와 같이 복용할 때에는 티라민이나 히스타민이 함유된 음식과 음료는 피하세요. 히스타민이 함유된 음식으로는 연어, 가다랑어, 참치 및 기타 열대 물고기가 있습니다.",
+      "alcohol_interaction": "음주를 피하세요. 생맥주, 적포도주, 백포도주 및 리큐어 등 많은 알코올 음료는 티라민을 함유하고 있습니다. 이소니아지드를 복용하는 동안 매일 음주를 하면 간독성 위험성이 있습니다.",
+      "source_page": "page_31"
+    },
+    {
+      "category": "09 감염증",
+      "drug_class": "4) 항원충제(Antiprotozoals)",
+      "ingredients": [
+        {"name_ko": "메트로니다졸", "name_en": "metronidazole"},
+        {"name_ko": "티니다졸", "name_en": "tinidazole"}
+      ],
+      "food_interaction": "음식과 함께 복용하면 위·장관 자극을 완화할 수 있습니다.",
+      "alcohol_interaction": "음주를 피하세요. 항원충제는 알코올과 함께 어지럼증, 위경련, 구토, 홍조, 두통과 같은 디설피람양 반응을 유발할 수 있습니다. 복용을 끝낸 후 3일간은 알코올 섭취를 피하세요.",
+      "source_page": "page_32"
+    },
+    {
+      "category": "10 정신질환",
+      "drug_class": "1) 항불안제와 공황장애 약(벤조디아제핀계)",
+      "ingredients": [
+        {"name_ko": "알프라졸람", "name_en": "alprazolam"},
+        {"name_ko": "클로나제팜", "name_en": "clonazepam"},
+        {"name_ko": "디아제팜", "name_en": "diazepam"},
+        {"name_ko": "로라제팜", "name_en": "lorazepam"}
+      ],
+      "food_interaction": "알프라졸람, 디아제팜 등은 자몽주스와 함께 복용할 경우 약효와 독성이 증가될 수 있습니다. 또한, 커피, 콜라 등에 함유된 카페인은 예상하지 못한 흥분 작용을 일으켜 약물의 항불안 작용이 감소될 수 있으므로 주의가 필요합니다.",
+      "alcohol_interaction": "이 약을 복용 시에는 금주 하세요. 중추신경계에 작용하는 항불안제를 복용한 후에 술을 마시면 약효가 과도하게 증가되어 정신적,육체적 손상을 줄 수 있습니다.",
+      "source_page": "page_33"
+    },
+    {
+      "category": "10 정신질환",
+      "drug_class": "2) 항우울제(세로토닌 재흡수 억제제)",
+      "ingredients": [
+        {"name_ko": "시탈로프람", "name_en": "citalopram"},
+        {"name_ko": "에시탈로프람", "name_en": "escitalopram"},
+        {"name_ko": "플루옥세틴", "name_en": "fluoxetine"},
+        {"name_ko": "파록세틴", "name_en": "paroxetine"},
+        {"name_ko": "설트랄린", "name_en": "sertraline"},
+        {"name_ko": "트라조돈", "name_en": "trazodone"},
+        {"name_ko": "벤라팍신", "name_en": "venlafaxine"},
+        {"name_ko": "듀록세틴", "name_en": "duloxetine"},
+        {"name_ko": "부프로피온", "name_en": "bupropion"}
+      ],
+      "food_interaction": "식사와 관계없이 복용할 수 있습니다. 파록세틴이나 벤라팍신 등 서방제제는 아침식사 중에 복용하는 것이 좋으며, 씹거나 부셔서 먹지 마시고 삼켜서 복용해야 합니다. 세인트존스워트(St. John's wort)는 세로토닌 증후군을 일으킬 수 있어 병용을 삼가십시오.",
+      "alcohol_interaction": "음주는 이 약의 중추신경 억제효과나 졸음을 배가시켜 심하게 할 수 있으므로, 이 약을 복용 시에는 알코올과는 병용하지 않는 것이 좋습니다.",
+      "source_page": "page_34"
+    },
+    {
+      "category": "10 정신질환",
+      "drug_class": "3) 항우울제(모노아민 산화효소 억제제: MAOIs)",
+      "ingredients": [
+        {"name_ko": "모클로베미드", "name_en": "moclobemide"},
+        {"name_ko": "페넬진", "name_en": "phenelzine"}
+      ],
+      "food_interaction": "이 약을 복용 시 다량의 티라민은 교감신경을 흥분시켜 심박수와 혈압을 급작스럽게 치명적인 수준으로 높일 수 있기(cheese effect) 때문에 티라민이 다량 함유된 음식과 음료를 섭취하지 마시고 의사나 약사의 지시를 매우 주의하여 따르십시오. 세인트존스워트나 트립토판은 치명적인 세로토닌 증후군(정신착란, 간대성 근경련, 근육 강직 및 자율신경불안증)을 일으킬 수 있으니 병용을 삼가십시오. 카페인이 함유된 많은 음식과 음료는 티라민을 함유하고 있으니 의사와 상담하세요.",
+      "alcohol_interaction": "이 약을 복용 시에는 금주하세요. 생맥주, 적포도주, 백포도주(스페인산) 및 리큐어 등과 같이 많은 알코올음료는 티라민을 함유하고 있습니다. 티라민은 무알콜 음료나 저농도 알코올 맥주에도 있을 수 있습니다. 알코올은 이 약의 부작용을 과도하게 증가시킬 수 있으니 음주는 피해야 합니다.",
+      "source_page": "page_35"
+    },
+    {
+      "category": "10 정신질환",
+      "drug_class": "4) 항정신병약(Antipsychotics)",
+      "ingredients": [
+        {"name_ko": "아리피프라졸", "name_en": "aripiprazole"},
+        {"name_ko": "클로자핀", "name_en": "clozapine"},
+        {"name_ko": "올란자핀", "name_en": "olanzapine"},
+        {"name_ko": "쿠에티아핀", "name_en": "quetiapine"},
+        {"name_ko": "리스페리돈", "name_en": "risperidone"},
+        {"name_ko": "지프라시돈", "name_en": "ziprasidone"}
+      ],
+      "food_interaction": "지프라시돈 캡슐은 음식과 같이 복용하세요. 다른 종류의 약들은 식사와 관계없이 복용할 수 있습니다. 클로자핀을 복용시 카페인은 삼가세요. 카페인은 약물의 혈중 농도를 증가시켜 부작용을 일으킬 수 있습니다.",
+      "alcohol_interaction": "이 약을 복용 시에는 음주를 금하세요. 음주는 이 약을 복용 시 나타나는 졸음과 같은 부작용을 악화시킵니다.",
+      "source_page": "page_36"
+    },
+    {
+      "category": "10 정신질환",
+      "drug_class": "5) 진정제와 수면제(Sedatives and Hypnotics)",
+      "ingredients": [
+        {"name_ko": "디아제팜", "name_en": "diazepam"},
+        {"name_ko": "페노바르비탈", "name_en": "phenobarbital"},
+        {"name_ko": "졸피뎀", "name_en": "zolpidem"}
+      ],
+      "food_interaction": "신속한 수면효과를 보기 위해서는 식사 중 또는 직후에는 복용하지 마시고, 주로 취침 전에 복용합니다.",
+      "alcohol_interaction": "이 약을 복용 시에는 금주하세요. 알코올은 이 약과 상가 작용을 하여 부작용을 증강시킬 수 있습니다.",
+      "source_page": "page_37"
+    },
+    {
+      "category": "10 정신질환",
+      "drug_class": "6) 조울증 치료제(Bipolar Disorder Medicines)",
+      "ingredients": [
+        {"name_ko": "카르바마제핀", "name_en": "carbamazepine"},
+        {"name_ko": "디발프로엑스", "name_en": "divalproex sodium"},
+        {"name_ko": "라모트리진", "name_en": "lamotrigine"},
+        {"name_ko": "리튬", "name_en": "lithium"}
+      ],
+      "food_interaction": "위장장애가 나타날 때에는 음식물과 함께 복용하세요. 리튬은 식후 바로 복용하거나 또는 우유나 음식과 함께 복용하세요. 리튬은 체내에서 나트륨 배출을 초래하오니 소금을 포함하는 정상적인 식사를 유지하시고, 충분한 수분(하루 8~12잔의 컵)을 섭취하세요. 카르바마제핀은 자몽주스에 의해 작용이 증가될 수 있고, 세인트존스워트에 의해 작용이 약화될 수 있습니다.",
+      "alcohol_interaction": "이 약을 복용 시에는 음주를 피하세요. 알코올은 이약의 졸음과 같은 부작용을 증강시킵니다.",
+      "source_page": "page_38"
+    },
+    {
+      "category": "11 변비약(완하제: Laxatives)",
+      "drug_class": "변비약(완하제: Laxatives)",
+      "ingredients": [
+        {"name_ko": "비사코딜", "name_en": "bisacodyl"}
+      ],
+      "food_interaction": "약알칼리성인 우유는 위산을 중화시켜 약의 보호막을 손상시킴으로써 약물이 대장으로 가기 전 위장에서 녹아버리게 만듭니다. 이 경우 약효가 떨어지거나 위를 자극하여 복통, 위경련 등의 부작용이 발생할 수 있습니다. 따라서 만일 제산제나 유제품을 드셨다면 한 시간쯤 후에 약을 복용하는 것이 바람직합니다.",
+      "alcohol_interaction": null,
+      "source_page": "page_39"
+    }
+  ]
+}

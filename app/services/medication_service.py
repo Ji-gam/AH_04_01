@@ -2,6 +2,7 @@ import asyncio
 import base64
 import difflib
 import io
+import json
 import logging
 import os
 import re
@@ -208,6 +209,54 @@ def _extract_food_related_sentences(intrc_text: str) -> str | None:
     sentences = re.split(r"(?<=[.!?])\s+|\n+", intrc_text)
     food_sentences = [s.strip() for s in sentences if s.strip() and any(k in s for k in _FOOD_KEYWORDS)]
     return " ".join(food_sentences) if food_sentences else None
+
+
+# T-DOC-3: e약은요 intrcQesitm 자유 텍스트 필터링은 약물-약물 상호작용과 음식 상호작용이 섞여있어
+# 정확도에 한계가 있다. 공공데이터포털에는 음식-약물 상호작용 전담 API/데이터셋이 없어(식약처 DUR
+# API 9개 카테고리에도 음식 카테고리가 없음을 확인함), 식약처가 직접 발간한 PDF 가이드북("약과
+# 음식 상호작용을 피하는 복약안내서")을 파싱해 만든 성분 단위 참조 테이블을 우선 사용하고, 매칭되는
+# 성분이 없으면(주로 상표명) 기존 e약은요 키워드 필터로 폴백한다.
+_FOOD_DRUG_REFERENCE_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "database", "food_drug_interaction_reference.json"
+)
+_FOOD_DRUG_REFERENCE_SOURCE_NOTE = "(출처: 식약처 식품의약품안전평가원 「약과 음식 상호작용을 피하는 복약안내서」)"
+
+_food_drug_reference_cache: list[dict] | None = None
+
+
+def _load_food_drug_reference() -> list[dict]:
+    """참조 테이블은 정적 파일이라 최초 호출시 1회만 읽어 캐싱한다."""
+    global _food_drug_reference_cache
+    if _food_drug_reference_cache is None:
+        with open(_FOOD_DRUG_REFERENCE_PATH, encoding="utf-8") as f:
+            _food_drug_reference_cache = json.load(f)["categories"]
+    return _food_drug_reference_cache
+
+
+def _match_food_drug_reference(medication_name: str) -> dict | None:
+    """품목명에 참조 테이블의 성분명(한글 또는 영문)이 부분 문자열로 포함되어 있으면 매칭한다.
+    국내 일반의약품은 품목명에 성분명이 그대로 들어가는 경우가 흔하다(예: "암로디핀베실산염정5mg").
+    상표명(예: "타이레놀")은 매칭되지 않고 기존 e약은요 폴백으로 넘어간다."""
+    lowered_name = medication_name.lower()
+    for entry in _load_food_drug_reference():
+        if not entry.get("food_interaction") and not entry.get("alcohol_interaction"):
+            continue
+        for ingredient in entry["ingredients"]:
+            name_ko = ingredient.get("name_ko") or ""
+            name_en = (ingredient.get("name_en") or "").lower()
+            if (name_ko and name_ko in medication_name) or (name_en and name_en in lowered_name):
+                return entry
+    return None
+
+
+def _format_food_drug_reference_content(entry: dict) -> str:
+    parts = []
+    if entry.get("food_interaction"):
+        parts.append(f"[음식] {entry['food_interaction']}")
+    if entry.get("alcohol_interaction"):
+        parts.append(f"[알코올] {entry['alcohol_interaction']}")
+    parts.append(_FOOD_DRUG_REFERENCE_SOURCE_NOTE)
+    return "\n\n".join(parts)
 
 
 class OcrField(NamedTuple):
@@ -769,8 +818,18 @@ async def _build_food_interaction_guide_card(medication_name: str) -> GuideCard:
     """(T-DOC-2) e약은요 API의 `intrcQesitm`(상호작용 문항)에서 음식/음주 관련 주의사항을 가져와
     GuideCard로 변환한다. 항상 카드를 반환한다(등록약 여러 개 중 일부만 카드가 사라지면 "그
     약은 검사 안 했다"처럼 보이므로) — "확인된 주의사항 없음"과 "정보를 못 찾아 확인 불가"를
-    서로 다른 문구로 명시해 구분한다."""
+    서로 다른 문구로 명시해 구분한다. (T-DOC-3) e약은요 호출 전에 식약처 복약안내서 참조 테이블에서
+    성분명 매칭을 먼저 시도한다 — 매칭되면 그쪽이 더 정확하므로 e약은요 호출 자체를 생략한다."""
     title = f"{medication_name} · {_FOOD_GUIDE_CARD_TITLE}"
+
+    reference_entry = _match_food_drug_reference(medication_name)
+    if reference_entry is not None:
+        return GuideCard(
+            title=title,
+            content=_format_food_drug_reference_content(reference_entry),
+            severity="caution",
+        )
+
     try:
         summaries = await _fetch_drug_summary_with_fallback(medication_name)
     except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
