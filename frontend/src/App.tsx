@@ -15,6 +15,7 @@ import ChatPage from "./pages/ChatPage/ChatPage";
 import ConsentPage from "./pages/ConsentPage/ConsentPage";
 import ContentDetailPage from "./pages/ContentGenerationPage/ContentDetailPage";
 import ContentGenerationPage from "./pages/ContentGenerationPage/ContentGenerationPage";
+import DurScreeningPage from "./pages/dur/DurScreeningPage";
 import EmergencyGuidePage from "./pages/EmergencyGuidePage/EmergencyGuidePage";
 import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
 import HomePage from "./pages/HomePage/HomePage";
@@ -50,6 +51,8 @@ export const router = createBrowserRouter([
       { path: "/content-generation", element: <ContentGenerationPage /> },
       { path: "/content-generation/:id", element: <ContentDetailPage /> },
       { path: "/emergency-guide", element: <EmergencyGuidePage /> },
+      // DUR 스크리닝(T-MED-14)은 profile_id를 안 쓰는 공개 API라 로그인 불필요.
+      { path: "/dur-screening", element: <DurScreeningPage /> },
       {
         // 개인건강정보(민감정보)와 복약 관리(비로그인 상태로 복약정보 등록이 가능했던 문제)는
         // 로그인이 꼭 필요하다.
