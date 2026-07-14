@@ -6,10 +6,10 @@
  * "생활정보 입력했는지" 같은 도메인 사실은 서버(DB)가 원본이라 여기 캐싱하지 않는다 —
  * 그 도메인 화면이 직접 백엔드에 물어봐서 받은 값을 그대로 쓴다.
  */
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { authApi } from "../api/authApi";
-import { setAccessToken } from "../api/client";
+import { setAccessToken, tryRefreshAccessToken } from "../api/client";
 import type { UserInfoResult } from "../api/types";
 
 interface AuthContextValue {
@@ -25,26 +25,31 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserInfoResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  // React 18 StrictMode(개발모드)가 마운트 effect를 일부러 두 번 실행하는데, 그때마다
+  // /auth/token/refresh를 따로 호출하면 리프레시 토큰 로테이션 로직이 "같은 토큰이 거의
+  // 동시에 두 번 쓰였다"고 오인해서 재사용(탈취)으로 착각해 전체 세션을 무효화해버린다.
+  // 이 ref로 실제 요청은 한 번만 나가게 막는다.
+  const didInit = useRef(false);
 
   const fetchMe = useCallback(async () => {
     setUser(await authApi.me());
   }, []);
 
   useEffect(() => {
-    // 새로고침해도 로그인이 풀리지 않도록, httpOnly refresh_token 쿠키로 세션 복구를 시도한다.
-    // 쿠키가 없거나 만료됐으면 그냥 비로그인 상태로 남는다(에러를 화면에 보여주지 않음).
-    (async () => {
-      try {
-        const { access_token } = await authApi.refresh();
-        setAccessToken(access_token);
+  if (didInit.current) return;
+  didInit.current = true;
+
+  (async () => {
+    try {
+      const ok = await tryRefreshAccessToken();
+      if (ok) {
         await fetchMe();
-      } catch {
-        setAccessToken(null);
-      } finally {
-        setIsLoading(false);
       }
-    })();
-  }, [fetchMe]);
+    } finally {
+      setIsLoading(false);
+    }
+  })();
+}, [fetchMe]);
 
   const login = useCallback(
     async (email: string, password: string) => {

@@ -64,6 +64,7 @@ async def _to_health_info_response(
         age=resolve_display_age(profile.birth_date),
         birth_date=profile.birth_date,
         gender=profile.gender,
+        is_pregnant=profile.is_pregnant,
         height_cm=float(profile.height_cm) if profile.height_cm is not None else None,
         weight_kg=float(profile.weight_kg) if profile.weight_kg is not None else None,
         diagnosis_history=[_to_diagnosis_dto(r) for r in diagnosis_rows],

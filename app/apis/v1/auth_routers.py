@@ -13,7 +13,6 @@ from app.dependencies.security import get_request_user
 from app.dtos.auth import LoginRequest, LoginResponse, SignUpRequest, TokenRefreshResponse, WithdrawRequest
 from app.models.users import User
 from app.services.auth import AuthService
-from app.services.jwt import JwtService
 from app.services.oauth_clients import get_oauth_client, supported_providers
 from app.services.social_auth import SocialAuthService
 
@@ -84,22 +83,38 @@ async def login(
     response_model=TokenRefreshResponse,
     status_code=status.HTTP_200_OK,
     summary="액세스 토큰 재발급",
-    description="쿠키의 refresh_token으로 새 Access Token을 발급한다. 요청 본문은 없고, 쿠키만 있으면 된다.",
+    description=(
+        "쿠키의 refresh_token으로 새 Access Token을 발급한다. 요청 본문은 없고, 쿠키만 있으면 된다. "
+        "[로테이션] 이때 refresh_token 자체도 새 값으로 교체되고 쿠키가 갱신된다 - 예전 refresh_token은 "
+        "즉시 무효화되어 다시 쓸 수 없다. 이미 무효화된 토큰으로 재시도하면(탈취 의심) 그 계정의 "
+        "모든 세션이 강제 로그아웃된다."
+    ),
     responses={
-        status.HTTP_401_UNAUTHORIZED: {"description": "refresh_token 쿠키가 없거나 만료됨"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "refresh_token 쿠키가 없거나 만료/무효화됨"},
         status.HTTP_400_BAD_REQUEST: {"description": "refresh_token이 유효하지 않음(위조/형식 오류)"},
     },
 )
 async def token_refresh(
-    jwt_service: Annotated[JwtService, Depends(JwtService)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    auth_service: Annotated[AuthService, Depends(AuthService)],
     refresh_token: Annotated[str | None, Cookie()] = None,
 ) -> Response:
     if not refresh_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token is missing.")
-    access_token = jwt_service.refresh_jwt(refresh_token)
-    return Response(
-        content=TokenRefreshResponse(access_token=str(access_token)).model_dump(), status_code=status.HTTP_200_OK
+    tokens = await auth_service.rotate_refresh_token(session, refresh_token)
+    resp = Response(
+        content=TokenRefreshResponse(access_token=str(tokens["access_token"])).model_dump(),
+        status_code=status.HTTP_200_OK,
     )
+    resp.set_cookie(
+        key="refresh_token",
+        value=str(tokens["refresh_token"]),
+        httponly=True,
+        secure=True if config.ENV == Env.PROD else False,
+        domain=config.COOKIE_DOMAIN or None,
+        expires=tokens["access_token"].payload["exp"],
+    )
+    return resp
 
 
 @auth_router.delete(

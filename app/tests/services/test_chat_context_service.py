@@ -17,6 +17,7 @@ class FakeProfile:
     id: int
     name: str = "사용자"
     age: int | None = None
+    is_pregnant: bool | None = None
     diagnosis_entries: list[FakeDiagnosisEntry] = field(default_factory=list)
     family_history_entries: list[FakeDiagnosisEntry] = field(default_factory=list)
 
@@ -65,9 +66,27 @@ def test_age_under_threshold_is_not_geriatric():
     assert context["is_geriatric"] is False
 
 
-def test_is_pregnant_is_always_false_no_real_data_source():
-    """Profile 스키마에 임신 여부 필드가 없어 항상 False다(#71에서 스키마 추가 요청 중)."""
-    profile = FakeProfile(id=1)
+def test_is_pregnant_true_reads_from_profile():
+    """[#71 해결] 이제 Profile.is_pregnant를 개인건강정보에서 실제로 입력받아 그대로 읽는다."""
+    profile = FakeProfile(id=1, is_pregnant=True)
+
+    context = ChatContextService().build(profile, [])
+
+    assert context["is_pregnant"] is True
+
+
+def test_is_pregnant_false_reads_from_profile():
+    profile = FakeProfile(id=1, is_pregnant=False)
+
+    context = ChatContextService().build(profile, [])
+
+    assert context["is_pregnant"] is False
+
+
+def test_is_pregnant_defaults_to_false_when_unanswered():
+    """미입력(None)이면 임부금기 경고 게이팅 목적상 False로 취급한다(모른다 != 아니다이지만,
+    현재는 안전하게 "경고 비활성"으로 처리)."""
+    profile = FakeProfile(id=1, is_pregnant=None)
 
     context = ChatContextService().build(profile, [])
 

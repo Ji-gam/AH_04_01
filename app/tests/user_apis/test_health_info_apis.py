@@ -167,3 +167,28 @@ async def test_update_health_info_computes_age_from_birth_date():
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["age"] == 30
+
+
+async def test_update_health_info_sets_is_pregnant():
+    """[#71 해결] 임신 여부를 선택 입력받아 저장/조회할 수 있어야 한다 - 채팅 임부금기 DUR
+    경고 실연동의 데이터 소스가 된다."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "health8@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = await client.patch(
+            "/api/v1/users/me/health-info", json={"gender": "FEMALE", "is_pregnant": True}, headers=headers
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["is_pregnant"] is True
+
+
+async def test_health_info_is_pregnant_defaults_to_null_when_unanswered():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "health9@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        response = await client.get("/api/v1/users/me/health-info", headers=headers)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["is_pregnant"] is None

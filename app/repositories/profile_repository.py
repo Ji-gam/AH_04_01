@@ -10,6 +10,7 @@ ALLOWED_UPDATE_FIELDS = [
     "name",
     "phone_number",
     "gender",
+    "is_pregnant",
     "birth_date",
     "height_cm",
     "weight_kg",
