@@ -298,6 +298,14 @@ components:
         deposit_method_qesitm: { type: string, nullable: true, description: "보관방법" }
         item_image: { type: string, nullable: true }
         identification: { allOf: [{ $ref: '#/components/schemas/DurDrugIdentification' }], nullable: true }
+        atc_code: { type: string, nullable: true, description: "WHO ATC 분류코드 (T-MED-14-1)", example: "M01AE01" }
+        is_rare_drug: { type: boolean, nullable: true, description: "희귀의약품 여부 (T-MED-14-1)" }
+        narcotic_kind_name:
+          {
+            type: string,
+            nullable: true,
+            description: "마약류 구분(마약/향정/한외마약 등, 해당 없으면 null) (T-MED-14-1)",
+          }
 
     DurBasicScreeningResult:
       type: object
@@ -362,6 +370,19 @@ components:
         prohbt_content: { type: string, nullable: true }
         remark: { type: string, nullable: true }
 
+    DurIngredientSourceDrug:
+      type: object
+      description: >
+        이 성분을 가진 입력 약품 - item_seq로 상세화면에 바로 링크 가능하고, 실제 이 약에서의
+        함량(qnt/unit)을 함께 내려줘 같은 성분이라도 약마다 다른 용량을 구분할 수 있다
+        (T-MED-14-1). qnt/unit은 drug_prdt_mcpn_detail 기반일 때만 채워지고, MATERIAL_NAME
+        텍스트 폴백 매칭인 경우 null.
+      properties:
+        item_seq: { type: string }
+        item_name: { type: string }
+        qnt: { type: string, nullable: true, description: "이 약에서 이 성분의 함량", example: "60" }
+        unit: { type: string, nullable: true, description: "함량 단위", example: "밀리그램" }
+
     DurIngredientDetail:
       type: object
       description: >
@@ -370,10 +391,10 @@ components:
       properties:
         ingr_code: { type: string, example: "D000363" }
         ingr_name: { type: string, example: "이부프로펜" }
-        source_drug_names:
+        source_drugs:
           type: array
-          items: { type: string }
-          description: "이 성분을 가진 입력 약품명 목록"
+          items: { $ref: '#/components/schemas/DurIngredientSourceDrug' }
+          description: "이 성분을 가진 입력 약품 목록"
         rules:
           type: array
           items: { $ref: '#/components/schemas/DurIngredientRuleDetail' }

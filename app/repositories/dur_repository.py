@@ -196,20 +196,42 @@ class DurScreeningRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_ingredient_codes_for_items(self, item_seqs: list[str]) -> dict[str, set[tuple[str, str]]]:
-        """3단계 준비: 입력 약품들의 성분 코드를 알아낸다. item_ingredient_map(T-MED-14-1, 품목 마스터의
-        MATERIAL_NAME을 성분명 사전과 매칭해 만든 파생 테이블)을 우선 조회하고, 거기 없는 품목만 기존
-        품목 기준 DUR 히트 테이블 역추적으로 폴백한다 - 커버리지만 늘어나고 회귀는 없다.
-        1개(전부 직접 테이블에서 해결) 또는 2개(폴백 필요) 쿼리로 처리."""
+    def get_drug_safety_info(self, item_seqs: list[str]) -> list[dict[str, Any]]:
+        """T-MED-14-1 후속: ATC 분류코드/희귀의약품 여부/마약류 구분을 drug_prdt_prmsn_detail에서
+        조회한다(DrugPrdtPrmsnInfoService07, ITEM_SEQ 기준). 1개 쿼리로 처리."""
+        if not item_seqs:
+            return []
+
+        placeholders = ",".join(["?"] * len(item_seqs))
+        rows = self.conn.execute(
+            f"""
+            SELECT ITEM_SEQ AS item_seq, ATC_CODE AS atc_code, RARE_DRUG_YN AS rare_drug_yn,
+                   NARCOTIC_KIND_CODE AS narcotic_kind_name
+            FROM drug_prdt_prmsn_detail
+            WHERE ITEM_SEQ IN ({placeholders})
+            """,
+            item_seqs,
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_ingredient_codes_for_items(
+        self, item_seqs: list[str]
+    ) -> dict[str, set[tuple[str, str, str | None, str | None]]]:
+        """3단계 준비: 입력 약품들의 성분 코드(+ 이 품목에서의 실제 함량/단위)를 알아낸다.
+        item_ingredient_map(T-MED-14-1, drug_prdt_mcpn_detail 코드매칭 우선 + MATERIAL_NAME 텍스트
+        매칭 폴백으로 만든 파생 테이블)을 우선 조회하고, 거기 없는 품목만 기존 품목 기준 DUR 히트
+        테이블 역추적으로 폴백한다 - 커버리지만 늘어나고 회귀는 없다. 폴백 소스는 함량 정보가 없어
+        qnt/unit이 항상 None. 1개(전부 직접 테이블에서 해결) 또는 2개(폴백 필요) 쿼리로 처리."""
         if not item_seqs:
             return {}
 
-        result: dict[str, set[tuple[str, str]]] = {seq: set() for seq in item_seqs}
+        result: dict[str, set[tuple[str, str, str | None, str | None]]] = {seq: set() for seq in item_seqs}
         placeholders = ",".join(["?"] * len(item_seqs))
 
         direct_rows = self.conn.execute(
             f"""
-            SELECT ITEM_SEQ AS item_seq, INGR_CODE AS ingr_code, INGR_NAME AS ingr_name
+            SELECT ITEM_SEQ AS item_seq, INGR_CODE AS ingr_code, INGR_NAME AS ingr_name,
+                   QNT AS qnt, INGD_UNIT_CD AS unit
             FROM item_ingredient_map
             WHERE ITEM_SEQ IN ({placeholders})
             """,
@@ -217,7 +239,7 @@ class DurScreeningRepository:
         ).fetchall()
         for row in direct_rows:
             if row["ingr_code"]:
-                result[row["item_seq"]].add((row["ingr_code"], row["ingr_name"] or ""))
+                result[row["item_seq"]].add((row["ingr_code"], row["ingr_name"] or "", row["qnt"], row["unit"]))
 
         item_seqs = [seq for seq in item_seqs if not result[seq]]
         if not item_seqs:
@@ -255,7 +277,7 @@ class DurScreeningRepository:
             ingr_code = row["ingr_code"]
             if not ingr_code:
                 continue
-            result[row["item_seq"]].add((ingr_code, row["ingr_name"] or ""))
+            result[row["item_seq"]].add((ingr_code, row["ingr_name"] or "", None, None))
         return result
 
     def get_ingredient_level_rules(self, ingr_codes: list[str]) -> list[dict[str, Any]]:

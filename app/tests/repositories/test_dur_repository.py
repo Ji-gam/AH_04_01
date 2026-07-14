@@ -136,15 +136,19 @@ def test_get_ingredient_codes_for_items_derives_from_rule_hits(repo):
     codes = repository.get_ingredient_codes_for_items(["197700120"])
 
     assert "197700120" in codes
-    assert ("D000363", "이부프로펜") in codes["197700120"] or any(code == "D000363" for code, _ in codes["197700120"])
+    ingr_codes = {code for code, _name, _qnt, _unit in codes["197700120"]}
+    assert "D000363" in ingr_codes
 
 
 def test_get_ingredient_codes_for_items_resolves_via_material_name_for_no_rule_drug(repo):
+    """197000053(액티피드정)은 drug_prdt_mcpn_detail 코드매칭 소스라 qnt/unit도 채워져야 한다."""
     repository, _ = repo
     codes = repository.get_ingredient_codes_for_items(["197000053"])
 
-    ingr_codes = {code for code, _ in codes["197000053"]}
-    assert {"D000316", "D001098"}.issubset(ingr_codes)
+    by_code = {code: (name, qnt, unit) for code, name, qnt, unit in codes["197000053"]}
+    assert {"D000316", "D001098"}.issubset(by_code.keys())
+    assert by_code["D000316"] == ("슈도에페드린염산염", "60", "밀리그램")
+    assert by_code["D001098"] == ("트리프롤리딘염산염수화물", "2.5", "밀리그램")
 
 
 def test_get_ingredient_codes_for_items_empty_when_truly_unresolvable(repo):

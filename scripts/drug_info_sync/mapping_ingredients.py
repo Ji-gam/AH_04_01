@@ -102,21 +102,22 @@ def build_mcode_index(cursor: sqlite3.Cursor) -> dict[str, str]:
 
 def resolve_mcpn_ingredients(
     cursor: sqlite3.Cursor, mcode_index: dict[str, str], name_index: dict[str, str]
-) -> list[tuple[str, str, str]]:
+) -> list[tuple[str, str, str, str | None, str | None]]:
     """drug_prdt_mcpn_detail(품목당 성분 단위 row)의 MTRAL_CODE를 mcode_index로 우선 조회하고,
-    거기 없으면 MTRAL_NM을 name_index로 폴백 조회해 (item_seq, ingr_code, ingr_name)을 만든다."""
+    거기 없으면 MTRAL_NM을 name_index로 폴백 조회해 (item_seq, ingr_code, ingr_name, qnt, unit)을
+    만든다. QNT/단위는 이 품목에서 실제 이 성분이 몇 밀리그램 들어있는지(DUR 응답 풍부화용)."""
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='drug_prdt_mcpn_detail'")
     if not cursor.fetchone():
         return []
 
-    cursor.execute("SELECT ITEM_SEQ, MTRAL_CODE, MTRAL_NM FROM drug_prdt_mcpn_detail")
-    rows: list[tuple[str, str, str]] = []
-    for item_seq, mtral_code, mtral_name in cursor.fetchall():
+    cursor.execute("SELECT ITEM_SEQ, MTRAL_CODE, MTRAL_NM, QNT, INGD_UNIT_CD FROM drug_prdt_mcpn_detail")
+    rows: list[tuple[str, str, str, str | None, str | None]] = []
+    for item_seq, mtral_code, mtral_name, qnt, unit in cursor.fetchall():
         ingr_code = mcode_index.get(mtral_code) if mtral_code else None
         if not ingr_code and mtral_name:
             ingr_code = name_index.get(mtral_name.strip())
         if ingr_code:
-            rows.append((item_seq, ingr_code, mtral_name or ""))
+            rows.append((item_seq, ingr_code, mtral_name or "", qnt or None, unit or None))
     return rows
 
 
@@ -134,20 +135,23 @@ def parse_material_ingredients(material_name: str | None) -> list[str]:
     return names
 
 
-def resolve_material_name_ingredients(cursor: sqlite3.Cursor, name_index: dict[str, str]) -> list[tuple[str, str, str]]:
+def resolve_material_name_ingredients(
+    cursor: sqlite3.Cursor, name_index: dict[str, str]
+) -> list[tuple[str, str, str, str | None, str | None]]:
     """dur_prod_master_list.MATERIAL_NAME을 성분명 사전과 매칭한다 (drug_prdt_mcpn_detail이 놓친
-    품목을 위한 폴백 소스 - 텍스트 유사매칭이라 정확도는 mcpn 코드매칭보다 낮음)."""
+    품목을 위한 폴백 소스 - 텍스트 유사매칭이라 정확도는 mcpn 코드매칭보다 낮음). 이 소스는 정량
+    정보가 없어 qnt/unit은 항상 None."""
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='dur_prod_master_list'")
     if not cursor.fetchone():
         return []
 
     cursor.execute("SELECT ITEM_SEQ, MATERIAL_NAME FROM dur_prod_master_list")
-    rows: list[tuple[str, str, str]] = []
+    rows: list[tuple[str, str, str, str | None, str | None]] = []
     for item_seq, material_name in cursor.fetchall():
         for ingr_name in parse_material_ingredients(material_name):
             ingr_code = name_index.get(ingr_name)
             if ingr_code:
-                rows.append((item_seq, ingr_code, ingr_name))
+                rows.append((item_seq, ingr_code, ingr_name, None, None))
     return rows
 
 
@@ -173,13 +177,15 @@ def build_item_ingredient_map(conn: sqlite3.Connection) -> int:
             ITEM_SEQ TEXT,
             INGR_CODE TEXT,
             INGR_NAME TEXT,
+            QNT TEXT,
+            INGD_UNIT_CD TEXT,
             UNIQUE(ITEM_SEQ, INGR_CODE)
         )
         """
     )
     cursor.execute("CREATE INDEX idx_item_ingredient_map_item_seq ON item_ingredient_map(ITEM_SEQ)")
 
-    cursor.executemany("INSERT OR IGNORE INTO item_ingredient_map VALUES (?, ?, ?)", rows)
+    cursor.executemany("INSERT OR IGNORE INTO item_ingredient_map VALUES (?, ?, ?, ?, ?)", rows)
     conn.commit()
 
     cursor.execute("SELECT COUNT(*) FROM item_ingredient_map")

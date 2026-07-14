@@ -48,6 +48,11 @@ class DrugDetail(BaseModel):
     deposit_method_qesitm: str | None = Field(None, description="보관방법")
     item_image: str | None = Field(None, description="약품 이미지 URL")
     identification: DrugIdentification | None = Field(None, description="알약 외형 식별 정보")
+    atc_code: str | None = Field(None, description="WHO ATC 분류코드 (T-MED-14-1)")
+    is_rare_drug: bool | None = Field(None, description="희귀의약품 여부 (T-MED-14-1)")
+    narcotic_kind_name: str | None = Field(
+        None, description="마약류 구분(마약/향정/한외마약 등, 해당 없으면 null) (T-MED-14-1)"
+    )
 
 
 class BasicScreeningResult(BaseModel):
@@ -99,10 +104,22 @@ class IngredientRuleDetail(BaseModel):
     remark: str | None = None
 
 
+class IngredientSourceDrug(BaseModel):
+    """이 성분을 가진 입력 약품 - item_seq로 상세화면에 바로 링크 가능하고, 실제 이 약에서의
+    함량(qnt/unit)을 함께 내려줘 같은 성분이라도 약마다 다른 용량을 구분할 수 있다 (T-MED-14-1).
+    qnt/unit은 drug_prdt_mcpn_detail 기반일 때만 채워지고, MATERIAL_NAME 텍스트 폴백 매칭인
+    경우 null."""
+
+    item_seq: str
+    item_name: str
+    qnt: str | None = Field(None, description="이 약에서 이 성분의 함량 (예: '60')")
+    unit: str | None = Field(None, description="함량 단위 (예: '밀리그램')")
+
+
 class IngredientDetail(BaseModel):
     ingr_code: str
     ingr_name: str
-    source_drug_names: list[str] = Field(default_factory=list, description="이 성분을 가진 입력 약품명 목록")
+    source_drugs: list[IngredientSourceDrug] = Field(default_factory=list, description="이 성분을 가진 입력 약품 목록")
     rules: list[IngredientRuleDetail] = Field(default_factory=list, description="성분 기준 DUR 규칙 목록")
 
 
