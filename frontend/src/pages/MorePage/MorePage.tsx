@@ -131,20 +131,20 @@ export default function MorePage() {
             </span>
           </Link>
 
-          <Link to="/notification-settings" style={menuCardStyle}>
+          <Link to="/emergency-guide" style={menuCardStyle}>
             <span>
-              🔔 알림설정
-              <span style={menuDescStyle}>푸시·무음 시간대·알림 강도를 설정해요</span>
+              🚨 응급안내
+              <span style={menuDescStyle}>119·가까운 병원·약국·응급실을 빠르게 찾아요</span>
             </span>
             <span aria-hidden style={{ color: pinkTheme.textMuted }}>
               ›
             </span>
           </Link>
 
-          <Link to="/emergency-guide" style={menuCardStyle}>
+          <Link to="/notification-settings" style={menuCardStyle}>
             <span>
-              🚨 응급안내
-              <span style={menuDescStyle}>119·가까운 응급실·약국을 빠르게 찾아요</span>
+              🔔 알림설정
+              <span style={menuDescStyle}>푸시·무음 시간대·알림 강도를 설정해요</span>
             </span>
             <span aria-hidden style={{ color: pinkTheme.textMuted }}>
               ›
