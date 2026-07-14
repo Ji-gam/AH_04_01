@@ -126,6 +126,22 @@ components:
         content: { type: string }
         severity: { type: string, enum: [info, caution, warning] }
         disclaimer: { type: string, description: "T-LLM-1: 항상 동반되는 면책 문구" }
+        food_items:
+          type: array
+          nullable: true
+          description: >
+            T-DOC-4: 규칙 기반(V1) 추출로 음식/음료 명사가 식별되면 채워진다. 프론트는 이유
+            줄글(content) 대신 음식명 칩을 먼저 보여주고, 칩 클릭 시 해당 FoodItem.detail만
+            펼친다. null이면(사전에 없는 음식이거나 자유 텍스트) 프론트는 content 전체를
+            그대로 보여준다.
+          items: { $ref: '#/components/schemas/FoodItem' }
+
+    FoodItem:
+      type: object
+      description: "T-DOC-4: 음식명 칩 하나에 대응하는 단위."
+      properties:
+        name: { type: string, example: "자몽주스" }
+        detail: { type: string, example: "자몽주스는 약효를 지나치게 증가시킬 수 있으므로 피하세요." }
 
     RecognitionConfirmResult:
       type: object

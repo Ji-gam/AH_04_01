@@ -82,6 +82,12 @@ export default function MedicationPage() {
   const [foodInteractionLoading, setFoodInteractionLoading] = useState(false);
   const [foodInteractionError, setFoodInteractionError] = useState<string | null>(null);
 
+  // (T-DOC-4) 카드별로 지금 펼쳐진 음식 칩 이름 — 카드 인덱스 -> 선택된 음식명(없으면 undefined).
+  // 같은 칩을 다시 누르면 접힌다.
+  const [openFoodItemByCard, setOpenFoodItemByCard] = useState<Record<number, string | undefined>>(
+    {},
+  );
+
   useEffect(() => {
     fetchSchedules();
   }, []);
@@ -676,17 +682,61 @@ export default function MedicationPage() {
                       }}
                     >
                       <h5>{g.title}</h5>
-                      {/* e약은요 원문은 항목이 빈 줄로 구분된 여러 문단이라, 하나의 <p>로 합치면
-                        줄글처럼 보인다 — 빈 줄 기준으로 나눠 문단별로 렌더링한다. */}
-                      {g.content
-                        .split(/\n\s*\n/)
-                        .map((s) => s.trim())
-                        .filter(Boolean)
-                        .map((paragraph, pIdx) => (
-                          <p key={pIdx} style={{ margin: "6px 0" }}>
-                            {paragraph}
-                          </p>
-                        ))}
+                      {g.food_items && g.food_items.length > 0 ? (
+                        // (T-DOC-4) 음식명이 식별되면 이유 줄글 대신 칩으로 먼저 보여주고,
+                        // 클릭한 칩의 상세만 펼친다 — 같은 칩을 다시 누르면 접힌다.
+                        <div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                            {g.food_items.map((item) => {
+                              const isOpen = openFoodItemByCard[idx] === item.name;
+                              return (
+                                <button
+                                  key={item.name}
+                                  type="button"
+                                  onClick={() =>
+                                    setOpenFoodItemByCard((prev) => ({
+                                      ...prev,
+                                      [idx]: prev[idx] === item.name ? undefined : item.name,
+                                    }))
+                                  }
+                                  style={{
+                                    padding: "4px 10px",
+                                    borderRadius: "999px",
+                                    border: `1px solid ${isOpen ? pinkTheme.primary : pinkTheme.border}`,
+                                    background: isOpen ? pinkTheme.primary : pinkTheme.cardBg,
+                                    color: isOpen ? "#fff" : pinkTheme.text,
+                                    fontSize: 13,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  {item.name}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {openFoodItemByCard[idx] && (
+                            <p style={{ margin: "10px 0 0" }}>
+                              {
+                                g.food_items.find((item) => item.name === openFoodItemByCard[idx])
+                                  ?.detail
+                              }
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        // 음식명이 식별되지 않으면(사전에 없는 음식이거나 e약은요 자유 텍스트)
+                        // 기존처럼 원문 전체를 그대로 보여준다. e약은요 원문은 항목이 빈 줄로
+                        // 구분된 여러 문단이라, 빈 줄 기준으로 나눠 문단별로 렌더링한다.
+                        g.content
+                          .split(/\n\s*\n/)
+                          .map((s) => s.trim())
+                          .filter(Boolean)
+                          .map((paragraph, pIdx) => (
+                            <p key={pIdx} style={{ margin: "6px 0" }}>
+                              {paragraph}
+                            </p>
+                          ))
+                      )}
                       <small style={{ color: pinkTheme.textMuted }}>{g.disclaimer}</small>
                     </div>
                   ))

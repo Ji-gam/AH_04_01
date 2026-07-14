@@ -93,6 +93,31 @@ async def test_reports_unavailable_card_when_api_fails_but_keeps_others(monkeypa
     assert fail_card.severity == "info"
 
 
+async def test_sorts_caution_cards_before_info_cards(monkeypatch):
+    """(T-DOC-3) 실제 주의사항이 있는 카드(severity="caution")가 "확인 안 됨"/"주의사항 없음"
+    카드(severity="info")보다 앞에 오도록 정렬해야 한다 — 등록약이 많으면 실제로 봐야 할 카드가
+    뒤로 밀려 놓치기 쉽다. 원래 등록 순서상 정보 없음(info) → 정보 없음(info) → 실제 주의사항
+    있음(caution) 순으로 두어도, 결과는 caution이 앞으로 와야 한다."""
+
+    async def _fake_summary(item_name=None, **kwargs):
+        if item_name == "실제주의사항약":
+            return [{"itemName": item_name, "intrcQesitm": "자몽주스를 피하세요."}]
+        return []
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
+
+    med_info_1 = _medication(1, "정보없는약1")
+    med_info_2 = _medication(2, "정보없는약2")
+    med_caution = _medication(3, "실제주의사항약")
+    repository = _FakeRepository([_schedule(med_info_1), _schedule(med_info_2), _schedule(med_caution)])
+    service = MedicationService(repository=repository)
+
+    result = await service.check_food_interactions(session=None, profile_id=1)
+
+    assert [c.severity for c in result.guide_cards] == ["caution", "info", "info"]
+    assert "실제주의사항약" in result.guide_cards[0].title
+
+
 async def test_food_interactions_endpoint_returns_guide_cards_for_registered_medications(monkeypatch):
     async def _fake_summary(item_name=None, **kwargs):
         return [{"itemName": item_name, "intrcQesitm": "자몽주스를 피하세요."}]

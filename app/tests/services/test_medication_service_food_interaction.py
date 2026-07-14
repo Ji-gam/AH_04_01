@@ -17,14 +17,16 @@ async def test_food_guide_card_uses_intrc_qesitm_text(monkeypatch):
 
 
 async def test_food_guide_card_reports_no_interaction_when_field_empty(monkeypatch):
-    """intrcQesitm이 빈 문자열이면 '확인 실패'가 아니라 '주의사항 없음'을 명시적으로 알려야 한다."""
+    """intrcQesitm이 빈 문자열이면 '확인 실패'가 아니라 '주의사항 없음'을 명시적으로 알려야 한다.
+    (T-DOC-3) "아스피린"은 참조 테이블에 매칭되는 성분명이라 다른 이름을 쓴다 — 이 테스트는
+    e약은요 폴백 경로의 빈 필드 처리만 검증하려는 목적."""
 
     async def _fake_summary(item_name=None, **kwargs):
         return [{"itemName": item_name, "intrcQesitm": ""}]
 
     monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
 
-    card = await medication_service._build_food_interaction_guide_card("아스피린정 100mg")
+    card = await medication_service._build_food_interaction_guide_card("다이아벡스정 500mg")
 
     assert card is not None
     assert card.severity == "info"
@@ -97,20 +99,55 @@ async def test_food_guide_card_keeps_only_food_related_sentence_among_mixed_text
 async def test_food_guide_card_retries_with_dosage_suffix_stripped(monkeypatch):
     """e약은요 itemName은 정확/부분 일치라 'NNmg' 접미사가 실제 품목명과 안 맞으면 빈 결과가
     흔하다(실 API로 확인: "아스피린정 100mg" 0건, "아스피린정" 1건) — 접미사를 뗀 이름으로
-    재시도해야 한다."""
+    재시도해야 한다. (T-DOC-3) "아스피린"은 참조 테이블에 매칭되는 성분명이라 이 테스트는
+    다른 이름을 쓴다 — 검증 대상은 접미사 제거 재시도 로직뿐."""
 
     async def _fake_summary(item_name=None, **kwargs):
-        if item_name == "아스피린정 100mg":
+        if item_name == "다이아벡스정 500mg":
             return []
-        assert item_name == "아스피린정"
+        assert item_name == "다이아벡스정"
         return [{"itemName": item_name, "intrcQesitm": "알코올과 함께 복용하지 마세요."}]
 
     monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
 
-    card = await medication_service._build_food_interaction_guide_card("아스피린정 100mg")
+    card = await medication_service._build_food_interaction_guide_card("다이아벡스정 500mg")
 
     assert card is not None
     assert card.content == "알코올과 함께 복용하지 마세요."
+
+
+async def test_food_guide_card_uses_mfds_reference_when_ingredient_name_matches(monkeypatch):
+    """(T-DOC-3) 품목명에 참조 테이블(식약처 「약과 음식 상호작용을 피하는 복약안내서」) 성분명이
+    포함되면 그 원문을 우선 사용하고, e약은요 API는 호출하지 않는다 — 국내 일반의약품은 품목명에
+    성분명이 그대로 들어가는 경우가 흔하다(예: "와파린정5mg")."""
+
+    async def _fail_if_called(item_name=None, **kwargs):
+        raise AssertionError("참조 테이블에 매칭되면 e약은요를 호출하지 않아야 한다")
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fail_if_called)
+
+    card = await medication_service._build_food_interaction_guide_card("와파린정5mg")
+
+    assert card is not None
+    assert card.severity == "caution"
+    assert "비타민 K" in card.content
+    assert "복약안내서" in card.content
+
+
+async def test_food_guide_card_falls_back_to_intrc_qesitm_when_no_reference_match(monkeypatch):
+    """(T-DOC-3) 참조 테이블에 매칭되는 성분이 없으면(상표명 등) 기존 e약은요 로직으로 그대로
+    폴백한다 — T-DOC-2 동작 회귀 확인."""
+
+    async def _fake_summary(item_name=None, **kwargs):
+        return [{"itemName": item_name, "intrcQesitm": "이 약을 복용하는 동안 자몽주스를 피하세요."}]
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
+
+    card = await medication_service._build_food_interaction_guide_card("타이레놀정 500mg")
+
+    assert card is not None
+    assert card.content == "이 약을 복용하는 동안 자몽주스를 피하세요."
+    assert card.severity == "caution"
 
 
 async def test_food_guide_card_reports_unavailable_when_api_errors(monkeypatch):
@@ -127,3 +164,65 @@ async def test_food_guide_card_reports_unavailable_when_api_errors(monkeypatch):
     assert card is not None
     assert card.severity == "info"
     assert "찾지 못해" in card.content
+
+
+def test_extract_food_items_groups_by_known_name_and_avoids_substring_duplicates():
+    """(T-DOC-4) 사전에 있는 음식/음료 명사가 등장한 문장을 묶되, 더 구체적인 이름(예: "자몽주스")이
+    매칭되면 그 안에 포함된 짧은 이름(예: "자몽")은 중복이므로 제외해야 한다."""
+    text = "자몽주스와 자몽은 모두 피하세요. 비타민 K가 많은 시금치를 조심하세요."
+
+    items = medication_service._extract_food_items(text)
+
+    names = {item.name for item in items}
+    assert "자몽주스" in names
+    assert "자몽" not in names
+    assert "비타민 K" in names
+    assert "시금치" in names
+
+
+async def test_food_guide_card_populates_food_items_from_mfds_reference(monkeypatch):
+    """(T-DOC-4) 참조 테이블 매칭 카드는 사전에 있는 음식/음료 명사를 food_items로도 채워야
+    한다 — 프론트가 이유 줄글 대신 음식명 칩을 먼저 보여줄 수 있게 하기 위함."""
+
+    async def _fail_if_called(item_name=None, **kwargs):
+        raise AssertionError("참조 테이블에 매칭되면 e약은요를 호출하지 않아야 한다")
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fail_if_called)
+
+    card = await medication_service._build_food_interaction_guide_card("와파린정5mg")
+
+    assert card.food_items is not None
+    names = {item.name for item in card.food_items}
+    assert "비타민 K" in names
+    for item in card.food_items:
+        assert item.detail
+
+
+async def test_food_guide_card_populates_food_items_from_intrc_qesitm_when_known_food_mentioned(monkeypatch):
+    """(T-DOC-4) e약은요 폴백 경로에서도 사전에 있는 음식이 언급되면 food_items를 채운다."""
+
+    async def _fake_summary(item_name=None, **kwargs):
+        return [{"itemName": item_name, "intrcQesitm": "이 약을 복용하는 동안 자몽주스를 피하세요."}]
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
+
+    card = await medication_service._build_food_interaction_guide_card("타이레놀정 500mg")
+
+    assert card.food_items is not None
+    assert card.food_items[0].name == "자몽주스"
+    assert "자몽주스" in card.food_items[0].detail
+
+
+async def test_food_guide_card_leaves_food_items_none_when_no_known_food_mentioned(monkeypatch):
+    """(T-DOC-4) 사전에 없는 음식/음료만 언급되면 food_items는 None으로 두고, 프론트가 기존처럼
+    content 전체를 보여주도록 폴백한다."""
+
+    async def _fake_summary(item_name=None, **kwargs):
+        return [{"itemName": item_name, "intrcQesitm": "이 약은 낫토와 청국장 섭취 시 주의가 필요합니다."}]
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
+
+    card = await medication_service._build_food_interaction_guide_card("다이아벡스정 500mg")
+
+    assert card.food_items is None
+    assert "낫토" in card.content

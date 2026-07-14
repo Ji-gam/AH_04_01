@@ -26,11 +26,19 @@ export interface InteractionCheckResult {
   checked_count: number;
 }
 
+export interface FoodItem {
+  name: string;
+  detail: string;
+}
+
 export interface GuideCard {
   title: string;
   content: string;
   severity: string;
   disclaimer: string;
+  // (T-DOC-4) 규칙 기반 추출로 음식명이 식별되면 채워진다. 없으면 undefined — 이 경우
+  // 프론트는 기존처럼 content 전체 텍스트를 그대로 보여준다.
+  food_items?: FoodItem[] | null;
 }
 
 export interface FoodInteractionCheckResult {

@@ -2,6 +2,7 @@ import asyncio
 import base64
 import difflib
 import io
+import json
 import logging
 import os
 import re
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.databases import AsyncSessionLocal
 from app.dtos.medication_dto import (
     FoodInteractionCheckResult,
+    FoodItem,
     GuideCard,
     InteractionCheckResult,
     InteractionWarning,
@@ -208,6 +210,165 @@ def _extract_food_related_sentences(intrc_text: str) -> str | None:
     sentences = re.split(r"(?<=[.!?])\s+|\n+", intrc_text)
     food_sentences = [s.strip() for s in sentences if s.strip() and any(k in s for k in _FOOD_KEYWORDS)]
     return " ".join(food_sentences) if food_sentences else None
+
+
+# T-DOC-3: e약은요 intrcQesitm 자유 텍스트 필터링은 약물-약물 상호작용과 음식 상호작용이 섞여있어
+# 정확도에 한계가 있다. 공공데이터포털에는 음식-약물 상호작용 전담 API/데이터셋이 없어(식약처 DUR
+# API 9개 카테고리에도 음식 카테고리가 없음을 확인함), 식약처가 직접 발간한 PDF 가이드북("약과
+# 음식 상호작용을 피하는 복약안내서")을 파싱해 만든 성분 단위 참조 테이블을 우선 사용하고, 매칭되는
+# 성분이 없으면(주로 상표명) 기존 e약은요 키워드 필터로 폴백한다.
+_FOOD_DRUG_REFERENCE_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "database", "food_drug_interaction_reference.json"
+)
+_FOOD_DRUG_REFERENCE_SOURCE_NOTE = "(출처: 식약처 식품의약품안전평가원 「약과 음식 상호작용을 피하는 복약안내서」)"
+
+_food_drug_reference_cache: list[dict] | None = None
+
+
+def _load_food_drug_reference() -> list[dict]:
+    """참조 테이블은 정적 파일이라 최초 호출시 1회만 읽어 캐싱한다."""
+    global _food_drug_reference_cache
+    if _food_drug_reference_cache is None:
+        with open(_FOOD_DRUG_REFERENCE_PATH, encoding="utf-8") as f:
+            _food_drug_reference_cache = json.load(f)["categories"]
+    return _food_drug_reference_cache
+
+
+def _match_food_drug_reference(medication_name: str) -> dict | None:
+    """품목명에 참조 테이블의 성분명(한글 또는 영문)이 부분 문자열로 포함되어 있으면 매칭한다.
+    국내 일반의약품은 품목명에 성분명이 그대로 들어가는 경우가 흔하다(예: "암로디핀베실산염정5mg").
+    상표명(예: "타이레놀")은 매칭되지 않고 기존 e약은요 폴백으로 넘어간다."""
+    lowered_name = medication_name.lower()
+    for entry in _load_food_drug_reference():
+        if not entry.get("food_interaction") and not entry.get("alcohol_interaction"):
+            continue
+        for ingredient in entry["ingredients"]:
+            name_ko = ingredient.get("name_ko") or ""
+            name_en = (ingredient.get("name_en") or "").lower()
+            if (name_ko and name_ko in medication_name) or (name_en and name_en in lowered_name):
+                return entry
+    return None
+
+
+def _format_food_drug_reference_content(entry: dict) -> str:
+    parts = []
+    if entry.get("food_interaction"):
+        parts.append(f"[음식] {entry['food_interaction']}")
+    if entry.get("alcohol_interaction"):
+        parts.append(f"[알코올] {entry['alcohol_interaction']}")
+    parts.append(_FOOD_DRUG_REFERENCE_SOURCE_NOTE)
+    return "\n\n".join(parts)
+
+
+# (T-DOC-4) 음식 상호작용 카드를 "이유 줄글"이 아니라 "음식명 칩 + 클릭 상세보기"로 보여주기 위해,
+# 원문에서 구체적 음식/음료 명사를 찾아 문장 단위로 묶는다. V1은 이 사전(curated list) 매칭
+# 기반이라 사전에 없는 음식/음료는 칩으로 못 뽑는다 — 그 경우 프론트는 기존처럼 GuideCard.content
+# 전체를 그대로 보여준다(회귀 없음). 추후 커버리지가 부족하면 `_extract_food_items` 함수만 LLM
+# 기반 추출로 교체하면 된다(시그니처: 원문 텍스트 -> FoodItem 목록, 호출부는 그대로).
+_KNOWN_FOOD_ITEMS = (
+    "자몽주스",
+    "자몽",
+    "포멜로",
+    "오렌지주스",
+    "오렌지",
+    "사과주스",
+    "크랜베리 주스",
+    "크랜베리",
+    "우유",
+    "유제품",
+    "치즈",
+    "요구르트",
+    "사워크림",
+    "아이스크림",
+    "커피",
+    "콜라",
+    "녹차",
+    "홍차",
+    "차",
+    "초콜릿",
+    "카페인",
+    "탄산음료",
+    "청량음료",
+    "알코올",
+    "음주",
+    "맥주 효모",
+    "생맥주",
+    "막걸리",
+    "적포도주",
+    "백포도주",
+    "리큐어",
+    "맥주",
+    "와인",
+    "술",
+    "비타민 K",
+    "비타민K",
+    "비타민 E",
+    "비타민E",
+    "녹황색 채소",
+    "브로콜리",
+    "양배추",
+    "케일",
+    "콜라드그린",
+    "시금치",
+    "아스파라거스",
+    "무청",
+    "미니양배추",
+    "소간",
+    "콩류",
+    "김",
+    "매실",
+    "바나나",
+    "토마토",
+    "저염소금",
+    "등 푸른 생선",
+    "조개",
+    "멸치",
+    "새우",
+    "퓨린",
+    "과당",
+    "통조림 돼지고기",
+    "아보카도",
+    "건포도",
+    "건자두",
+    "건과일",
+    "라즈베리",
+    "사우어크라우트",
+    "된장",
+    "간장",
+    "누에콩",
+    "티라민",
+    "세인트존스워트",
+    "고지방",
+    "고탄수화물",
+    "식이섬유",
+    "알로에",
+    "화학조미료",
+    "무기질 강화 음료",
+    "칼슘강화 오렌지주스",
+    "콩가루",
+    "목화씨",
+    "호두",
+    "연어",
+    "가다랑어",
+    "참치",
+)
+
+
+def _extract_food_items(text: str) -> list[FoodItem]:
+    """V1(규칙 기반): `_KNOWN_FOOD_ITEMS` 사전에 있는 음식/음료 명사가 문장에 등장하면 그 문장(들)을
+    detail로 묶는다. 같은 문장에서 더 구체적인 이름(예: "자몽주스")이 매칭되면, 그 안에 포함된 짧은
+    이름(예: "자몽")은 중복이므로 제외한다. 사전에 없는 음식/음료는 뽑히지 않는다 — 호출부가 결과가
+    비면 기존 전체 텍스트 노출로 알아서 폴백한다."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text) if s.strip()]
+    sentences_by_name: dict[str, list[str]] = {}
+    for sentence in sentences:
+        matched = [name for name in _KNOWN_FOOD_ITEMS if name in sentence]
+        matched = [n for n in matched if not any(n != m and n in m for m in matched)]
+        for name in matched:
+            bucket = sentences_by_name.setdefault(name, [])
+            if sentence not in bucket:
+                bucket.append(sentence)
+    return [FoodItem(name=name, detail=" ".join(sents)) for name, sents in sentences_by_name.items()]
 
 
 class OcrField(NamedTuple):
@@ -769,8 +930,22 @@ async def _build_food_interaction_guide_card(medication_name: str) -> GuideCard:
     """(T-DOC-2) e약은요 API의 `intrcQesitm`(상호작용 문항)에서 음식/음주 관련 주의사항을 가져와
     GuideCard로 변환한다. 항상 카드를 반환한다(등록약 여러 개 중 일부만 카드가 사라지면 "그
     약은 검사 안 했다"처럼 보이므로) — "확인된 주의사항 없음"과 "정보를 못 찾아 확인 불가"를
-    서로 다른 문구로 명시해 구분한다."""
+    서로 다른 문구로 명시해 구분한다. (T-DOC-3) e약은요 호출 전에 식약처 복약안내서 참조 테이블에서
+    성분명 매칭을 먼저 시도한다 — 매칭되면 그쪽이 더 정확하므로 e약은요 호출 자체를 생략한다."""
     title = f"{medication_name} · {_FOOD_GUIDE_CARD_TITLE}"
+
+    reference_entry = _match_food_drug_reference(medication_name)
+    if reference_entry is not None:
+        combined_text = " ".join(
+            t for t in (reference_entry.get("food_interaction"), reference_entry.get("alcohol_interaction")) if t
+        )
+        return GuideCard(
+            title=title,
+            content=_format_food_drug_reference_content(reference_entry),
+            severity="caution",
+            food_items=_extract_food_items(combined_text) or None,
+        )
+
     try:
         summaries = await _fetch_drug_summary_with_fallback(medication_name)
     except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
@@ -784,7 +959,9 @@ async def _build_food_interaction_guide_card(medication_name: str) -> GuideCard:
     if not food_text:
         return GuideCard(title=title, content=_NO_FOOD_INTERACTION_MESSAGE, severity="info")
 
-    return GuideCard(title=title, content=food_text, severity="caution")
+    return GuideCard(
+        title=title, content=food_text, severity="caution", food_items=_extract_food_items(food_text) or None
+    )
 
 
 async def _execute_ocr_logic(
@@ -1097,6 +1274,11 @@ class MedicationService:
         medications = list({s.medication_id: s.medication for s in schedules}.values())
 
         guide_cards = [await _build_food_interaction_guide_card(med.medication_name) for med in medications]
+
+        # (T-DOC-3) 실제 주의사항이 있는 카드(severity="caution")를 "확인 안 됨"/"주의사항 없음"
+        # 카드(severity="info")보다 위로 올린다 — 등록약이 많을수록 실제로 봐야 할 카드가 뒤로
+        # 밀려 놓치기 쉽다. 그룹 내 상대 순서(등록약 순서)는 그대로 유지한다(stable sort).
+        guide_cards.sort(key=lambda card: card.severity != "caution")
 
         return FoodInteractionCheckResult(guide_cards=guide_cards, checked_count=len(medications))
 
