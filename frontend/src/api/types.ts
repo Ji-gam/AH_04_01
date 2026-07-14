@@ -78,6 +78,7 @@ export interface ChatMessageResponse {
 export type ContentCategory = "LIFESTYLE" | "FOOD" | "MEDICAL_NEWS";
 
 export interface HealthContentResult {
+  id: number;
   disease_code: string;
   category: ContentCategory;
   content_date: string; // YYYY-MM-DD
@@ -92,6 +93,13 @@ export interface ContentsFeedResult {
   // false면 비로그인/질환 미등록으로 전체 콘텐츠를 폴백한 결과 — "질환 등록" 안내 배너 노출 기준.
   personalized: boolean;
   items: HealthContentResult[];
+}
+
+// [QA 전용] POST /contents/generate 요청 바디. 전부 생략 가능 - 생략 시 서버가 무작위로 고른다.
+export interface GenerateContentPayload {
+  disease_code?: string;
+  category?: ContentCategory;
+  topic?: string;
 }
 
 // 백엔드 app/dtos/health_info.py와 1:1로 수동 동기화. 더보기 > 개인건강정보.
@@ -159,4 +167,20 @@ export interface UserUpdatePayload {
   name?: string;
   phone_number?: string;
   gender?: "MALE" | "FEMALE";
+}
+
+// 백엔드 app/dtos/habit.py와 1:1로 수동 동기화. 홈 화면 습관 트래커.
+export interface HabitItemResult {
+  key: string;
+  label: string;
+  icon: string;
+  unit: string;
+  target: number;
+  progress: number;
+  completed: boolean;
+}
+
+export interface HabitsTodayResult {
+  habits: HabitItemResult[];
+  all_completed: boolean;
 }
