@@ -221,9 +221,10 @@ async def search_medications_dur(
     results = [_build_dur_result(row[0], row[1], row[2], row[3]) for row in rows]
 
     # 로컬 SQLite Light DB는 제품 27,231건 중 효능 데이터가 4,753건뿐이라 커버리지가 낮다.
-    # 결과가 없으면 식약처 공공데이터 API(e약은요)로 실시간 폴백한다.
+    # 결과가 아예 없거나(제품명 자체를 못 찾음), 있어도 전부 내용이 비어있으면(제품은 찾았지만
+    # 효능/주의사항 데이터가 없는 4,753건 밖의 케이스) 식약처 공공데이터 API(e약은요)로 폴백한다.
     checked_public_api = False
-    if not results:
+    if not results or not any(_has_content(r) for r in results):
         if config.PUBLIC_DATA_API_KEY:
             checked_public_api = True
             summary_items = await medication_open_api_client.fetch_drug_summary(item_name=query)
