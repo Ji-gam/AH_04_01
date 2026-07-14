@@ -1,0 +1,144 @@
+import time
+
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+client = TestClient(app)
+
+ACTIFED = "액티피드정"  # 197000053, 규칙 0건
+IBUPROFEN_200 = "부루펜정200밀리그램(이부프로펜)"  # 197700120
+IBUPROFEN_400 = "부루펜정400밀리그램(이부프로펜)"  # 198300343, IBUPROFEN_200과 EFCY(D000363) 공유
+RECALLED_DRUG = "자모다정(독시라민숙신산염)"  # 202500644, medicine_recalls 보유
+NONEXISTENT = "존재하지않는약품123"
+
+DUR_SIMPLE_RULE_CODES = ["PWNM", "ODSN", "SPCIFY_AGRDE", "MDCTN", "SEOBANG", "CPCTY"]
+
+
+def test_basic_screening_returns_dur_simple_for_known_drug():
+    response = client.post(
+        "/api/v1/dur/screening/basic",
+        json={"drug_names": [IBUPROFEN_200, NONEXISTENT]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["unmatched_drug_names"] == [NONEXISTENT]
+    assert len(data["results"]) == 1
+    result = data["results"][0]
+    assert result["drug_detail"]["item_name"] == IBUPROFEN_200
+
+    dur_simple = result["dur_simple"]
+    # dur_simple은 present 여부와 무관하게 항상 6개 고정 순서로 내려간다.
+    assert [f["rule_code"] for f in dur_simple] == DUR_SIMPLE_RULE_CODES
+
+    pwnm = next(f for f in dur_simple if f["rule_code"] == "PWNM")
+    assert pwnm["present"] is True
+    assert pwnm["prohbt_content"]
+
+
+def test_basic_screening_all_flags_off_for_clean_drug():
+    response = client.post("/api/v1/dur/screening/basic", json={"drug_names": [ACTIFED]})
+    assert response.status_code == 200
+    data = response.json()
+
+    dur_simple = data["results"][0]["dur_simple"]
+    assert len(dur_simple) == 6
+    assert all(f["present"] is False for f in dur_simple)
+    assert all(f["prohbt_content"] is None for f in dur_simple)
+    assert data["unmatched_drug_names"] == []
+
+
+def test_basic_screening_rejects_empty_drug_names():
+    response = client.post("/api/v1/dur/screening/basic", json={"drug_names": []})
+    assert response.status_code == 400
+
+
+def test_basic_screening_all_unmatched_returns_200_with_empty_results():
+    response = client.post("/api/v1/dur/screening/basic", json={"drug_names": [NONEXISTENT]})
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["results"] == []
+    assert data["unmatched_drug_names"] == [NONEXISTENT]
+
+
+def test_interaction_screening_detects_efficacy_duplication():
+    response = client.post(
+        "/api/v1/dur/screening/interaction",
+        json={"drug_names": [IBUPROFEN_200, IBUPROFEN_400]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    interactions = data["drug_intrc"]["interactions"]
+    assert any(
+        i["rule_type"] == "효능군중복주의"
+        and {i["drug_a"]["item_name"], i["drug_b"]["item_name"]} == {IBUPROFEN_200, IBUPROFEN_400}
+        for i in interactions
+    )
+    hit = next(i for i in interactions if i["rule_type"] == "효능군중복주의")
+    assert {hit["drug_a"]["item_seq"], hit["drug_b"]["item_seq"]} == {"197700120", "198300343"}
+
+
+def test_interaction_screening_deduplicates_bidirectional_pairs():
+    response = client.post(
+        "/api/v1/dur/screening/interaction",
+        json={"drug_names": [IBUPROFEN_200, IBUPROFEN_400]},
+    )
+    data = response.json()
+
+    pairs = [frozenset({i["drug_a"]["item_seq"], i["drug_b"]["item_seq"]}) for i in data["drug_intrc"]["interactions"]]
+    assert len(pairs) == len(set(pairs))
+
+
+def test_interaction_screening_includes_recall_for_single_drug():
+    response = client.post(
+        "/api/v1/dur/screening/interaction",
+        json={"drug_names": [RECALLED_DRUG]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["drug_intrc"]["interactions"] == []
+    recalls = data["drug_intrc"]["recalls"]
+    assert any(r["item_name"] == RECALLED_DRUG and r["item_seq"] == "202500644" for r in recalls)
+
+
+def test_ingredient_screening_returns_ingredient_detail():
+    response = client.post(
+        "/api/v1/dur/screening/ingredient",
+        json={"drug_names": [IBUPROFEN_200]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    ingr_codes = {i["ingr_code"] for i in data["ingredients"]}
+    assert "D000363" in ingr_codes
+
+
+def test_ingredient_screening_all_unmatched_returns_200_with_empty_ingredients():
+    response = client.post(
+        "/api/v1/dur/screening/ingredient",
+        json={"drug_names": [NONEXISTENT]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    assert data["ingredients"] == []
+    assert data["unmatched_drug_names"] == [NONEXISTENT]
+
+
+def test_p95_latency_under_3_seconds():
+    payload = {"drug_names": [IBUPROFEN_200, IBUPROFEN_400, ACTIFED]}
+    latencies = []
+
+    for _ in range(20):
+        start = time.perf_counter()
+        response = client.post("/api/v1/dur/screening/interaction", json=payload)
+        latencies.append(time.perf_counter() - start)
+        assert response.status_code == 200
+
+    latencies.sort()
+    p95 = latencies[18]
+    assert p95 <= 3.0, f"P95 latency is {p95}s, which is > 3.0s"
