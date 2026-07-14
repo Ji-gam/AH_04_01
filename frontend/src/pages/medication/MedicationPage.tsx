@@ -716,7 +716,10 @@ export default function MedicationPage() {
                           </div>
                           {openFoodItemByCard[idx] && (
                             <p style={{ margin: "10px 0 0" }}>
-                              {g.food_items.find((item) => item.name === openFoodItemByCard[idx])?.detail}
+                              {
+                                g.food_items.find((item) => item.name === openFoodItemByCard[idx])
+                                  ?.detail
+                              }
                             </p>
                           )}
                         </div>
