@@ -15,6 +15,7 @@ import ChatPage from "./pages/ChatPage/ChatPage";
 import ConsentPage from "./pages/ConsentPage/ConsentPage";
 import ContentDetailPage from "./pages/ContentGenerationPage/ContentDetailPage";
 import ContentGenerationPage from "./pages/ContentGenerationPage/ContentGenerationPage";
+import EmergencyGuidePage from "./pages/EmergencyGuidePage/EmergencyGuidePage";
 import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
 import HomePage from "./pages/HomePage/HomePage";
 import InfoPage from "./pages/InfoPage/InfoPage";
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
       { path: "/notification-settings", element: <NotificationSettingsPage /> },
       { path: "/content-generation", element: <ContentGenerationPage /> },
       { path: "/content-generation/:id", element: <ContentDetailPage /> },
+      { path: "/emergency-guide", element: <EmergencyGuidePage /> },
       {
         // 개인건강정보(민감정보)와 복약 관리(비로그인 상태로 복약정보 등록이 가능했던 문제)는
         // 로그인이 꼭 필요하다.

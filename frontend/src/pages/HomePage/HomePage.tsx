@@ -14,7 +14,9 @@ import type {
 } from "../../api/types";
 import { useAuth } from "../../hooks/useAuth";
 import type { MedicationSchedule } from "../../hooks/useMedication";
+import { useNearbyRegionLabel } from "../../hooks/useNearbyRegionLabel";
 import { pinkTheme } from "../../theme/pinkTheme";
+import { DEFAULT_REGION_LABEL, openNearbySearch } from "../../utils/kakaoMapSearch";
 import Modal from "../AlarmPage/components/Modal";
 import { toDateString } from "../AlarmPage/dateUtils";
 import { buildGroups, loadChecked } from "../SchedulePage/scheduleData";
@@ -57,6 +59,9 @@ export default function HomePage() {
   // 정보 탭과 같은 소스 — 의학뉴스 최신 1건 헤드라인만 미리보기로 보여준다.
   const [newsHeadline, setNewsHeadline] = useState<HealthContentResult | null>(null);
   const [chatInput, setChatInput] = useState("");
+
+  // 가까운 병원/약국 찾기 카드 — 위치를 허용하면 그 지역 기준으로, 아니면 서울 기준으로 검색한다.
+  const nearbyLocation = useNearbyRegionLabel();
 
   useEffect(() => {
     if (user && localStorage.getItem(DISMISS_KEY_PREFIX + user.profile_id) !== "true") {
@@ -544,6 +549,99 @@ export default function HomePage() {
             </p>
           </div>
         )}
+
+        {/* 가까운 병원/약국 찾기 — 위치를 허용하면 그 지역 기준으로, 아니면 서울 기준으로 검색한다
+            (자세한 위치 기반 안내는 더보기 > 응급안내 참고). */}
+        <div
+          style={{
+            background: pinkTheme.cardBg,
+            border: `1px solid ${pinkTheme.border}`,
+            borderRadius: 16,
+            padding: 18,
+            marginBottom: 16,
+            boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.text }}>
+              🏥 가까운 병원·약국 찾기
+            </p>
+            {nearbyLocation.status === "granted" ? (
+              <span style={{ fontSize: 11, color: pinkTheme.textMuted }}>
+                📍 {nearbyLocation.addressLabel ?? "현재 위치"}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={nearbyLocation.requestLocation}
+                disabled={nearbyLocation.status === "requesting"}
+                style={{
+                  border: "none",
+                  background: "none",
+                  color: pinkTheme.primary,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                {nearbyLocation.status === "requesting" ? "위치 확인 중..." : "📍 내 위치로 찾기"}
+              </button>
+            )}
+          </div>
+          {(nearbyLocation.status === "denied" || nearbyLocation.status === "unsupported") && (
+            <p style={{ margin: "0 0 10px", fontSize: 11, color: pinkTheme.textMuted }}>
+              위치를 확인할 수 없어 서울 기준으로 안내해요.
+            </p>
+          )}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              type="button"
+              onClick={() =>
+                openNearbySearch("병원", nearbyLocation.addressLabel ?? DEFAULT_REGION_LABEL)
+              }
+              style={{
+                flex: 1,
+                padding: "11px 0",
+                borderRadius: 10,
+                border: `1px solid ${pinkTheme.border}`,
+                background: pinkTheme.primarySoft,
+                color: pinkTheme.text,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              🏥 병원 찾기
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                openNearbySearch("약국", nearbyLocation.addressLabel ?? DEFAULT_REGION_LABEL)
+              }
+              style={{
+                flex: 1,
+                padding: "11px 0",
+                borderRadius: 10,
+                border: `1px solid ${pinkTheme.border}`,
+                background: pinkTheme.primarySoft,
+                color: pinkTheme.text,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              💊 약국 찾기
+            </button>
+          </div>
+        </div>
 
         {/* 오늘의 습관을 전부 목표치까지 채웠을 때만 뜨는 칭찬 화면 */}
         {showCongrats && (

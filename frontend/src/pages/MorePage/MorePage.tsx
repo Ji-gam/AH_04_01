@@ -131,6 +131,16 @@ export default function MorePage() {
             </span>
           </Link>
 
+          <Link to="/emergency-guide" style={menuCardStyle}>
+            <span>
+              🚨 응급안내
+              <span style={menuDescStyle}>119·가까운 병원·약국·응급실을 빠르게 찾아요</span>
+            </span>
+            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+              ›
+            </span>
+          </Link>
+
           <Link to="/notification-settings" style={menuCardStyle}>
             <span>
               🔔 알림설정
