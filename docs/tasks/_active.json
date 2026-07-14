@@ -1,1 +1,7 @@
-{}
+{
+  "ISSUE-138": {
+    "owner": "claude",
+    "branch": "fix/138-ocr-timeout-stuck-job",
+    "started": "2026-07-14"
+  }
+}
