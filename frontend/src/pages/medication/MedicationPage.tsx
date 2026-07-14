@@ -610,38 +610,41 @@ export default function MedicationPage() {
               </>
             )}
 
-            {guideCards.length > 0 && (
-              <div style={{ marginTop: "15px" }}>
-                <h4>임시 분석 결과 가이드:</h4>
-                {guideCards.map((g, idx) => (
-                  <div
-                    key={idx}
-                    style={{ border: "1px solid orange", padding: "10px", marginBottom: "10px" }}
-                  >
-                    <h5>{g.title}</h5>
-                    <p>{g.content}</p>
-                    <small style={{ color: pinkTheme.danger }}>{g.disclaimer}</small>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         )}
 
         {activeTab === "food" && (
           <div style={{ padding: "15px", border: `1px solid ${pinkTheme.border}` }}>
-            {/* 13번 단계: 음식 주의사항 (확장 설계) */}
-            <h3>식품 상호작용 체크</h3>
+            {/* 13번 단계: 음식 주의사항 (T-DOC-2) — 방금 등록 확정한 약의 e약은요 상호작용
+              문항(intrcQesitm)에서 음식/음주 관련 주의사항을 그대로 보여준다. */}
+            <h3>복약 중 음식 주의사항</h3>
             <p style={{ color: pinkTheme.textMuted }}>
-              본 기능은 복용 약품과 피해야 할 음식(예: 자몽주스, 알코올 등)에 대해 분석하여 피드백을
-              주기 위한 확장 설계 탭 영역입니다.
+              방금 등록한 약품 기준으로, 식약처 e약은요 정보에서 확인된 음식·음주 관련 주의사항을
+              보여줍니다. 처방전/알약 분석 탭에서 약을 새로 등록하면 이 목록이 갱신됩니다.
             </p>
-            <div
-              style={{ padding: "10px", backgroundColor: "#e3f2fd", border: "1px solid #90caf9" }}
-            >
-              <strong>[추후 개발 예정]</strong> 식약처 공공 데이터 및 의약지침과 연계하여 섭취
-              주의가 필요한 음식 위험 가이드가 노출됩니다.
-            </div>
+
+            {guideCards.length === 0 ? (
+              <div
+                style={{ padding: "10px", backgroundColor: "#e3f2fd", border: "1px solid #90caf9" }}
+              >
+                아직 등록을 확정한 약이 없거나, 확인된 주의사항이 없습니다.
+              </div>
+            ) : (
+              guideCards.map((g, idx) => (
+                <div
+                  key={idx}
+                  style={{
+                    border: `1px solid ${g.severity === "caution" ? "#f0ad4e" : pinkTheme.border}`,
+                    padding: "10px",
+                    marginBottom: "10px",
+                  }}
+                >
+                  <h5>{g.title}</h5>
+                  <p>{g.content}</p>
+                  <small style={{ color: pinkTheme.textMuted }}>{g.disclaimer}</small>
+                </div>
+              ))
+            )}
           </div>
         )}
 

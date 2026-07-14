@@ -165,6 +165,13 @@ _TIME_PATTERN = re.compile(r"\b([01]?\d|2[0-3]):([0-5]\d)\b")
 _INSTRUCTION_PATTERN = re.compile(r"(식후|식전|취침\s*전)\s*(\d+\s*분)?")
 
 
+# T-DOC-2: e약은요(의약품개요정보) API 응답의 상호작용 문항("이 약을 사용하는 동안 주의해야 할
+# 약 또는 음식은 무엇입니까?")에서 음식/음주 관련 주의사항을 그대로 노출한다. 원문 재가공(요약/
+# 재작성)은 하지 않는다 — 면책 목적상 식약처 원문 그대로가 더 안전하다.
+_FOOD_GUIDE_CARD_TITLE = "복약 중 음식 주의사항"
+_NO_FOOD_INTERACTION_MESSAGE = "확인된 음식·음주 관련 주의사항이 없습니다."
+
+
 class OcrField(NamedTuple):
     """CLOVA OCR General API `fields[]` 응답 원소 하나. `confidence`는 `inferConfidence`(0~1)."""
 
@@ -705,6 +712,25 @@ async def _resolve_ocr_fields(file_bytes: bytes, file_name: str, dummy_mode: boo
     return ocr_fields, False
 
 
+async def _build_food_interaction_guide_card(medication_name: str) -> GuideCard | None:
+    """(T-DOC-2) e약은요 API의 `intrcQesitm`(상호작용 문항)에서 음식/음주 관련 주의사항을 가져와
+    GuideCard로 변환한다. API 호출 실패(타임아웃/오류)와 "확인 결과 주의사항 없음"은 의미가
+    다르므로, 실패 시에는 "주의사항 없음"이라고 잘못 안내하지 않도록 카드 자체를 생략(None)한다."""
+    try:
+        summaries = await medication_open_api_client.fetch_drug_summary(item_name=medication_name)
+    except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
+        return None
+
+    if not summaries:
+        return None
+
+    interaction_text = (summaries[0].get("intrcQesitm") or "").strip()
+    if not interaction_text:
+        return GuideCard(title=_FOOD_GUIDE_CARD_TITLE, content=_NO_FOOD_INTERACTION_MESSAGE, severity="info")
+
+    return GuideCard(title=_FOOD_GUIDE_CARD_TITLE, content=interaction_text, severity="caution")
+
+
 async def _execute_ocr_logic(
     db_session: AsyncSession,
     job_id: str,
@@ -834,6 +860,7 @@ class MedicationService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 작업(Job)을 찾을 수 없습니다.")
 
         # 최종 약물 확정 및 등록 처리
+        med: Medication | None = None
         if selected_candidate_drug_code:
             med = await self._repository.get_medication_by_code(session, selected_candidate_drug_code)
             if not med:
@@ -860,16 +887,12 @@ class MedicationService:
                 )
                 await self._repository.create_schedule(session, schedule)
 
-        # 12, 13번: 추후 확장을 위한 구조 설계
+        # 13번: 음식(T-DOC-2) — 등록된 약의 e약은요 상호작용 문항에서 음식/음주 주의사항을 안내한다.
         guide_cards = []
-        if selected_candidate_drug_code:
-            guide_cards.append(
-                GuideCard(
-                    title="복약 주의사항 안내",
-                    content="등록하신 약품의 부작용 및 상호작용 정보(DUR)는 추후 연동될 예정입니다.",
-                    severity="info",
-                )
-            )
+        if med:
+            food_card = await _build_food_interaction_guide_card(med.medication_name)
+            if food_card:
+                guide_cards.append(food_card)
 
         return RecognitionConfirmResult(status="confirmed", guide_cards=guide_cards)
 

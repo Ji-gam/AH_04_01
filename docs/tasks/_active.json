@@ -1,1 +1,7 @@
-{}
+{
+  "T-DOC-2": {
+    "owner": "claude",
+    "branch": "feat/137-doc2-food-drug-interaction",
+    "started": "2026-07-14"
+  }
+}
