@@ -1,9 +1,4 @@
 {
-  "ISSUE-138": {
-    "owner": "claude",
-    "branch": "fix/138-ocr-timeout-stuck-job",
-    "started": "2026-07-14"
-  },
   "T-MED-4-2": {
     "owner": "agent-Antigravity",
     "branch": "feat/T-MED-4-2-drug-db-sync",
