@@ -184,3 +184,96 @@ export interface HabitsTodayResult {
   habits: HabitItemResult[];
   all_completed: boolean;
 }
+
+// 백엔드 app/dtos/dur_dto.py와 1:1로 수동 동기화 (T-MED-14). 처방/약품명 배열을 넣으면 DUR(의약품
+// 안전사용) 정보를 3단계로 내려주는 스크리닝 API. drug_names만 보내면 되고 로그인 불필요.
+
+/** 다른 약을 이름 문자열이 아니라 item_seq로 참조 - 이름 재매칭 없이 상세로 바로 링크 가능. */
+export interface DurDrugRef {
+  item_seq: string;
+  item_name: string;
+}
+
+/** 항상 6개 고정 순서(PWNM/ODSN/SPCIFY_AGRDE/MDCTN/SEOBANG/CPCTY)로 내려온다 - "없으면 표시 안
+ * 함" 판단 없이 그대로 pill 6개에 매핑하면 된다. */
+export interface DurSimpleFlag {
+  rule_code: "PWNM" | "ODSN" | "SPCIFY_AGRDE" | "MDCTN" | "SEOBANG" | "CPCTY";
+  rule_label: string;
+  present: boolean;
+  prohbt_content: string | null;
+  remark: string | null;
+}
+
+export interface DurDrugIdentification {
+  shape: string | null;
+  color: string | null;
+  mark: string | null;
+}
+
+export interface DurDrugDetail {
+  item_seq: string;
+  item_name: string;
+  entp_name: string | null;
+  etc_otc_name: string | null;
+  form_name: string | null;
+  efcy_qesitm: string | null;
+  use_method_qesitm: string | null;
+  atpn_warn_qesitm: string | null;
+  se_qesitm: string | null;
+  deposit_method_qesitm: string | null;
+  item_image: string | null;
+  identification: DurDrugIdentification | null;
+}
+
+export interface DurBasicScreeningResult {
+  drug_detail: DurDrugDetail;
+  dur_simple: DurSimpleFlag[];
+}
+
+export interface DurBasicScreeningResponse {
+  results: DurBasicScreeningResult[];
+  unmatched_drug_names: string[];
+}
+
+export interface DurInteractionWarning {
+  rule_type: string; // "병용금기" | "효능군중복주의"
+  drug_a: DurDrugRef;
+  drug_b: DurDrugRef;
+  prohbt_content: string | null;
+  remark: string | null;
+}
+
+export interface DurRecallInfo {
+  item_seq: string;
+  item_name: string;
+  entp_name: string | null;
+  recall_reason: string | null;
+  recall_command_date: string | null;
+  enforced: boolean | null;
+}
+
+export interface DurInteractionScreeningResponse {
+  drug_intrc: {
+    interactions: DurInteractionWarning[];
+    recalls: DurRecallInfo[];
+  };
+  unmatched_drug_names: string[];
+}
+
+export interface DurIngredientRuleDetail {
+  rule_type: string;
+  prohbt_content: string | null;
+  remark: string | null;
+}
+
+export interface DurIngredientDetail {
+  ingr_code: string;
+  ingr_name: string;
+  source_drug_names: string[];
+  rules: DurIngredientRuleDetail[];
+}
+
+export interface DurIngredientScreeningResponse {
+  ingredients: DurIngredientDetail[];
+  unmatched_drug_names: string[];
+}
