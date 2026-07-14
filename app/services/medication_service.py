@@ -1157,6 +1157,11 @@ class MedicationService:
 
         guide_cards = [await _build_food_interaction_guide_card(med.medication_name) for med in medications]
 
+        # (T-DOC-3) 실제 주의사항이 있는 카드(severity="caution")를 "확인 안 됨"/"주의사항 없음"
+        # 카드(severity="info")보다 위로 올린다 — 등록약이 많을수록 실제로 봐야 할 카드가 뒤로
+        # 밀려 놓치기 쉽다. 그룹 내 상대 순서(등록약 순서)는 그대로 유지한다(stable sort).
+        guide_cards.sort(key=lambda card: card.severity != "caution")
+
         return FoodInteractionCheckResult(guide_cards=guide_cards, checked_count=len(medications))
 
     async def search_medications(self, session: AsyncSession, query: str) -> list[dict]:
