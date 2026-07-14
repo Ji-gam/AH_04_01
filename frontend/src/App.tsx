@@ -13,12 +13,16 @@ import AccountSettingsPage from "./pages/AccountSettingsPage/AccountSettingsPage
 import AlarmPage from "./pages/AlarmPage/AlarmPage";
 import ChatPage from "./pages/ChatPage/ChatPage";
 import ConsentPage from "./pages/ConsentPage/ConsentPage";
+import ContentDetailPage from "./pages/ContentGenerationPage/ContentDetailPage";
+import ContentGenerationPage from "./pages/ContentGenerationPage/ContentGenerationPage";
 import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
 import HomePage from "./pages/HomePage/HomePage";
 import InfoPage from "./pages/InfoPage/InfoPage";
+import LifestyleInfoPage from "./pages/LifestyleInfoPage/LifestyleInfoPage";
 import LoginPage from "./pages/LoginPage/LoginPage";
 import MedicationPage from "./pages/medication/MedicationPage";
 import MorePage from "./pages/MorePage/MorePage";
+import NotificationSettingsPage from "./pages/NotificationSettingsPage/NotificationSettingsPage";
 import SchedulePage from "./pages/SchedulePage/SchedulePage";
 import TrackPage from "./pages/TrackPage/TrackPage";
 
@@ -40,6 +44,10 @@ export const router = createBrowserRouter([
       { path: "/chat", element: <ChatPage /> },
       { path: "/info", element: <InfoPage /> },
       { path: "/more", element: <MorePage /> },
+      { path: "/lifestyle-info", element: <LifestyleInfoPage /> },
+      { path: "/notification-settings", element: <NotificationSettingsPage /> },
+      { path: "/content-generation", element: <ContentGenerationPage /> },
+      { path: "/content-generation/:id", element: <ContentDetailPage /> },
       {
         // 개인건강정보(민감정보)와 복약 관리(비로그인 상태로 복약정보 등록이 가능했던 문제)는
         // 로그인이 꼭 필요하다.
