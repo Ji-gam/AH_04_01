@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.databases import AsyncSessionLocal
 from app.dtos.medication_dto import (
     FoodInteractionCheckResult,
+    FoodItem,
     GuideCard,
     InteractionCheckResult,
     InteractionWarning,
@@ -257,6 +258,117 @@ def _format_food_drug_reference_content(entry: dict) -> str:
         parts.append(f"[알코올] {entry['alcohol_interaction']}")
     parts.append(_FOOD_DRUG_REFERENCE_SOURCE_NOTE)
     return "\n\n".join(parts)
+
+
+# (T-DOC-4) 음식 상호작용 카드를 "이유 줄글"이 아니라 "음식명 칩 + 클릭 상세보기"로 보여주기 위해,
+# 원문에서 구체적 음식/음료 명사를 찾아 문장 단위로 묶는다. V1은 이 사전(curated list) 매칭
+# 기반이라 사전에 없는 음식/음료는 칩으로 못 뽑는다 — 그 경우 프론트는 기존처럼 GuideCard.content
+# 전체를 그대로 보여준다(회귀 없음). 추후 커버리지가 부족하면 `_extract_food_items` 함수만 LLM
+# 기반 추출로 교체하면 된다(시그니처: 원문 텍스트 -> FoodItem 목록, 호출부는 그대로).
+_KNOWN_FOOD_ITEMS = (
+    "자몽주스",
+    "자몽",
+    "포멜로",
+    "오렌지주스",
+    "오렌지",
+    "사과주스",
+    "크랜베리 주스",
+    "크랜베리",
+    "우유",
+    "유제품",
+    "치즈",
+    "요구르트",
+    "사워크림",
+    "아이스크림",
+    "커피",
+    "콜라",
+    "녹차",
+    "홍차",
+    "차",
+    "초콜릿",
+    "카페인",
+    "탄산음료",
+    "청량음료",
+    "알코올",
+    "음주",
+    "맥주 효모",
+    "생맥주",
+    "막걸리",
+    "적포도주",
+    "백포도주",
+    "리큐어",
+    "맥주",
+    "와인",
+    "술",
+    "비타민 K",
+    "비타민K",
+    "비타민 E",
+    "비타민E",
+    "녹황색 채소",
+    "브로콜리",
+    "양배추",
+    "케일",
+    "콜라드그린",
+    "시금치",
+    "아스파라거스",
+    "무청",
+    "미니양배추",
+    "소간",
+    "콩류",
+    "김",
+    "매실",
+    "바나나",
+    "토마토",
+    "저염소금",
+    "등 푸른 생선",
+    "조개",
+    "멸치",
+    "새우",
+    "퓨린",
+    "과당",
+    "통조림 돼지고기",
+    "아보카도",
+    "건포도",
+    "건자두",
+    "건과일",
+    "라즈베리",
+    "사우어크라우트",
+    "된장",
+    "간장",
+    "누에콩",
+    "티라민",
+    "세인트존스워트",
+    "고지방",
+    "고탄수화물",
+    "식이섬유",
+    "알로에",
+    "화학조미료",
+    "무기질 강화 음료",
+    "칼슘강화 오렌지주스",
+    "콩가루",
+    "목화씨",
+    "호두",
+    "연어",
+    "가다랑어",
+    "참치",
+)
+
+
+def _extract_food_items(text: str) -> list[FoodItem]:
+    """V1(규칙 기반): `_KNOWN_FOOD_ITEMS` 사전에 있는 음식/음료 명사가 문장에 등장하면 그 문장(들)을
+    detail로 묶는다. 같은 문장에서 더 구체적인 이름(예: "자몽주스")이 매칭되면, 그 안에 포함된 짧은
+    이름(예: "자몽")은 중복이므로 제외한다. 사전에 없는 음식/음료는 뽑히지 않는다 — 호출부가 결과가
+    비면 기존 전체 텍스트 노출로 알아서 폴백한다."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text) if s.strip()]
+    sentences_by_name: dict[str, list[str]] = {}
+    for sentence in sentences:
+        matched = [name for name in _KNOWN_FOOD_ITEMS if name in sentence]
+        matched = [n for n in matched if not any(n != m and n in m for m in matched)]
+        for name in matched:
+            bucket = sentences_by_name.setdefault(name, [])
+            if sentence not in bucket:
+                bucket.append(sentence)
+    return [FoodItem(name=name, detail=" ".join(sents)) for name, sents in sentences_by_name.items()]
 
 
 class OcrField(NamedTuple):
@@ -824,10 +936,14 @@ async def _build_food_interaction_guide_card(medication_name: str) -> GuideCard:
 
     reference_entry = _match_food_drug_reference(medication_name)
     if reference_entry is not None:
+        combined_text = " ".join(
+            t for t in (reference_entry.get("food_interaction"), reference_entry.get("alcohol_interaction")) if t
+        )
         return GuideCard(
             title=title,
             content=_format_food_drug_reference_content(reference_entry),
             severity="caution",
+            food_items=_extract_food_items(combined_text) or None,
         )
 
     try:
@@ -843,7 +959,9 @@ async def _build_food_interaction_guide_card(medication_name: str) -> GuideCard:
     if not food_text:
         return GuideCard(title=title, content=_NO_FOOD_INTERACTION_MESSAGE, severity="info")
 
-    return GuideCard(title=title, content=food_text, severity="caution")
+    return GuideCard(
+        title=title, content=food_text, severity="caution", food_items=_extract_food_items(food_text) or None
+    )
 
 
 async def _execute_ocr_logic(

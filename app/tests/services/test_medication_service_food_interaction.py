@@ -164,3 +164,65 @@ async def test_food_guide_card_reports_unavailable_when_api_errors(monkeypatch):
     assert card is not None
     assert card.severity == "info"
     assert "찾지 못해" in card.content
+
+
+def test_extract_food_items_groups_by_known_name_and_avoids_substring_duplicates():
+    """(T-DOC-4) 사전에 있는 음식/음료 명사가 등장한 문장을 묶되, 더 구체적인 이름(예: "자몽주스")이
+    매칭되면 그 안에 포함된 짧은 이름(예: "자몽")은 중복이므로 제외해야 한다."""
+    text = "자몽주스와 자몽은 모두 피하세요. 비타민 K가 많은 시금치를 조심하세요."
+
+    items = medication_service._extract_food_items(text)
+
+    names = {item.name for item in items}
+    assert "자몽주스" in names
+    assert "자몽" not in names
+    assert "비타민 K" in names
+    assert "시금치" in names
+
+
+async def test_food_guide_card_populates_food_items_from_mfds_reference(monkeypatch):
+    """(T-DOC-4) 참조 테이블 매칭 카드는 사전에 있는 음식/음료 명사를 food_items로도 채워야
+    한다 — 프론트가 이유 줄글 대신 음식명 칩을 먼저 보여줄 수 있게 하기 위함."""
+
+    async def _fail_if_called(item_name=None, **kwargs):
+        raise AssertionError("참조 테이블에 매칭되면 e약은요를 호출하지 않아야 한다")
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fail_if_called)
+
+    card = await medication_service._build_food_interaction_guide_card("와파린정5mg")
+
+    assert card.food_items is not None
+    names = {item.name for item in card.food_items}
+    assert "비타민 K" in names
+    for item in card.food_items:
+        assert item.detail
+
+
+async def test_food_guide_card_populates_food_items_from_intrc_qesitm_when_known_food_mentioned(monkeypatch):
+    """(T-DOC-4) e약은요 폴백 경로에서도 사전에 있는 음식이 언급되면 food_items를 채운다."""
+
+    async def _fake_summary(item_name=None, **kwargs):
+        return [{"itemName": item_name, "intrcQesitm": "이 약을 복용하는 동안 자몽주스를 피하세요."}]
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
+
+    card = await medication_service._build_food_interaction_guide_card("타이레놀정 500mg")
+
+    assert card.food_items is not None
+    assert card.food_items[0].name == "자몽주스"
+    assert "자몽주스" in card.food_items[0].detail
+
+
+async def test_food_guide_card_leaves_food_items_none_when_no_known_food_mentioned(monkeypatch):
+    """(T-DOC-4) 사전에 없는 음식/음료만 언급되면 food_items는 None으로 두고, 프론트가 기존처럼
+    content 전체를 보여주도록 폴백한다."""
+
+    async def _fake_summary(item_name=None, **kwargs):
+        return [{"itemName": item_name, "intrcQesitm": "이 약은 낫토와 청국장 섭취 시 주의가 필요합니다."}]
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
+
+    card = await medication_service._build_food_interaction_guide_card("다이아벡스정 500mg")
+
+    assert card.food_items is None
+    assert "낫토" in card.content

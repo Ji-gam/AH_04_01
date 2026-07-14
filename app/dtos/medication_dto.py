@@ -25,11 +25,22 @@ class RecognitionConfirmRequest(BaseModel):
     confirmed_fields: dict | None = None
 
 
+class FoodItem(BaseModel):
+    """(T-DOC-4) 음식 상호작용 안내 카드에서 원문 전체를 줄글로 보여주는 대신, 음식명 칩을 먼저
+    보여주고 클릭 시 이 음식에 대한 상세(detail)만 펼쳐볼 수 있게 하기 위한 단위."""
+
+    name: str
+    detail: str
+
+
 class GuideCard(BaseModel):
     title: str
     content: str
     severity: str
     disclaimer: str = "본 서비스는 정보 제공 도구이며, 의학적 진단·처방을 대체하지 않습니다. 출처: 식약처 복약지침"
+    # (T-DOC-4) 규칙 기반 추출로 음식명이 식별되면 채워진다. 식별 안 되면 None — 이 경우
+    # 프론트는 기존처럼 `content` 전체 텍스트를 그대로 보여준다(회귀 없음).
+    food_items: list[FoodItem] | None = None
 
 
 class RecognitionConfirmResult(BaseModel):
