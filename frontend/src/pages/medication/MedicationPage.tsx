@@ -77,9 +77,8 @@ export default function MedicationPage() {
 
   // 음식(13번) — 등록약 전체 기준 음식/음주 주의사항. OCR로 등록했든 수동으로 등록했든 상관없이
   // 등록약이 바뀌지 않는 한 다시 조회하지 않도록 캐시한다(조합 탭과 동일한 패턴, T-DOC-2).
-  const [foodInteractionResult, setFoodInteractionResult] = useState<FoodInteractionCheckResult | null>(
-    null,
-  );
+  const [foodInteractionResult, setFoodInteractionResult] =
+    useState<FoodInteractionCheckResult | null>(null);
   const [foodInteractionLoading, setFoodInteractionLoading] = useState(false);
   const [foodInteractionError, setFoodInteractionError] = useState<string | null>(null);
 
@@ -113,7 +112,9 @@ export default function MedicationPage() {
     checkFoodInteractions()
       .then(setFoodInteractionResult)
       .catch((err: unknown) => {
-        setFoodInteractionError(err instanceof Error ? err.message : "음식 주의사항 확인에 실패했습니다.");
+        setFoodInteractionError(
+          err instanceof Error ? err.message : "음식 주의사항 확인에 실패했습니다.",
+        );
       })
       .finally(() => setFoodInteractionLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -627,7 +628,6 @@ export default function MedicationPage() {
                 )}
               </>
             )}
-
           </div>
         )}
 
@@ -655,7 +655,11 @@ export default function MedicationPage() {
               <>
                 {foodInteractionResult.checked_count === 0 ? (
                   <div
-                    style={{ padding: "10px", backgroundColor: "#e3f2fd", border: "1px solid #90caf9" }}
+                    style={{
+                      padding: "10px",
+                      backgroundColor: "#e3f2fd",
+                      border: "1px solid #90caf9",
+                    }}
                   >
                     등록된 약이 없습니다. 처방전/알약 분석 또는 수동 등록으로 약을 등록해보세요.
                   </div>
