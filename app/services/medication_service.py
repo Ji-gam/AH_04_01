@@ -408,7 +408,7 @@ async def _fetch_medication_from_public_api(name: str) -> Medication | None:
     폴백으로 넘어가게 한다 — 등록 자체가 막히지 않는다는 T-MED-1 원칙을 그대로 유지."""
     try:
         fields = await medication_open_api_client.fetch_medication_master_data(name)
-    except medication_open_api_client.PublicDataApiError:
+    except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
         return None
     if fields is None:
         return None

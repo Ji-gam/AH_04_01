@@ -1,3 +1,5 @@
+import httpx
+
 from app.repositories.medication_repository import MedicationRepository
 from app.services import medication_open_api_client, medication_service
 from app.services.medication_service import OcrField
@@ -58,6 +60,30 @@ async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_has_no_da
         repo = MedicationRepository()
         matched, auto_created_ids, _ = await medication_service._match_or_create_medications(
             session, repo, [OcrField(text="*아무데이터도없는약999mg", confidence=0.9)]
+        )
+
+    assert len(matched) == 1
+    med = matched[0]
+    assert med.id in auto_created_ids
+    assert med.standard_code.startswith("AUTO_")
+
+
+async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_times_out(monkeypatch):
+    """Tier 3 API 호출이 httpx.HTTPError(타임아웃 포함)로 실패해도 등록 자체는 막히지 않아야 한다.
+    (#138: 이 예외가 안 잡히면 OCR job이 processing에 영구 멈춘다)"""
+
+    async def _raise(*args, **kwargs):
+        raise httpx.ReadTimeout("timed out")
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_pill_identification", _raise)
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_approval_info", _raise)
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _raise)
+    monkeypatch.setattr(medication_open_api_client, "fetch_dur_item_info", _raise)
+
+    async with TestSessionLocal() as session:
+        repo = MedicationRepository()
+        matched, auto_created_ids, _ = await medication_service._match_or_create_medications(
+            session, repo, [OcrField(text="*타임아웃약700mg", confidence=0.9)]
         )
 
     assert len(matched) == 1
