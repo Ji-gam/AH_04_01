@@ -1,11 +1,9 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import DisclaimerBanner from "../../components/common/DisclaimerBanner";
+import { useNearbyRegionLabel } from "../../hooks/useNearbyRegionLabel";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import { DEFAULT_REGION_LABEL, openNearbySearch } from "../../utils/kakaoMapSearch";
-
-type LocationStatus = "idle" | "requesting" | "granted" | "denied" | "unsupported";
 
 const cardStyle: React.CSSProperties = {
   display: "flex",
@@ -77,36 +75,7 @@ function ActionCard({ icon, title, desc, href, onClick }: ActionCardProps) {
 
 export default function EmergencyGuidePage() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<LocationStatus>("idle");
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [addressLabel, setAddressLabel] = useState<string | null>(null);
-
-  const requestLocation = () => {
-    if (!("geolocation" in navigator)) {
-      setStatus("unsupported");
-      return;
-    }
-    setStatus("requesting");
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const next = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-        setCoords(next);
-        setStatus("granted");
-        fetch(
-          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${next.lat}&longitude=${next.lng}&localityLanguage=ko`,
-        )
-          .then((res) => res.json())
-          .then((data: { city?: string; locality?: string }) => {
-            const label = [data.city, data.locality].filter(Boolean).join(" ");
-            if (label) setAddressLabel(label);
-          })
-          .catch(() => {
-            // 주소 변환은 실패해도 좌표 기반 검색엔 문제 없으니 조용히 무시한다.
-          });
-      },
-      () => setStatus("denied"),
-    );
-  };
+  const { status, coords, addressLabel, requestLocation } = useNearbyRegionLabel();
 
   const handleNearbySearch = (query: string) => {
     openNearbySearch(query, addressLabel ?? DEFAULT_REGION_LABEL);

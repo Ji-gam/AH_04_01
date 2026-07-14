@@ -14,6 +14,7 @@ import type {
 } from "../../api/types";
 import { useAuth } from "../../hooks/useAuth";
 import type { MedicationSchedule } from "../../hooks/useMedication";
+import { useNearbyRegionLabel } from "../../hooks/useNearbyRegionLabel";
 import { pinkTheme } from "../../theme/pinkTheme";
 import { DEFAULT_REGION_LABEL, openNearbySearch } from "../../utils/kakaoMapSearch";
 import Modal from "../AlarmPage/components/Modal";
@@ -58,6 +59,9 @@ export default function HomePage() {
   // 정보 탭과 같은 소스 — 의학뉴스 최신 1건 헤드라인만 미리보기로 보여준다.
   const [newsHeadline, setNewsHeadline] = useState<HealthContentResult | null>(null);
   const [chatInput, setChatInput] = useState("");
+
+  // 가까운 병원/약국 찾기 카드 — 위치를 허용하면 그 지역 기준으로, 아니면 서울 기준으로 검색한다.
+  const nearbyLocation = useNearbyRegionLabel();
 
   useEffect(() => {
     if (user && localStorage.getItem(DISMISS_KEY_PREFIX + user.profile_id) !== "true") {
@@ -546,7 +550,7 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* 가까운 병원/약국 찾기 — 별도 위치 권한 흐름 없이 눌러서 바로 지도로 연결한다
+        {/* 가까운 병원/약국 찾기 — 위치를 허용하면 그 지역 기준으로, 아니면 서울 기준으로 검색한다
             (자세한 위치 기반 안내는 더보기 > 응급안내 참고). */}
         <div
           style={{
@@ -558,13 +562,51 @@ export default function HomePage() {
             boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
           }}
         >
-          <p style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 700, color: pinkTheme.text }}>
-            🏥 가까운 병원·약국 찾기
-          </p>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 10,
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.text }}>
+              🏥 가까운 병원·약국 찾기
+            </p>
+            {nearbyLocation.status === "granted" ? (
+              <span style={{ fontSize: 11, color: pinkTheme.textMuted }}>
+                📍 {nearbyLocation.addressLabel ?? "현재 위치"}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={nearbyLocation.requestLocation}
+                disabled={nearbyLocation.status === "requesting"}
+                style={{
+                  border: "none",
+                  background: "none",
+                  color: pinkTheme.primary,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                {nearbyLocation.status === "requesting" ? "위치 확인 중..." : "📍 내 위치로 찾기"}
+              </button>
+            )}
+          </div>
+          {(nearbyLocation.status === "denied" || nearbyLocation.status === "unsupported") && (
+            <p style={{ margin: "0 0 10px", fontSize: 11, color: pinkTheme.textMuted }}>
+              위치를 확인할 수 없어 서울 기준으로 안내해요.
+            </p>
+          )}
           <div style={{ display: "flex", gap: 10 }}>
             <button
               type="button"
-              onClick={() => openNearbySearch("병원", DEFAULT_REGION_LABEL)}
+              onClick={() =>
+                openNearbySearch("병원", nearbyLocation.addressLabel ?? DEFAULT_REGION_LABEL)
+              }
               style={{
                 flex: 1,
                 padding: "11px 0",
@@ -581,7 +623,9 @@ export default function HomePage() {
             </button>
             <button
               type="button"
-              onClick={() => openNearbySearch("약국", DEFAULT_REGION_LABEL)}
+              onClick={() =>
+                openNearbySearch("약국", nearbyLocation.addressLabel ?? DEFAULT_REGION_LABEL)
+              }
               style={{
                 flex: 1,
                 padding: "11px 0",
