@@ -15,6 +15,7 @@ from app.dtos.dur_dto import (
     IngredientDetail,
     IngredientRuleDetail,
     IngredientScreeningResponse,
+    IngredientSourceDrug,
     InteractionScreeningResponse,
     RecallInfo,
 )
@@ -122,9 +123,14 @@ class DurScreeningService:
                 for i in repo.get_drug_identification(item_seqs):
                     identification_by_seq.setdefault(i["item_seq"], i)
 
+                safety_by_seq: dict[str, dict] = {}
+                for s in repo.get_drug_safety_info(item_seqs):
+                    safety_by_seq.setdefault(s["item_seq"], s)
+
                 results = []
                 for d in matched:
                     ident = identification_by_seq.get(d["item_seq"])
+                    safety = safety_by_seq.get(d["item_seq"])
                     detail = DrugDetail(
                         item_seq=d["item_seq"],
                         item_name=d["item_name"],
@@ -142,6 +148,9 @@ class DurScreeningService:
                         )
                         if ident
                         else None,
+                        atc_code=safety["atc_code"] if safety else None,
+                        is_rare_drug=(safety["rare_drug_yn"] == "Y") if safety and safety["rare_drug_yn"] else None,
+                        narcotic_kind_name=(safety["narcotic_kind_name"] or None) if safety else None,
                     )
                     results.append(
                         BasicScreeningResult(
@@ -207,11 +216,13 @@ class DurScreeningService:
 
                 ingr_codes_by_item = repo.get_ingredient_codes_for_items(item_seqs)
 
-                source_items_by_ingr: dict[str, set[str]] = {}
+                # ingr_code -> {item_seq -> (qnt, unit)} - set이 아니라 dict인 이유는 같은 성분이라도
+                # 약마다 함량(qnt/unit)이 다를 수 있어 item_seq별로 따로 들고 있어야 하기 때문.
+                source_items_by_ingr: dict[str, dict[str, tuple[str | None, str | None]]] = {}
                 ingr_names: dict[str, str] = {}
                 for seq, codes in ingr_codes_by_item.items():
-                    for code, name in codes:
-                        source_items_by_ingr.setdefault(code, set()).add(seq)
+                    for code, name, qnt, unit in codes:
+                        source_items_by_ingr.setdefault(code, {})[seq] = (qnt, unit)
                         if name:
                             ingr_names.setdefault(code, name)
 
@@ -237,7 +248,13 @@ class DurScreeningService:
                     IngredientDetail(
                         ingr_code=code,
                         ingr_name=ingr_names.get(code, ""),
-                        source_drug_names=sorted(seq_to_name[seq] for seq in seqs),
+                        source_drugs=sorted(
+                            (
+                                IngredientSourceDrug(item_seq=seq, item_name=seq_to_name[seq], qnt=qnt, unit=unit)
+                                for seq, (qnt, unit) in seqs.items()
+                            ),
+                            key=lambda d: d.item_name,
+                        ),
                         rules=rules_by_ingr.get(code, []),
                     )
                     for code, seqs in source_items_by_ingr.items()

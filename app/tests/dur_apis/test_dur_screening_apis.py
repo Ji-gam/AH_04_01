@@ -27,6 +27,7 @@ def test_basic_screening_returns_dur_simple_for_known_drug():
     assert len(data["results"]) == 1
     result = data["results"][0]
     assert result["drug_detail"]["item_name"] == IBUPROFEN_200
+    assert result["drug_detail"]["atc_code"] == "M01AE01"  # T-MED-14-1: drug_prdt_prmsn_detail 기반
 
     dur_simple = result["dur_simple"]
     # dur_simple은 present 여부와 무관하게 항상 6개 고정 순서로 내려간다.
@@ -128,6 +129,22 @@ def test_ingredient_screening_resolves_ingredients_for_zero_rule_drug():
 
     ingr_codes = {i["ingr_code"] for i in data["ingredients"]}
     assert {"D000316", "D001098"}.issubset(ingr_codes)
+
+
+def test_ingredient_screening_includes_source_drug_dosage():
+    """T-MED-14-1 후속: source_drugs가 item_seq/함량(qnt/unit)까지 포함하는지 확인."""
+    response = client.post(
+        "/api/v1/dur/screening/ingredient",
+        json={"drug_names": [ACTIFED]},
+    )
+    assert response.status_code == 200
+    data = response.json()
+
+    pseudoephedrine = next(i for i in data["ingredients"] if i["ingr_code"] == "D000316")
+    source = next(d for d in pseudoephedrine["source_drugs"] if d["item_seq"] == "197000053")
+    assert source["item_name"] == ACTIFED
+    assert source["qnt"] == "60"
+    assert source["unit"] == "밀리그램"
 
 
 def test_ingredient_screening_all_unmatched_returns_200_with_empty_ingredients():

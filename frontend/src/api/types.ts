@@ -223,6 +223,10 @@ export interface DurDrugDetail {
   deposit_method_qesitm: string | null;
   item_image: string | null;
   identification: DurDrugIdentification | null;
+  // T-MED-14-1: DrugPrdtPrmsnInfoService07(품목당 성분 상세) 기반 추가 정보.
+  atc_code: string | null;
+  is_rare_drug: boolean | null;
+  narcotic_kind_name: string | null; // "마약"/"향정"/"한외마약" 등, 해당 없으면 null
 }
 
 export interface DurBasicScreeningResult {
@@ -266,10 +270,19 @@ export interface DurIngredientRuleDetail {
   remark: string | null;
 }
 
+/** 이 성분을 가진 입력 약품 - item_seq로 상세화면 링크 가능, qnt/unit은 이 약에서의 실제 함량
+ * (drug_prdt_mcpn_detail 기반일 때만 채워짐, MATERIAL_NAME 텍스트 폴백이면 null). */
+export interface DurIngredientSourceDrug {
+  item_seq: string;
+  item_name: string;
+  qnt: string | null;
+  unit: string | null;
+}
+
 export interface DurIngredientDetail {
   ingr_code: string;
   ingr_name: string;
-  source_drug_names: string[];
+  source_drugs: DurIngredientSourceDrug[];
   rules: DurIngredientRuleDetail[];
 }
 
