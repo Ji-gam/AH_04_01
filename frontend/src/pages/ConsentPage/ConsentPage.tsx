@@ -15,13 +15,13 @@ export default function ConsentPage() {
   const [agreed, setAgreed] = useState(false);
 
   useEffect(() => {
-    if (user && hasConsented(user.profile_id)) {
+    if (user && hasConsented(user.email)) {
       navigate("/health-info", { replace: true });
     }
   }, [navigate, user]);
 
   function handleAgreeAndContinue() {
-    if (user) markConsented(user.profile_id);
+    if (user) markConsented(user.email);
     navigate("/health-info", { replace: true });
   }
 
@@ -46,6 +46,21 @@ export default function ConsentPage() {
           padding: "24px",
         }}
       >
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          style={{
+            background: "none",
+            border: "none",
+            color: pinkTheme.textMuted,
+            padding: 0,
+            marginBottom: 12,
+            cursor: "pointer",
+          }}
+        >
+          ← 뒤로가기
+        </button>
+
         <h1 style={{ fontSize: 18, color: pinkTheme.text, marginTop: 0 }}>
           개인정보(건강정보) 제공동의
         </h1>

@@ -106,33 +106,58 @@ export interface GenerateContentPayload {
 export type Disease =
   "CANCER" | "HEART_DISEASE" | "CEREBROVASCULAR_DISEASE" | "DIABETES" | "LIVER_DISEASE" | "OTHER";
 
-// 진단병력/가족력의 항목 하나. detail은 선택 - 체크만 하고 상세는 안 적어도 된다.
-export interface DiseaseEntry {
+export type DiseaseStatus = "WELL_CONTROLLED" | "MODERATE" | "UNCONTROLLED" | "CURED";
+
+export type FamilyRelation = "PARENT" | "SIBLING" | "GRANDPARENT" | "OTHER";
+
+// 본인 진단병력 항목 하나. disease_subtype(구체적 질환명, 예: "폐암")은 AI가 약물/관리법을
+// 판단하는 데 대분류(disease)만으론 부족해서 따로 받는다. 나머지는 전부 선택.
+export interface DiagnosisEntry {
   disease: Disease;
+  disease_subtype: string | null;
+  diagnosed_years_ago: number | null;
+  status: DiseaseStatus | null;
+  on_medication: boolean | null;
   detail: string | null;
+}
+
+// 가족력 항목 하나. relation(혈연관계)은 유전적 위험도 해석에 직접 영향을 주므로 구조화해서 받는다.
+export interface FamilyHistoryEntry {
+  disease: Disease;
+  disease_subtype: string | null;
+  relation: FamilyRelation | null;
+  detail: string | null;
+}
+
+export interface DiseaseSubtypeSearchResult {
+  name: string;
+  is_custom: boolean;
 }
 
 export interface HealthInfoResult {
   // [변경] 가입 시 나이/성별을 안 받아서, 여기가 나이/성별을 처음 입력받는 곳이 됐다 (둘 다 수정 가능).
-  age: number | null;
+  // [재설계] 나이는 저장하지 않고 birth_date(생년월일, 연도 포함)로부터 항상 자동 계산된다
+  // (카카오 비즈앱 전환 후 실제 생년월일을 받아올 가능성을 고려한 결정).
+  age: number | null; // birth_date로 계산된 만 나이, birth_date 없으면 null
+  birth_date: string | null; // "YYYY-MM-DD" 형식
   gender: "MALE" | "FEMALE" | null;
   height_cm: number | null;
   weight_kg: number | null;
   bmi: number | null; // height_cm/weight_kg 둘 다 있어야 값이 있음, 백엔드가 계산해서 내려줌
-  diagnosis_history: DiseaseEntry[];
-  family_history: DiseaseEntry[];
+  diagnosis_history: DiagnosisEntry[];
+  family_history: FamilyHistoryEntry[];
   special_notes: string | null;
   other_notes: string | null;
 }
 
 // PATCH 요청 바디. 전부 선택 - 보낸 필드만 반영된다. 빈 배열([])을 보내면 "질병 없음"으로 확정되어 지워진다.
 export interface HealthInfoUpdatePayload {
-  age?: number;
+  birth_date?: string; // "YYYY-MM-DD"
   gender?: "MALE" | "FEMALE";
   height_cm?: number;
   weight_kg?: number;
-  diagnosis_history?: DiseaseEntry[];
-  family_history?: DiseaseEntry[];
+  diagnosis_history?: DiagnosisEntry[];
+  family_history?: FamilyHistoryEntry[];
   special_notes?: string;
   other_notes?: string;
 }

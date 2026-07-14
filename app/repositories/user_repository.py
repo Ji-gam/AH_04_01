@@ -32,6 +32,23 @@ class UserRepository:
     async def exists_by_email(self, session: AsyncSession, email: str) -> bool:
         return await self.get_user_by_email(session, email) is not None
 
+    async def get_by_sns(self, session: AsyncSession, sns_provider: str, sns_id: str) -> User | None:
+        result = await session.execute(select(User).where(User.sns_provider == sns_provider, User.sns_id == sns_id))
+        return result.scalar_one_or_none()
+
+    async def create_social_user(
+        self,
+        session: AsyncSession,
+        email: str,
+        sns_provider: str,
+        sns_id: str,
+    ) -> User:
+        # 소셜 가입자는 비밀번호가 없다(hashed_password=None) - 본인이 정한 적 없는 값이라 절대 채우지 않는다.
+        user = User(email=email, hashed_password=None, sns_provider=sns_provider, sns_id=sns_id)
+        session.add(user)
+        await session.flush()
+        return user
+
     async def update_last_login(self, session: AsyncSession, user_id: int) -> None:
         user = await self.get_user(session, user_id)
         if user is not None:
