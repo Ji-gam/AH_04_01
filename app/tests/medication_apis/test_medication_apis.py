@@ -7,6 +7,7 @@ from starlette import status
 from app.main import app
 from app.models.medication_model import Medication
 from app.repositories.medication_repository import MedicationRepository
+from app.services import medication_open_api_client
 from app.tests.conftest import TestSessionLocal
 
 
@@ -65,7 +66,12 @@ async def _seed_dummy_medications():
             )
 
 
-async def test_recognition_job_creation_and_completion():
+async def test_recognition_job_creation_and_completion(monkeypatch):
+    async def _fake_drug_summary(item_name=None, **kwargs):
+        return [{"itemName": item_name, "intrcQesitm": "이 약을 복용하는 동안 자몽주스를 피하세요."}]
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_drug_summary)
+
     await _seed_dummy_medications()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         token = await _signup_and_login(client, "ocr_test@example.com")
@@ -107,7 +113,9 @@ async def test_recognition_job_creation_and_completion():
         )
         assert confirm_response.status_code == status.HTTP_200_OK
         assert confirm_response.json()["status"] == "confirmed"
-        assert len(confirm_response.json()["guide_cards"]) > 0
+        guide_cards = confirm_response.json()["guide_cards"]
+        assert len(guide_cards) == 1
+        assert "자몽주스" in guide_cards[0]["content"]
 
         # 4. 복약 스케줄 목록 조회 검증
         list_response = await client.get("/api/v1/medications", headers=headers)

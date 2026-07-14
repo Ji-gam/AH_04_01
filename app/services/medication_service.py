@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import AsyncSessionLocal
 from app.dtos.medication_dto import (
+    FoodInteractionCheckResult,
     GuideCard,
     InteractionCheckResult,
     InteractionWarning,
@@ -163,6 +164,50 @@ _DOSAGE_COUNT_PATTERN = re.compile(r"1회\s*(\d+)\s*(정|캡슐|포)")
 _DURATION_PATTERN = re.compile(r"(\d+)\s*일분")
 _TIME_PATTERN = re.compile(r"\b([01]?\d|2[0-3]):([0-5]\d)\b")
 _INSTRUCTION_PATTERN = re.compile(r"(식후|식전|취침\s*전)\s*(\d+\s*분)?")
+
+
+# T-DOC-2: e약은요(의약품개요정보) API 응답의 상호작용 문항("이 약을 사용하는 동안 주의해야 할
+# 약 또는 음식은 무엇입니까?")은 실제로는 약물 간 상호작용과 음식/음주 주의사항이 한 텍스트에
+# 섞여 있다(실 API로 확인 — 아스피린 사례 대부분이 다른 약과의 병용 얘기였고 음식 언급이 없거나
+# 일부에 불과했다). "음식" 탭에 약물 간 상호작용까지 그대로 보여주면 오해를 주므로, 음식/음주
+# 키워드가 있는 문장만 골라낸다.
+_FOOD_GUIDE_CARD_TITLE = "복약 중 음식 주의사항"
+_NO_FOOD_INTERACTION_MESSAGE = "확인된 음식·음주 관련 주의사항이 없습니다."
+_FOOD_INFO_UNAVAILABLE_MESSAGE = (
+    "식약처 e약은요에서 이 약의 정보를 찾지 못해 음식·음주 관련 주의사항을 확인할 수 없습니다."
+)
+_FOOD_KEYWORDS = (
+    "음식",
+    "식품",
+    "식사",
+    "자몽",
+    "알코올",
+    "술",
+    "음주",
+    "금주",
+    "카페인",
+    "커피",
+    "우유",
+    "유제품",
+    "요구르트",
+    "낫토",
+    "청국장",
+    "비타민K",
+    "녹황색 채소",
+    "녹차",
+    "홍차",
+    "탄산음료",
+)
+
+
+def _extract_food_related_sentences(intrc_text: str) -> str | None:
+    """intrcQesitm 원문에서 음식/음주 키워드가 있는 문장만 골라 이어붙인다. 규칙(키워드 매칭)
+    기반 1차 구현이며, 오탐(예: 약 이름에 우연히 겹치는 키워드)이 늘어나면 이 함수만 LLM 기반
+    추출로 교체할 수 있게 분리해뒀다 — 호출부(`_build_food_interaction_guide_card`)는 그대로다.
+    문장이 하나도 없으면 None(약물 간 상호작용만 있고 음식 관련 언급은 없다는 뜻)."""
+    sentences = re.split(r"(?<=[.!?])\s+|\n+", intrc_text)
+    food_sentences = [s.strip() for s in sentences if s.strip() and any(k in s for k in _FOOD_KEYWORDS)]
+    return " ".join(food_sentences) if food_sentences else None
 
 
 class OcrField(NamedTuple):
@@ -705,6 +750,43 @@ async def _resolve_ocr_fields(file_bytes: bytes, file_name: str, dummy_mode: boo
     return ocr_fields, False
 
 
+async def _fetch_drug_summary_with_fallback(medication_name: str) -> list[dict]:
+    """e약은요 `itemName` 파라미터는 정확/부분 일치라, OCR/사용자 입력의 'NNmg' 접미사가 실제
+    품목명(대개 '밀리그램' 등 한글 단위 표기)과 안 맞으면 빈 결과가 흔하다(실 API로 확인 —
+    "아스피린정 100mg"는 0건, "아스피린정"은 1건). `_fetch_master_data_with_fallback`과 동일한
+    패턴으로 접미사를 뗀 이름으로 한 번 더 시도한다."""
+    summaries = await medication_open_api_client.fetch_drug_summary(item_name=medication_name)
+    if summaries:
+        return summaries
+
+    stripped_name = _strip_trailing_dosage(medication_name)
+    if stripped_name:
+        return await medication_open_api_client.fetch_drug_summary(item_name=stripped_name)
+    return summaries
+
+
+async def _build_food_interaction_guide_card(medication_name: str) -> GuideCard:
+    """(T-DOC-2) e약은요 API의 `intrcQesitm`(상호작용 문항)에서 음식/음주 관련 주의사항을 가져와
+    GuideCard로 변환한다. 항상 카드를 반환한다(등록약 여러 개 중 일부만 카드가 사라지면 "그
+    약은 검사 안 했다"처럼 보이므로) — "확인된 주의사항 없음"과 "정보를 못 찾아 확인 불가"를
+    서로 다른 문구로 명시해 구분한다."""
+    title = f"{medication_name} · {_FOOD_GUIDE_CARD_TITLE}"
+    try:
+        summaries = await _fetch_drug_summary_with_fallback(medication_name)
+    except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
+        return GuideCard(title=title, content=_FOOD_INFO_UNAVAILABLE_MESSAGE, severity="info")
+
+    if not summaries:
+        return GuideCard(title=title, content=_FOOD_INFO_UNAVAILABLE_MESSAGE, severity="info")
+
+    raw_interaction_text = (summaries[0].get("intrcQesitm") or "").strip()
+    food_text = _extract_food_related_sentences(raw_interaction_text) if raw_interaction_text else None
+    if not food_text:
+        return GuideCard(title=title, content=_NO_FOOD_INTERACTION_MESSAGE, severity="info")
+
+    return GuideCard(title=title, content=food_text, severity="caution")
+
+
 async def _execute_ocr_logic(
     db_session: AsyncSession,
     job_id: str,
@@ -834,6 +916,7 @@ class MedicationService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 작업(Job)을 찾을 수 없습니다.")
 
         # 최종 약물 확정 및 등록 처리
+        med: Medication | None = None
         if selected_candidate_drug_code:
             med = await self._repository.get_medication_by_code(session, selected_candidate_drug_code)
             if not med:
@@ -860,16 +943,10 @@ class MedicationService:
                 )
                 await self._repository.create_schedule(session, schedule)
 
-        # 12, 13번: 추후 확장을 위한 구조 설계
+        # 13번: 음식(T-DOC-2) — 등록된 약의 e약은요 상호작용 문항에서 음식/음주 주의사항을 안내한다.
         guide_cards = []
-        if selected_candidate_drug_code:
-            guide_cards.append(
-                GuideCard(
-                    title="복약 주의사항 안내",
-                    content="등록하신 약품의 부작용 및 상호작용 정보(DUR)는 추후 연동될 예정입니다.",
-                    severity="info",
-                )
-            )
+        if med:
+            guide_cards.append(await _build_food_interaction_guide_card(med.medication_name))
 
         return RecognitionConfirmResult(status="confirmed", guide_cards=guide_cards)
 
@@ -1011,6 +1088,17 @@ class MedicationService:
 
         warnings = await _find_interaction_warnings(meds_with_seq)
         return InteractionCheckResult(warnings=warnings, checked_count=len(meds_with_seq))
+
+    async def check_food_interactions(self, session: AsyncSession, profile_id: int) -> FoodInteractionCheckResult:
+        """(T-DOC-2) 등록약 전체를 대상으로 e약은요 상호작용 문항에서 음식/음주 주의사항을 모은다.
+        confirm_recognition_job의 1회성 안내와 달리, OCR로 등록했든 수동으로 등록했든 상관없이
+        "음식(13번)" 탭을 열 때마다 현재 등록약 전체 기준으로 조회한다."""
+        schedules = await self._repository.list_schedules_by_profile(session, profile_id)
+        medications = list({s.medication_id: s.medication for s in schedules}.values())
+
+        guide_cards = [await _build_food_interaction_guide_card(med.medication_name) for med in medications]
+
+        return FoodInteractionCheckResult(guide_cards=guide_cards, checked_count=len(medications))
 
     async def search_medications(self, session: AsyncSession, query: str) -> list[dict]:
         meds = await self._repository.search_medication_by_name(session, query)

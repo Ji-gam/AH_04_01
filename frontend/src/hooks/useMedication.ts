@@ -26,6 +26,18 @@ export interface InteractionCheckResult {
   checked_count: number;
 }
 
+export interface GuideCard {
+  title: string;
+  content: string;
+  severity: string;
+  disclaimer: string;
+}
+
+export interface FoodInteractionCheckResult {
+  guide_cards: GuideCard[];
+  checked_count: number;
+}
+
 export interface RecognitionCandidate {
   drug_name: string;
   match_rate: number;
@@ -129,6 +141,10 @@ export function useMedication() {
     return await apiFetch<InteractionCheckResult>("/medications/interactions");
   };
 
+  const checkFoodInteractions = async (): Promise<FoodInteractionCheckResult> => {
+    return await apiFetch<FoodInteractionCheckResult>("/medications/food-interactions");
+  };
+
   const searchMedications = async (query: string) => {
     try {
       return await apiFetch<
@@ -224,6 +240,7 @@ export function useMedication() {
     deleteSchedule,
     searchMedications,
     checkInteractions,
+    checkFoodInteractions,
     uploadJob,
     getJobStatus,
     confirmJob,
