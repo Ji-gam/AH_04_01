@@ -1,6 +1,8 @@
+import dataclasses
 import os
 import sqlite3
 import sys
+from typing import Any
 
 SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "..", "scripts", "drug_info_sync")
 SCRIPT_DIR = os.path.abspath(SCRIPT_DIR)
@@ -13,8 +15,8 @@ from pipeline_db import APIPipeline  # type: ignore[import-not-found]  # noqa: E
 from run_db import get_api_key  # type: ignore[import-not-found]  # noqa: E402
 
 
-def make_spec(**overrides) -> APISpec:
-    defaults = dict(
+def make_spec(**overrides: Any) -> APISpec:
+    base = APISpec(
         name="sample_api",
         base_url="https://apis.data.go.kr/sample",
         output_filename="sample",
@@ -22,8 +24,7 @@ def make_spec(**overrides) -> APISpec:
         primary_keys=["ITEM_SEQ"],
         index_columns=["ITEM_SEQ"],
     )
-    defaults.update(overrides)
-    return APISpec(**defaults)
+    return dataclasses.replace(base, **overrides)
 
 
 def make_pipeline(tmp_path, **spec_overrides) -> APIPipeline:
@@ -171,7 +172,7 @@ class TestFindMatchingItemSeq:
 
 class TestGetApiKey:
     def test_raises_when_env_var_missing(self, monkeypatch):
-        monkeypatch.delenv("DATA_GO_KR_API_KEY", raising=False)
+        monkeypatch.delenv("PUBLIC_DATA_API_KEY", raising=False)
 
         try:
             get_api_key()
@@ -180,7 +181,7 @@ class TestGetApiKey:
             pass
 
     def test_returns_env_var_value_when_set(self, monkeypatch):
-        monkeypatch.setenv("DATA_GO_KR_API_KEY", "test-key-1234")
+        monkeypatch.setenv("PUBLIC_DATA_API_KEY", "test-key-1234")
 
         assert get_api_key() == "test-key-1234"
 

@@ -6,15 +6,23 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Any
 
 from config_db import API_SPECS, DB_PATH, DEFAULT_WORKERS
+from dotenv import load_dotenv
 from pipeline_db import APIPipeline
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
+load_dotenv(os.path.join(REPO_ROOT, ".env"))
 
 
 def get_api_key() -> str:
-    """환경변수에서 공공데이터포털 API 인증키를 조회합니다."""
+    """.env(리포 루트) 또는 환경변수에서 공공데이터포털 API 인증키를 조회합니다.
 
-    api_key = os.getenv("DATA_GO_KR_API_KEY")
+    app/core/config.py의 PUBLIC_DATA_API_KEY(T-MED-4)와 동일한 데이터포털 서비스키를 공유한다.
+    """
+
+    api_key = os.getenv("PUBLIC_DATA_API_KEY")
     if not api_key:
-        raise RuntimeError("환경변수 DATA_GO_KR_API_KEY가 설정되지 않았습니다.")
+        raise RuntimeError("PUBLIC_DATA_API_KEY가 설정되지 않았습니다 (.env 또는 환경변수를 확인하세요).")
 
     return api_key
 
