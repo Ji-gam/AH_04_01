@@ -6,7 +6,15 @@
  * "생활정보 입력했는지" 같은 도메인 사실은 서버(DB)가 원본이라 여기 캐싱하지 않는다 —
  * 그 도메인 화면이 직접 백엔드에 물어봐서 받은 값을 그대로 쓴다.
  */
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { authApi } from "../api/authApi";
 import { setAccessToken, tryRefreshAccessToken } from "../api/client";
@@ -36,20 +44,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-  if (didInit.current) return;
-  didInit.current = true;
+    if (didInit.current) return;
+    didInit.current = true;
 
-  (async () => {
-    try {
-      const ok = await tryRefreshAccessToken();
-      if (ok) {
-        await fetchMe();
+    (async () => {
+      try {
+        const ok = await tryRefreshAccessToken();
+        if (ok) {
+          await fetchMe();
+        }
+      } finally {
+        setIsLoading(false);
       }
-    } finally {
-      setIsLoading(false);
-    }
-  })();
-}, [fetchMe]);
+    })();
+  }, [fetchMe]);
 
   const login = useCallback(
     async (email: string, password: string) => {
