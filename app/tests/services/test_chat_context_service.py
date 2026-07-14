@@ -1,15 +1,24 @@
 from dataclasses import dataclass, field
 
+from app.models.profiles import Disease
 from app.services.chat_context_service import ChatContextService
 
 
 @dataclass
+class FakeDiagnosisEntry:
+    """`chat_context_service.py`가 `e.disease.value`로 읽으므로, disease는 실제 Disease enum을 쓴다."""
+
+    disease: Disease
+
+
+@dataclass
 class FakeProfile:
+    # [정규화] diagnosis_history(JSON) -> diagnosis_entries(관계형 리스트)로 필드명/타입 변경.
     id: int
     name: str = "사용자"
     age: int | None = None
-    diagnosis_history: list[dict] | None = None
-    family_history: list[dict] | None = None
+    diagnosis_entries: list[FakeDiagnosisEntry] = field(default_factory=list)
+    family_history_entries: list[FakeDiagnosisEntry] = field(default_factory=list)
 
 
 @dataclass
@@ -33,7 +42,7 @@ def test_none_profile_returns_anonymous_context():
 
 
 def test_diagnosis_history_maps_to_korean_disease_codes():
-    profile = FakeProfile(id=1, diagnosis_history=[{"disease": "DIABETES", "detail": None}])
+    profile = FakeProfile(id=1, diagnosis_entries=[FakeDiagnosisEntry(disease=Disease.DIABETES)])
 
     context = ChatContextService().build(profile, [])
 

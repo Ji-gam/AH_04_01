@@ -2,6 +2,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.profiles import Gender, Profile, ProfileRelation
 
@@ -9,11 +10,9 @@ ALLOWED_UPDATE_FIELDS = [
     "name",
     "phone_number",
     "gender",
-    "age",
+    "birth_date",
     "height_cm",
     "weight_kg",
-    "diagnosis_history",
-    "family_history",
     "special_notes",
     "other_notes",
 ]
@@ -21,7 +20,18 @@ ALLOWED_UPDATE_FIELDS = [
 
 class ProfileRepository:
     async def get_profile(self, session: AsyncSession, profile_id: int) -> Profile | None:
-        return await session.get(Profile, profile_id)
+        # [정규화] diagnosis_entries/family_history_entries는 이제 별도 테이블(1:N)이라, 이 profile을
+        # 넘겨받는 다른 서비스(채팅 컨텍스트/콘텐츠 개인화 등)가 그 관계를 바로 읽어도 되게 미리
+        # eager load 해둔다 - 안 그러면 비동기 환경에서 lazy load 시도 시 에러가 난다.
+        result = await session.execute(
+            select(Profile)
+            .where(Profile.id == profile_id)
+            .options(
+                selectinload(Profile.diagnosis_entries),
+                selectinload(Profile.family_history_entries),
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def get_default_profile_for_user(self, session: AsyncSession, user_id: int) -> Profile | None:
         result = await session.execute(

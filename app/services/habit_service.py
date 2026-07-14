@@ -43,11 +43,13 @@ DISEASE_HABITS: dict[Disease, HabitDef] = {
 
 def build_full_pool(profile: Profile) -> list[HabitDef]:
     """가능한 전체 습관 후보 = 기본 세트 + 등록된 질환마다 맞춤 습관 1개(중복 질환은 1개로 합침).
-    오늘 실제로 보여줄 3개는 이 후보군에서 pick_todays_habits()가 날짜 기준으로 골라낸다."""
+    오늘 실제로 보여줄 3개는 이 후보군에서 pick_todays_habits()가 날짜 기준으로 골라낸다.
+    [정규화] diagnosis_history(JSON) 대신 diagnosis_entries(1:N 관계형 테이블)에서 읽는다 -
+    각 항목이 이미 Disease enum 객체(entry.disease)라 문자열 변환 불필요."""
     pool = list(BASE_HABITS)
     seen: set[Disease] = set()
-    for entry in profile.diagnosis_history or []:
-        disease = Disease(entry["disease"])
+    for entry in profile.diagnosis_entries or []:
+        disease = entry.disease
         if disease in seen:
             continue
         seen.add(disease)
