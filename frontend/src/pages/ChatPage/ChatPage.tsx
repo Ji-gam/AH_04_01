@@ -6,6 +6,16 @@ import { useChatStream } from "../../hooks/useChatStream";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 export default function ChatPage() {
+  // 홈 화면 "AI 건강 상담" 입력창에서 넘어온 질문을 도착하자마자 자동으로 전송한다.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const autoSentRef = useRef(false);
+  // 최초 마운트 시점의 location.state만 본다(전송 직후 state를 지우므로 리렌더 때는 이미 없음) -
+  // 자동 전송이 예정돼 있으면 "마지막 상담 복원"을 건너뛰어야 질문이 화면에 바로 보인다.
+  const hasAutoMessageRef = useRef(
+    Boolean((location.state as { autoMessage?: string } | null)?.autoMessage),
+  );
+
   const {
     messages,
     sendMessage,
@@ -14,14 +24,9 @@ export default function ChatPage() {
     currentSessionId,
     selectSession,
     startNewChat,
-  } = useChatStream();
+  } = useChatStream({ skipRestoreOnMount: hasAutoMessageRef.current });
   const [input, setInput] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  // 홈 화면 "AI 건강 상담" 입력창에서 넘어온 질문을 도착하자마자 자동으로 전송한다.
-  const location = useLocation();
-  const navigate = useNavigate();
-  const autoSentRef = useRef(false);
   useEffect(() => {
     const autoMessage = (location.state as { autoMessage?: string } | null)?.autoMessage;
     if (autoMessage && !autoSentRef.current) {
