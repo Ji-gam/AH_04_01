@@ -159,6 +159,22 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
       }
     >
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
+        {!embedded && (
+          <button
+            type="button"
+            onClick={() => navigate("/more")}
+            style={{
+              background: "none",
+              border: "none",
+              color: c.textMuted,
+              padding: 0,
+              marginBottom: 12,
+              cursor: "pointer",
+            }}
+          >
+            ← 뒤로가기
+          </button>
+        )}
         <div
           style={{
             display: "flex",
@@ -167,27 +183,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
             marginBottom: 18,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {!embedded && (
-              <button
-                type="button"
-                aria-label="뒤로"
-                onClick={() => navigate("/more")}
-                style={{
-                  border: "none",
-                  background: "none",
-                  color: c.text,
-                  fontSize: 20,
-                  cursor: "pointer",
-                  lineHeight: 1,
-                  padding: 0,
-                }}
-              >
-                ←
-              </button>
-            )}
-            <h1 style={{ fontSize: 19, fontWeight: 700, color: c.text, margin: 0 }}>⏰ {title}</h1>
-          </div>
+          <h1 style={{ fontSize: 19, fontWeight: 700, color: c.text, margin: 0 }}>⏰ {title}</h1>
           {totalCount > 0 && (
             <span
               style={{
