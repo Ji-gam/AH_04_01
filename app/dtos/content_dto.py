@@ -14,7 +14,9 @@ class HealthContentResponse(BaseModel):
     summary: str = Field(description="카드 요약(카드뉴스용)")
     body: str = Field(description="카드 본문")
     image_prompt: str | None = Field(default=None, description="카드뉴스 이미지 생성용 프롬프트(T-LLM-4에서 사용)")
-    source_refs: list[str] | None = Field(default=None, description="원문 출처 URL 목록(상세화면 '참고자료' 섹션용, 없으면 null)")
+    source_refs: list[str] | None = Field(
+        default=None, description="원문 출처 URL 목록(상세화면 '참고자료' 섹션용, 없으면 null)"
+    )
     disclaimer: str = Field(description="면책 문구(응답 시점에 항상 동적으로 부착됨)")
 
 
