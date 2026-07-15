@@ -121,6 +121,18 @@ export default function MorePage() {
             </span>
           </Link>
 
+          <Link to="/family" style={menuCardStyle}>
+            <span>
+              👨‍👩‍👧 가족관리
+              <span style={menuDescStyle}>
+                부모님 등 가족을 연결하고, 그분 몫으로 약을 등록해요
+              </span>
+            </span>
+            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+              ›
+            </span>
+          </Link>
+
           <Link to="/lifestyle-info" style={menuCardStyle}>
             <span>
               🌙 생활습관 정보
