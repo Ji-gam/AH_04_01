@@ -2,25 +2,30 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { habitApi } from "../../api/habitApi";
-import type { HabitRecommendationItemResult } from "../../api/types";
+import type { HabitRecommendationItemResult, HabitsTodayResult } from "../../api/types";
+import SelectedHabitsModal from "../../components/habit/SelectedHabitsModal";
+import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 
 const MAX_SELECTIONS = 5;
 
 export default function HabitSelectionPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [habits, setHabits] = useState<HabitRecommendationItemResult[] | null>(null);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [habitsToday, setHabitsToday] = useState<HabitsTodayResult | null>(null);
+  const [showSelectedModal, setShowSelectedModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    habitApi
-      .getRecommendations()
-      .then((result) => {
-        setHabits(result.habits);
-        setSelectedKeys(new Set(result.selected_keys));
+    Promise.all([habitApi.getRecommendations(), habitApi.getToday()])
+      .then(([recommendations, today]) => {
+        setHabits(recommendations.habits);
+        setSelectedKeys(new Set(recommendations.selected_keys));
+        setHabitsToday(today);
       })
       .catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "추천 습관을 불러오지 못했습니다.");
@@ -43,11 +48,21 @@ export default function HabitSelectionPage() {
 
   async function handleSave() {
     try {
-      await habitApi.selectHabits(Array.from(selectedKeys));
+      const result = await habitApi.selectHabits(Array.from(selectedKeys));
+      setHabitsToday(result);
       setSaved(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "저장 중 오류가 발생했습니다.");
     }
+  }
+
+  function handleCheckHabit(habitKey: string) {
+    habitApi
+      .check(habitKey)
+      .then(setHabitsToday)
+      .catch(() => {
+        // 습관 체크는 부가 기능이라 실패해도 조용히 무시 - 다음 클릭에서 다시 시도하면 된다.
+      });
   }
 
   return (
@@ -68,31 +83,49 @@ export default function HabitSelectionPage() {
           ← 뒤로가기
         </button>
 
-        <div
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 12px" }}>
+          습관 리스트
+        </h1>
+
+        {/* 선택한 습관 — 누르면 오늘 진행 상황(SelectedHabitsModal)을 모달로 보여준다. */}
+        <button
+          type="button"
+          onClick={() => setShowSelectedModal(true)}
           style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            marginBottom: 6,
+            display: "block",
+            width: "100%",
+            textAlign: "left",
+            background: t.cardBg,
+            border: `1px solid ${t.border}`,
+            borderRadius: 16,
+            padding: 16,
+            marginBottom: 20,
+            boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+            cursor: "pointer",
           }}
         >
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: 0 }}>
-            🌿 오늘의 추천 습관
-          </h1>
-          <span
-            style={{
-              background: t.primarySoft,
-              color: t.primary,
-              borderRadius: 999,
-              padding: "5px 12px",
-              fontSize: 12,
-              fontWeight: 700,
-            }}
-          >
-            {selectedKeys.size}/{MAX_SELECTIONS} 선택
-          </span>
-        </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: t.text }}>
+              ✅ 선택한 습관
+            </p>
+            <span
+              style={{
+                background: t.primarySoft,
+                color: t.primary,
+                borderRadius: 999,
+                padding: "5px 12px",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              {selectedKeys.size}/{MAX_SELECTIONS} 선택
+            </span>
+          </div>
+        </button>
 
+        <h2 style={{ fontSize: 15, fontWeight: 700, color: t.text, margin: "0 0 6px" }}>
+          🌿 추천 받은 습관 리스트
+        </h2>
         <p style={{ margin: "0 0 20px", fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>
           오늘 해보고 싶은 습관을 최대 {MAX_SELECTIONS}개까지 골라보세요. 하나도 안 골라도 괜찮아요.
         </p>
@@ -187,6 +220,15 @@ export default function HabitSelectionPage() {
           </p>
         )}
       </div>
+
+      {user && habitsToday && showSelectedModal && (
+        <SelectedHabitsModal
+          userName={user.name}
+          habitsToday={habitsToday}
+          onCheck={handleCheckHabit}
+          onClose={() => setShowSelectedModal(false)}
+        />
+      )}
     </div>
   );
 }

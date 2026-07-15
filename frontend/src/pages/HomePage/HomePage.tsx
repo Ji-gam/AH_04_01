@@ -12,6 +12,7 @@ import type {
   HealthInfoResult,
   NotificationScheduleResult,
 } from "../../api/types";
+import SelectedHabitsModal from "../../components/habit/SelectedHabitsModal";
 import { useAuth } from "../../hooks/useAuth";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { useNearbyRegionLabel } from "../../hooks/useNearbyRegionLabel";
@@ -348,88 +349,12 @@ export default function HomePage() {
 
         {/* 라이프스타일 습관 체크 모달 — 실제 아이콘 채우기/완료 체크는 여기서 한다 */}
         {user && habitsToday && showLifestyleModal && (
-          <Modal onClose={() => setShowLifestyleModal(false)}>
-            <div
-              style={{
-                background: pinkTheme.cardBg,
-                border: `1px solid ${pinkTheme.border}`,
-                borderRadius: 16,
-                padding: 18,
-                boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
-              }}
-            >
-              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.primary }}>
-                🌿 {user.name}님을 위한 추천 라이프스타일
-              </p>
-              <p style={{ margin: "4px 0 14px", fontSize: 12, color: pinkTheme.textMuted }}>
-                오늘의 당신, 할 수 있어요!
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {habitsToday.habits.map((habit) => (
-                  <div
-                    key={habit.key}
-                    style={{
-                      background: pinkTheme.primarySoft,
-                      borderRadius: 12,
-                      padding: "10px 14px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        marginBottom: 6,
-                      }}
-                    >
-                      <span style={{ fontSize: 13, fontWeight: 700, color: pinkTheme.text }}>
-                        {habit.label}
-                      </span>
-                      <span style={{ fontSize: 12, color: pinkTheme.textMuted }}>
-                        {habit.progress}/{habit.target}
-                        {habit.unit}
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ display: "flex", gap: 4, flex: 1, flexWrap: "wrap" }}>
-                        {Array.from({ length: habit.target }, (_, i) => (
-                          <span
-                            key={i}
-                            aria-hidden
-                            style={{
-                              fontSize: 18,
-                              opacity: i < habit.progress ? 1 : 0.25,
-                              filter: i < habit.progress ? "none" : "grayscale(100%)",
-                            }}
-                          >
-                            {habit.icon}
-                          </span>
-                        ))}
-                      </div>
-                      <button
-                        type="button"
-                        disabled={habit.completed}
-                        onClick={() => handleCheckHabit(habit.key)}
-                        style={{
-                          flexShrink: 0,
-                          border: "none",
-                          borderRadius: 999,
-                          padding: "6px 14px",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          cursor: habit.completed ? "default" : "pointer",
-                          background: habit.completed ? pinkTheme.success : pinkTheme.primary,
-                          color: "#fff",
-                        }}
-                      >
-                        {habit.completed ? "완료!" : "체크"}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Modal>
+          <SelectedHabitsModal
+            userName={user.name}
+            habitsToday={habitsToday}
+            onCheck={handleCheckHabit}
+            onClose={() => setShowLifestyleModal(false)}
+          />
         )}
 
         {/* 빠른 메뉴 2x2 + AI 건강 상담 질문창 + 건강 정보 미리보기 */}
