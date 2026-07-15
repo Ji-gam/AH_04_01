@@ -65,3 +65,31 @@ class ContentRepository:
             query = query.limit(limit)
         result = await session.execute(query)
         return list(result.scalars().all())
+
+    async def get_by_id(self, session: AsyncSession, content_id: int) -> HealthContent | None:
+        """상세화면 단건 조회. 직접 URL 접근/새로고침에도 동작해야 하므로 라우터 state가
+        아니라 항상 DB에서 다시 조회한다."""
+        result = await session.execute(select(HealthContent).where(HealthContent.id == content_id))
+        return result.scalar_one_or_none()
+
+    async def list_related(
+        self,
+        session: AsyncSession,
+        disease_code: str,
+        exclude_category: str,
+        exclude_id: int,
+        limit: int = 5,
+    ) -> list[HealthContent]:
+        """상세화면의 "관련컨텐츠" - 같은 질환, 다른 컨텐츠 카테고리, 자기 자신 제외, 최신순."""
+        query = (
+            select(HealthContent)
+            .where(
+                HealthContent.disease_code == disease_code,
+                HealthContent.category != exclude_category,
+                HealthContent.id != exclude_id,
+            )
+            .order_by(HealthContent.content_date.desc(), HealthContent.id.desc())
+            .limit(limit)
+        )
+        result = await session.execute(query)
+        return list(result.scalars().all())

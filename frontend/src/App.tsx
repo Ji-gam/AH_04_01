@@ -15,11 +15,13 @@ import ChatPage from "./pages/ChatPage/ChatPage";
 import ConsentPage from "./pages/ConsentPage/ConsentPage";
 import ContentDetailPage from "./pages/ContentGenerationPage/ContentDetailPage";
 import ContentGenerationPage from "./pages/ContentGenerationPage/ContentGenerationPage";
+import DataConsentPage from "./pages/DataConsentPage/DataConsentPage";
 import DurScreeningPage from "./pages/dur/DurScreeningPage";
 import EmergencyGuidePage from "./pages/EmergencyGuidePage/EmergencyGuidePage";
 import FamilyPage from "./pages/FamilyPage/FamilyPage";
 import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
 import HomePage from "./pages/HomePage/HomePage";
+import InfoDetailPage from "./pages/InfoDetailPage/InfoDetailPage";
 import InfoPage from "./pages/InfoPage/InfoPage";
 import LifestyleInfoPage from "./pages/LifestyleInfoPage/LifestyleInfoPage";
 import LoginPage from "./pages/LoginPage/LoginPage";
@@ -46,9 +48,11 @@ export const router = createBrowserRouter([
       { path: "/track", element: <TrackPage /> },
       { path: "/chat", element: <ChatPage /> },
       { path: "/info", element: <InfoPage /> },
+      { path: "/info/:id", element: <InfoDetailPage /> },
       { path: "/more", element: <MorePage /> },
       { path: "/lifestyle-info", element: <LifestyleInfoPage /> },
       { path: "/notification-settings", element: <NotificationSettingsPage /> },
+      { path: "/data-consent", element: <DataConsentPage /> },
       { path: "/content-generation", element: <ContentGenerationPage /> },
       { path: "/content-generation/:id", element: <ContentDetailPage /> },
       { path: "/emergency-guide", element: <EmergencyGuidePage /> },

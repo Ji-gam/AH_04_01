@@ -56,10 +56,25 @@ class FakeContentRepository:
         results = sorted(results, key=lambda item: item.content_date, reverse=True)
         return results[:limit] if limit is not None else results
 
-    def seed(self, disease_code: str, category: str, content_date: date, title: str = "캐시된 제목") -> None:
+    async def get_by_id(self, session, content_id: int) -> FakeHealthContent | None:
+        return next((item for item in self.items if item.id == content_id), None)
+
+    async def list_related(
+        self, session, disease_code: str, exclude_category: str, exclude_id: int, limit: int = 5
+    ) -> list[FakeHealthContent]:
+        results = [
+            item
+            for item in self.items
+            if item.disease_code == disease_code and item.category != exclude_category and item.id != exclude_id
+        ]
+        results = sorted(results, key=lambda item: item.content_date, reverse=True)
+        return results[:limit]
+
+    def seed(self, disease_code: str, category: str, content_date: date, title: str = "캐시된 제목") -> int:
+        content_id = self._next_id
         self.items.append(
             FakeHealthContent(
-                id=self._next_id,
+                id=content_id,
                 disease_code=disease_code,
                 category=category,
                 content_date=content_date,
@@ -69,6 +84,7 @@ class FakeContentRepository:
             )
         )
         self._next_id += 1
+        return content_id
 
 
 def _build_service(repository: FakeContentRepository) -> ContentService:
@@ -247,3 +263,54 @@ async def test_seed_from_fixture_without_content_date_defaults_to_today():
     await service.seed_from_fixture(session=None, entries=entries)
 
     assert repository.items[0].content_date == today
+
+
+async def test_get_content_by_id_returns_matching_item():
+    repository = FakeContentRepository()
+    today = _today_kst()
+    content_id = repository.seed("당뇨", "LIFESTYLE", today, title="상세용 카드")
+    service = _build_service(repository)
+
+    item = await service.get_content_by_id(session=None, content_id=content_id)
+
+    assert item is not None
+    assert item["title"] == "상세용 카드"
+
+
+async def test_get_content_by_id_returns_none_when_missing():
+    repository = FakeContentRepository()
+    service = _build_service(repository)
+
+    item = await service.get_content_by_id(session=None, content_id=999)
+
+    assert item is None
+
+
+async def test_get_related_contents_excludes_same_category_and_self():
+    repository = FakeContentRepository()
+    today = _today_kst()
+    base_id = repository.seed("당뇨", "LIFESTYLE", today, title="기준 카드")
+    repository.seed("당뇨", "LIFESTYLE", today, title="같은 카테고리라 제외")
+    food_id = repository.seed("당뇨", "FOOD", today, title="관련 카드")
+    repository.seed("암", "FOOD", today, title="다른 질환이라 제외")
+    service = _build_service(repository)
+
+    items = await service.get_related_contents(
+        session=None, disease_code="당뇨", exclude_category="LIFESTYLE", exclude_id=base_id
+    )
+
+    assert [item["id"] for item in items] == [food_id]
+
+
+async def test_get_related_contents_respects_limit():
+    repository = FakeContentRepository()
+    today = _today_kst()
+    for i in range(6):
+        repository.seed("당뇨", "FOOD", today - timedelta(days=i), title=f"관련 카드 {i}")
+    service = _build_service(repository)
+
+    items = await service.get_related_contents(
+        session=None, disease_code="당뇨", exclude_category="LIFESTYLE", exclude_id=-1, limit=5
+    )
+
+    assert len(items) == 5

@@ -163,24 +163,23 @@ export default function NotificationSettingsPage() {
   return (
     <div style={{ background: t.pageBg, minHeight: "100%", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-          <button
-            type="button"
-            aria-label="뒤로"
-            onClick={() => navigate("/more")}
-            style={{
-              border: "none",
-              background: "none",
-              color: t.text,
-              fontSize: 20,
-              cursor: "pointer",
-              lineHeight: 1,
-            }}
-          >
-            ←
-          </button>
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: 0 }}>🔔 알림설정</h1>
-        </div>
+        <button
+          type="button"
+          onClick={() => navigate("/more")}
+          style={{
+            background: "none",
+            border: "none",
+            color: t.textMuted,
+            padding: 0,
+            marginBottom: 12,
+            cursor: "pointer",
+          }}
+        >
+          ← 뒤로가기
+        </button>
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 6px" }}>
+          🔔 알림설정
+        </h1>
 
         <p style={{ margin: "0 0 12px", fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>
           받고 싶은 알림과 무음 시간대를 설정해주세요.

@@ -27,10 +27,26 @@ class RecognitionConfirmRequest(BaseModel):
 
 class FoodItem(BaseModel):
     """(T-DOC-4) 음식 상호작용 안내 카드에서 원문 전체를 줄글로 보여주는 대신, 음식명 칩을 먼저
-    보여주고 클릭 시 이 음식에 대한 상세(detail)만 펼쳐볼 수 있게 하기 위한 단위."""
+    보여주고 클릭 시 이 음식에 대한 상세(detail)만 펼쳐볼 수 있게 하기 위한 단위.
+
+    (2026-07-15) `polarity`: 원문이 이 음식을 무조건 "피하라"는 게 아닌 경우가 있어 세 가지로
+    나눈다.
+    - "avoid"(기본값): 함께 섭취를 피해야 함(회피 방법이 없거나 언급되지 않음).
+    - "recommend": 오히려 이 약과 함께/식후에 먹으면 좋다는 권장(예: NSAIDs/리튬 + 우유 —
+      위장장애 완화 목적).
+    - "timing_caution": 동시 섭취는 피해야 하지만, 복용 시간과 일정 간격(1~2시간 등)만 두면
+      섭취해도 된다는 구체적인 시차 요령이 있는 경우(예: 자몽주스+칼슘채널차단제 — 복용 후
+      2시간 뒤엔 마셔도 됨).
+    규칙 기반 추출은 문장에 음식명이 등장하는지만 보고 이런 맥락을 판단하지 못하므로, 자동
+    분류 대신 식약처 참조 테이블 빌드 시 사람이 원문을 직접 읽고 확인한 소수의 예외만
+    "recommend"/"timing_caution"으로 표시한다(`build_food_drug_interaction_db.py`의
+    `_RECOMMEND_OVERRIDES`/`_TIMING_CAUTION_OVERRIDES`). 그 외는 전부 기본값 "avoid" — 잘못
+    분류해 실제로 피해야 할 음식을 안전한 것처럼 보여주는 쪽이, 그 반대보다 훨씬 위험하므로
+    안전한 기본값을 택했다."""
 
     name: str
     detail: str
+    polarity: str = "avoid"
 
 
 class GuideCard(BaseModel):

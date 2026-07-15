@@ -35,8 +35,10 @@ from app.dtos.medication_dto import (
 from app.models.medication_model import Medication, MedicationRecognitionJob, MedicationSchedule
 from app.repositories.dur_drug_repository import DurDrugRepository
 from app.repositories.family_repository import FamilyRepository
+from app.repositories.food_drug_interaction_repository import FoodDrugInteractionRepository
 from app.repositories.medication_repository import MedicationRepository
 from app.services import medication_open_api_client
+from app.services.food_item_extraction import extract_food_items
 
 logger = logging.getLogger("app.medication_service")
 
@@ -218,21 +220,12 @@ def _extract_food_related_sentences(intrc_text: str) -> str | None:
 # API 9개 카테고리에도 음식 카테고리가 없음을 확인함), 식약처가 직접 발간한 PDF 가이드북("약과
 # 음식 상호작용을 피하는 복약안내서")을 파싱해 만든 성분 단위 참조 테이블을 우선 사용하고, 매칭되는
 # 성분이 없으면(주로 상표명) 기존 e약은요 키워드 필터로 폴백한다.
-_FOOD_DRUG_REFERENCE_PATH = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)), "database", "food_drug_interaction_reference.json"
-)
+# 참조 테이블은 `app/database/food_drug_interaction.db`(SQLite, drug_light.db와 동일한 다른
+# DB들과 형식을 통일하기 위해 2026-07-15 JSON에서 이전)에서 읽는다 — 상세: 저장소 docstring,
+# `docs/decision_log/2026-07-15-food-drug-interaction-sqlite-migration.md`.
 _FOOD_DRUG_REFERENCE_SOURCE_NOTE = "(출처: 식약처 식품의약품안전평가원 「약과 음식 상호작용을 피하는 복약안내서」)"
 
-_food_drug_reference_cache: list[dict] | None = None
-
-
-def _load_food_drug_reference() -> list[dict]:
-    """참조 테이블은 정적 파일이라 최초 호출시 1회만 읽어 캐싱한다."""
-    global _food_drug_reference_cache
-    if _food_drug_reference_cache is None:
-        with open(_FOOD_DRUG_REFERENCE_PATH, encoding="utf-8") as f:
-            _food_drug_reference_cache = json.load(f)["categories"]
-    return _food_drug_reference_cache
+_food_drug_interaction_repository = FoodDrugInteractionRepository()
 
 
 def _match_food_drug_reference(medication_name: str) -> dict | None:
@@ -240,7 +233,7 @@ def _match_food_drug_reference(medication_name: str) -> dict | None:
     국내 일반의약품은 품목명에 성분명이 그대로 들어가는 경우가 흔하다(예: "암로디핀베실산염정5mg").
     상표명(예: "타이레놀")은 매칭되지 않고 기존 e약은요 폴백으로 넘어간다."""
     lowered_name = medication_name.lower()
-    for entry in _load_food_drug_reference():
+    for entry in _food_drug_interaction_repository.load_categories():
         if not entry.get("food_interaction") and not entry.get("alcohol_interaction"):
             continue
         for ingredient in entry["ingredients"]:
@@ -261,115 +254,26 @@ def _format_food_drug_reference_content(entry: dict) -> str:
     return "\n\n".join(parts)
 
 
+def _food_items_from_reference(entry: dict) -> list[FoodItem]:
+    """`entry["food_items"]`는 `build_food_drug_interaction_db.py`가 빌드 시점에
+    `food_item_extraction.extract_food_items()`로 미리 계산해 DB에 저장해둔 결과다(요청마다
+    다시 계산하지 않음). `polarity`("avoid"/"recommend")도 그대로 넘긴다 — 예를 들어 NSAIDs+우유는
+    "피하라"가 아니라 "함께 먹으면 좋다"는 권장이라 다르게 표시해야 한다."""
+    return [
+        FoodItem(name=item["name"], detail=item["detail"], polarity=item.get("polarity", "avoid"))
+        for item in entry.get("food_items", [])
+    ]
+
+
 # (T-DOC-4) 음식 상호작용 카드를 "이유 줄글"이 아니라 "음식명 칩 + 클릭 상세보기"로 보여주기 위해,
-# 원문에서 구체적 음식/음료 명사를 찾아 문장 단위로 묶는다. V1은 이 사전(curated list) 매칭
-# 기반이라 사전에 없는 음식/음료는 칩으로 못 뽑는다 — 그 경우 프론트는 기존처럼 GuideCard.content
-# 전체를 그대로 보여준다(회귀 없음). 추후 커버리지가 부족하면 `_extract_food_items` 함수만 LLM
-# 기반 추출로 교체하면 된다(시그니처: 원문 텍스트 -> FoodItem 목록, 호출부는 그대로).
-_KNOWN_FOOD_ITEMS = (
-    "자몽주스",
-    "자몽",
-    "포멜로",
-    "오렌지주스",
-    "오렌지",
-    "사과주스",
-    "크랜베리 주스",
-    "크랜베리",
-    "우유",
-    "유제품",
-    "치즈",
-    "요구르트",
-    "사워크림",
-    "아이스크림",
-    "커피",
-    "콜라",
-    "녹차",
-    "홍차",
-    "차",
-    "초콜릿",
-    "카페인",
-    "탄산음료",
-    "청량음료",
-    "알코올",
-    "음주",
-    "맥주 효모",
-    "생맥주",
-    "막걸리",
-    "적포도주",
-    "백포도주",
-    "리큐어",
-    "맥주",
-    "와인",
-    "술",
-    "비타민 K",
-    "비타민K",
-    "비타민 E",
-    "비타민E",
-    "녹황색 채소",
-    "브로콜리",
-    "양배추",
-    "케일",
-    "콜라드그린",
-    "시금치",
-    "아스파라거스",
-    "무청",
-    "미니양배추",
-    "소간",
-    "콩류",
-    "김",
-    "매실",
-    "바나나",
-    "토마토",
-    "저염소금",
-    "등 푸른 생선",
-    "조개",
-    "멸치",
-    "새우",
-    "퓨린",
-    "과당",
-    "통조림 돼지고기",
-    "아보카도",
-    "건포도",
-    "건자두",
-    "건과일",
-    "라즈베리",
-    "사우어크라우트",
-    "된장",
-    "간장",
-    "누에콩",
-    "티라민",
-    "세인트존스워트",
-    "고지방",
-    "고탄수화물",
-    "식이섬유",
-    "알로에",
-    "화학조미료",
-    "무기질 강화 음료",
-    "칼슘강화 오렌지주스",
-    "콩가루",
-    "목화씨",
-    "호두",
-    "연어",
-    "가다랑어",
-    "참치",
-)
-
-
-def _extract_food_items(text: str) -> list[FoodItem]:
-    """V1(규칙 기반): `_KNOWN_FOOD_ITEMS` 사전에 있는 음식/음료 명사가 문장에 등장하면 그 문장(들)을
-    detail로 묶는다. 같은 문장에서 더 구체적인 이름(예: "자몽주스")이 매칭되면, 그 안에 포함된 짧은
-    이름(예: "자몽")은 중복이므로 제외한다. 사전에 없는 음식/음료는 뽑히지 않는다 — 호출부가 결과가
-    비면 기존 전체 텍스트 노출로 알아서 폴백한다."""
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+|\n+", text) if s.strip()]
-    sentences_by_name: dict[str, list[str]] = {}
-    for sentence in sentences:
-        matched = [name for name in _KNOWN_FOOD_ITEMS if name in sentence]
-        matched = [n for n in matched if not any(n != m and n in m for m in matched)]
-        for name in matched:
-            bucket = sentences_by_name.setdefault(name, [])
-            if sentence not in bucket:
-                bucket.append(sentence)
-    return [FoodItem(name=name, detail=" ".join(sents)) for name, sents in sentences_by_name.items()]
+# 원문에서 구체적 음식/음료 명사를 찾아 문장 단위로 묶는다. e약은요 폴백 경로는 매 요청 원문이
+# 새로 오므로 여기서 실행 시점에 추출한다. 식약처 참조 테이블 쪽은 정적 데이터라
+# `app/scripts/build_food_drug_interaction_db.py`가 미리 계산해 DB(`food_drug_food_items`)에
+# 저장해두고, `_match_food_drug_reference`가 그 결과를 그대로 읽어온다(아래
+# `_build_food_interaction_guide_card` 참고) — 추출 로직 자체는 `food_item_extraction.py`로 분리해
+# 두 경로가 공유한다. `_extract_food_items`는 기존 테스트(`test_medication_service_food_interaction.py`)
+# 호출부 호환을 위해 남겨둔 별칭이다.
+_extract_food_items = extract_food_items
 
 
 class OcrField(NamedTuple):
@@ -937,14 +841,11 @@ async def _build_food_interaction_guide_card(medication_name: str) -> GuideCard:
 
     reference_entry = _match_food_drug_reference(medication_name)
     if reference_entry is not None:
-        combined_text = " ".join(
-            t for t in (reference_entry.get("food_interaction"), reference_entry.get("alcohol_interaction")) if t
-        )
         return GuideCard(
             title=title,
             content=_format_food_drug_reference_content(reference_entry),
             severity="caution",
-            food_items=_extract_food_items(combined_text) or None,
+            food_items=_food_items_from_reference(reference_entry) or None,
         )
 
     try:
@@ -1033,7 +934,7 @@ async def run_ocr_task(
 class MedicationService:
     def __init__(self, repository: MedicationRepository | None = None) -> None:
         self._repository = repository or MedicationRepository()
-        self._family_repository = FamilyRepository()
+        self._family_repository = FamilyRepository()  # (가족관리) 대상자 권한검증용
 
     async def create_recognition_job(
         self,
@@ -1184,7 +1085,7 @@ class MedicationService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 약품 정보를 찾을 수 없습니다.")
 
         # (가족관리) target_profile_id가 있으면 "이 약을 실제로 먹을 사람"을 그 프로필로 등록한다.
-        # 본인이 아닌 값이면, 요청자가 그 프로필의 보호자로 등록되어 있는지 반드시 확인한다 -
+        # 본인이 아닌 값이면 요청자가 그 프로필의 보호자로 등록되어 있는지 반드시 확인 -
         # 아니면 아무나 남의 이름으로 복약 스케줄을 만들 수 있게 되는 구멍이 생긴다.
         owner_profile_id = req.target_profile_id or profile_id
         if owner_profile_id != profile_id:

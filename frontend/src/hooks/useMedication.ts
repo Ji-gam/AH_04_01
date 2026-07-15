@@ -29,6 +29,12 @@ export interface InteractionCheckResult {
 export interface FoodItem {
   name: string;
   detail: string;
+  // "avoid"(기본값)면 피해야 할 음식, "recommend"면 오히려 이 약과 함께/식후에 먹으면 좋다는
+  // 권장 문맥이다(예: NSAIDs/리튬 + 우유 — 위장장애 완화 목적). "timing_caution"은 동시 섭취는
+  // 피해야 하지만 복용 시간과 1~2시간 간격만 두면 섭취해도 되는 경우다(예: 자몽주스+칼슘채널
+  // 차단제 — 복용 2시간 후엔 마셔도 됨). 백엔드가 원문을 사람이 직접 읽고 확인한 소수의 예외만
+  // "recommend"/"timing_caution"으로 표시해 넘겨준다.
+  polarity?: "avoid" | "recommend" | "timing_caution";
 }
 
 export interface GuideCard {

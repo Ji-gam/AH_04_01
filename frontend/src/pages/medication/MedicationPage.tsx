@@ -1,14 +1,37 @@
 import { useState, useEffect } from "react";
 
+import { durApi } from "../../api/durApi";
+import type {
+  DurBasicScreeningResult,
+  DurIngredientDetail,
+  DurIngredientScreeningResponse,
+  DurInteractionScreeningResponse,
+  DurInteractionWarning,
+  DurRecallInfo,
+} from "../../api/types";
 import { useAuth } from "../../hooks/useAuth";
 import {
   useMedication,
   type FoodInteractionCheckResult,
-  type InteractionCheckResult,
+  type FoodItem,
   type RecognitionCandidate,
   type RecognitionJobResult,
 } from "../../hooks/useMedication";
 import { pinkTheme } from "../../theme/pinkTheme";
+import Modal from "../AlarmPage/components/Modal";
+
+/** (T-DOC-4, 2026-07-15) 음식 칩/모달을 `FoodItem.polarity`별로 다르게 보여주기 위한 스타일
+ * 묶음 — "avoid"(기본값)는 기존 핑크 주의색, "recommend"는 초록(같이 먹으면 좋음), "timing_caution"은
+ * 호박색(동시 섭취는 피하되 시간차를 두면 괜찮음)으로 구분한다. */
+const FOOD_POLARITY_STYLES = {
+  avoid: { icon: "⚠️", label: "주의", color: pinkTheme.primary, bg: pinkTheme.primarySoft },
+  recommend: { icon: "👍", label: "권장", color: "#2F8F5B", bg: "#EAF7EF" },
+  timing_caution: { icon: "⏰", label: "시간차 주의", color: "#B8860B", bg: "#FDF3DC" },
+} as const;
+
+function foodPolarityStyle(polarity: FoodItem["polarity"]) {
+  return FOOD_POLARITY_STYLES[polarity ?? "avoid"];
+}
 
 /** 탭 버튼 — 활성 탭은 핑크 채움, 비활성은 흰 카드. */
 function tabStyle(isActive: boolean): React.CSSProperties {
@@ -23,6 +46,157 @@ function tabStyle(isActive: boolean): React.CSSProperties {
     color: isActive ? "#fff" : pinkTheme.text,
     cursor: "pointer",
   };
+}
+
+const durCardStyle: React.CSSProperties = {
+  padding: "10px",
+  marginBottom: "8px",
+  borderRadius: 12,
+  background: pinkTheme.cardBg,
+  border: `1px solid ${pinkTheme.border}`,
+  cursor: "pointer",
+};
+
+/** 카드 클릭 전엔 요약(약물쌍/구분 배지)만 보이고, 클릭하면 설명/비고가 펼쳐진다 —
+ * DUR 카드가 여러 개 나열될 때 한눈에 훑어보기 쉽게 하기 위함. */
+function DurInteractionCard({ warning }: { warning: DurInteractionWarning }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={durCardStyle} onClick={() => setOpen((o) => !o)}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700 }}>
+          {warning.drug_a.item_name}{" "}
+          <span style={{ color: pinkTheme.textMuted, fontWeight: 400 }}>↔</span>{" "}
+          {warning.drug_b.item_name}
+        </div>
+        <span style={{ fontSize: 11, color: pinkTheme.textMuted }}>{open ? "▲" : "▼"}</span>
+      </div>
+      <span
+        style={{
+          display: "inline-block",
+          marginTop: 6,
+          fontSize: 11,
+          fontWeight: 700,
+          color: pinkTheme.danger,
+          background: "#fdecea",
+          borderRadius: 999,
+          padding: "3px 8px",
+        }}
+      >
+        {warning.rule_type}
+      </span>
+      {open && (
+        <>
+          <p style={{ margin: "8px 0 0", fontSize: 12.5 }}>{warning.prohbt_content}</p>
+          {warning.remark && (
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 11.5,
+                color: pinkTheme.textMuted,
+                background: pinkTheme.primarySoft,
+                borderRadius: 8,
+                padding: "7px 9px",
+              }}
+            >
+              {warning.remark}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function DurRecallCard({ recall }: { recall: DurRecallInfo }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={durCardStyle} onClick={() => setOpen((o) => !o)}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700 }}>회수: {recall.item_name}</div>
+        <span style={{ fontSize: 11, color: pinkTheme.textMuted }}>{open ? "▲" : "▼"}</span>
+      </div>
+      <div style={{ fontSize: 11.5, color: pinkTheme.textMuted, marginTop: 2 }}>
+        {recall.entp_name}
+      </div>
+      <span
+        style={{
+          display: "inline-block",
+          marginTop: 6,
+          fontSize: 11,
+          fontWeight: 700,
+          color: recall.enforced ? pinkTheme.danger : "#b26a00",
+          background: recall.enforced ? "#fdecea" : "#fff3e0",
+          borderRadius: 999,
+          padding: "3px 8px",
+        }}
+      >
+        {recall.enforced ? "강제 회수" : "자율 회수"}
+      </span>
+      {open && (
+        <>
+          <p style={{ margin: "8px 0 0", fontSize: 12.5 }}>{recall.recall_reason}</p>
+          <div style={{ fontSize: 11.5, color: pinkTheme.textMuted, marginTop: 4 }}>
+            {recall.recall_command_date}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** 등록약이 2개 이상이어도, 이 성분을 실제로 포함한 약만 source_drugs에 나열된다 — 1개만
+ * 나오면 "공유"가 아니라 그 약 하나의 성분 정보라는 뜻이라, 문구로 명시해서 헷갈리지 않게 한다. */
+function DurIngredientCard({ ingredient }: { ingredient: DurIngredientDetail }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ ...durCardStyle, marginTop: 10 }} onClick={() => setOpen((o) => !o)}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 12,
+            fontWeight: 700,
+            color: pinkTheme.primaryHover,
+            background: pinkTheme.primarySoft,
+            border: `1px solid ${pinkTheme.primary}`,
+            borderRadius: 999,
+            padding: "5px 10px",
+          }}
+        >
+          {ingredient.ingr_name} · {ingredient.ingr_code}
+        </span>
+        <span style={{ fontSize: 11, color: pinkTheme.textMuted }}>{open ? "▲" : "▼"}</span>
+      </div>
+      <div style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 6 }}>
+        {ingredient.source_drugs.length > 1
+          ? "이 성분이 겹치는 등록 약: "
+          : "이 성분을 포함한 등록 약: "}
+        {ingredient.source_drugs
+          .map((d) => (d.qnt && d.unit ? `${d.item_name}(${d.qnt}${d.unit})` : d.item_name))
+          .join(", ")}
+      </div>
+      {open && (
+        <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+          {ingredient.rules.map((rule, idx) => (
+            <div
+              key={idx}
+              style={{
+                fontSize: 12,
+                lineHeight: 1.5,
+                paddingLeft: 10,
+                borderLeft: `2px solid ${pinkTheme.border}`,
+              }}
+            >
+              <b>{rule.rule_type}</b> — {rule.prohbt_content}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 type ExtractedFields = NonNullable<RecognitionJobResult["extracted_fields"]>;
@@ -40,7 +214,6 @@ export default function MedicationPage() {
     uploadJob,
     getJobStatus,
     confirmJob,
-    checkInteractions,
     checkFoodInteractions,
   } = useMedication();
 
@@ -51,6 +224,22 @@ export default function MedicationPage() {
   const [jobStatus, setJobStatus] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<RecognitionCandidate[]>([]);
   const [extractedFields, setExtractedFields] = useState<ExtractedFields | null>(null);
+
+  // OCR로 인식된 후보들에 대해, 등록 확정 전에 바로 DUR 주의사항(임부금기/노인주의 등 pill)과
+  // 후보끼리의 병용금기/효능군중복 상호작용을 보여준다 — 기존 dur/screening API를 그대로
+  // 재사용하고(백엔드 변경 없음), 표시만 이 페이지의 기존 pinkTheme 톤으로 맞춘다.
+  const [durWarningsByName, setDurWarningsByName] = useState<
+    Record<string, DurBasicScreeningResult>
+  >({});
+  const [durInteractions, setDurInteractions] = useState<DurInteractionScreeningResponse | null>(
+    null,
+  );
+  const [durCheckLoading, setDurCheckLoading] = useState(false);
+  const [durCheckError, setDurCheckError] = useState<string | null>(null);
+  // DUR 로컬 DB(drug_light.db)는 커버리지가 좁아, 인식은 됐어도 DUR 조회에서 못 찾는 약이
+  // 흔하다 — DurScreeningPage.tsx의 "찾지 못한 약품명" 요약과 동일하게, 조용히 비워두는 대신
+  // 명시적으로 알려준다.
+  const [durUnmatchedNames, setDurUnmatchedNames] = useState<string[]>([]);
 
   // 사용자 확정 폼 입력 값 (처방전 한 장에 여러 약이 인식될 수 있어 다중 선택 지원)
   const [selectedDrugCodes, setSelectedDrugCodes] = useState<string[]>([]);
@@ -70,10 +259,17 @@ export default function MedicationPage() {
     "schedule",
   );
 
-  // 약물 상호작용(병용금기) 체크 — 등록약이 바뀌지 않는 한 다시 조회하지 않도록 캐시 (T-MED-2-2)
-  const [interactionResult, setInteractionResult] = useState<InteractionCheckResult | null>(null);
-  const [interactionLoading, setInteractionLoading] = useState(false);
-  const [interactionError, setInteractionError] = useState<string | null>(null);
+  // 약물 상호작용(12번) — DurScreeningPage.tsx 화면4와 동일하게 durApi.screenInteraction/
+  // screenIngredient를 등록약 이름으로 호출해서 상호작용/리콜/공유성분 3종을 함께 보여준다
+  // (기존 /medications/interactions은 병용금기만 다뤄 효능군중복·공유성분을 놓쳤다).
+  // 등록약이 바뀌지 않는 한 다시 조회하지 않도록 캐시 (T-MED-2-2)
+  const [regDurInteractions, setRegDurInteractions] =
+    useState<DurInteractionScreeningResponse | null>(null);
+  const [regDurIngredients, setRegDurIngredients] = useState<DurIngredientScreeningResponse | null>(
+    null,
+  );
+  const [regDurLoading, setRegDurLoading] = useState(false);
+  const [regDurError, setRegDurError] = useState<string | null>(null);
 
   // 음식(13번) — 등록약 전체 기준 음식/음주 주의사항. OCR로 등록했든 수동으로 등록했든 상관없이
   // 등록약이 바뀌지 않는 한 다시 조회하지 않도록 캐시한다(조합 탭과 동일한 패턴, T-DOC-2).
@@ -82,11 +278,14 @@ export default function MedicationPage() {
   const [foodInteractionLoading, setFoodInteractionLoading] = useState(false);
   const [foodInteractionError, setFoodInteractionError] = useState<string | null>(null);
 
-  // (T-DOC-4) 카드별로 지금 펼쳐진 음식 칩 이름 — 카드 인덱스 -> 선택된 음식명(없으면 undefined).
-  // 같은 칩을 다시 누르면 접힌다.
-  const [openFoodItemByCard, setOpenFoodItemByCard] = useState<Record<number, string | undefined>>(
-    {},
-  );
+  // (T-DOC-4, 모달 개선) 음식 칩을 누르면 그 음식의 상세 이유를 모달로 띄운다 — null이면 닫힌 상태.
+  // 아이콘/색상은 카드 severity가 아니라 음식 개별 polarity를 따른다 — 같은 카드 안에서도
+  // "피해야 할 음식"과 "함께 먹으면 좋은 음식"이 섞여 있을 수 있기 때문(예: 아스피린 - 우유는
+  // 권장, 카페인은 주의).
+  const [openFoodDetail, setOpenFoodDetail] = useState<{
+    item: FoodItem;
+    cardTitle: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchSchedules();
@@ -94,22 +293,35 @@ export default function MedicationPage() {
 
   // 등록약 목록이 바뀌면(추가/삭제) 캐시를 무효화해 다음에 탭을 열 때 재조회한다.
   useEffect(() => {
-    setInteractionResult(null);
+    setRegDurInteractions(null);
+    setRegDurIngredients(null);
     setFoodInteractionResult(null);
   }, [schedules.length]);
 
   useEffect(() => {
-    if (activeTab !== "interaction" || interactionResult || interactionLoading) return;
-    setInteractionLoading(true);
-    setInteractionError(null);
-    checkInteractions()
-      .then(setInteractionResult)
-      .catch((err: unknown) => {
-        setInteractionError(err instanceof Error ? err.message : "상호작용 확인에 실패했습니다.");
-      })
-      .finally(() => setInteractionLoading(false));
+    if (activeTab !== "interaction" || regDurInteractions || regDurLoading) return;
+    if (schedules.length === 0) return;
+
+    const checkRegisteredDur = async () => {
+      const names = schedules.map((s) => s.drug_name);
+      setRegDurLoading(true);
+      setRegDurError(null);
+      try {
+        const [interaction, ingredient] = await Promise.all([
+          durApi.screenInteraction(names),
+          durApi.screenIngredient(names),
+        ]);
+        setRegDurInteractions(interaction);
+        setRegDurIngredients(ingredient);
+      } catch (err) {
+        setRegDurError(err instanceof Error ? err.message : "상호작용 확인에 실패했습니다.");
+      } finally {
+        setRegDurLoading(false);
+      }
+    };
+    checkRegisteredDur();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  }, [activeTab, schedules]);
 
   useEffect(() => {
     if (activeTab !== "food" || foodInteractionResult || foodInteractionLoading) return;
@@ -156,6 +368,45 @@ export default function MedicationPage() {
       if (intervalId) clearInterval(intervalId);
     };
   }, [currentJobId, jobStatus]);
+
+  // 인식된 후보가 확정되면(candidates가 채워지면) 등록 전 미리 DUR 주의사항/상호작용을 조회한다.
+  // DurScreeningPage.tsx의 handleViewReport와 동일한 방식(async/await + try/catch/finally,
+  // durApi.screenBasic/screenInteraction을 Promise.all로 병렬 호출)으로 맞췄다.
+  useEffect(() => {
+    if (candidates.length === 0) {
+      setDurWarningsByName({});
+      setDurInteractions(null);
+      setDurCheckError(null);
+      setDurUnmatchedNames([]);
+      return;
+    }
+
+    const checkDurWarnings = async () => {
+      const names = candidates.map((c) => c.drug_name);
+      setDurCheckLoading(true);
+      setDurCheckError(null);
+      try {
+        const [basic, interaction] = await Promise.all([
+          durApi.screenBasic(names),
+          durApi.screenInteraction(names),
+        ]);
+        const byName: Record<string, DurBasicScreeningResult> = {};
+        basic.results.forEach((r) => {
+          byName[r.drug_detail.item_name] = r;
+        });
+        setDurWarningsByName(byName);
+        setDurInteractions(interaction);
+        setDurUnmatchedNames(basic.unmatched_drug_names);
+      } catch (err) {
+        setDurCheckError(
+          err instanceof Error ? err.message : "DUR 주의사항을 확인하지 못했습니다.",
+        );
+      } finally {
+        setDurCheckLoading(false);
+      }
+    };
+    checkDurWarnings();
+  }, [candidates]);
 
   // 분석 시작 핸들러 (1~4번 흐름)
   const handleUploadSubmit = async (e: React.FormEvent) => {
@@ -380,33 +631,207 @@ export default function MedicationPage() {
                     margin: "10px 0",
                   }}
                 >
-                  <label>
-                    <strong>의약품 후보 선택 (처방전에 여러 약이 있으면 전부 선택 가능):</strong>
-                  </label>
-                  {candidates.map((c) => (
-                    <label key={c.drug_code} style={{ display: "block", cursor: "pointer" }}>
-                      <input
-                        type="checkbox"
-                        value={c.drug_code}
-                        checked={selectedDrugCodes.includes(c.drug_code)}
-                        onChange={(e) =>
-                          setSelectedDrugCodes((prev) =>
-                            e.target.checked
-                              ? [...prev, c.drug_code]
-                              : prev.filter((code) => code !== c.drug_code),
-                          )
-                        }
-                      />
-                      {c.drug_name} (매칭률: {(c.match_rate * 100).toFixed(0)}%)
-                      {c.match_rate < 0.6 && (
-                        <span style={{ color: "#b26a00", fontSize: "11px" }}>
-                          {" "}
-                          — 마스터 DB 미등록, 신규 인식
-                        </span>
-                      )}
-                    </label>
-                  ))}
+                  <strong>의약품 후보 선택 (처방전에 여러 약이 있으면 전부 선택 가능):</strong>
+                  {/* DurScreeningPage.tsx 화면2의 "찾지 못한 약품명" 요약(dur-list-summary)과 동일 —
+                    로컬 DUR DB 커버리지가 좁아 인식은 됐어도 못 찾는 약이 흔하므로, 조용히 비워두지
+                    않고 명시적으로 알려준다. */}
+                  {!durCheckLoading && durUnmatchedNames.length > 0 && (
+                    <div style={{ fontSize: 12.5, color: pinkTheme.textMuted }}>
+                      DUR 정보를 찾지 못한 약품명: {durUnmatchedNames.join(", ")}
+                    </div>
+                  )}
+                  {/* 카드형 약 목록 + pill 경고 — DurScreeningPage.tsx 화면2(dur-drug-card/dur-pill)와
+                    같은 틀을 쓰되, 색상은 그 페이지의 녹색 accent 대신 이 페이지의 pinkTheme로 칠했다. */}
+                  {candidates.map((c) => {
+                    const durInfo = durWarningsByName[c.drug_name];
+                    const activeFlags = durInfo?.dur_simple.filter((f) => f.present) ?? [];
+                    const checked = selectedDrugCodes.includes(c.drug_code);
+                    return (
+                      <label
+                        key={c.drug_code}
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "flex-start",
+                          border: `1px solid ${checked ? pinkTheme.primary : pinkTheme.border}`,
+                          borderRadius: 12,
+                          padding: 10,
+                          cursor: "pointer",
+                          background: pinkTheme.cardBg,
+                          boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          value={c.drug_code}
+                          checked={checked}
+                          style={{ marginTop: 3 }}
+                          onChange={(e) =>
+                            setSelectedDrugCodes((prev) =>
+                              e.target.checked
+                                ? [...prev, c.drug_code]
+                                : prev.filter((code) => code !== c.drug_code),
+                            )
+                          }
+                        />
+                        <div
+                          style={{
+                            width: 40,
+                            height: 40,
+                            flex: "none",
+                            borderRadius: 10,
+                            background: pinkTheme.primarySoft,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 18,
+                          }}
+                        >
+                          💊
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>{c.drug_name}</div>
+                          <div style={{ fontSize: 11.5, color: pinkTheme.textMuted }}>
+                            매칭률 {(c.match_rate * 100).toFixed(0)}%
+                            {c.match_rate < 0.6 && " · 마스터 DB 미등록, 신규 인식"}
+                          </div>
+                          {durCheckLoading && !durInfo && (
+                            <div style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}>
+                              DUR 주의사항 확인 중...
+                            </div>
+                          )}
+                          {!durCheckLoading &&
+                            !durInfo &&
+                            durUnmatchedNames.includes(c.drug_name) && (
+                              <div
+                                style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}
+                              >
+                                DUR 데이터베이스에서 이 약을 찾지 못해 주의사항을 확인할 수
+                                없습니다.
+                              </div>
+                            )}
+                          {durInfo &&
+                            (activeFlags.length > 0 ? (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: 6,
+                                  marginTop: 6,
+                                }}
+                              >
+                                {activeFlags.map((f) => (
+                                  <span
+                                    key={f.rule_code}
+                                    title={f.prohbt_content ?? undefined}
+                                    style={{
+                                      display: "inline-flex",
+                                      alignItems: "center",
+                                      gap: 5,
+                                      fontSize: 11.5,
+                                      fontWeight: 700,
+                                      padding: "4px 9px",
+                                      borderRadius: 999,
+                                      background: "#fdecea",
+                                      color: pinkTheme.danger,
+                                      border: `1px solid ${pinkTheme.danger}`,
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        width: 6,
+                                        height: 6,
+                                        borderRadius: "50%",
+                                        background: pinkTheme.danger,
+                                      }}
+                                    />
+                                    {f.rule_label}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <div
+                                style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}
+                              >
+                                DUR 주의 사항 없음
+                              </div>
+                            ))}
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
+
+                {/* 상호작용 리포트 — DurScreeningPage.tsx 화면4(dur-stat 요약 + dur-intrc-* 카드)와
+                  같은 틀, pinkTheme 색상. 등록 확정 전에 인식된 후보끼리 미리 대조해서 보여준다. */}
+                {durCheckError && (
+                  <div
+                    style={{
+                      padding: "10px",
+                      marginBottom: "10px",
+                      backgroundColor: "#fdecea",
+                      border: "1px solid #f5c6cb",
+                      fontSize: "13px",
+                    }}
+                  >
+                    {durCheckError}
+                  </div>
+                )}
+                {durInteractions &&
+                  (durInteractions.drug_intrc.interactions.length > 0 ||
+                    durInteractions.drug_intrc.recalls.length > 0) && (
+                    <div style={{ margin: "14px 0" }}>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                        <div
+                          style={{
+                            flex: 1,
+                            textAlign: "center",
+                            padding: "10px 8px",
+                            borderRadius: 12,
+                            background: pinkTheme.cardBg,
+                            border: `1px solid ${pinkTheme.border}`,
+                          }}
+                        >
+                          <div style={{ fontSize: 20, fontWeight: 800, color: pinkTheme.danger }}>
+                            {durInteractions.drug_intrc.interactions.length}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: pinkTheme.textMuted, marginTop: 2 }}>
+                            상호작용
+                          </div>
+                        </div>
+                        <div
+                          style={{
+                            flex: 1,
+                            textAlign: "center",
+                            padding: "10px 8px",
+                            borderRadius: 12,
+                            background: pinkTheme.cardBg,
+                            border: `1px solid ${pinkTheme.border}`,
+                          }}
+                        >
+                          <div style={{ fontSize: 20, fontWeight: 800, color: "#b26a00" }}>
+                            {durInteractions.drug_intrc.recalls.length}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: pinkTheme.textMuted, marginTop: 2 }}>
+                            리콜
+                          </div>
+                        </div>
+                      </div>
+
+                      {durInteractions.drug_intrc.interactions.map((w, idx) => (
+                        <DurInteractionCard key={idx} warning={w} />
+                      ))}
+
+                      {durInteractions.drug_intrc.recalls.map((r) => (
+                        <DurRecallCard key={r.item_seq} recall={r} />
+                      ))}
+
+                      <small style={{ color: pinkTheme.textMuted }}>
+                        본 서비스는 정보 제공 도구이며, 의학적 진단·처방을 대체하지 않습니다. 출처:
+                        식약처 의약품안전나라(DUR)
+                      </small>
+                    </div>
+                  )}
 
                 {/* 9~10 단계: 복약 시간표 설정 */}
                 <div
@@ -574,64 +999,133 @@ export default function MedicationPage() {
 
         {activeTab === "interaction" && (
           <div style={{ padding: "15px", border: `1px solid ${pinkTheme.border}` }}>
-            {/* 12번 단계: 약물 상호작용 (T-MED-2-2) — 등록약 간 병용금기(DUR) 체크 */}
+            {/* 12번 단계: 약물 상호작용 — DurScreeningPage.tsx 화면4(상호작용/리콜/공유성분 통계
+              박스 + 상호작용/성분 카드)와 같은 틀, 색상은 pinkTheme. durApi.screenInteraction과
+              screenIngredient를 등록약 이름으로 그대로 호출한다(백엔드 변경 없음). */}
             <h3>약물 상호작용 체크 (DUR)</h3>
             <p style={{ color: pinkTheme.textMuted }}>
-              등록하신 약들을 서로 대조해 식약처 병용금기 데이터에서 함께 복용하면 위험한 조합이
-              있는지 확인합니다. 지병(질병)과의 상충 여부는 아직 포함되지 않습니다.
+              등록하신 약들을 서로 대조해 식약처 DUR 데이터에서 병용금기·효능군중복·성분 주의를
+              확인합니다. 지병(질병)과의 상충 여부는 아직 포함되지 않습니다.
             </p>
 
-            {interactionLoading && <p>등록약을 대조하는 중입니다...</p>}
-
-            {!interactionLoading && interactionError && (
+            {schedules.length < 2 && (
               <div
-                style={{ padding: "10px", backgroundColor: "#fdecea", border: "1px solid #f5c6cb" }}
+                style={{ padding: "10px", backgroundColor: "#fffde7", border: "1px solid #fff59d" }}
               >
-                {interactionError}
+                비교할 수 있는 등록약이 2개 미만이라 상호작용을 확인할 수 없습니다.
               </div>
             )}
 
-            {!interactionLoading && !interactionError && interactionResult && (
+            {regDurLoading && <p>등록약을 대조하는 중입니다...</p>}
+
+            {!regDurLoading && regDurError && (
+              <div
+                style={{ padding: "10px", backgroundColor: "#fdecea", border: "1px solid #f5c6cb" }}
+              >
+                {regDurError}
+              </div>
+            )}
+
+            {!regDurLoading && !regDurError && regDurInteractions && regDurIngredients && (
               <>
-                {interactionResult.checked_count < 2 ? (
+                <div style={{ display: "flex", gap: 8, margin: "10px 0" }}>
                   <div
                     style={{
-                      padding: "10px",
-                      backgroundColor: "#fffde7",
-                      border: "1px solid #fff59d",
+                      flex: 1,
+                      textAlign: "center",
+                      padding: "10px 8px",
+                      borderRadius: 12,
+                      background: pinkTheme.cardBg,
+                      border: `1px solid ${pinkTheme.border}`,
                     }}
                   >
-                    비교할 수 있는 등록약이 2개 미만이라 상호작용을 확인할 수 없습니다.
+                    <div style={{ fontSize: 20, fontWeight: 800, color: pinkTheme.danger }}>
+                      {regDurInteractions.drug_intrc.interactions.length}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: pinkTheme.textMuted, marginTop: 2 }}>
+                      상호작용
+                    </div>
                   </div>
-                ) : interactionResult.warnings.length === 0 ? (
                   <div
                     style={{
-                      padding: "10px",
-                      backgroundColor: "#e8f5e9",
-                      border: "1px solid #a5d6a7",
+                      flex: 1,
+                      textAlign: "center",
+                      padding: "10px 8px",
+                      borderRadius: 12,
+                      background: pinkTheme.cardBg,
+                      border: `1px solid ${pinkTheme.border}`,
                     }}
                   >
-                    등록하신 약들 사이에서 확인된 병용금기 조합이 없습니다.
+                    <div style={{ fontSize: 20, fontWeight: 800, color: "#b26a00" }}>
+                      {regDurInteractions.drug_intrc.recalls.length}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: pinkTheme.textMuted, marginTop: 2 }}>
+                      리콜
+                    </div>
                   </div>
-                ) : (
-                  interactionResult.warnings.map((w, idx) => (
+                  <div
+                    style={{
+                      flex: 1,
+                      textAlign: "center",
+                      padding: "10px 8px",
+                      borderRadius: 12,
+                      background: pinkTheme.cardBg,
+                      border: `1px solid ${pinkTheme.border}`,
+                    }}
+                  >
+                    <div style={{ fontSize: 20, fontWeight: 800, color: pinkTheme.text }}>
+                      {regDurIngredients.ingredients.length}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: pinkTheme.textMuted, marginTop: 2 }}>
+                      성분 주의
+                    </div>
+                  </div>
+                </div>
+
+                {regDurInteractions.drug_intrc.interactions.length === 0 &&
+                  regDurInteractions.drug_intrc.recalls.length === 0 &&
+                  regDurIngredients.ingredients.length === 0 && (
                     <div
-                      key={idx}
                       style={{
                         padding: "10px",
-                        marginBottom: "10px",
-                        backgroundColor: "#fdecea",
-                        border: "1px solid #f5c6cb",
+                        backgroundColor: "#e8f5e9",
+                        border: "1px solid #a5d6a7",
                       }}
                     >
-                      <strong>
-                        ⚠ {w.drug_a_name} + {w.drug_b_name}
-                      </strong>
-                      <p>{w.description}</p>
-                      <small style={{ color: pinkTheme.textMuted }}>{w.disclaimer}</small>
+                      등록하신 약들 사이에서 확인된 상호작용·리콜·성분 주의가 없습니다.
                     </div>
-                  ))
+                  )}
+
+                {regDurInteractions.drug_intrc.interactions.map((w, idx) => (
+                  <DurInteractionCard key={idx} warning={w} />
+                ))}
+
+                {regDurInteractions.drug_intrc.recalls.map((r) => (
+                  <DurRecallCard key={r.item_seq} recall={r} />
+                ))}
+
+                {regDurIngredients.ingredients.length > 0 && (
+                  <div
+                    style={{
+                      padding: "10px",
+                      borderRadius: 12,
+                      background: pinkTheme.cardBg,
+                      border: `1px solid ${pinkTheme.border}`,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 700, color: pinkTheme.textMuted }}>
+                      성분 상세
+                    </div>
+                    {regDurIngredients.ingredients.map((ing) => (
+                      <DurIngredientCard key={ing.ingr_code} ingredient={ing} />
+                    ))}
+                  </div>
                 )}
+
+                <small style={{ color: pinkTheme.textMuted, display: "block", marginTop: 10 }}>
+                  본 서비스는 정보 제공 도구이며, 의학적 진단·처방을 대체하지 않습니다. 출처: 식약처
+                  의약품안전나라(DUR)
+                </small>
               </>
             )}
           </div>
@@ -683,45 +1177,34 @@ export default function MedicationPage() {
                     >
                       <h5>{g.title}</h5>
                       {g.food_items && g.food_items.length > 0 ? (
-                        // (T-DOC-4) 음식명이 식별되면 이유 줄글 대신 칩으로 먼저 보여주고,
-                        // 클릭한 칩의 상세만 펼친다 — 같은 칩을 다시 누르면 접힌다.
-                        <div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                            {g.food_items.map((item) => {
-                              const isOpen = openFoodItemByCard[idx] === item.name;
-                              return (
-                                <button
-                                  key={item.name}
-                                  type="button"
-                                  onClick={() =>
-                                    setOpenFoodItemByCard((prev) => ({
-                                      ...prev,
-                                      [idx]: prev[idx] === item.name ? undefined : item.name,
-                                    }))
-                                  }
-                                  style={{
-                                    padding: "4px 10px",
-                                    borderRadius: "999px",
-                                    border: `1px solid ${isOpen ? pinkTheme.primary : pinkTheme.border}`,
-                                    background: isOpen ? pinkTheme.primary : pinkTheme.cardBg,
-                                    color: isOpen ? "#fff" : pinkTheme.text,
-                                    fontSize: 13,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  {item.name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {openFoodItemByCard[idx] && (
-                            <p style={{ margin: "10px 0 0" }}>
-                              {
-                                g.food_items.find((item) => item.name === openFoodItemByCard[idx])
-                                  ?.detail
-                              }
-                            </p>
-                          )}
+                        // (T-DOC-4, 모달 개선) 음식명이 식별되면 이유 줄글 대신 칩으로 먼저 보여주고,
+                        // 칩을 누르면 상세 이유를 모달로 띄운다 — 원문이 긴 카테고리도 다른 칩
+                        // 목록을 밀어내지 않고 한 곳에 집중해서 읽을 수 있다.
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                          {g.food_items.map((item) => {
+                            const style = foodPolarityStyle(item.polarity);
+                            const isAvoid = (item.polarity ?? "avoid") === "avoid";
+                            return (
+                              <button
+                                key={item.name}
+                                type="button"
+                                onClick={() => setOpenFoodDetail({ item, cardTitle: g.title })}
+                                style={{
+                                  padding: "6px 14px",
+                                  borderRadius: "999px",
+                                  border: `1px solid ${isAvoid ? pinkTheme.border : style.color}`,
+                                  background: style.bg,
+                                  color: isAvoid ? pinkTheme.text : style.color,
+                                  fontSize: 13,
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {isAvoid ? "" : `${style.icon} `}
+                                {item.name}
+                              </button>
+                            );
+                          })}
                         </div>
                       ) : (
                         // 음식명이 식별되지 않으면(사전에 없는 음식이거나 e약은요 자유 텍스트)
@@ -748,6 +1231,71 @@ export default function MedicationPage() {
 
         {error && <p style={{ color: pinkTheme.danger, marginTop: "15px" }}>에러: {error}</p>}
       </div>
+
+      {openFoodDetail && (
+        <Modal onClose={() => setOpenFoodDetail(null)}>
+          <div
+            style={{
+              background: pinkTheme.cardBg,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 16,
+              padding: 20,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 20 }}>
+                {foodPolarityStyle(openFoodDetail.item.polarity).icon}
+              </span>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: 17,
+                  fontWeight: 700,
+                  color: foodPolarityStyle(openFoodDetail.item.polarity).color,
+                }}
+              >
+                {openFoodDetail.item.name}
+              </p>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  background: foodPolarityStyle(openFoodDetail.item.polarity).bg,
+                  color: foodPolarityStyle(openFoodDetail.item.polarity).color,
+                }}
+              >
+                {foodPolarityStyle(openFoodDetail.item.polarity).label}
+              </span>
+            </div>
+            <p style={{ margin: "0 0 14px", fontSize: 12, color: pinkTheme.textMuted }}>
+              {openFoodDetail.cardTitle}
+            </p>
+            <p style={{ margin: "0 0 18px", fontSize: 14, lineHeight: 1.6, color: pinkTheme.text }}>
+              {openFoodDetail.item.detail}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setOpenFoodDetail(null)}
+                style={{
+                  padding: "9px 20px",
+                  borderRadius: 10,
+                  border: `1px solid ${pinkTheme.border}`,
+                  background: pinkTheme.cardBg,
+                  color: pinkTheme.textMuted,
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
