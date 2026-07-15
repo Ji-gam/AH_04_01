@@ -26,8 +26,9 @@ from app.services.ai_worker_gateway import (
 logger = logging.getLogger("app.habit_service")
 
 # 몇 개까지 고를 수 있는지는 app/dtos/habit.py의 HabitSelectionRequest.habit_keys(max_length=5)가
-# 강제한다 - 여기서는 "추천을 몇 개까지 보여줄지"만 다룬다.
-MAX_RECOMMENDATIONS = 10
+# 강제한다 - 여기서는 "추천을 몇 개까지 보여줄지"만 다룬다. 팀 논의로 선택 가능 개수와 맞춰
+# 5개로 통일(전에는 10개 중 5개 선택 - "왜 10개나 보여주고 5개만 고르게 하냐"는 피드백 반영).
+MAX_RECOMMENDATIONS = 5
 
 
 @dataclass(frozen=True)
@@ -39,11 +40,19 @@ class HabitDef:
     target: int
 
 
-# 등록 여부와 무관하게 누구에게나 뜨는 기본 세트. 걸음수는 브라우저에서 측정할 수 없어
-# "산책 다녀왔어요" 완료 체크(target=1)로 대체한다(팀 논의 반영).
+# 등록 여부와 무관하게 누구에게나 뜨는 기본 세트(디자인 시안 반영, 8개). 진단명을 적게(또는
+# 하나도) 등록하지 않은 사람도 항상 MAX_RECOMMENDATIONS(5)개를 채울 수 있게 하려고, 질환 유무와
+# 무관한 일반 라이프스타일 습관을 넉넉히 둔다 - 예전엔 기본 2개뿐이라 진단을 1개만 등록하면
+# 추천이 2~3개밖에 안 뜨는 문제가 있었다.
 BASE_HABITS: list[HabitDef] = [
-    HabitDef(key="water", label="물 마시기", icon="🥤", unit="잔", target=5),
-    HabitDef(key="walk", label="산책하기", icon="🚶", unit="회", target=1),
+    HabitDef(key="water", label="물 2L 마시기", icon="🥤", unit="잔", target=8),
+    HabitDef(key="walk", label="산책 20분", icon="🚶", unit="분", target=20),
+    HabitDef(key="reading", label="10분 독서하기", icon="📖", unit="분", target=10),
+    HabitDef(key="morning_stretch", label="아침 스트레칭", icon="🧘", unit="회", target=1),
+    HabitDef(key="early_sleep", label="일찍 자기 (11시 전)", icon="🌙", unit="회", target=1),
+    HabitDef(key="gratitude_journal", label="감사일기 쓰기", icon="✍️", unit="회", target=1),
+    HabitDef(key="phone_free_meal", label="핸드폰 없이 식사하기", icon="📵", unit="회", target=1),
+    HabitDef(key="three_meals", label="하루 3끼 챙겨먹기", icon="🍚", unit="회", target=1),
 ]
 
 # 진단병력(Disease)에 등록된 질환마다 하나씩 추가되는 기본 맞춤 습관 - 세부 진단명(subtype)이

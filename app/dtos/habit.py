@@ -33,7 +33,7 @@ class HabitRecommendationItem(BaseModel):
 class HabitRecommendationsResponse(BaseModel):
     habits: Annotated[
         list[HabitRecommendationItem],
-        Field(description="오늘의 추천 습관 목록(최대 10개 - 기본 세트 + 등록 질환별 맞춤 항목)"),
+        Field(description="오늘의 추천 습관 목록(매일 5개 - 기본 세트 + 등록 질환별 맞춤 항목에서 날짜 기준 회전)"),
     ]
     selected_keys: Annotated[
         list[str], Field(description="이 중 오늘 이미 선택해둔 항목의 key 목록(화면에 미리 체크 표시용)")

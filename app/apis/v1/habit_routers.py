@@ -16,11 +16,12 @@ habit_router = APIRouter(prefix="/habits", tags=["habits"])
     "/recommendations",
     response_model=HabitRecommendationsResponse,
     status_code=status.HTTP_200_OK,
-    summary="오늘의 추천 습관 목록 조회 (선택용, 최대 10개)",
+    summary="오늘의 추천 습관 목록 조회 (선택용, 매일 5개)",
     description=(
-        "더보기 > 생활습관 선택 화면용. 기본 세트(물 마시기 5잔, 산책 1회)에 등록된 진단병력마다 "
-        "맞춤 습관이 하나씩 더해진 후보군에서 최대 10개를 추천한다. 이 중 몇 개를 실제로 할지는 "
-        "POST /habits/selections으로 사용자가 직접 고른다."
+        "더보기 > 생활습관 선택 화면용. 질환 유무와 무관한 기본 세트(물 2L 마시기, 산책 20분 등 "
+        "8개)에 등록된 진단병력마다 맞춤 습관이 하나씩 더해진 후보군에서, 날짜 기준으로 매일 "
+        "5개를 추천한다. 이 5개 중 몇 개를 실제로 할지는 POST /habits/selections으로 사용자가 "
+        "직접 고른다(0~5개 모두 가능)."
     ),
     responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
 )
