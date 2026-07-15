@@ -83,9 +83,34 @@ export default function HabitSelectionPage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 12px" }}>
-          습관 리스트
-        </h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+          <span
+            aria-hidden
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: "50%",
+              flexShrink: 0,
+              border: `1.5px dashed ${t.border}`,
+              background: t.cardBg,
+              color: t.textMuted,
+              fontSize: 18,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            👤
+          </span>
+          <div>
+            <h1 style={{ fontSize: 16, fontWeight: 700, color: t.text, margin: 0 }}>
+              {user ? `${user.name}님, 안녕하세요` : "안녕하세요"}
+            </h1>
+            <p style={{ fontSize: 13, color: t.textMuted, margin: "4px 0 0" }}>
+              이번 주 라이프스타일을 골라보세요
+            </p>
+          </div>
+        </div>
 
         {/* 선택한 습관 — 누르면 오늘 진행 상황(SelectedHabitsModal)을 모달로 보여준다. */}
         <button
