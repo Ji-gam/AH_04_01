@@ -151,6 +151,16 @@ export default function MorePage() {
             </span>
           </Link>
 
+          <Link to="/data-consent" style={menuCardStyle}>
+            <span>
+              📋 데이터 활용 동의
+              <span style={menuDescStyle}>건강정보·AI상담·위치정보·마케팅 동의를 관리해요</span>
+            </span>
+            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+              ›
+            </span>
+          </Link>
+
           <Link to="/content-generation" style={menuCardStyle}>
             <span>
               🛠️ 관리자 컨텐츠생성

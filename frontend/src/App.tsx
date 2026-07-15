@@ -15,6 +15,7 @@ import ChatPage from "./pages/ChatPage/ChatPage";
 import ConsentPage from "./pages/ConsentPage/ConsentPage";
 import ContentDetailPage from "./pages/ContentGenerationPage/ContentDetailPage";
 import ContentGenerationPage from "./pages/ContentGenerationPage/ContentGenerationPage";
+import DataConsentPage from "./pages/DataConsentPage/DataConsentPage";
 import DurScreeningPage from "./pages/dur/DurScreeningPage";
 import EmergencyGuidePage from "./pages/EmergencyGuidePage/EmergencyGuidePage";
 import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
@@ -48,6 +49,7 @@ export const router = createBrowserRouter([
       { path: "/more", element: <MorePage /> },
       { path: "/lifestyle-info", element: <LifestyleInfoPage /> },
       { path: "/notification-settings", element: <NotificationSettingsPage /> },
+      { path: "/data-consent", element: <DataConsentPage /> },
       { path: "/content-generation", element: <ContentGenerationPage /> },
       { path: "/content-generation/:id", element: <ContentDetailPage /> },
       { path: "/emergency-guide", element: <EmergencyGuidePage /> },
