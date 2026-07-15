@@ -1059,8 +1059,8 @@ export default function MedicationPage() {
               <h3>수동 약품 등록</h3>
               <p style={{ fontSize: "12px", color: pinkTheme.textMuted }}>
                 약품명을 검색해서 목록에서 선택하면 바로 복약 일정이 등록됩니다. 검색 결과에 원하는
-                약이 없으면, 입력한 이름 그대로 새로 등록할 수도 있습니다(마스터 DB에 없는 약도
-                등록 자체는 막히지 않습니다).
+                약이 없으면, 입력한 이름 그대로 새로 등록할 수도 있습니다(마스터 DB에 없는 약도 등록
+                자체는 막히지 않습니다).
               </p>
               <div
                 style={{ display: "flex", flexDirection: "column", gap: "5px", margin: "10px 0" }}
