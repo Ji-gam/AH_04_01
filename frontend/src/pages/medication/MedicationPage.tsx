@@ -199,6 +199,116 @@ function DurIngredientCard({ ingredient }: { ingredient: DurIngredientDetail }) 
   );
 }
 
+/** 수동 등록의 검색 결과/부분일치 후보 카드 — OCR 인식 결과(5~8단계)의 카드(아이콘 박스 + 이름 +
+ * DUR 주의사항 pill)를 그대로 차용한다. OCR은 처방전 한 장에 여러 약이 나올 수 있어 체크박스로
+ * 다중 선택하지만, 여기는 한 번에 스케줄 하나만 등록하면 되므로 라디오(단일 선택)로 좁혔다. */
+function MedicationSelectCard({
+  name,
+  subtitle,
+  selected,
+  onToggle,
+  durInfo,
+  durLoading,
+  isUnmatched,
+}: {
+  name: string;
+  subtitle?: string;
+  selected: boolean;
+  onToggle: () => void;
+  durInfo: DurBasicScreeningResult | undefined;
+  durLoading: boolean;
+  isUnmatched: boolean;
+}) {
+  const activeFlags = durInfo?.dur_simple.filter((f) => f.present) ?? [];
+  return (
+    <label
+      style={{
+        display: "flex",
+        gap: 10,
+        alignItems: "flex-start",
+        border: `1px solid ${selected ? pinkTheme.primary : pinkTheme.border}`,
+        borderRadius: 12,
+        padding: 10,
+        cursor: "pointer",
+        background: pinkTheme.cardBg,
+        boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
+      }}
+    >
+      <input type="radio" checked={selected} onChange={onToggle} style={{ marginTop: 3 }} />
+      <div
+        style={{
+          width: 40,
+          height: 40,
+          flex: "none",
+          borderRadius: 10,
+          background: pinkTheme.primarySoft,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 18,
+        }}
+      >
+        💊
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>
+          {name}
+          {subtitle && (
+            <span style={{ fontWeight: 400, color: pinkTheme.textMuted }}> ({subtitle})</span>
+          )}
+        </div>
+        {durLoading && !durInfo && (
+          <div style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}>
+            DUR 주의사항 확인 중...
+          </div>
+        )}
+        {!durLoading && !durInfo && isUnmatched && (
+          <div style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}>
+            DUR 데이터베이스에서 이 약을 찾지 못해 주의사항을 확인할 수 없습니다.
+          </div>
+        )}
+        {durInfo &&
+          (activeFlags.length > 0 ? (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+              {activeFlags.map((f) => (
+                <span
+                  key={f.rule_code}
+                  title={f.prohbt_content ?? undefined}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    padding: "4px 9px",
+                    borderRadius: 999,
+                    background: "#fdecea",
+                    color: pinkTheme.danger,
+                    border: `1px solid ${pinkTheme.danger}`,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: pinkTheme.danger,
+                    }}
+                  />
+                  {f.rule_label}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}>
+              DUR 주의 사항 없음
+            </div>
+          ))}
+      </div>
+    </label>
+  );
+}
+
 type ExtractedFields = NonNullable<RecognitionJobResult["extracted_fields"]>;
 
 export default function MedicationPage() {
@@ -210,6 +320,7 @@ export default function MedicationPage() {
     fetchSchedules,
     createManualSchedule,
     quickRegister,
+    searchMedications,
     deleteSchedule,
     uploadJob,
     getJobStatus,
@@ -245,14 +356,29 @@ export default function MedicationPage() {
   const [selectedDrugCodes, setSelectedDrugCodes] = useState<string[]>([]);
   const [confirmedTimes, setConfirmedTimes] = useState<string>("09:00, 13:00, 19:00");
 
-  // 수동 등록용 상태 — 약품명을 입력하고 등록 버튼 한 번으로 끝나는 게 기본 플로우(T-MED-3),
-  // 이름이 여러 약과 부분일치할 때만 후보 목록을 보여줘 그중 하나를 고르게 한다.
+  // 수동 등록용 상태 — "더보기 > 약품 검색"과 동일하게 먼저 검색해서 목록에서 고르는 방식으로
+  // 바꿨다(마스터 DB 통일 이후 검색 결과가 실제 등록 가능한 약과 일치하므로). 검색 결과에
+  // 원하는 약이 없을 때만, 입력한 이름 그대로 새로 등록하는 기존 빠른 등록(T-MED-3, 자동 생성
+  // 정책)을 보조 수단으로 남겨둔다.
   const [quickDrugName, setQuickDrugName] = useState("");
   const [manualTimes, setManualTimes] = useState("09:00, 13:00, 19:00");
   const [hospitalName, setHospitalName] = useState(""); // 처방 병원명(선택) — 복약 시간표에 표시 (T-NTFY-2)
-  const [quickCandidates, setQuickCandidates] = useState<
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
+
+  // 검색 결과/빠른 등록 부분일치 후보 — OCR 인식 결과(5~8단계)와 동일하게 후보를 목록으로
+  // 보여주고 DUR 주의사항(임부금기/노인주의 등)까지 미리 확인시켜준다. OCR은 여러 개를 한 번에
+  // 등록할 수 있어 체크박스+다중 선택이지만, 여기는 어차피 한 번에 하나의 스케줄만 등록하므로
+  // 라디오(단일 선택) + 확정 버튼으로 좁혔다.
+  const [manualCandidates, setManualCandidates] = useState<
     Array<{ drug_code: string; medication_name: string; form_type: string | null }>
   >([]);
+  const [selectedManualCode, setSelectedManualCode] = useState<string | null>(null);
+  const [manualDurWarningsByName, setManualDurWarningsByName] = useState<
+    Record<string, DurBasicScreeningResult>
+  >({});
+  const [manualDurCheckLoading, setManualDurCheckLoading] = useState(false);
+  const [manualDurUnmatchedNames, setManualDurUnmatchedNames] = useState<string[]>([]);
 
   // 탭 상태 (12, 13번 확장용)
   const [activeTab, setActiveTab] = useState<"schedule" | "list" | "interaction" | "food">(
@@ -408,6 +534,36 @@ export default function MedicationPage() {
     checkDurWarnings();
   }, [candidates]);
 
+  // 수동 등록 후보(검색 결과/빠른 등록 부분일치)가 채워지면, OCR 후보와 동일하게 등록 전 미리
+  // DUR 주의사항을 조회한다. 여기서는 후보끼리의 상호작용은 의미가 없다(아직 등록된 게 아니라
+  // 서로 비교할 대상이 없으므로) — 개별 약의 임부금기/노인주의 등만 확인한다.
+  useEffect(() => {
+    if (manualCandidates.length === 0) {
+      setManualDurWarningsByName({});
+      setManualDurUnmatchedNames([]);
+      return;
+    }
+
+    const checkManualDurWarnings = async () => {
+      const names = manualCandidates.map((c) => c.medication_name);
+      setManualDurCheckLoading(true);
+      try {
+        const basic = await durApi.screenBasic(names);
+        const byName: Record<string, DurBasicScreeningResult> = {};
+        basic.results.forEach((r) => {
+          byName[r.drug_detail.item_name] = r;
+        });
+        setManualDurWarningsByName(byName);
+        setManualDurUnmatchedNames(basic.unmatched_drug_names);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setManualDurCheckLoading(false);
+      }
+    };
+    checkManualDurWarnings();
+  }, [manualCandidates]);
+
   // 분석 시작 핸들러 (1~4번 흐름)
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -442,9 +598,33 @@ export default function MedicationPage() {
     }
   };
 
-  // 약품명 입력 → 바로 등록 핸들러 (T-MED-3). 정확히 하나만 일치하면 즉시 등록되고,
-  // 전혀 일치하지 않으면 새 약품을 즉석 생성해서라도 등록된다. 여러 개가 부분일치할 때만
-  // 후보 목록을 보여주고, 그중 하나를 고르면 기존 createManualSchedule로 확정 등록한다.
+  // 약품명 검색 핸들러 — "더보기 > 약품 검색"과 같은 마스터 DB(MySQL 캐시 + Tier1 SQLite)를
+  // 조회하는 /medications/search를 그대로 쓴다. 결과는 OCR 후보와 동일한 모양(drug_code/
+  // medication_name/form_type)으로 담아 manualCandidates에 넣고, 아래에서 하나를 골라 확정한다.
+  const handleSearchMedications = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickDrugName.trim()) return;
+    setSearchLoading(true);
+    setSelectedManualCode(null);
+    try {
+      const results = await searchMedications(quickDrugName.trim());
+      setManualCandidates(
+        results.map((r) => ({
+          drug_code: r.standard_code,
+          medication_name: r.medication_name,
+          form_type: r.form_type,
+        })),
+      );
+      setHasSearched(true);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // 약품명 입력 → 바로 등록 핸들러 (T-MED-3). 검색 결과에 원하는 약이 없을 때 쓰는 보조
+  // 수단이다. 정확히 하나만 일치하면 즉시 등록되고, 전혀 일치하지 않으면 새 약품을 즉석
+  // 생성해서라도 등록된다. 여러 개가 부분일치할 때만 (검색 결과와 동일한) 후보 목록을 보여주고,
+  // 그중 하나를 골라 확정하면 createManualSchedule로 등록한다.
   const handleQuickRegister = async () => {
     if (!quickDrugName.trim()) return;
     try {
@@ -461,28 +641,35 @@ export default function MedicationPage() {
         );
         setQuickDrugName("");
         setHospitalName("");
-        setQuickCandidates([]);
+        setManualCandidates([]);
+        setSelectedManualCode(null);
+        setHasSearched(false);
       } else {
         // 여러 약과 부분일치 — 사용자가 직접 골라야 하므로 후보만 보여주고 자동 등록하지 않는다.
-        setQuickCandidates(res.candidates);
+        setManualCandidates(res.candidates);
+        setSelectedManualCode(null);
       }
     } catch (err) {
       console.error(err);
     }
   };
 
-  // 부분일치 후보 중 하나를 사용자가 선택해 최종 등록하는 핸들러
-  const handleSelectCandidate = async (drugCode: string) => {
+  // 라디오로 고른 후보 하나를 확정 등록하는 핸들러 (OCR의 handleConfirmSubmit과 동일한 확정
+  // 단계지만, 여기는 한 번에 하나만 고를 수 있어 createManualSchedule 한 번으로 끝난다).
+  const handleConfirmManualSelection = async () => {
+    if (!selectedManualCode) return;
     try {
       const timesArray = manualTimes
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
-      await createManualSchedule(drugCode, timesArray, hospitalName.trim() || null);
+      await createManualSchedule(selectedManualCode, timesArray, hospitalName.trim() || null);
       alert("복약 일정이 성공적으로 등록되었습니다!");
       setQuickDrugName("");
       setHospitalName("");
-      setQuickCandidates([]);
+      setManualCandidates([]);
+      setSelectedManualCode(null);
+      setHasSearched(false);
     } catch (err) {
       console.error(err);
     }
@@ -864,14 +1051,16 @@ export default function MedicationPage() {
               </div>
             )}
 
-            {/* 수동 약품 등록 (T-MED-1 DoD 2번: 등록 자체는 막히지 않아야 한다 / T-MED-3: 약품명 입력 →
-              바로 등록 한 단계로 개선) */}
+            {/* 수동 약품 등록 — "더보기 > 약품 검색"과 동일하게 먼저 검색하고, 검색 결과 목록에서
+              하나를 선택해 등록한다(T-MED-1 DoD 2번: 등록 자체는 막히지 않아야 한다는 원칙은
+              유지 — 검색 결과에 원하는 약이 없으면 입력한 이름 그대로 새로 등록하는 보조
+              수단을 아래에 남겨뒀다). */}
             <div style={{ border: `1px solid ${pinkTheme.border}`, padding: "15px" }}>
               <h3>수동 약품 등록</h3>
               <p style={{ fontSize: "12px", color: pinkTheme.textMuted }}>
-                약품명을 입력하고 등록 버튼을 누르면 바로 복약 일정이 등록됩니다. 마스터 DB에 없는
-                약도 새로 등록되며(OCR과 동일한 정책), 여러 약과 이름이 겹칠 때만 아래에 선택 목록이
-                뜹니다.
+                약품명을 검색해서 목록에서 선택하면 바로 복약 일정이 등록됩니다. 검색 결과에 원하는
+                약이 없으면, 입력한 이름 그대로 새로 등록할 수도 있습니다(마스터 DB에 없는 약도
+                등록 자체는 막히지 않습니다).
               </p>
               <div
                 style={{ display: "flex", flexDirection: "column", gap: "5px", margin: "10px 0" }}
@@ -894,51 +1083,92 @@ export default function MedicationPage() {
                   placeholder="예: 서울건강내과"
                 />
               </div>
-              <div style={{ display: "flex", gap: "5px", marginBottom: "10px" }}>
+
+              <form
+                onSubmit={handleSearchMedications}
+                style={{ display: "flex", gap: "5px", marginBottom: "10px" }}
+              >
                 <input
                   type="text"
                   value={quickDrugName}
-                  onChange={(e) => setQuickDrugName(e.target.value)}
-                  placeholder="등록할 약품명 입력"
+                  onChange={(e) => {
+                    setQuickDrugName(e.target.value);
+                    setHasSearched(false);
+                    setManualCandidates([]);
+                    setSelectedManualCode(null);
+                  }}
+                  placeholder="약품명 검색 (예: 타이레놀)"
                   style={{ flex: 1 }}
                 />
-                <button onClick={handleQuickRegister} disabled={isLoading || !quickDrugName.trim()}>
-                  등록
+                <button type="submit" disabled={searchLoading || !quickDrugName.trim()}>
+                  {searchLoading ? "검색 중..." : "검색"}
                 </button>
-              </div>
+              </form>
 
-              {quickCandidates.length > 0 && (
+              {hasSearched && !searchLoading && manualCandidates.length === 0 && (
+                <div style={{ marginBottom: "10px" }}>
+                  <p style={{ fontSize: "13px", color: pinkTheme.textMuted, margin: "0 0 5px" }}>
+                    검색 결과가 없습니다.
+                  </p>
+                  <button
+                    onClick={handleQuickRegister}
+                    disabled={isLoading || !quickDrugName.trim()}
+                    style={{
+                      fontSize: "12.5px",
+                      color: pinkTheme.textMuted,
+                      background: "none",
+                      border: "none",
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                  >
+                    찾는 약이 없나요? &quot;{quickDrugName.trim()}&quot;(으)로 새로 등록
+                  </button>
+                </div>
+              )}
+
+              {/* 후보 목록 — OCR 5~8단계와 동일한 DUR 확인 + 카드 UI, 다만 라디오로 하나만 고른다. */}
+              {manualCandidates.length > 0 && (
                 <div
                   style={{
-                    border: `1px dashed ${pinkTheme.border}`,
-                    padding: "10px",
                     display: "flex",
                     flexDirection: "column",
-                    gap: "5px",
+                    gap: "10px",
+                    marginBottom: "10px",
                   }}
                 >
-                  <label style={{ fontSize: "13px", color: "#b26a00" }}>
-                    여러 약품과 이름이 겹칩니다. 등록할 약품을 선택해주세요:
-                  </label>
-                  {quickCandidates.map((m) => (
-                    <div
-                      key={m.drug_code}
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        padding: "5px",
-                        borderBottom: `1px solid ${pinkTheme.border}`,
-                      }}
-                    >
-                      <span>
-                        {m.medication_name} ({m.form_type})
-                      </span>
-                      <button onClick={() => handleSelectCandidate(m.drug_code)}>
-                        이걸로 등록
-                      </button>
+                  {!manualDurCheckLoading && manualDurUnmatchedNames.length > 0 && (
+                    <div style={{ fontSize: 12.5, color: pinkTheme.textMuted }}>
+                      DUR 정보를 찾지 못한 약품명: {manualDurUnmatchedNames.join(", ")}
                     </div>
+                  )}
+                  {manualCandidates.map((m) => (
+                    <MedicationSelectCard
+                      key={m.drug_code}
+                      name={m.medication_name}
+                      subtitle={m.form_type ?? undefined}
+                      selected={selectedManualCode === m.drug_code}
+                      onToggle={() => setSelectedManualCode(m.drug_code)}
+                      durInfo={manualDurWarningsByName[m.medication_name]}
+                      durLoading={manualDurCheckLoading}
+                      isUnmatched={manualDurUnmatchedNames.includes(m.medication_name)}
+                    />
                   ))}
+                  <button
+                    onClick={handleConfirmManualSelection}
+                    disabled={!selectedManualCode}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      backgroundColor: "#4caf50",
+                      color: "#fff",
+                      border: "none",
+                      cursor: selectedManualCode ? "pointer" : "not-allowed",
+                    }}
+                  >
+                    선택한 약품 복약 스케줄 등록 확정
+                  </button>
                 </div>
               )}
             </div>
