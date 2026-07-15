@@ -7,8 +7,23 @@ from starlette import status
 from app.main import app
 from app.models.medication_model import Medication
 from app.repositories.medication_repository import MedicationRepository
-from app.services import medication_open_api_client
+from app.services import medication_open_api_client, medication_service
 from app.tests.conftest import TestSessionLocal
+
+
+class _FakeDurDrugRepository:
+    """(마스터 DB 통일) 실제 SQLite 대신, 테스트가 통제하는 (item_seq, item_name) 목록만
+    돌려준다 — "더보기 > 약품 검색"이 참조하는 Tier1 SQLite에만 있는 약이 수동 등록/검색
+    경로에서도 잡히는지 결정적으로 검증하기 위함."""
+
+    def __init__(self, items: list[tuple[str, str]]):
+        self._items = items
+
+    def search_item_names(self, item_name: str, limit: int) -> list[tuple[str, str]]:
+        return [(seq, name) for seq, name in self._items if item_name in name][:limit]
+
+    def search_item_names_by_prefix(self, prefix: str, limit: int) -> list[tuple[str, str]]:
+        return [(seq, name) for seq, name in self._items if name.startswith(prefix)][:limit]
 
 
 async def _signup_and_login(client: AsyncClient, email: str) -> str:
@@ -214,6 +229,45 @@ async def test_manual_schedule_registration_and_search():
         assert create_res.status_code == status.HTTP_201_CREATED
         assert create_res.json()["drug_name"] == "아스피린정 100mg"
         assert create_res.json()["times"] == ["09:00", "21:00"]
+
+
+async def test_search_medications_finds_drug_only_in_tier1_sqlite(monkeypatch):
+    """(마스터 DB 통일) MySQL(Tier2)엔 없지만 "더보기 > 약품 검색"이 참조하는 Tier1
+    SQLite(dur_drug_light.db)엔 있는 약도, 수동 등록 검색 자동완성에서 "없음"으로 뜨지 않고
+    후보로 나와야 한다."""
+    monkeypatch.setattr(
+        medication_service, "DurDrugRepository", lambda: _FakeDurDrugRepository([("409900001", "게보린정")])
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "tier1_search_test@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        res = await client.get("/api/v1/medications/search?query=게보린", headers=headers)
+        assert res.status_code == status.HTTP_200_OK
+        body = res.json()
+        assert any(m["medication_name"] == "게보린정" and m["standard_code"] == "PDP_409900001" for m in body)
+
+
+async def test_quick_register_with_tier1_only_match_promotes_instead_of_auto_dummy(monkeypatch):
+    """(마스터 DB 통일) 빠른 등록에서 MySQL엔 없지만 Tier1 SQLite에 정확히 일치하는 약이
+    있으면, "마스터 DB에 없음"(AUTO_ 더미) 대신 그 약을 캐싱해 정상 등록해야 한다."""
+    monkeypatch.setattr(
+        medication_service, "DurDrugRepository", lambda: _FakeDurDrugRepository([("409900002", "게보린정")])
+    )
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "tier1_quick_register_test@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        res = await client.post(
+            "/api/v1/medications/quick-register",
+            headers=headers,
+            json={"drug_name": "게보린정", "times": ["08:00"]},
+        )
+        assert res.status_code == status.HTTP_200_OK
+        body = res.json()
+        assert body["status"] == "registered"
+        assert body["auto_created"] is False
+        assert body["schedule"]["drug_name"] == "게보린정"
 
 
 async def test_delete_schedule_removes_it_from_list():
