@@ -27,8 +27,6 @@ interface ConsentItemDef {
   detail: {
     intro: string;
     sections: DetailSection[];
-    /** 이용약관처럼 팝업 안에서 바로 "동의하기"로 켤 수 있게 하고 싶을 때만 채운다. */
-    agreement?: { note: string; buttonLabel: string };
   };
 }
 
@@ -42,10 +40,6 @@ const CONSENT_ITEMS: ConsentItemDef[] = [
     detail: {
       intro:
         "[리:메디 Re:Medi](이하 “서비스”)를 이용해 주셔서 감사합니다. 본 이용약관은 서비스 이용과 관련하여 회사와 사용자 간의 권리, 의무 및 책임사항을 규정합니다.",
-      agreement: {
-        note: "위 이용약관을 충분히 읽고 이해하였으며, 동의합니다.",
-        buttonLabel: "동의하기",
-      },
       sections: [
         {
           heading: "제1조 (목적)",
@@ -305,12 +299,6 @@ export default function DataConsentPage() {
     setSaved(false);
   }
 
-  function agreeAndClose(key: ConsentKey) {
-    setConsent((prev) => ({ ...prev, [key]: true }));
-    setSaved(false);
-    setDetailKey(null);
-  }
-
   function toggleAll() {
     const next = !allAgreed;
     setConsent(
@@ -500,50 +488,23 @@ export default function DataConsentPage() {
                 </div>
               ))}
 
-              {detailItem.detail.agreement && (
-                <p style={{ margin: "0 0 12px", fontSize: 12.5, color: t.text, lineHeight: 1.6 }}>
-                  {detailItem.detail.agreement.note}
-                </p>
-              )}
-
-              <div style={{ display: "flex", gap: 8 }}>
-                <button
-                  type="button"
-                  onClick={() => setDetailKey(null)}
-                  style={{
-                    flex: 1,
-                    marginTop: 4,
-                    padding: "11px 0",
-                    borderRadius: 10,
-                    border: `1px solid ${t.border}`,
-                    background: t.cardBg,
-                    color: t.textMuted,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  닫기
-                </button>
-                {detailItem.detail.agreement && (
-                  <button
-                    type="button"
-                    onClick={() => agreeAndClose(detailItem.key)}
-                    style={{
-                      flex: 1,
-                      marginTop: 4,
-                      padding: "11px 0",
-                      borderRadius: 10,
-                      border: "none",
-                      background: t.primary,
-                      color: "#fff",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {detailItem.detail.agreement.buttonLabel}
-                  </button>
-                )}
-              </div>
+              <button
+                type="button"
+                onClick={() => setDetailKey(null)}
+                style={{
+                  width: "100%",
+                  marginTop: 4,
+                  padding: "11px 0",
+                  borderRadius: 10,
+                  border: `1px solid ${t.border}`,
+                  background: t.cardBg,
+                  color: t.textMuted,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                닫기
+              </button>
             </div>
           </Modal>
         )}
