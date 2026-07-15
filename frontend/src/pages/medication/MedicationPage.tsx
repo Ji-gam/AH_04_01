@@ -213,10 +213,12 @@ export default function MedicationPage() {
   // OCR로 인식된 후보들에 대해, 등록 확정 전에 바로 DUR 주의사항(임부금기/노인주의 등 pill)과
   // 후보끼리의 병용금기/효능군중복 상호작용을 보여준다 — 기존 dur/screening API를 그대로
   // 재사용하고(백엔드 변경 없음), 표시만 이 페이지의 기존 pinkTheme 톤으로 맞춘다.
-  const [durWarningsByName, setDurWarningsByName] = useState<Record<string, DurBasicScreeningResult>>(
-    {},
+  const [durWarningsByName, setDurWarningsByName] = useState<
+    Record<string, DurBasicScreeningResult>
+  >({});
+  const [durInteractions, setDurInteractions] = useState<DurInteractionScreeningResponse | null>(
+    null,
   );
-  const [durInteractions, setDurInteractions] = useState<DurInteractionScreeningResponse | null>(null);
   const [durCheckLoading, setDurCheckLoading] = useState(false);
   const [durCheckError, setDurCheckError] = useState<string | null>(null);
   // DUR 로컬 DB(drug_light.db)는 커버리지가 좁아, 인식은 됐어도 DUR 조회에서 못 찾는 약이
@@ -378,7 +380,9 @@ export default function MedicationPage() {
         setDurInteractions(interaction);
         setDurUnmatchedNames(basic.unmatched_drug_names);
       } catch (err) {
-        setDurCheckError(err instanceof Error ? err.message : "DUR 주의사항을 확인하지 못했습니다.");
+        setDurCheckError(
+          err instanceof Error ? err.message : "DUR 주의사항을 확인하지 못했습니다.",
+        );
       } finally {
         setDurCheckLoading(false);
       }
@@ -678,11 +682,16 @@ export default function MedicationPage() {
                               DUR 주의사항 확인 중...
                             </div>
                           )}
-                          {!durCheckLoading && !durInfo && durUnmatchedNames.includes(c.drug_name) && (
-                            <div style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}>
-                              DUR 데이터베이스에서 이 약을 찾지 못해 주의사항을 확인할 수 없습니다.
-                            </div>
-                          )}
+                          {!durCheckLoading &&
+                            !durInfo &&
+                            durUnmatchedNames.includes(c.drug_name) && (
+                              <div
+                                style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}
+                              >
+                                DUR 데이터베이스에서 이 약을 찾지 못해 주의사항을 확인할 수
+                                없습니다.
+                              </div>
+                            )}
                           {durInfo &&
                             (activeFlags.length > 0 ? (
                               <div
@@ -723,7 +732,9 @@ export default function MedicationPage() {
                                 ))}
                               </div>
                             ) : (
-                              <div style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}>
+                              <div
+                                style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}
+                              >
                                 DUR 주의 사항 없음
                               </div>
                             ))}
