@@ -118,6 +118,7 @@ API 에러응답 형태: §11. `.env` 커밋 금지(§2-2). 로컬검증 커맨�
 
 8. RAG 완성전 개발 규칙 (Tier2 stub 패턴)
 RAG Retriever 필요기능인데 미완성이면: Router/Schema(API명세)는 최종형태 그대로 먼저 작성. Service내부는 규칙기반 하드코딩값 리턴 stub. RAG완성후 Service내부 구현만 교체 — Router/프론트/API명세는 무변경(§1 계층분리 덕). 참고: `docs/dev/sample_code_recog/`.
+LLM/RAG 호출(`AIWorkerGateway`) 사용법 및 "이거 정말 LLM이 필요한가" 체크리스트는 `docs/dev/2026-07-15_ai_worker_gateway_guide.md` 참고.
 
 9. 에러 처리 / 로깅 규칙 (canonical 원본)
 완료기준="일단 막았다"가 아니라 "무엇이 왜 잘못됐는지 바로 알 수 있다"(사례:`docs/decision_log/`).
