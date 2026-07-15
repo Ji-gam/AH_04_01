@@ -35,9 +35,7 @@ def upgrade() -> None:
             name="fk_habit_subtype_suggestions_disease_subtype_id",
             ondelete="CASCADE",
         ),
-        sa.UniqueConstraint(
-            "disease_subtype_id", "slot", name="uq_habit_subtype_suggestions_subtype_slot"
-        ),
+        sa.UniqueConstraint("disease_subtype_id", "slot", name="uq_habit_subtype_suggestions_subtype_slot"),
         mysql_charset="utf8mb4",
     )
 
