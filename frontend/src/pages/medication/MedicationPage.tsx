@@ -13,10 +13,25 @@ import { useAuth } from "../../hooks/useAuth";
 import {
   useMedication,
   type FoodInteractionCheckResult,
+  type FoodItem,
   type RecognitionCandidate,
   type RecognitionJobResult,
 } from "../../hooks/useMedication";
 import { pinkTheme } from "../../theme/pinkTheme";
+import Modal from "../AlarmPage/components/Modal";
+
+/** (T-DOC-4, 2026-07-15) 음식 칩/모달을 `FoodItem.polarity`별로 다르게 보여주기 위한 스타일
+ * 묶음 — "avoid"(기본값)는 기존 핑크 주의색, "recommend"는 초록(같이 먹으면 좋음), "timing_caution"은
+ * 호박색(동시 섭취는 피하되 시간차를 두면 괜찮음)으로 구분한다. */
+const FOOD_POLARITY_STYLES = {
+  avoid: { icon: "⚠️", label: "주의", color: pinkTheme.primary, bg: pinkTheme.primarySoft },
+  recommend: { icon: "👍", label: "권장", color: "#2F8F5B", bg: "#EAF7EF" },
+  timing_caution: { icon: "⏰", label: "시간차 주의", color: "#B8860B", bg: "#FDF3DC" },
+} as const;
+
+function foodPolarityStyle(polarity: FoodItem["polarity"]) {
+  return FOOD_POLARITY_STYLES[polarity ?? "avoid"];
+}
 
 /** 탭 버튼 — 활성 탭은 핑크 채움, 비활성은 흰 카드. */
 function tabStyle(isActive: boolean): React.CSSProperties {
@@ -263,11 +278,14 @@ export default function MedicationPage() {
   const [foodInteractionLoading, setFoodInteractionLoading] = useState(false);
   const [foodInteractionError, setFoodInteractionError] = useState<string | null>(null);
 
-  // (T-DOC-4) 카드별로 지금 펼쳐진 음식 칩 이름 — 카드 인덱스 -> 선택된 음식명(없으면 undefined).
-  // 같은 칩을 다시 누르면 접힌다.
-  const [openFoodItemByCard, setOpenFoodItemByCard] = useState<Record<number, string | undefined>>(
-    {},
-  );
+  // (T-DOC-4, 모달 개선) 음식 칩을 누르면 그 음식의 상세 이유를 모달로 띄운다 — null이면 닫힌 상태.
+  // 아이콘/색상은 카드 severity가 아니라 음식 개별 polarity를 따른다 — 같은 카드 안에서도
+  // "피해야 할 음식"과 "함께 먹으면 좋은 음식"이 섞여 있을 수 있기 때문(예: 아스피린 - 우유는
+  // 권장, 카페인은 주의).
+  const [openFoodDetail, setOpenFoodDetail] = useState<{
+    item: FoodItem;
+    cardTitle: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchSchedules();
@@ -1159,45 +1177,34 @@ export default function MedicationPage() {
                     >
                       <h5>{g.title}</h5>
                       {g.food_items && g.food_items.length > 0 ? (
-                        // (T-DOC-4) 음식명이 식별되면 이유 줄글 대신 칩으로 먼저 보여주고,
-                        // 클릭한 칩의 상세만 펼친다 — 같은 칩을 다시 누르면 접힌다.
-                        <div>
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                            {g.food_items.map((item) => {
-                              const isOpen = openFoodItemByCard[idx] === item.name;
-                              return (
-                                <button
-                                  key={item.name}
-                                  type="button"
-                                  onClick={() =>
-                                    setOpenFoodItemByCard((prev) => ({
-                                      ...prev,
-                                      [idx]: prev[idx] === item.name ? undefined : item.name,
-                                    }))
-                                  }
-                                  style={{
-                                    padding: "4px 10px",
-                                    borderRadius: "999px",
-                                    border: `1px solid ${isOpen ? pinkTheme.primary : pinkTheme.border}`,
-                                    background: isOpen ? pinkTheme.primary : pinkTheme.cardBg,
-                                    color: isOpen ? "#fff" : pinkTheme.text,
-                                    fontSize: 13,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  {item.name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {openFoodItemByCard[idx] && (
-                            <p style={{ margin: "10px 0 0" }}>
-                              {
-                                g.food_items.find((item) => item.name === openFoodItemByCard[idx])
-                                  ?.detail
-                              }
-                            </p>
-                          )}
+                        // (T-DOC-4, 모달 개선) 음식명이 식별되면 이유 줄글 대신 칩으로 먼저 보여주고,
+                        // 칩을 누르면 상세 이유를 모달로 띄운다 — 원문이 긴 카테고리도 다른 칩
+                        // 목록을 밀어내지 않고 한 곳에 집중해서 읽을 수 있다.
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                          {g.food_items.map((item) => {
+                            const style = foodPolarityStyle(item.polarity);
+                            const isAvoid = (item.polarity ?? "avoid") === "avoid";
+                            return (
+                              <button
+                                key={item.name}
+                                type="button"
+                                onClick={() => setOpenFoodDetail({ item, cardTitle: g.title })}
+                                style={{
+                                  padding: "6px 14px",
+                                  borderRadius: "999px",
+                                  border: `1px solid ${isAvoid ? pinkTheme.border : style.color}`,
+                                  background: style.bg,
+                                  color: isAvoid ? pinkTheme.text : style.color,
+                                  fontSize: 13,
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {isAvoid ? "" : `${style.icon} `}
+                                {item.name}
+                              </button>
+                            );
+                          })}
                         </div>
                       ) : (
                         // 음식명이 식별되지 않으면(사전에 없는 음식이거나 e약은요 자유 텍스트)
@@ -1224,6 +1231,69 @@ export default function MedicationPage() {
 
         {error && <p style={{ color: pinkTheme.danger, marginTop: "15px" }}>에러: {error}</p>}
       </div>
+
+      {openFoodDetail && (
+        <Modal onClose={() => setOpenFoodDetail(null)}>
+          <div
+            style={{
+              background: pinkTheme.cardBg,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 16,
+              padding: 20,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+              <span style={{ fontSize: 20 }}>{foodPolarityStyle(openFoodDetail.item.polarity).icon}</span>
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: 17,
+                  fontWeight: 700,
+                  color: foodPolarityStyle(openFoodDetail.item.polarity).color,
+                }}
+              >
+                {openFoodDetail.item.name}
+              </p>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  background: foodPolarityStyle(openFoodDetail.item.polarity).bg,
+                  color: foodPolarityStyle(openFoodDetail.item.polarity).color,
+                }}
+              >
+                {foodPolarityStyle(openFoodDetail.item.polarity).label}
+              </span>
+            </div>
+            <p style={{ margin: "0 0 14px", fontSize: 12, color: pinkTheme.textMuted }}>
+              {openFoodDetail.cardTitle}
+            </p>
+            <p style={{ margin: "0 0 18px", fontSize: 14, lineHeight: 1.6, color: pinkTheme.text }}>
+              {openFoodDetail.item.detail}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setOpenFoodDetail(null)}
+                style={{
+                  padding: "9px 20px",
+                  borderRadius: 10,
+                  border: `1px solid ${pinkTheme.border}`,
+                  background: pinkTheme.cardBg,
+                  color: pinkTheme.textMuted,
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
