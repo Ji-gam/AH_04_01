@@ -210,7 +210,9 @@ class HabitService:
         catalog = await self._selected_catalog(session, profile, today)
         habit_def = next((h for h in catalog if h.key == habit_key), None)
         if habit_def is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="오늘 선택한 습관 목록에 없는 항목입니다.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="오늘 선택한 습관 목록에 없는 항목입니다."
+            )
 
         await self._repository.increment_progress(session, profile.id, today, habit_key, cap=habit_def.target)
 

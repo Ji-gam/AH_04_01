@@ -13,9 +13,7 @@ class HabitRepository:
         self, session: AsyncSession, disease_subtype_id: int
     ) -> HabitSubtypeSuggestion | None:
         result = await session.execute(
-            select(HabitSubtypeSuggestion).where(
-                HabitSubtypeSuggestion.disease_subtype_id == disease_subtype_id
-            )
+            select(HabitSubtypeSuggestion).where(HabitSubtypeSuggestion.disease_subtype_id == disease_subtype_id)
         )
         return result.scalar_one_or_none()
 

@@ -97,9 +97,7 @@ async def test_select_habits_then_today_returns_only_selected():
         token = await _signup_and_login(client, "habit_select_partial@example.com")
         headers = {"Authorization": f"Bearer {token}"}
 
-        select_response = await client.post(
-            "/api/v1/habits/selections", json={"habit_keys": ["walk"]}, headers=headers
-        )
+        select_response = await client.post("/api/v1/habits/selections", json={"habit_keys": ["walk"]}, headers=headers)
         today_response = await client.get("/api/v1/habits/today", headers=headers)
 
     assert select_response.status_code == status.HTTP_200_OK
