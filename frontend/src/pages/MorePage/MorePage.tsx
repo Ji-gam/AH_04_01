@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
 import { pinkTheme } from "../../theme/pinkTheme";
@@ -40,6 +40,7 @@ const menuDescStyle: React.CSSProperties = {
 };
 
 export default function MorePage() {
+  const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
@@ -79,6 +80,12 @@ export default function MorePage() {
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
+  };
+
+  // 검색 결과 약을 바로 복약알림 등록 화면으로 넘긴다 — 약 이름을 미리 채운 채 폼이 열린다.
+  const handleRegisterReminder = (itemName: string) => {
+    setIsModalOpen(false);
+    navigate("/alarms", { state: { prefillMedicationName: itemName } });
   };
 
   return (
@@ -283,14 +290,36 @@ export default function MorePage() {
                       >
                         <div
                           style={{
-                            fontWeight: 700,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
                             borderBottom: `1px solid ${pinkTheme.border}`,
                             paddingBottom: 6,
                             marginBottom: 6,
-                            fontSize: 14,
                           }}
                         >
-                          {item.item_name} ({item.entp_name})
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>
+                            {item.item_name} ({item.entp_name})
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRegisterReminder(item.item_name)}
+                            style={{
+                              flexShrink: 0,
+                              marginLeft: 8,
+                              padding: "5px 10px",
+                              borderRadius: 999,
+                              border: "none",
+                              background: pinkTheme.primary,
+                              color: "#fff",
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            🔔 복약알림 등록
+                          </button>
                         </div>
                         <p style={{ margin: "5px 0", fontSize: 13 }}>
                           <strong>효능:</strong> {item.efficacy}
