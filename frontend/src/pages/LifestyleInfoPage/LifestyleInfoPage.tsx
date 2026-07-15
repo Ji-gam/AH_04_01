@@ -94,26 +94,23 @@ export default function LifestyleInfoPage() {
   return (
     <div style={{ background: t.pageBg, minHeight: "100%", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-          <button
-            type="button"
-            aria-label="뒤로"
-            onClick={() => navigate("/more")}
-            style={{
-              border: "none",
-              background: "none",
-              color: t.text,
-              fontSize: 20,
-              cursor: "pointer",
-              lineHeight: 1,
-            }}
-          >
-            ←
-          </button>
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: 0 }}>
-            🌙 생활습관 정보
-          </h1>
-        </div>
+        <button
+          type="button"
+          onClick={() => navigate("/more")}
+          style={{
+            background: "none",
+            border: "none",
+            color: t.textMuted,
+            padding: 0,
+            marginBottom: 12,
+            cursor: "pointer",
+          }}
+        >
+          ← 뒤로가기
+        </button>
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 6px" }}>
+          🌙 생활습관 정보
+        </h1>
 
         <p style={{ margin: "0 0 20px", fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>
           복약 효과를 높이기 위한 생활습관을 설정해주세요.
