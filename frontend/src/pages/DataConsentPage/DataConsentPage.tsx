@@ -27,10 +27,106 @@ interface ConsentItemDef {
   detail: {
     intro: string;
     sections: DetailSection[];
+    /** 이용약관처럼 팝업 안에서 바로 "동의하기"로 켤 수 있게 하고 싶을 때만 채운다. */
+    agreement?: { note: string; buttonLabel: string };
   };
 }
 
 const CONSENT_ITEMS: ConsentItemDef[] = [
+  {
+    key: "termsOfService",
+    title: "이용약관 동의",
+    desc: "리:메디 서비스 이용을 위한 기본 약관이에요",
+    required: true,
+    requiredWarning: "이용약관에 동의하지 않으면 서비스를 이용할 수 없어요.",
+    detail: {
+      intro:
+        "[리:메디 Re:Medi](이하 “서비스”)를 이용해 주셔서 감사합니다. 본 이용약관은 서비스 이용과 관련하여 회사와 사용자 간의 권리, 의무 및 책임사항을 규정합니다.",
+      agreement: {
+        note: "위 이용약관을 충분히 읽고 이해하였으며, 동의합니다.",
+        buttonLabel: "동의하기",
+      },
+      sections: [
+        {
+          heading: "제1조 (목적)",
+          items: [
+            "본 약관은 [리:메디 Re:Medi]가 제공하는 건강 관리, 복약 알림, AI 상담, 생활습관 가이드 등 서비스의 이용 조건 및 절차, 회사와 회원 간의 권리·의무 및 기타 필요한 사항을 규정함을 목적으로 합니다.",
+          ],
+        },
+        {
+          heading: "제2조 (용어의 정의)",
+          items: [
+            "“회원”이란 서비스에 접속하여 본 약관에 따라 회사와 이용계약을 체결하고, 서비스를 이용하는 자를 말합니다.",
+            "“콘텐츠”란 서비스에서 제공하는 건강 정보, AI 가이드, 복약 알림, 커뮤니티 게시물 등을 의미합니다.",
+            "“민감정보”란 건강정보, 진료기록, 처방전 정보, 복약 이력 등을 말합니다.",
+          ],
+        },
+        {
+          heading: "제3조 (약관의 효력 및 변경)",
+          items: [
+            "본 약관은 서비스 이용을 신청한 회원이 동의함으로써 효력이 발생합니다.",
+            "회사는 관련 법령의 범위 내에서 본 약관을 개정할 수 있으며, 변경 시 공지사항을 통해 7일 전 고지합니다.",
+            "회원이 변경된 약관에 동의하지 않을 경우 서비스 이용을 중단하고 탈퇴할 수 있습니다.",
+          ],
+        },
+        {
+          heading: "제4조 (회원가입 및 계정 관리)",
+          items: [
+            "회원가입은 Google 계정을 통해 진행되며, 본인 확인 절차를 거칩니다.",
+            "회원은 정확한 정보를 제공해야 하며, 허위 정보 입력 시 서비스 이용이 제한될 수 있습니다.",
+            "회원은 계정 정보를 안전하게 관리할 책임이 있으며, 계정 도용 시 즉시 회사에 통보해야 합니다.",
+          ],
+        },
+        {
+          heading: "제5조 (서비스 내용)",
+          items: [
+            "서비스는 복약 알림, AI 건강 상담, 생활습관 가이드, 커뮤니티, 위치 기반 응급·약국 찾기 등을 제공합니다.",
+            "모든 서비스는 “참고 정보”로 제공되며, 의학적 진단·처방을 대신할 수 없습니다.",
+            "서비스는 24시간 제공을 원칙으로 하나, 기술적 사유로 일시 중단될 수 있습니다.",
+          ],
+        },
+        {
+          heading: "제6조 (개인정보 보호)",
+          items: [
+            "회사는 개인정보 보호법 등 관련 법령을 준수하며, 회원의 개인정보를 보호합니다.",
+            "민감정보(건강정보)는 별도의 동의를 받은 후 최소한으로 수집·이용합니다.",
+            "회원 탈퇴 시 관련 개인정보는 즉시 파기합니다.",
+          ],
+        },
+        {
+          heading: "제7조 (회원의 권리와 의무)",
+          items: [
+            "회원은 서비스를 개인적, 비상업적 용도로만 이용할 수 있습니다.",
+            "회원은 타인의 권리를 침해하거나 불법 행위를 하지 않아야 합니다.",
+            "회원은 서비스 내에서 타인에게 불쾌감을 주는 게시물을 올리지 않아야 합니다.",
+          ],
+        },
+        {
+          heading: "제8조 (회사의 권리와 의무)",
+          items: [
+            "회사는 안정적인 서비스 제공을 위해 노력합니다.",
+            "회사는 회원의 개인정보를 보호하며, 서비스 개선을 위한 익명화된 데이터를 활용할 수 있습니다.",
+            "회사는 회원의 불만 사항을 신속히 처리합니다.",
+          ],
+        },
+        {
+          heading: "제9조 (책임의 제한)",
+          items: [
+            "서비스는 “참고 정보”만 제공하며, 의학적 판단의 책임은 회원 본인에게 있습니다.",
+            "회사는 천재지변, 시스템 장애 등 불가항력으로 인한 서비스 중단에 대해 책임을 지지 않습니다.",
+            "회원이 본 약관을 위반하여 발생한 손해에 대해 회사는 책임을 지지 않습니다.",
+          ],
+        },
+        {
+          heading: "제10조 (준거법 및 분쟁 해결)",
+          items: [
+            "본 약관은 대한민국 법령에 따라 해석됩니다.",
+            "서비스 이용으로 발생한 분쟁은 서울중앙지방법원을 관할 법원으로 합니다.",
+          ],
+        },
+      ],
+    },
+  },
   {
     key: "health",
     title: "건강정보 활용 동의",
@@ -63,6 +159,57 @@ const CONSENT_ITEMS: ConsentItemDef[] = [
             "최소한의 정보만 수집하며, 서비스 탈퇴 시 즉시 삭제됩니다.",
             "제3자 제공 없이 내부 서비스 개선 목적으로만 사용됩니다.",
           ],
+        },
+      ],
+    },
+  },
+  {
+    key: "sensitiveInfo",
+    title: "민감정보 동의",
+    desc: "진료기록·복약이력·알레르기 등 민감정보를 수집해요",
+    required: true,
+    requiredWarning:
+      "민감정보 동의를 하지 않으면 맞춤 가이드·AI 상담·응급카드 등 일부 서비스가 제한돼요.",
+    detail: {
+      intro:
+        "[리:메디 Re:Medi]는 더 정확한 맞춤형 건강 서비스를 제공하기 위해 아래 민감정보를 수집·이용합니다.",
+      sections: [
+        {
+          heading: "수집하는 민감정보",
+          items: [
+            "건강 및 의료 정보 (진료 기록, 처방전 내용, 진단명, 검사 수치)",
+            "복약 이력 및 부작용 정보",
+            "알레르기 정보 (식품, 약물)",
+            "기저질환 및 만성질환 이력",
+            "혈당, 혈압, 체중 등 생체 지표",
+          ],
+        },
+        {
+          heading: "수집·이용 목적",
+          items: [
+            "개인별 복약 알림 및 부작용 예방 가이드 제공",
+            "AI 기반 맞춤 식단·생활습관 추천",
+            "약물 상호작용 및 건강 위험도 분석",
+            "응급 상황 시 필요한 최소 정보 제공 (응급카드)",
+          ],
+        },
+        {
+          heading: "보관 및 처리 방법",
+          items: [
+            "서비스 이용 기간 동안만 보관하며, 회원 탈퇴 시 즉시 파기합니다.",
+            "모든 데이터는 암호화하여 안전하게 저장됩니다.",
+            "제3자에게 제공하지 않으며, 내부 서비스 개선 및 AI 학습(익명화 처리) 목적으로만 사용합니다.",
+          ],
+        },
+        {
+          heading: "동의 거부 시",
+          items: [
+            "민감정보 미동의 시 일부 서비스(맞춤 가이드, AI 상담, 응급카드)가 제한될 수 있습니다.",
+          ],
+        },
+        {
+          heading: "동의 철회",
+          items: ["언제든지 설정 > 데이터 관리에서 철회할 수 있습니다."],
         },
       ],
     },
@@ -158,6 +305,12 @@ export default function DataConsentPage() {
     setSaved(false);
   }
 
+  function agreeAndClose(key: ConsentKey) {
+    setConsent((prev) => ({ ...prev, [key]: true }));
+    setSaved(false);
+    setDetailKey(null);
+  }
+
   function toggleAll() {
     const next = !allAgreed;
     setConsent(
@@ -176,26 +329,23 @@ export default function DataConsentPage() {
   return (
     <div style={{ background: t.pageBg, minHeight: "100%", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-          <button
-            type="button"
-            aria-label="뒤로"
-            onClick={() => navigate("/more")}
-            style={{
-              border: "none",
-              background: "none",
-              color: t.text,
-              fontSize: 20,
-              cursor: "pointer",
-              lineHeight: 1,
-            }}
-          >
-            ←
-          </button>
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: 0 }}>
-            데이터 활용 동의
-          </h1>
-        </div>
+        <button
+          type="button"
+          onClick={() => navigate("/more")}
+          style={{
+            background: "none",
+            border: "none",
+            color: t.textMuted,
+            padding: 0,
+            marginBottom: 12,
+            cursor: "pointer",
+          }}
+        >
+          ← 뒤로가기
+        </button>
+        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 16px" }}>
+          데이터 활용 동의
+        </h1>
 
         <label
           style={{
@@ -349,23 +499,51 @@ export default function DataConsentPage() {
                   </ul>
                 </div>
               ))}
-              <button
-                type="button"
-                onClick={() => setDetailKey(null)}
-                style={{
-                  width: "100%",
-                  marginTop: 4,
-                  padding: "11px 0",
-                  borderRadius: 10,
-                  border: `1px solid ${t.border}`,
-                  background: t.cardBg,
-                  color: t.textMuted,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                닫기
-              </button>
+
+              {detailItem.detail.agreement && (
+                <p style={{ margin: "0 0 12px", fontSize: 12.5, color: t.text, lineHeight: 1.6 }}>
+                  {detailItem.detail.agreement.note}
+                </p>
+              )}
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setDetailKey(null)}
+                  style={{
+                    flex: 1,
+                    marginTop: 4,
+                    padding: "11px 0",
+                    borderRadius: 10,
+                    border: `1px solid ${t.border}`,
+                    background: t.cardBg,
+                    color: t.textMuted,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  닫기
+                </button>
+                {detailItem.detail.agreement && (
+                  <button
+                    type="button"
+                    onClick={() => agreeAndClose(detailItem.key)}
+                    style={{
+                      flex: 1,
+                      marginTop: 4,
+                      padding: "11px 0",
+                      borderRadius: 10,
+                      border: "none",
+                      background: t.primary,
+                      color: "#fff",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {detailItem.detail.agreement.buttonLabel}
+                  </button>
+                )}
+              </div>
             </div>
           </Modal>
         )}
