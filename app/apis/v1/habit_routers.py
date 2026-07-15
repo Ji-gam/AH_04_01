@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
-from app.dtos.habit import HabitsTodayResponse
+from app.dtos.habit import HabitRecommendationsResponse, HabitSelectionRequest, HabitsTodayResponse
 from app.models.profiles import Profile
 from app.services.habit_service import HabitService
 
@@ -13,13 +13,56 @@ habit_router = APIRouter(prefix="/habits", tags=["habits"])
 
 
 @habit_router.get(
+    "/recommendations",
+    response_model=HabitRecommendationsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="오늘의 추천 습관 목록 조회 (선택용, 최대 10개)",
+    description=(
+        "더보기 > 생활습관 선택 화면용. 기본 세트(물 마시기 5잔, 산책 1회)에 등록된 진단병력마다 "
+        "맞춤 습관이 하나씩 더해진 후보군에서 최대 10개를 추천한다. 이 중 몇 개를 실제로 할지는 "
+        "POST /habits/selections으로 사용자가 직접 고른다."
+    ),
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
+)
+async def get_habit_recommendations(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> HabitRecommendationsResponse:
+    service = HabitService()
+    return await service.get_recommendations(session, profile)
+
+
+@habit_router.post(
+    "/selections",
+    response_model=HabitsTodayResponse,
+    status_code=status.HTTP_200_OK,
+    summary="오늘 할 습관 선택(최대 5개, 0개도 허용)",
+    description=(
+        "오늘의 추천 목록(GET /habits/recommendations) 중 실제로 할 습관을 고른다. 다시 호출하면 "
+        "이전 선택은 전부 교체된다. 선택된 습관만 홈 화면 라이프스타일 카드/habits/today에 노출된다."
+    ),
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"description": "오늘의 추천 목록에 없는 habit_key가 섞여 있음"},
+        status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"},
+    },
+)
+async def select_habits(
+    body: HabitSelectionRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> HabitsTodayResponse:
+    service = HabitService()
+    return await service.select_habits(session, profile, body.habit_keys)
+
+
+@habit_router.get(
     "/today",
     response_model=HabitsTodayResponse,
     status_code=status.HTTP_200_OK,
-    summary="오늘의 습관 목록 및 진행량 조회",
+    summary="오늘 선택한 습관 목록 및 진행량 조회",
     description=(
-        "홈 화면 '오늘의 건강 카드' 아래 습관 트래커용. 기본 세트(물 마시기 5잔, 산책 1회)에 "
-        "등록된 진단병력마다 맞춤 습관이 하나씩 더해진다. 자정이 지나면 progress는 자동으로 0부터 다시 시작한다."
+        "홈 화면 '오늘의 건강 카드' 아래 습관 트래커용. 오늘의 추천 목록 중 사용자가 실제로 선택한 "
+        "습관만 반환한다(아직 하나도 안 골랐으면 빈 배열). 자정이 지나면 선택도 progress도 초기화된다."
     ),
     responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
 )
