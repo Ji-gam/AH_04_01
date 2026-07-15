@@ -12,7 +12,15 @@ export interface ChatMessage {
   disclaimer?: string;
 }
 
-export function useChatStream() {
+interface Options {
+  /** 홈 화면 "AI 건강 상담" 입력창에서 넘어와 바로 새 질문을 보낼 예정이면 true로 넘긴다.
+   * 마운트 시 "마지막 상담 복원"을 건너뛰어, 복원 응답이 뒤늦게 도착해 방금 낙관적으로
+   * 추가한 사용자 질문을 덮어써버리는 경쟁 상태(race condition)를 막는다. */
+  skipRestoreOnMount?: boolean;
+}
+
+export function useChatStream(options: Options = {}) {
+  const { skipRestoreOnMount = false } = options;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [sessionList, setSessionList] = useState<ChatSessionResponse[]>([]);
@@ -47,15 +55,17 @@ export function useChatStream() {
   };
 
   // 컴포넌트 마운트 시 세션 목록을 조회하고, 마지막 세션이 있다면 복원합니다.
+  // (skipRestoreOnMount가 true면 목록만 불러오고 복원은 건너뛴다 - 상단 옵션 설명 참고)
   useEffect(() => {
     void (async () => {
       const list = await loadSessions();
-      if (list.length > 0) {
+      if (!skipRestoreOnMount && list.length > 0) {
         // 가장 최근 세션 ID 로드
         const latestSessionId = String(list[0].id);
         void selectSession(latestSessionId);
       }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function ensureSession(): Promise<string> {
