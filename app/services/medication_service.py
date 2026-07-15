@@ -95,6 +95,12 @@ _FUZZY_MATCH_MIN_KOREAN_LEN = 3
 _FUZZY_TIER1_PREFIX_LEN = 2
 _FUZZY_TIER1_CANDIDATE_LIMIT = 300
 
+# ("더보기 > 약품 검색"과 마스터 DB 불일치 수정) 수동 등록(자동완성 검색/빠른 등록)은 그동안
+# MySQL(Tier2) 캐시만 봐서, "더보기 > 약품 검색"이 참조하는 Tier1 SQLite(dur_drug_light.db,
+# 최근 갱신으로 더 커짐)에는 있는 약도 "마스터 DB에 없음"으로 떨어졌다. OCR 등록 경로와
+# 동일하게 Tier1을 함께 조회하도록 맞춘다.
+_SEARCH_TIER1_CANDIDATE_LIMIT = 10
+
 
 def _korean_only(text: str) -> str:
     return "".join(_KOREAN_TOKEN_PATTERN.findall(text))
@@ -492,6 +498,23 @@ async def _create_medication_for_unmatched_name(
         new_med = Medication(medication_name=name, standard_code=f"AUTO_{uuid.uuid4().hex[:10].upper()}")
     new_med = await repo.create_medication(db_session, new_med)
     return new_med, is_auto_dummy
+
+
+async def _resolve_manual_registration_medication(
+    db_session: AsyncSession, repo: MedicationRepository, name: str
+) -> tuple[Medication, bool]:
+    """수동/빠른 등록에서 MySQL(Tier2)에 정확히 일치하는 약이 없을 때, OCR 등록 경로
+    (`_resolve_or_create_drug_like_names`)와 동일하게 Tier1 SQLite(dur_drug_light.db,
+    "더보기 > 약품 검색"이 참조하는 것과 같은 DB) → Tier3 공공 API → AUTO_ 더미 순으로
+    확인한다. 반환값: (매칭/생성된 Medication, AUTO_ 더미 생성 여부)."""
+    dur_repo = DurDrugRepository()
+    tier1_results = await asyncio.to_thread(dur_repo.search_item_names, name, 5)
+    tier1_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
+    if tier1_item_seq:
+        med = await _get_or_create_medication_from_tier1(db_session, repo, tier1_item_seq, name)
+        return med, False
+
+    return await _create_medication_for_unmatched_name(db_session, repo, name)
 
 
 async def _match_existing_by_word(
@@ -1132,9 +1155,7 @@ class MedicationService:
             ]
             return QuickRegisterResult(status="multiple_matches", candidates=candidates)
         else:
-            med = Medication(medication_name=stripped_name, standard_code=f"AUTO_{uuid.uuid4().hex[:10].upper()}")
-            med = await self._repository.create_medication(session, med)
-            auto_created = True
+            med, auto_created = await _resolve_manual_registration_medication(session, self._repository, stripped_name)
 
         schedule = MedicationSchedule(
             profile_id=profile_id, medication_id=med.id, times=times, hospital_name=hospital_name
@@ -1183,7 +1204,20 @@ class MedicationService:
         return FoodInteractionCheckResult(guide_cards=guide_cards, checked_count=len(medications))
 
     async def search_medications(self, session: AsyncSession, query: str) -> list[dict]:
+        """수동 등록 검색창의 자동완성. MySQL(Tier2) 후보에 더해, "더보기 > 약품 검색"이 참조하는
+        것과 같은 Tier1 SQLite(dur_drug_light.db)에만 있는 약도 후보로 보여준다 — 그렇지 않으면
+        Tier1엔 있는데 MySQL엔 아직 캐싱되지 않은 약이 수동 등록 검색에서만 "없음"으로 나온다."""
         meds = await self._repository.search_medication_by_name(session, query)
+        seen_ids = {m.id for m in meds}
+
+        dur_repo = DurDrugRepository()
+        tier1_results = await asyncio.to_thread(dur_repo.search_item_names, query, _SEARCH_TIER1_CANDIDATE_LIMIT)
+        for item_seq, item_name in tier1_results:
+            med = await _get_or_create_medication_from_tier1(session, self._repository, item_seq, item_name)
+            if med.id not in seen_ids:
+                seen_ids.add(med.id)
+                meds.append(med)
+
         return [
             {
                 "id": m.id,

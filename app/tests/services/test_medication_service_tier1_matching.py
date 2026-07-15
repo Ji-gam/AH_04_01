@@ -96,3 +96,33 @@ async def test_tier1_no_match_falls_through_without_error(monkeypatch):
 
     assert len(matched) == 1
     assert matched[0].id in auto_created_ids
+
+
+async def test_search_medications_includes_tier1_only_drug(monkeypatch):
+    """ "더보기 > 약품 검색"이 참조하는 것과 같은 Tier1 SQLite에만 있고 MySQL(Tier2)엔 아직
+    없는 약도, 수동 등록 검색 자동완성(search_medications)의 결과에 포함돼야 한다."""
+    _patch_dur_repo(monkeypatch, [("309900001", "타이레놀정500mg")])
+    service = medication_service.MedicationService()
+
+    async with TestSessionLocal() as session:
+        results = await service.search_medications(session, "타이레놀")
+
+    assert len(results) == 1
+    assert results[0]["standard_code"] == "PDP_309900001"
+    assert results[0]["medication_name"] == "타이레놀정500mg"
+
+
+async def test_search_medications_does_not_duplicate_medication_already_in_mysql(monkeypatch):
+    """같은 약이 MySQL에 이미 있고 Tier1 검색 결과에도 잡히면, 한 번만 나와야 한다."""
+    repo = MedicationRepository()
+    async with TestSessionLocal() as session:
+        existing = await repo.create_medication(
+            session, medication_service.Medication(medication_name="타이레놀정500mg", standard_code="PDP_309900002")
+        )
+        _patch_dur_repo(monkeypatch, [("309900002", "타이레놀정500mg")])
+        service = medication_service.MedicationService()
+
+        results = await service.search_medications(session, "타이레놀")
+
+    assert len(results) == 1
+    assert results[0]["id"] == existing.id

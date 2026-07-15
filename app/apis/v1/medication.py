@@ -359,7 +359,11 @@ async def delete_medication_schedule(
 @medication_router.get(
     "/medications/search",
     summary="의약품 마스터 수동 검색",
-    description="약품명 또는 외형 검색 fallback을 위한 검색창의 자동완성 API입니다.",
+    description=(
+        "약품명 또는 외형 검색 fallback을 위한 검색창의 자동완성 API입니다. MySQL 캐시(Tier2)에"
+        "더해 '더보기 > 약품 검색'(search-dur)이 참조하는 것과 같은 Tier1 SQLite(dur_drug_light.db)도"
+        "함께 조회해, 두 화면에서 같은 약이 서로 다르게 보이지 않도록 한다."
+    ),
 )
 async def search_medications(
     profile: Annotated[Profile, Depends(get_current_profile)],
