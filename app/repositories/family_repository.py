@@ -20,7 +20,9 @@ class FamilyRepository:
         await session.refresh(link)
         return link
 
-    async def get_link(self, session: AsyncSession, guardian_profile_id: int, member_profile_id: int) -> FamilyLink | None:
+    async def get_link(
+        self, session: AsyncSession, guardian_profile_id: int, member_profile_id: int
+    ) -> FamilyLink | None:
         result = await session.execute(
             select(FamilyLink).where(
                 FamilyLink.guardian_profile_id == guardian_profile_id,

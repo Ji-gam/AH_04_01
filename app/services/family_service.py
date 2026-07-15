@@ -42,16 +42,20 @@ class FamilyService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 계정의 프로필을 찾을 수 없습니다.")
 
         if target_profile.id == guardian_profile_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="본인 자신은 가족으로 등록할 수 없습니다.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="본인 자신은 가족으로 등록할 수 없습니다."
+            )
 
         existing = await self._family_repo.get_link(session, guardian_profile_id, target_profile.id)
         if existing is not None:
-            detail = "이미 연결된 가족 구성원입니다." if existing.status.value == "ACCEPTED" else "이미 응답 대기중인 요청이 있습니다."
+            detail = (
+                "이미 연결된 가족 구성원입니다."
+                if existing.status.value == "ACCEPTED"
+                else "이미 응답 대기중인 요청이 있습니다."
+            )
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
 
-        link = await self._family_repo.create_link(
-            session, guardian_profile_id, target_profile.id, req.relation_label
-        )
+        link = await self._family_repo.create_link(session, guardian_profile_id, target_profile.id, req.relation_label)
         return await self._to_result(session, link, other_profile=target_profile)
 
     async def accept_request(self, session: AsyncSession, member_profile_id: int, link_id: int) -> FamilyLinkResult:
@@ -110,7 +114,9 @@ class FamilyService:
         if link is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="연결 정보를 찾을 수 없습니다.")
         if link.guardian_profile_id != requester_profile_id:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인이 보낸 요청/연결만 해제할 수 있습니다.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="본인이 보낸 요청/연결만 해제할 수 있습니다."
+            )
         await self._family_repo.delete_link(session, link)
 
     async def create_invite_code(
@@ -132,7 +138,9 @@ class FamilyService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="유효하지 않거나 만료된 초대코드입니다.")
 
         if invite.guardian_profile_id == member_profile_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="본인이 발급한 코드는 본인이 사용할 수 없습니다.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="본인이 발급한 코드는 본인이 사용할 수 없습니다."
+            )
 
         existing = await self._family_repo.get_link(session, invite.guardian_profile_id, member_profile_id)
         if existing is not None and existing.status == FamilyLinkStatus.ACCEPTED:
@@ -152,7 +160,9 @@ class FamilyService:
         guardian_profile = await self._profile_repo.get_profile(session, invite.guardian_profile_id)
         return await self._to_result(session, link, other_profile=guardian_profile)
 
-    async def _to_result(self, session: AsyncSession, link: FamilyLink, other_profile: Profile | None) -> FamilyLinkResult:
+    async def _to_result(
+        self, session: AsyncSession, link: FamilyLink, other_profile: Profile | None
+    ) -> FamilyLinkResult:
         if other_profile is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="상대방 프로필을 찾을 수 없습니다.")
         return FamilyLinkResult(

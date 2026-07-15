@@ -38,4 +38,3 @@ class FamilyInviteCodeResult(BaseModel):
 
 class FamilyInviteCodeRedeemRequest(BaseModel):
     code: str
-

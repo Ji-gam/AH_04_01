@@ -11,9 +11,7 @@ from app.models.family_invite_code import (
 
 
 class FamilyInviteCodeRepository:
-    async def create(
-        self, session: AsyncSession, guardian_profile_id: int, relation_label: str
-    ) -> FamilyInviteCode:
+    async def create(self, session: AsyncSession, guardian_profile_id: int, relation_label: str) -> FamilyInviteCode:
         """코드 충돌(극히 낮은 확률이지만 unique 제약이 있음)이 나면 재생성해서 재시도한다."""
         now = datetime.now().astimezone()
         for _ in range(5):
