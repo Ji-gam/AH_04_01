@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
@@ -52,6 +52,7 @@ interface Props {
 }
 
 export default function SchedulePage({ dateStr: dateStrProp, embedded = false }: Props = {}) {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const todayStr = toDateString(new Date());
   const dateStr = dateStrProp ?? searchParams.get("date") ?? todayStr;
@@ -166,7 +167,27 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
             marginBottom: 18,
           }}
         >
-          <h1 style={{ fontSize: 19, fontWeight: 700, color: c.text, margin: 0 }}>⏰ {title}</h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {!embedded && (
+              <button
+                type="button"
+                aria-label="뒤로"
+                onClick={() => navigate("/more")}
+                style={{
+                  border: "none",
+                  background: "none",
+                  color: c.text,
+                  fontSize: 20,
+                  cursor: "pointer",
+                  lineHeight: 1,
+                  padding: 0,
+                }}
+              >
+                ←
+              </button>
+            )}
+            <h1 style={{ fontSize: 19, fontWeight: 700, color: c.text, margin: 0 }}>⏰ {title}</h1>
+          </div>
           {totalCount > 0 && (
             <span
               style={{
