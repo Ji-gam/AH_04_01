@@ -5,7 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile_optional
-from app.dtos.content_dto import ContentsFeedResponse, GenerateContentRequest, HealthContentResponse
+from app.dtos.content_dto import (
+    ContentsFeedResponse,
+    GenerateContentRequest,
+    HealthContentResponse,
+    RelatedContentResponse,
+)
 from app.models.content import ContentCategory
 from app.models.profiles import Profile
 from app.services.ai_worker_gateway import (
@@ -86,3 +91,44 @@ async def generate_content(
     except AIWorkerProcessingError as e:
         raise HTTPException(status_code=502, detail=f"생성 응답 형식 이상: {e}") from e
     return HealthContentResponse(**item)
+
+
+@content_router.get(
+    "/{content_id}",
+    response_model=HealthContentResponse,
+    summary="건강 콘텐츠 단건 조회",
+    description="상세화면 진입/새로고침용 단건 조회다. 라우터 state가 아니라 DB에서 항상 다시 조회하므로 직접 URL 접근에도 동작한다.",
+    responses={404: {"description": "해당 id의 콘텐츠가 없음"}},
+)
+async def get_content_by_id(
+    content_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> HealthContentResponse:
+    item = await ContentService().get_content_by_id(session, content_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="콘텐츠를 찾을 수 없습니다.")
+    return HealthContentResponse(**item)
+
+
+@content_router.get(
+    "/{content_id}/related",
+    response_model=RelatedContentResponse,
+    summary="관련 콘텐츠 조회",
+    description=(
+        "같은 질환(disease_code)·다른 콘텐츠 카테고리의 콘텐츠를 최신순 최대 limit개 반환한다. "
+        "disease_code/category는 클라이언트 입력을 받지 않고 content_id로 원본을 다시 조회해 서버가 직접 판단한다."
+    ),
+    responses={404: {"description": "해당 id의 콘텐츠가 없음"}},
+)
+async def get_related_contents(
+    content_id: int,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=20)] = 5,
+) -> RelatedContentResponse:
+    base = await ContentService().get_content_by_id(session, content_id)
+    if base is None:
+        raise HTTPException(status_code=404, detail="콘텐츠를 찾을 수 없습니다.")
+    items = await ContentService().get_related_contents(
+        session, base["disease_code"], base["category"], content_id, limit=limit
+    )
+    return RelatedContentResponse(items=[HealthContentResponse(**item) for item in items])

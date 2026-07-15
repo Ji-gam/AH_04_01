@@ -78,6 +78,23 @@ class ContentService:
             inserted += 1
         return inserted
 
+    async def get_content_by_id(self, session: AsyncSession, content_id: int) -> dict | None:
+        """상세화면 단건 조회. 없으면 None(라우터가 404로 변환)."""
+        content = await self._repository.get_by_id(session, content_id)
+        return self._to_response(content) if content else None
+
+    async def get_related_contents(
+        self,
+        session: AsyncSession,
+        disease_code: str,
+        exclude_category: str,
+        exclude_id: int,
+        limit: int = 5,
+    ) -> list[dict]:
+        """상세화면의 "관련컨텐츠" - 같은 질환, 다른 카테고리, 최신순 최대 `limit`개."""
+        contents = await self._repository.list_related(session, disease_code, exclude_category, exclude_id, limit=limit)
+        return [self._to_response(content) for content in contents]
+
     def _to_response(self, content) -> dict:
         return {
             "id": content.id,
@@ -88,5 +105,6 @@ class ContentService:
             "summary": content.summary,
             "body": content.body,
             "image_prompt": content.image_prompt,
+            "source_refs": content.source_refs,
             "disclaimer": safety_service.DISCLAIMER_TEXT,
         }

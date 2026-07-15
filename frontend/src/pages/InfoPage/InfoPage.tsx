@@ -3,19 +3,63 @@
  * personalized=false(비로그인 또는 등록된 질환 없음)면 질환 등록 유도 배너를 보여준다 —
  * 단, 질환 등록 기능 자체가 아직 없어(2026-07-08 기준) 지금은 시각적 안내만 한다.
  */
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 
 import { contentApi } from "../../api/contentApi";
 import type { ContentCategory, HealthContentResult } from "../../api/types";
 import { useAuth } from "../../hooks/useAuth";
 
+import { ContentCard } from "@/components/content/ContentCard";
 import { Button } from "@/components/ui/button";
+import { CONTENT_CATEGORY_LABELS } from "@/lib/contentCategoryDisplay";
+
+// 질환 등록 유도 배너 — 상단에 한 번, 그리고 !personalized일 때 카드 UI만 계속되는 걸 막기
+// 위해 목록 중간에도 이 개수마다 한 번씩 반복 노출한다(UI 리듬).
+const DISEASE_BANNER_INTERVAL = 4;
+
+// 상단 개인화 안내 — 텍스트 배너(카드 목록의 좌우 여백 안에 그대로 노출).
+function DiseaseRegistrationNotice() {
+  return (
+    <div className="rounded-2xl bg-secondary px-4 py-3 text-sm text-secondary-foreground">
+      아직 등록된 질환이 없어요. 질환을 등록하면 나에게 맞는 콘텐츠를 보여드려요.
+    </div>
+  );
+}
+
+// 목록 중간 리듬용 배너 — 카드UI가 아닌 큰 이미지 전면형 히어로, 화면 가로폭 전체(edge-to-edge).
+function DiseaseRegistrationHeroBanner() {
+  return (
+    <Link
+      to="/health-info"
+      className="relative -mx-4 block h-44 overflow-hidden text-white no-underline"
+    >
+      <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary to-[#E8557A]">
+        <span className="text-7xl opacity-40" aria-hidden>
+          💡
+        </span>
+      </div>
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent" />
+      <div className="absolute inset-x-5 bottom-4">
+        <p className="mb-1 text-xs font-bold opacity-90">안내</p>
+        <p className="text-lg font-extrabold leading-snug">
+          질환을 등록하고
+          <br />
+          나에게 맞는 콘텐츠 받아보기
+        </p>
+      </div>
+    </Link>
+  );
+}
 
 const CATEGORY_TABS: { label: string; value: ContentCategory | undefined }[] = [
   { label: "전체", value: undefined },
-  { label: "라이프스타일", value: "LIFESTYLE" },
-  { label: "푸드", value: "FOOD" },
-  { label: "의학뉴스", value: "MEDICAL_NEWS" },
+  ...(Object.entries(CONTENT_CATEGORY_LABELS) as [ContentCategory, string][]).map(
+    ([value, label]) => ({
+      label,
+      value,
+    }),
+  ),
 ];
 
 export default function InfoPage() {
@@ -94,8 +138,8 @@ export default function InfoPage() {
       </div>
 
       {!isLoading && !personalized && (
-        <div className="mx-4 mb-2 rounded-2xl bg-secondary px-4 py-3 text-sm text-secondary-foreground">
-          아직 등록된 질환이 없어요. 질환을 등록하면 나에게 맞는 콘텐츠를 보여드려요.
+        <div className="mx-4 mb-2">
+          <DiseaseRegistrationNotice />
         </div>
       )}
 
@@ -114,23 +158,18 @@ export default function InfoPage() {
           <p className="py-8 text-center text-sm text-muted-foreground">아직 콘텐츠가 없어요.</p>
         )}
 
-        <div className="flex flex-col gap-3">
-          {items.map((item) => (
-            <article
-              key={`${item.disease_code}-${item.category}-${item.content_date}`}
-              className="rounded-2xl bg-secondary p-4 shadow-sm"
-            >
-              <p className="text-xs text-muted-foreground">
-                {item.disease_code} · {item.content_date}
-              </p>
-              <h2 className="mt-1 text-base font-semibold">{item.title}</h2>
-              <p className="mt-1 text-sm text-secondary-foreground">{item.summary}</p>
-              <p className="mt-3 whitespace-pre-wrap text-sm text-secondary-foreground">
-                {item.body}
-              </p>
-              <p className="mt-3 text-xs text-muted-foreground">{item.disclaimer}</p>
-            </article>
-          ))}
+        <div className="flex flex-col">
+          {items.map((item, index) => {
+            const isIntervalBoundary = (index + 1) % DISEASE_BANNER_INTERVAL === 0;
+            const showMidListBanner =
+              !personalized && isIntervalBoundary && index !== items.length - 1;
+            return (
+              <Fragment key={item.id}>
+                <ContentCard item={item} />
+                {showMidListBanner && <DiseaseRegistrationHeroBanner />}
+              </Fragment>
+            );
+          })}
         </div>
       </div>
     </div>
