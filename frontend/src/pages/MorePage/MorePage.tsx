@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
 import { pinkTheme } from "../../theme/pinkTheme";
@@ -40,6 +40,7 @@ const menuDescStyle: React.CSSProperties = {
 };
 
 export default function MorePage() {
+  const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
@@ -81,6 +82,12 @@ export default function MorePage() {
     setIsModalOpen(false);
   };
 
+  // 검색 결과 약을 바로 복약알림 등록 화면으로 넘긴다 — 약 이름을 미리 채운 채 폼이 열린다.
+  const handleRegisterReminder = (itemName: string) => {
+    setIsModalOpen(false);
+    navigate("/alarms", { state: { prefillMedicationName: itemName } });
+  };
+
   return (
     <div style={{ background: pinkTheme.pageBg, minHeight: "100%", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
@@ -115,6 +122,18 @@ export default function MorePage() {
             <span>
               🩺 개인건강정보
               <span style={menuDescStyle}>키/체중/BMI, 진단병력·가족력, 특이사항을 관리해요</span>
+            </span>
+            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+              ›
+            </span>
+          </Link>
+
+          <Link to="/family" style={menuCardStyle}>
+            <span>
+              👨‍👩‍👧 가족관리
+              <span style={menuDescStyle}>
+                부모님 등 가족을 연결하고, 그분 몫으로 약을 등록해요
+              </span>
             </span>
             <span aria-hidden style={{ color: pinkTheme.textMuted }}>
               ›
@@ -295,14 +314,36 @@ export default function MorePage() {
                       >
                         <div
                           style={{
-                            fontWeight: 700,
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
                             borderBottom: `1px solid ${pinkTheme.border}`,
                             paddingBottom: 6,
                             marginBottom: 6,
-                            fontSize: 14,
                           }}
                         >
-                          {item.item_name} ({item.entp_name})
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>
+                            {item.item_name} ({item.entp_name})
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRegisterReminder(item.item_name)}
+                            style={{
+                              flexShrink: 0,
+                              marginLeft: 8,
+                              padding: "5px 10px",
+                              borderRadius: 999,
+                              border: "none",
+                              background: pinkTheme.primary,
+                              color: "#fff",
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            🔔 복약알림 등록
+                          </button>
                         </div>
                         <p style={{ margin: "5px 0", fontSize: 13 }}>
                           <strong>효능:</strong> {item.efficacy}

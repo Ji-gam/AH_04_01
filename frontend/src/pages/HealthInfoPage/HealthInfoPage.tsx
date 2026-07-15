@@ -160,6 +160,100 @@ const smallInputStyle: React.CSSProperties = {
   fontSize: 13,
 };
 
+/** 질환 선택용 알약(pill) 토글 칩. 체크박스 대신 써서 나머지 화면(달력/자동완성)이랑
+ * 라운드+핑크 톤을 맞춘다. 선택되면 꽉 채운 핑크, 아니면 옅은 테두리만. */
+function Chip({
+  label,
+  checked,
+  onToggle,
+  variant = "primary",
+}: {
+  label: string;
+  checked: boolean;
+  onToggle: () => void;
+  variant?: "primary" | "muted";
+}) {
+  const activeBg = variant === "muted" ? pinkTheme.textMuted : pinkTheme.primary;
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        padding: "8px 14px",
+        borderRadius: 999,
+        border: `1.5px solid ${checked ? activeBg : pinkTheme.border}`,
+        background: checked ? activeBg : pinkTheme.cardBg,
+        color: checked ? "#fff" : pinkTheme.text,
+        fontSize: 13,
+        fontWeight: checked ? 600 : 400,
+        cursor: "pointer",
+        transition: "background 0.15s ease, border-color 0.15s ease",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+/** 성별/임신여부처럼 선택지가 2~3개뿐인 필드용 세그먼트 버튼. 드롭다운을 열 필요 없이
+ * 바로 눈에 보이는 선택지를 탭하면 된다. */
+function SegmentedControl<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        border: `1px solid ${pinkTheme.border}`,
+        borderRadius: 10,
+        padding: 3,
+        background: pinkTheme.pageBg,
+        gap: 3,
+      }}
+    >
+      {options.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            style={{
+              flex: 1,
+              padding: "8px 6px",
+              border: "none",
+              borderRadius: 8,
+              background: active ? pinkTheme.primary : "transparent",
+              color: active ? "#fff" : pinkTheme.textMuted,
+              fontSize: 13,
+              fontWeight: active ? 600 : 400,
+              cursor: "pointer",
+              transition: "background 0.15s ease",
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** BMI 값을 저체중/정상/과체중/비만 색상 뱃지로 보여준다(대한비만학회 기준 구간). */
+function bmiCategory(bmi: number): { label: string; color: string } {
+  if (bmi < 18.5) return { label: "저체중", color: "#6FA8DC" };
+  if (bmi < 23) return { label: "정상", color: pinkTheme.success };
+  if (bmi < 25) return { label: "과체중", color: "#E8A33D" };
+  return { label: "비만", color: pinkTheme.danger };
+}
+
 function DiagnosisChecklist({
   selection,
 }: {
@@ -167,115 +261,119 @@ function DiagnosisChecklist({
 }) {
   return (
     <div>
-      <p style={{ marginBottom: 6, color: pinkTheme.text, fontWeight: 600 }}>
+      <p style={{ marginBottom: 8, color: pinkTheme.text, fontWeight: 600 }}>
         진단병력 (본인이 진단받은 질환)
       </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-        {DISEASE_OPTIONS.map((d) => {
-          const entry = selection.get(d.key);
-          return (
-            <div key={d.key}>
-              <label
-                style={{ display: "flex", alignItems: "center", gap: "8px", color: pinkTheme.text }}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        {DISEASE_OPTIONS.map((d) => (
+          <Chip
+            key={d.key}
+            label={d.label}
+            checked={selection.isChecked(d.key)}
+            onToggle={() => selection.toggle(d.key)}
+          />
+        ))}
+        <Chip
+          label="없음"
+          checked={selection.isNone}
+          onToggle={selection.toggleNone}
+          variant="muted"
+        />
+      </div>
+
+      {DISEASE_OPTIONS.filter((d) => selection.get(d.key)).length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: 10 }}>
+          {DISEASE_OPTIONS.map((d) => {
+            const entry = selection.get(d.key);
+            if (!entry) return null;
+            return (
+              <div
+                key={d.key}
+                style={{
+                  background: pinkTheme.primarySoft,
+                  border: `1px solid ${pinkTheme.border}`,
+                  borderRadius: 10,
+                  padding: "10px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px",
+                }}
               >
-                <input
-                  type="checkbox"
-                  checked={selection.isChecked(d.key)}
-                  onChange={() => selection.toggle(d.key)}
-                />
-                {d.label}
-              </label>
-              {entry && (
-                <div
+                <p
                   style={{
-                    marginTop: 4,
-                    marginLeft: 24,
-                    width: "calc(100% - 24px)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "4px",
+                    margin: "0 0 2px",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: pinkTheme.text,
                   }}
                 >
-                  <DiseaseSubtypeSearchInput
-                    category={d.key}
-                    value={entry.disease_subtype}
-                    onChange={(v) => selection.update(d.key, { disease_subtype: v })}
-                  />
-                  <div style={{ display: "flex", gap: "4px" }}>
-                    <input
-                      type="number"
-                      placeholder="진단 후 경과(년)"
-                      value={entry.diagnosed_years_ago ?? ""}
-                      onChange={(e) =>
-                        selection.update(d.key, {
-                          diagnosed_years_ago:
-                            e.target.value === "" ? null : Number(e.target.value),
-                        })
-                      }
-                      min={0}
-                      max={100}
-                      style={{ ...smallInputStyle, flex: 1 }}
-                    />
-                    <select
-                      value={entry.status ?? ""}
-                      onChange={(e) =>
-                        selection.update(d.key, {
-                          status: e.target.value === "" ? null : (e.target.value as DiseaseStatus),
-                        })
-                      }
-                      style={{ ...smallInputStyle, flex: 1 }}
-                    >
-                      <option value="">조절상태 (선택)</option>
-                      {STATUS_OPTIONS.map((s) => (
-                        <option key={s.key} value={s.key}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <label
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "6px",
-                      fontSize: 13,
-                      color: pinkTheme.textMuted,
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={entry.on_medication ?? false}
-                      onChange={(e) => selection.update(d.key, { on_medication: e.target.checked })}
-                    />
-                    현재 약물치료 중
-                  </label>
+                  {d.label}
+                </p>
+                <DiseaseSubtypeSearchInput
+                  category={d.key}
+                  value={entry.disease_subtype}
+                  onChange={(v) => selection.update(d.key, { disease_subtype: v })}
+                />
+                <div style={{ display: "flex", gap: "4px" }}>
                   <input
-                    type="text"
-                    placeholder="상세 메모 (선택)"
-                    value={entry.detail ?? ""}
-                    onChange={(e) => selection.update(d.key, { detail: e.target.value || null })}
-                    maxLength={200}
-                    style={smallInputStyle}
+                    type="number"
+                    placeholder="진단 후 경과(년)"
+                    value={entry.diagnosed_years_ago ?? ""}
+                    onChange={(e) =>
+                      selection.update(d.key, {
+                        diagnosed_years_ago: e.target.value === "" ? null : Number(e.target.value),
+                      })
+                    }
+                    min={0}
+                    max={100}
+                    style={{ ...smallInputStyle, flex: 1, background: pinkTheme.cardBg }}
                   />
+                  <select
+                    value={entry.status ?? ""}
+                    onChange={(e) =>
+                      selection.update(d.key, {
+                        status: e.target.value === "" ? null : (e.target.value as DiseaseStatus),
+                      })
+                    }
+                    style={{ ...smallInputStyle, flex: 1, background: pinkTheme.cardBg }}
+                  >
+                    <option value="">조절상태 (선택)</option>
+                    {STATUS_OPTIONS.map((s) => (
+                      <option key={s.key} value={s.key}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              )}
-            </div>
-          );
-        })}
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            borderTop: `1px solid ${pinkTheme.border}`,
-            paddingTop: 6,
-            color: pinkTheme.textMuted,
-          }}
-        >
-          <input type="checkbox" checked={selection.isNone} onChange={selection.toggleNone} />
-          없음
-        </label>
-      </div>
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "6px",
+                    fontSize: 13,
+                    color: pinkTheme.textMuted,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={entry.on_medication ?? false}
+                    onChange={(e) => selection.update(d.key, { on_medication: e.target.checked })}
+                  />
+                  현재 약물치료 중
+                </label>
+                <input
+                  type="text"
+                  placeholder="상세 메모 (선택)"
+                  value={entry.detail ?? ""}
+                  onChange={(e) => selection.update(d.key, { detail: e.target.value || null })}
+                  maxLength={200}
+                  style={{ ...smallInputStyle, background: pinkTheme.cardBg }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -287,83 +385,88 @@ function FamilyHistoryChecklist({
 }) {
   return (
     <div>
-      <p style={{ marginBottom: 6, color: pinkTheme.text, fontWeight: 600 }}>
+      <p style={{ marginBottom: 8, color: pinkTheme.text, fontWeight: 600 }}>
         가족력 (직계가족의 진단 이력)
       </p>
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-        {DISEASE_OPTIONS.map((d) => {
-          const entry = selection.get(d.key);
-          return (
-            <div key={d.key}>
-              <label
-                style={{ display: "flex", alignItems: "center", gap: "8px", color: pinkTheme.text }}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+        {DISEASE_OPTIONS.map((d) => (
+          <Chip
+            key={d.key}
+            label={d.label}
+            checked={selection.isChecked(d.key)}
+            onToggle={() => selection.toggle(d.key)}
+          />
+        ))}
+        <Chip
+          label="없음"
+          checked={selection.isNone}
+          onToggle={selection.toggleNone}
+          variant="muted"
+        />
+      </div>
+
+      {DISEASE_OPTIONS.filter((d) => selection.get(d.key)).length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: 10 }}>
+          {DISEASE_OPTIONS.map((d) => {
+            const entry = selection.get(d.key);
+            if (!entry) return null;
+            return (
+              <div
+                key={d.key}
+                style={{
+                  background: pinkTheme.primarySoft,
+                  border: `1px solid ${pinkTheme.border}`,
+                  borderRadius: 10,
+                  padding: "10px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px",
+                }}
               >
-                <input
-                  type="checkbox"
-                  checked={selection.isChecked(d.key)}
-                  onChange={() => selection.toggle(d.key)}
-                />
-                {d.label}
-              </label>
-              {entry && (
-                <div
+                <p
                   style={{
-                    marginTop: 4,
-                    marginLeft: 24,
-                    width: "calc(100% - 24px)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "4px",
+                    margin: "0 0 2px",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: pinkTheme.text,
                   }}
                 >
-                  <DiseaseSubtypeSearchInput
-                    category={d.key}
-                    value={entry.disease_subtype}
-                    onChange={(v) => selection.update(d.key, { disease_subtype: v })}
-                  />
-                  <select
-                    value={entry.relation ?? ""}
-                    onChange={(e) =>
-                      selection.update(d.key, {
-                        relation: e.target.value === "" ? null : (e.target.value as FamilyRelation),
-                      })
-                    }
-                    style={smallInputStyle}
-                  >
-                    <option value="">관계 (선택)</option>
-                    {RELATION_OPTIONS.map((r) => (
-                      <option key={r.key} value={r.key}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="상세 메모 (선택)"
-                    value={entry.detail ?? ""}
-                    onChange={(e) => selection.update(d.key, { detail: e.target.value || null })}
-                    maxLength={200}
-                    style={smallInputStyle}
-                  />
-                </div>
-              )}
-            </div>
-          );
-        })}
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-            borderTop: `1px solid ${pinkTheme.border}`,
-            paddingTop: 6,
-            color: pinkTheme.textMuted,
-          }}
-        >
-          <input type="checkbox" checked={selection.isNone} onChange={selection.toggleNone} />
-          없음
-        </label>
-      </div>
+                  {d.label}
+                </p>
+                <DiseaseSubtypeSearchInput
+                  category={d.key}
+                  value={entry.disease_subtype}
+                  onChange={(v) => selection.update(d.key, { disease_subtype: v })}
+                />
+                <select
+                  value={entry.relation ?? ""}
+                  onChange={(e) =>
+                    selection.update(d.key, {
+                      relation: e.target.value === "" ? null : (e.target.value as FamilyRelation),
+                    })
+                  }
+                  style={{ ...smallInputStyle, background: pinkTheme.cardBg }}
+                >
+                  <option value="">관계 (선택)</option>
+                  {RELATION_OPTIONS.map((r) => (
+                    <option key={r.key} value={r.key}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="text"
+                  placeholder="상세 메모 (선택)"
+                  value={entry.detail ?? ""}
+                  onChange={(e) => selection.update(d.key, { detail: e.target.value || null })}
+                  maxLength={200}
+                  style={{ ...smallInputStyle, background: pinkTheme.cardBg }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -588,6 +691,9 @@ export default function HealthInfoPage() {
         {mode === "view" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <div style={cardStyle}>
+              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>
+                🎂 기본 정보
+              </p>
               <p style={{ margin: 0, color: pinkTheme.text }}>
                 생년월일: {info.birth_date ?? "미입력"}
                 {info.age !== null ? ` (만 ${info.age}세)` : ""}
@@ -609,21 +715,43 @@ export default function HealthInfoPage() {
             </div>
 
             <div style={cardStyle}>
-              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>키/체중/BMI</p>
+              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>
+                ⚖️ 키/체중/BMI
+              </p>
               <p style={{ margin: 0, color: pinkTheme.text }}>
                 키: {info.height_cm !== null ? `${info.height_cm} cm` : "미입력"}
               </p>
               <p style={{ margin: 0, color: pinkTheme.text }}>
                 체중: {info.weight_kg !== null ? `${info.weight_kg} kg` : "미입력"}
               </p>
-              <p style={{ margin: "8px 0 0", fontWeight: 600, color: pinkTheme.primary }}>
-                BMI: {info.bmi !== null ? info.bmi : "키/체중을 모두 입력하면 계산돼요"}
-              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.primary }}>
+                  BMI: {info.bmi !== null ? info.bmi : "키/체중을 모두 입력하면 계산돼요"}
+                </p>
+                {info.bmi !== null &&
+                  (() => {
+                    const category = bmiCategory(info.bmi);
+                    return (
+                      <span
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 600,
+                          color: "#fff",
+                          background: category.color,
+                          borderRadius: 999,
+                          padding: "2px 10px",
+                        }}
+                      >
+                        {category.label}
+                      </span>
+                    );
+                  })()}
+              </div>
             </div>
 
             <div style={cardStyle}>
               <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>
-                진단병력 (본인)
+                🩺 진단병력 (본인)
               </p>
               <p style={{ margin: 0, color: pinkTheme.text }}>
                 {diagnosisSummary(info.diagnosis_history)}
@@ -632,7 +760,7 @@ export default function HealthInfoPage() {
 
             <div style={cardStyle}>
               <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>
-                가족력 (직계가족)
+                🧬 가족력 (직계가족)
               </p>
               <p style={{ margin: 0, color: pinkTheme.text }}>
                 {familyHistorySummary(info.family_history)}
@@ -640,14 +768,14 @@ export default function HealthInfoPage() {
             </div>
 
             <div style={cardStyle}>
-              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>특이사항</p>
+              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>📝 특이사항</p>
               <p style={{ margin: 0, whiteSpace: "pre-wrap", color: pinkTheme.text }}>
                 {info.special_notes || "미입력"}
               </p>
             </div>
 
             <div style={cardStyle}>
-              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>기타</p>
+              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>✏️ 기타</p>
               <p style={{ margin: 0, whiteSpace: "pre-wrap", color: pinkTheme.text }}>
                 {info.other_notes || "미입력"}
               </p>
@@ -690,7 +818,7 @@ export default function HealthInfoPage() {
               />
             </div>
 
-            <label
+            <div
               style={{
                 display: "flex",
                 flexDirection: "column",
@@ -699,18 +827,18 @@ export default function HealthInfoPage() {
               }}
             >
               성별
-              <select
+              <SegmentedControl
                 value={gender}
-                onChange={(e) => setGender(e.target.value as "MALE" | "FEMALE")}
-                style={inputStyle}
-              >
-                <option value="MALE">남성</option>
-                <option value="FEMALE">여성</option>
-              </select>
-            </label>
+                onChange={(v) => setGender(v)}
+                options={[
+                  { value: "MALE", label: "남성" },
+                  { value: "FEMALE", label: "여성" },
+                ]}
+              />
+            </div>
 
             {gender === "FEMALE" && (
-              <label
+              <div
                 style={{
                   display: "flex",
                   flexDirection: "column",
@@ -719,16 +847,16 @@ export default function HealthInfoPage() {
                 }}
               >
                 현재 임신 중이신가요? (선택 - 답하기 부담스러우면 비워두셔도 돼요)
-                <select
+                <SegmentedControl
                   value={isPregnant}
-                  onChange={(e) => setIsPregnant(e.target.value)}
-                  style={inputStyle}
-                >
-                  <option value="">미입력</option>
-                  <option value="true">예</option>
-                  <option value="false">아니오</option>
-                </select>
-              </label>
+                  onChange={(v) => setIsPregnant(v)}
+                  options={[
+                    { value: "", label: "미입력" },
+                    { value: "true", label: "예" },
+                    { value: "false", label: "아니오" },
+                  ]}
+                />
+              </div>
             )}
 
             <label

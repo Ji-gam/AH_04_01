@@ -5,6 +5,14 @@ import { authApi, socialLoginUrl } from "../../api/authApi";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
 
+/** 카톡/메모앱 등에서 비밀번호를 복사해 붙여넣을 때, 화면엔 안 보이지만 같이 딸려오는
+ * 줄바꿈/앞뒤 공백/zero-width 문자를 제거한다. 가입 때 타이핑으로 넣고 로그인 때 복붙으로
+ * 넣으면(혹은 반대) 육안으로는 똑같아 보여도 실제 문자열이 달라 해시가 안 맞는 문제를 막는다.
+ * client.ts의 accessToken 방어(줄바꿈/공백 제거)와 같은 이유. */
+export function sanitizeCredential(value: string): string {
+  return value.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+}
+
 type Tab = "login" | "signup";
 
 const inputStyle: React.CSSProperties = {
@@ -51,7 +59,7 @@ export default function LoginPage() {
     setLoginError(null);
     setIsLoggingIn(true);
     try {
-      await login(email, password);
+      await login(sanitizeCredential(email), sanitizeCredential(password));
       navigate("/", { replace: true });
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "로그인에 실패했습니다.");
@@ -65,9 +73,11 @@ export default function LoginPage() {
     setSignupError(null);
     setIsSigningUp(true);
     try {
-      await authApi.signup({ name: signupName, email: signupEmail, password: signupPassword });
+      const cleanEmail = sanitizeCredential(signupEmail);
+      const cleanPassword = sanitizeCredential(signupPassword);
+      await authApi.signup({ name: signupName, email: cleanEmail, password: cleanPassword });
       // 가입 성공 후 로그인 탭으로 넘기지 않고, 방금 만든 계정으로 바로 로그인시켜서 홈으로 보낸다.
-      await login(signupEmail, signupPassword);
+      await login(cleanEmail, cleanPassword);
       navigate("/", { replace: true });
     } catch (err) {
       setSignupError(err instanceof Error ? err.message : "회원가입에 실패했습니다.");
@@ -147,6 +157,8 @@ export default function LoginPage() {
           >
             <input
               type="email"
+              name="email"
+              autoComplete="username"
               placeholder="이메일"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -155,6 +167,8 @@ export default function LoginPage() {
             />
             <input
               type="password"
+              name="password"
+              autoComplete="current-password"
               placeholder="비밀번호"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -176,6 +190,8 @@ export default function LoginPage() {
             </p>
             <input
               type="text"
+              name="nickname"
+              autoComplete="off"
               placeholder="닉네임"
               value={signupName}
               onChange={(e) => setSignupName(e.target.value)}
@@ -184,6 +200,8 @@ export default function LoginPage() {
             />
             <input
               type="email"
+              name="new-email"
+              autoComplete="email"
               placeholder="이메일"
               value={signupEmail}
               onChange={(e) => setSignupEmail(e.target.value)}
@@ -192,6 +210,8 @@ export default function LoginPage() {
             />
             <input
               type="password"
+              name="new-password"
+              autoComplete="new-password"
               placeholder="비밀번호 (소문자·숫자·특수문자 포함 8자 이상)"
               value={signupPassword}
               onChange={(e) => setSignupPassword(e.target.value)}

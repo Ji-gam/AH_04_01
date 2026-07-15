@@ -28,9 +28,9 @@ async def _signup_and_login(client: AsyncClient, email: str) -> str:
     return login_response.json()["access_token"]
 
 
-async def _seed_one_content(disease_code: str = "당뇨", category: str = "LIFESTYLE") -> None:
+async def _seed_one_content(disease_code: str = "당뇨", category: str = "LIFESTYLE") -> int:
     async with TestSessionLocal() as session:
-        await ContentRepository().save(
+        content = await ContentRepository().save(
             session,
             disease_code=disease_code,
             category=category,
@@ -40,6 +40,7 @@ async def _seed_one_content(disease_code: str = "당뇨", category: str = "LIFES
             body="본문",
             image_prompt=None,
         )
+        return content.id
 
 
 async def test_get_contents_without_auth_returns_200_with_all_content_not_personalized():
@@ -204,3 +205,57 @@ async def test_generate_content_returns_502_on_malformed_ai_worker_response(monk
         response = await client.post("/api/v1/contents/generate", json={})
 
     assert response.status_code == status.HTTP_502_BAD_GATEWAY
+
+
+async def test_get_content_by_id_returns_200_with_full_item():
+    content_id = await _seed_one_content(disease_code="당뇨", category="LIFESTYLE")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(f"/api/v1/contents/{content_id}")
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["id"] == content_id
+    assert body["disease_code"] == "당뇨"
+    assert body["title"] == "테스트 카드"
+
+
+async def test_get_content_by_id_returns_404_when_not_found():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/contents/999999")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+async def test_get_related_contents_returns_same_disease_different_category_excluding_self():
+    """상세화면의 "관련컨텐츠" - 같은 질환, 다른 카테고리만, 자기 자신은 제외."""
+    base_id = await _seed_one_content(disease_code="당뇨", category="LIFESTYLE")
+    await _seed_one_content(disease_code="당뇨", category="FOOD")
+    await _seed_one_content(disease_code="암", category="FOOD")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(f"/api/v1/contents/{base_id}/related")
+
+    assert response.status_code == status.HTTP_200_OK
+    items = response.json()["items"]
+    assert len(items) == 1
+    assert items[0]["disease_code"] == "당뇨"
+    assert items[0]["category"] == "FOOD"
+
+
+async def test_get_related_contents_respects_limit_query_param():
+    base_id = await _seed_one_content(disease_code="당뇨", category="LIFESTYLE")
+    for category in ("FOOD", "MEDICAL_NEWS"):
+        await _seed_one_content(disease_code="당뇨", category=category)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get(f"/api/v1/contents/{base_id}/related", params={"limit": 1})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()["items"]) == 1
+
+
+async def test_get_related_contents_returns_404_when_base_content_not_found():
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/api/v1/contents/999999/related")
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND

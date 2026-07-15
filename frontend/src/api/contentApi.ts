@@ -4,6 +4,7 @@ import type {
   ContentsFeedResult,
   GenerateContentPayload,
   HealthContentResult,
+  RelatedContentResult,
 } from "./types";
 
 export const contentApi = {
@@ -21,4 +22,11 @@ export const contentApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  // "정보" 탭 상세화면(T-LLM-3-1) 전용 — 라우터 state가 아니라 항상 서버에서 다시 조회하므로
+  // 새로고침/직접 URL 접근에도 동작한다.
+  getContentById: (id: number) => apiFetch<HealthContentResult>(`/contents/${id}`),
+  getRelatedContents: (id: number, limit?: number) => {
+    const query = limit ? `?limit=${limit}` : "";
+    return apiFetch<RelatedContentResult>(`/contents/${id}/related${query}`);
+  },
 };

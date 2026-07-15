@@ -47,17 +47,28 @@ export interface AlarmFormSubmit {
 
 interface Props {
   initial?: NotificationScheduleResult;
+  // 약품검색 결과에서 "복약알림 등록"으로 넘어올 때 약 이름만 미리 채워준다 (수정 모드 아님).
+  initialMedicationName?: string;
   isSaving: boolean;
   errorMessage?: string;
   onCancel: () => void;
   onSubmit: (data: AlarmFormSubmit) => void;
 }
 
-export default function AlarmForm({ initial, isSaving, errorMessage, onCancel, onSubmit }: Props) {
+export default function AlarmForm({
+  initial,
+  initialMedicationName,
+  isSaving,
+  errorMessage,
+  onCancel,
+  onSubmit,
+}: Props) {
   // 수정 모드는 알림(=시각) 하나를 고치는 것이므로 횟수 선택 없이 시간칸 1개만 보여준다.
   const isEdit = initial !== undefined;
 
-  const [medicationName, setMedicationName] = useState(initial?.medication_name ?? "");
+  const [medicationName, setMedicationName] = useState(
+    initial?.medication_name ?? initialMedicationName ?? "",
+  );
   const [doseCount, setDoseCount] = useState(1);
   const [times, setTimes] = useState<TimeParts[]>([parseAlarmTime(initial?.alarm_time ?? "08:00")]);
   const [frequencyType, setFrequencyType] = useState<FrequencyType>(

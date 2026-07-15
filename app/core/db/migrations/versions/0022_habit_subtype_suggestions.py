@@ -1,7 +1,7 @@
 """habit_subtype_suggestions: 세부 진단명별 AIWorkerGateway 생성 습관 캐시 테이블
 
-Revision ID: 0020
-Revises: 0019
+Revision ID: 0022
+Revises: 0021
 Create Date: 2026-07-15
 
 """
@@ -11,8 +11,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0020"
-down_revision: Union[str, None] = "0019"
+revision: str = "0022"
+down_revision: Union[str, None] = "0021"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

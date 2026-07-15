@@ -86,12 +86,21 @@ export interface HealthContentResult {
   summary: string;
   body: string;
   image_prompt: string | null;
+  // 원문 출처 URL 목록(상세화면 "참고자료" 섹션용). 실제 생성 파이프라인이 아직 채우지
+  // 않아 현재는 항상 null/빈 배열 — 있을 때만 섹션을 노출한다.
+  source_refs: string[] | null;
   disclaimer: string;
 }
 
 export interface ContentsFeedResult {
   // false면 비로그인/질환 미등록으로 전체 콘텐츠를 폴백한 결과 — "질환 등록" 안내 배너 노출 기준.
   personalized: boolean;
+  items: HealthContentResult[];
+}
+
+// 백엔드 GET /contents/{id}/related 응답과 1:1 수동 동기화 (T-LLM-3-1). 같은 disease_code,
+// 다른 category, 자기 자신 제외 최신순 최대 limit개.
+export interface RelatedContentResult {
   items: HealthContentResult[];
 }
 

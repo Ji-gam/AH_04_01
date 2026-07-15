@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
@@ -66,12 +67,16 @@ function saveMedAlarmDisabled(disabled: Set<string>) {
 }
 
 export default function AlarmPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [schedules, setSchedules] = useState<NotificationScheduleResult[]>([]);
   const [medSchedules, setMedSchedules] = useState<MedicationSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [showAddForm, setShowAddForm] = useState(false);
+  // 약품검색(더보기)에서 "복약알림 등록"으로 넘어온 약 이름 — 추가 폼을 자동으로 열고 미리 채운다.
+  const [prefillMedName, setPrefillMedName] = useState<string | undefined>(undefined);
   const [editingSchedule, setEditingSchedule] = useState<NotificationScheduleResult | null>(null);
   // 복약 관리에서 등록한 약의 시간 수정 (알림 추가 폼과 같은 UI, 시간만 변경)
   const [editingMed, setEditingMed] = useState<{ med: MedicationSchedule; time: string } | null>(
@@ -125,6 +130,18 @@ export default function AlarmPage() {
   useEffect(() => {
     loadSchedules();
   }, []);
+
+  // 약품검색에서 navigate(..., { state: { prefillMedicationName } })로 넘어온 경우 —
+  // 추가 폼을 자동으로 열고 약 이름을 미리 채운 뒤, 뒤로가기 시 다시 열리지 않도록 state를 비운다.
+  useEffect(() => {
+    const state = location.state as { prefillMedicationName?: string } | null;
+    if (!state?.prefillMedicationName) return;
+    setPrefillMedName(state.prefillMedicationName);
+    setShowAddForm(true);
+    setEditingSchedule(null);
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   // 탭이 열려 있는 동안, 오늘 예약 시각이 되면 브라우저 알림을 자동으로 띄운다.
   // 같은 시각의 약(직접 등록 알림 + 복약 관리 약)은 하나로 묶어 한 번만 울린다.
@@ -349,12 +366,25 @@ export default function AlarmPage() {
         </div>
 
         {showAddForm && (
-          <Modal onClose={() => setShowAddForm(false)}>
+          <Modal
+            onClose={() => {
+              setShowAddForm(false);
+              setPrefillMedName(undefined);
+            }}
+          >
             <AlarmForm
+              key={prefillMedName ?? "blank"}
+              initialMedicationName={prefillMedName}
               isSaving={isSaving}
               errorMessage={formError}
-              onCancel={() => setShowAddForm(false)}
-              onSubmit={handleCreate}
+              onCancel={() => {
+                setShowAddForm(false);
+                setPrefillMedName(undefined);
+              }}
+              onSubmit={(data) => {
+                handleCreate(data);
+                setPrefillMedName(undefined);
+              }}
             />
           </Modal>
         )}
