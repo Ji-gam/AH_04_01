@@ -291,20 +291,35 @@ export default function DataConsentPage() {
   );
   const [detailKey, setDetailKey] = useState<ConsentKey | null>(null);
   const [saved, setSaved] = useState(false);
+  // "모두 동의"로 켜려고 하면 먼저 이용약관을 모달로 보여주고, 끝까지 읽고 "동의"를 눌러야
+  // 실제로 전부 켜진다. 끄는 건(이미 전부 동의된 상태에서 다시 누르는 것) 바로 처리한다.
+  const [showAllAgreeModal, setShowAllAgreeModal] = useState(false);
 
   const allAgreed = CONSENT_ITEMS.every((item) => consent[item.key]);
+  const termsItem = CONSENT_ITEMS.find((item) => item.key === "termsOfService")!;
 
   function toggle(key: ConsentKey) {
     setConsent((prev) => ({ ...prev, [key]: !prev[key] }));
     setSaved(false);
   }
 
-  function toggleAll() {
-    const next = !allAgreed;
+  function handleAllAgreeClick() {
+    if (allAgreed) {
+      setConsent(
+        CONSENT_ITEMS.reduce((acc, item) => ({ ...acc, [item.key]: false }), {} as DataConsent),
+      );
+      setSaved(false);
+    } else {
+      setShowAllAgreeModal(true);
+    }
+  }
+
+  function handleAgreeAllConfirm() {
     setConsent(
-      CONSENT_ITEMS.reduce((acc, item) => ({ ...acc, [item.key]: next }), {} as DataConsent),
+      CONSENT_ITEMS.reduce((acc, item) => ({ ...acc, [item.key]: true }), {} as DataConsent),
     );
     setSaved(false);
+    setShowAllAgreeModal(false);
   }
 
   function handleSave() {
@@ -350,7 +365,7 @@ export default function DataConsentPage() {
             cursor: "pointer",
           }}
         >
-          <input type="checkbox" checked={allAgreed} onChange={toggleAll} />
+          <input type="checkbox" checked={allAgreed} onChange={handleAllAgreeClick} />
           모두 동의
         </label>
 
@@ -505,6 +520,83 @@ export default function DataConsentPage() {
               >
                 닫기
               </button>
+            </div>
+          </Modal>
+        )}
+
+        {showAllAgreeModal && (
+          <Modal onClose={() => setShowAllAgreeModal(false)}>
+            <div
+              style={{
+                background: t.cardBg,
+                border: `1px solid ${t.border}`,
+                borderRadius: 16,
+                padding: 20,
+                color: t.text,
+              }}
+            >
+              <h2 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, color: t.primary }}>
+                {termsItem.title}
+              </h2>
+              <p style={{ margin: "0 0 14px", fontSize: 13, lineHeight: 1.6 }}>
+                {termsItem.detail.intro}
+              </p>
+              {termsItem.detail.sections.map((section) => (
+                <div key={section.heading} style={{ marginBottom: 14 }}>
+                  <p style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: t.text }}>
+                    {section.heading}
+                  </p>
+                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                    {section.items.map((line) => (
+                      <li
+                        key={line}
+                        style={{ fontSize: 12.5, color: t.textMuted, lineHeight: 1.6 }}
+                      >
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+
+              <p style={{ margin: "0 0 12px", fontSize: 12.5, color: t.text, lineHeight: 1.6 }}>
+                위 이용약관을 포함해 모든 항목에 동의하십니까?
+              </p>
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAllAgreeModal(false)}
+                  style={{
+                    flex: 1,
+                    padding: "11px 0",
+                    borderRadius: 10,
+                    border: `1px solid ${t.border}`,
+                    background: t.cardBg,
+                    color: t.textMuted,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  닫기
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAgreeAllConfirm}
+                  style={{
+                    flex: 1,
+                    padding: "11px 0",
+                    borderRadius: 10,
+                    border: "none",
+                    background: t.primary,
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  동의
+                </button>
+              </div>
             </div>
           </Modal>
         )}
