@@ -9,30 +9,32 @@ from app.models.habit_subtype_suggestions import HabitSubtypeSuggestion
 
 
 class HabitRepository:
-    async def get_subtype_suggestion(
+    async def list_subtype_suggestions(
         self, session: AsyncSession, disease_subtype_id: int
-    ) -> HabitSubtypeSuggestion | None:
+    ) -> list[HabitSubtypeSuggestion]:
         result = await session.execute(
-            select(HabitSubtypeSuggestion).where(HabitSubtypeSuggestion.disease_subtype_id == disease_subtype_id)
+            select(HabitSubtypeSuggestion)
+            .where(HabitSubtypeSuggestion.disease_subtype_id == disease_subtype_id)
+            .order_by(HabitSubtypeSuggestion.slot)
         )
-        return result.scalar_one_or_none()
+        return list(result.scalars().all())
 
-    async def save_subtype_suggestion(
+    async def save_subtype_suggestions(
         self,
         session: AsyncSession,
         disease_subtype_id: int,
-        label: str,
-        icon: str,
-        unit: str,
-        target: int,
-    ) -> HabitSubtypeSuggestion:
-        suggestion = HabitSubtypeSuggestion(
-            disease_subtype_id=disease_subtype_id, label=label, icon=icon, unit=unit, target=target
-        )
-        session.add(suggestion)
+        suggestions: list[dict],
+    ) -> list[HabitSubtypeSuggestion]:
+        """한 진단명에 대해 생성된 습관 여러 개(slot 0부터)를 한 번에 저장한다."""
+        rows = [
+            HabitSubtypeSuggestion(disease_subtype_id=disease_subtype_id, slot=slot, **suggestion)
+            for slot, suggestion in enumerate(suggestions)
+        ]
+        session.add_all(rows)
         await session.commit()
-        await session.refresh(suggestion)
-        return suggestion
+        for row in rows:
+            await session.refresh(row)
+        return rows
 
     async def list_selected_keys(self, session: AsyncSession, profile_id: int, select_date: date) -> list[str]:
         result = await session.execute(

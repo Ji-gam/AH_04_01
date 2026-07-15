@@ -22,6 +22,7 @@ def upgrade() -> None:
         "habit_subtype_suggestions",
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column("disease_subtype_id", sa.BigInteger(), nullable=False),
+        sa.Column("slot", sa.Integer(), nullable=False),
         sa.Column("label", sa.String(length=50), nullable=False),
         sa.Column("icon", sa.String(length=10), nullable=False),
         sa.Column("unit", sa.String(length=20), nullable=False),
@@ -34,7 +35,9 @@ def upgrade() -> None:
             name="fk_habit_subtype_suggestions_disease_subtype_id",
             ondelete="CASCADE",
         ),
-        sa.UniqueConstraint("disease_subtype_id", name="uq_habit_subtype_suggestions_disease_subtype_id"),
+        sa.UniqueConstraint(
+            "disease_subtype_id", "slot", name="uq_habit_subtype_suggestions_subtype_slot"
+        ),
         mysql_charset="utf8mb4",
     )
 

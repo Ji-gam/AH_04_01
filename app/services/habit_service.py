@@ -71,7 +71,7 @@ DISEASE_HABITS: dict[Disease, HabitDef] = {
 
 
 class SubtypeHabitSuggestion(BaseModel):
-    """AIWorkerGateway.call_structured()가 채워야 하는 구조 - 진단명 하나에 습관 하나."""
+    """습관 하나의 구조."""
 
     label: str
     icon: str
@@ -79,13 +79,25 @@ class SubtypeHabitSuggestion(BaseModel):
     target: int
 
 
+class SubtypeHabitSuggestionBatch(BaseModel):
+    """AIWorkerGateway.call_structured()가 채워야 하는 구조 - 진단명 하나에 습관 여러 개(최대 5개).
+    진단이 1개뿐이어도 그 질환 관련 습관으로 오늘의 추천(MAX_RECOMMENDATIONS=5)을 채울 수 있게
+    하려고 한 번에 5개를 생성한다(팀 피드백: "질병 하나만 등록해도 그 질병 관련으로 5개
+    채워주면 좋겠다")."""
+
+    habits: list[SubtypeHabitSuggestion]
+
+
+_SUBTYPE_HABITS_PER_DIAGNOSIS = 5
+
 _SUBTYPE_HABIT_SYSTEM_PROMPT = (
     "당신은 건강관리 앱의 습관 추천 도우미입니다. 주어진 진단명에 맞는 짧고 실천 가능한 "
-    "하루 습관을 하나만 만드세요.\n"
+    f"하루 습관을 서로 다른 {_SUBTYPE_HABITS_PER_DIAGNOSIS}개 만드세요.\n"
     "- label: 10자 내외, 행동 중심 (예: '저염식 30분 식사하기')\n"
     "- icon: 이모지 1개\n"
     "- unit: '회'/'잔'/'분' 등 짧은 단위\n"
     "- target: 보통 1(하루 목표 횟수), 필요하면 다른 값도 가능\n"
+    f"{_SUBTYPE_HABITS_PER_DIAGNOSIS}개는 서로 겹치지 않는 다른 행동이어야 합니다. "
     "위험하거나 의학적으로 부적절한 습관(예: 약 복용 중단, 자가진단, 자가치료)은 절대 "
     "추천하지 마세요."
 )
@@ -113,12 +125,13 @@ class HabitService:
         self._gateway = gateway or AIWorkerGateway()
 
     async def build_full_pool(self, session: AsyncSession, profile: Profile) -> list[HabitDef]:
-        """가능한 전체 습관 후보 = 기본 세트 + 등록된 진단마다 맞춤 습관 1개.
-        세부 진단명(disease_subtype)이 있으면 AIWorkerGateway로 그 진단명 전용 습관을
-        생성(또는 캐시에서 재사용)하고, 없거나 생성에 실패하면 6개 broad 카테고리 기본
-        습관으로 폴백한다. 같은 세부 진단명이 여러 번 등록됐거나, 세부 진단명 없이 같은
-        broad 카테고리가 중복 등록된 경우만 하나로 합친다(세부 진단명이 다르면 둘 다
-        후보에 남는다 - 예: 심장질환 중 "협심증"과 "부정맥"은 서로 다른 습관을 받는다).
+        """가능한 전체 습관 후보 = 기본 세트 + 등록된 진단마다 맞춤 습관.
+        세부 진단명(disease_subtype)이 있으면 AIWorkerGateway로 그 진단명 전용 습관을 최대
+        5개 생성(또는 캐시에서 재사용)해서 진단 1개만 등록해도 그 질환 관련 습관으로 오늘의
+        추천을 채울 수 있게 한다 - 없거나 생성에 실패하면 6개 broad 카테고리 기본 습관 1개로
+        폴백한다. 같은 세부 진단명이 여러 번 등록됐거나, 세부 진단명 없이 같은 broad 카테고리가
+        중복 등록된 경우만 하나로 합친다(세부 진단명이 다르면 둘 다 후보에 남는다 - 예: 심장질환
+        중 "협심증"과 "부정맥"은 서로 다른 습관 세트를 받는다).
         [정규화] diagnosis_history(JSON) 대신 diagnosis_entries(1:N 관계형 테이블)에서 읽는다."""
         pool = list(BASE_HABITS)
         seen: set[int | Disease] = set()
@@ -128,51 +141,64 @@ class HabitService:
                 continue
             seen.add(dedupe_key)
 
-            habit_def = None
+            habit_defs: list[HabitDef] = []
             if entry.disease_subtype is not None:
-                habit_def = await self._get_subtype_habit(session, entry.disease_subtype)
-            if habit_def is None:
-                habit_def = DISEASE_HABITS.get(entry.disease)
-            if habit_def:
-                pool.append(habit_def)
+                habit_defs = await self._get_subtype_habits(session, entry.disease_subtype)
+            if not habit_defs:
+                fallback = DISEASE_HABITS.get(entry.disease)
+                habit_defs = [fallback] if fallback else []
+            pool.extend(habit_defs)
         return pool
 
-    async def _get_subtype_habit(self, session: AsyncSession, subtype: DiseaseSubtype) -> HabitDef | None:
-        cached = await self._repository.get_subtype_suggestion(session, subtype.id)
-        if cached is not None:
-            return HabitDef(
-                key=f"subtype_{cached.disease_subtype_id}",
-                label=cached.label,
-                icon=cached.icon,
-                unit=cached.unit,
-                target=cached.target,
-            )
+    async def _get_subtype_habits(self, session: AsyncSession, subtype: DiseaseSubtype) -> list[HabitDef]:
+        cached = await self._repository.list_subtype_suggestions(session, subtype.id)
+        if cached:
+            return [
+                HabitDef(
+                    key=f"subtype_{row.disease_subtype_id}_{row.slot}",
+                    label=row.label,
+                    icon=row.icon,
+                    unit=row.unit,
+                    target=row.target,
+                )
+                for row in cached
+            ]
 
         try:
             raw_result = await self._gateway.call_structured(
                 system_prompt=_SUBTYPE_HABIT_SYSTEM_PROMPT,
                 user_input=f"진단명: {subtype.name}",
-                schema=SubtypeHabitSuggestion,
+                schema=SubtypeHabitSuggestionBatch,
             )
         except (AIWorkerUnavailableError, AIWorkerInvalidRequestError, AIWorkerProcessingError) as e:
             logger.warning(f"진단명 '{subtype.name}' 습관 생성 실패, 기본 카테고리 습관으로 대체합니다: {e}")
-            return None
+            return []
 
-        result = cast(SubtypeHabitSuggestion, raw_result)
-        # LLM 출력은 형식이 안 맞을 수 있어 그대로 믿지 않고 방어적으로 다듬는다.
-        label = result.label.strip()[:50] or "오늘 컨디션 체크하기"
-        icon = (result.icon.strip() or "📝")[:10]
-        unit = (result.unit.strip() or "회")[:20]
-        target = max(1, result.target)
+        result = cast(SubtypeHabitSuggestionBatch, raw_result)
+        # LLM 출력은 형식/개수가 기대와 다를 수 있어 그대로 믿지 않고 방어적으로 다듬는다.
+        sanitized = [
+            {
+                "label": habit.label.strip()[:50] or "오늘 컨디션 체크하기",
+                "icon": (habit.icon.strip() or "📝")[:10],
+                "unit": (habit.unit.strip() or "회")[:20],
+                "target": max(1, habit.target),
+            }
+            for habit in result.habits[:_SUBTYPE_HABITS_PER_DIAGNOSIS]
+        ]
+        if not sanitized:
+            return []
 
-        saved = await self._repository.save_subtype_suggestion(session, subtype.id, label, icon, unit, target)
-        return HabitDef(
-            key=f"subtype_{saved.disease_subtype_id}",
-            label=saved.label,
-            icon=saved.icon,
-            unit=saved.unit,
-            target=saved.target,
-        )
+        saved = await self._repository.save_subtype_suggestions(session, subtype.id, sanitized)
+        return [
+            HabitDef(
+                key=f"subtype_{row.disease_subtype_id}_{row.slot}",
+                label=row.label,
+                icon=row.icon,
+                unit=row.unit,
+                target=row.target,
+            )
+            for row in saved
+        ]
 
     async def get_recommendations(self, session: AsyncSession, profile: Profile) -> HabitRecommendationsResponse:
         today = date.today()
