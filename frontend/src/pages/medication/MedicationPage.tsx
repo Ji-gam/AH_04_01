@@ -1244,7 +1244,9 @@ export default function MedicationPage() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-              <span style={{ fontSize: 20 }}>{foodPolarityStyle(openFoodDetail.item.polarity).icon}</span>
+              <span style={{ fontSize: 20 }}>
+                {foodPolarityStyle(openFoodDetail.item.polarity).icon}
+              </span>
               <p
                 style={{
                   margin: 0,

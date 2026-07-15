@@ -206,9 +206,7 @@ def build_db(json_path: str = JSON_PATH, db_path: str = DB_PATH) -> None:
             raise ValueError(f"_RECOMMEND_OVERRIDES에 매칭되지 않은 항목이 있습니다(오타 의심): {unused_recommend}")
         unused_timing = _TIMING_CAUTION_OVERRIDES - matched_timing_overrides
         if unused_timing:
-            raise ValueError(
-                f"_TIMING_CAUTION_OVERRIDES에 매칭되지 않은 항목이 있습니다(오타 의심): {unused_timing}"
-            )
+            raise ValueError(f"_TIMING_CAUTION_OVERRIDES에 매칭되지 않은 항목이 있습니다(오타 의심): {unused_timing}")
 
         conn.commit()
         ingredient_count = cursor.execute("SELECT COUNT(*) FROM food_drug_ingredients").fetchone()[0]
