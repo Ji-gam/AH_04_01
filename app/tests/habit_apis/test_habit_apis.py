@@ -49,6 +49,33 @@ async def test_get_recommendations_adds_disease_specific_habit():
     assert keys == ["water", "walk", "diabetes_walk"]
 
 
+async def test_get_recommendations_drops_selected_key_no_longer_in_pool():
+    """당뇨 습관(diabetes_walk)을 선택해둔 뒤 진단을 다른 질환으로 바꾸면(풀이 바뀌면),
+    더 이상 오늘 고를 수 없는 옛 선택 키는 selected_keys에서 빠져야 한다 - 안 그러면 프론트가
+    그 유령 키를 그대로 저장 요청에 다시 실어 보내 400을 받는다(회귀 재현: 진단명별 습관이
+    LLM 생성으로 바뀌면서 실제로 발생한 버그)."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "habit_stale_selection@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.patch(
+            "/api/v1/users/me/health-info",
+            json={"diagnosis_history": [{"disease": "DIABETES", "detail": None}]},
+            headers=headers,
+        )
+        await client.post("/api/v1/habits/selections", json={"habit_keys": ["diabetes_walk"]}, headers=headers)
+
+        await client.patch(
+            "/api/v1/users/me/health-info",
+            json={"diagnosis_history": [{"disease": "LIVER_DISEASE", "detail": None}]},
+            headers=headers,
+        )
+        response = await client.get("/api/v1/habits/recommendations", headers=headers)
+
+    body = response.json()
+    assert "diabetes_walk" not in [h["key"] for h in body["habits"]]
+    assert "diabetes_walk" not in body["selected_keys"]
+
+
 async def test_get_today_habits_is_empty_before_any_selection():
     """추천만 받고 아직 선택(POST /habits/selections)을 안 했으면 오늘의 습관은 빈 배열이고,
     all_completed도 (공허 참이 아니라) false여야 한다."""

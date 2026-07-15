@@ -168,13 +168,19 @@ class HabitService:
     async def get_recommendations(self, session: AsyncSession, profile: Profile) -> HabitRecommendationsResponse:
         today = date.today()
         pool = pick_recommendations(await self.build_full_pool(session, profile), profile.id, today)
+        valid_keys = {h.key for h in pool}
         selected_keys = await self._repository.list_selected_keys(session, profile.id, today)
         return HabitRecommendationsResponse(
             habits=[
                 HabitRecommendationItem(key=h.key, label=h.label, icon=h.icon, unit=h.unit, target=h.target)
                 for h in pool
             ],
-            selected_keys=selected_keys,
+            # 세부 진단명이 새로 캐시되는 등 풀이 바뀌면 예전 선택 키가 오늘 풀엔 없을 수 있다
+            # (예: cerebro_stretch로 선택해뒀는데 이후 subtype_20 습관으로 대체된 경우). 그런
+            # 유령 키를 그대로 내려주면 프론트가 "선택됨"으로 상태를 만들고, 저장 시 그 키를
+            # 그대로 다시 보내 select_habits()의 유효성 검사(400)에 걸린다 - 오늘 실제로 고를 수
+            # 있는 키만 내려서 애초에 이 문제가 생기지 않게 한다.
+            selected_keys=[key for key in selected_keys if key in valid_keys],
         )
 
     async def select_habits(
