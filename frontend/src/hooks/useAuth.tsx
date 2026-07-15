@@ -19,6 +19,7 @@ import {
 import { authApi } from "../api/authApi";
 import { setAccessToken, tryRefreshAccessToken } from "../api/client";
 import type { UserInfoResult } from "../api/types";
+import { clearDismissalForNewLogin } from "../utils/healthBannerDismiss";
 
 interface AuthContextValue {
   user: UserInfoResult | null;
@@ -40,7 +41,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const didInit = useRef(false);
 
   const fetchMe = useCallback(async () => {
-    setUser(await authApi.me());
+    const me = await authApi.me();
+    setUser(me);
+    return me;
   }, []);
 
   useEffect(() => {
@@ -63,7 +66,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string) => {
       const { access_token } = await authApi.login(email, password);
       setAccessToken(access_token);
-      await fetchMe();
+      const me = await fetchMe();
+      // 탭을 안 닫고 로그아웃 후 재로그인하는 경우에도 건강정보 배너를 다시 물어보게 한다.
+      clearDismissalForNewLogin(me.profile_id);
     },
     [fetchMe],
   );

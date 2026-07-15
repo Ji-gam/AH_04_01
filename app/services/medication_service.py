@@ -33,6 +33,7 @@ from app.dtos.medication_dto import (
 )
 from app.models.medication_model import Medication, MedicationRecognitionJob, MedicationSchedule
 from app.repositories.dur_drug_repository import DurDrugRepository
+from app.repositories.family_repository import FamilyRepository
 from app.repositories.food_drug_interaction_repository import FoodDrugInteractionRepository
 from app.repositories.medication_repository import MedicationRepository
 from app.services import medication_open_api_client
@@ -932,6 +933,7 @@ async def run_ocr_task(
 class MedicationService:
     def __init__(self, repository: MedicationRepository | None = None) -> None:
         self._repository = repository or MedicationRepository()
+        self._family_repository = FamilyRepository()  # (가족관리) 대상자 권한검증용
 
     async def create_recognition_job(
         self,
@@ -1081,8 +1083,20 @@ class MedicationService:
         if not med:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 약품 정보를 찾을 수 없습니다.")
 
+        # (가족관리) target_profile_id가 있으면 "이 약을 실제로 먹을 사람"을 그 프로필로 등록한다.
+        # 본인이 아닌 값이면 요청자가 그 프로필의 보호자로 등록되어 있는지 반드시 확인 -
+        # 아니면 아무나 남의 이름으로 복약 스케줄을 만들 수 있게 되는 구멍이 생긴다.
+        owner_profile_id = req.target_profile_id or profile_id
+        if owner_profile_id != profile_id:
+            is_guardian = await self._family_repository.is_guardian_of(session, profile_id, owner_profile_id)
+            if not is_guardian:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="해당 프로필에 대한 복약 스케줄을 등록할 권한이 없습니다. 더보기 > 가족관리에서 먼저 연결해주세요.",
+                )
+
         schedule = MedicationSchedule(
-            profile_id=profile_id, medication_id=med.id, times=req.times, hospital_name=req.hospital_name
+            profile_id=owner_profile_id, medication_id=med.id, times=req.times, hospital_name=req.hospital_name
         )
         await self._repository.create_schedule(session, schedule)
 

@@ -80,6 +80,9 @@ class MedicationScheduleCreateRequest(BaseModel):
     drug_code: str  # standard_code
     times: list[str]
     hospital_name: str | None = None
+    # (가족관리) 이 약을 누가 먹을지 - 생략하면 본인. 본인이 아닌 값은 family_links에서
+    # 요청자가 그 프로필의 보호자로 등록되어 있어야만 허용된다(그 외엔 403).
+    target_profile_id: int | None = None
 
 
 class MedicationScheduleUpdateRequest(BaseModel):

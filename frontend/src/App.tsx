@@ -18,6 +18,7 @@ import ContentGenerationPage from "./pages/ContentGenerationPage/ContentGenerati
 import DataConsentPage from "./pages/DataConsentPage/DataConsentPage";
 import DurScreeningPage from "./pages/dur/DurScreeningPage";
 import EmergencyGuidePage from "./pages/EmergencyGuidePage/EmergencyGuidePage";
+import FamilyPage from "./pages/FamilyPage/FamilyPage";
 import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
 import HomePage from "./pages/HomePage/HomePage";
 import InfoDetailPage from "./pages/InfoDetailPage/InfoDetailPage";
@@ -59,12 +60,13 @@ export const router = createBrowserRouter([
       { path: "/dur-screening", element: <DurScreeningPage /> },
       {
         // 개인건강정보(민감정보)와 복약 관리(비로그인 상태로 복약정보 등록이 가능했던 문제)는
-        // 로그인이 꼭 필요하다.
+        // 로그인이 꼭 필요하다. 가족관리도 가족 이메일 연결이라 로그인 필수.
         element: <RequireAuth />,
         children: [
           { path: "/health-info", element: <HealthInfoPage /> },
           { path: "/health-info/consent", element: <ConsentPage /> },
           { path: "/medication", element: <MedicationPage /> },
+          { path: "/family", element: <FamilyPage /> },
         ],
       },
     ],

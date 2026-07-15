@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
 import { contentApi } from "../../api/contentApi";
+import { familyApi, type FamilyLinkItem } from "../../api/familyApi";
 import { habitApi } from "../../api/habitApi";
 import { healthInfoApi } from "../../api/healthInfoApi";
 import { notificationApi } from "../../api/notificationApi";
@@ -16,6 +17,7 @@ import { useAuth } from "../../hooks/useAuth";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { useNearbyRegionLabel } from "../../hooks/useNearbyRegionLabel";
 import { pinkTheme } from "../../theme/pinkTheme";
+import { dismissForSession, isDismissedThisSession } from "../../utils/healthBannerDismiss";
 import { DEFAULT_REGION_LABEL, openNearbySearch } from "../../utils/kakaoMapSearch";
 import Modal from "../AlarmPage/components/Modal";
 import { toDateString } from "../AlarmPage/dateUtils";
@@ -30,20 +32,24 @@ const QUICK_LINKS: { to: string; icon: string; label: string }[] = [
   { to: "/medication", icon: "➕", label: "약 등록" },
 ];
 
-const DISMISS_KEY_PREFIX = "healthBannerDismissed_";
-
 /** 시작화면. 로그인 유도는 상단 네비게이션(Layout)의 "로그인" 링크가 이미 담당하므로 여기서는
  * 따로 안 만든다 - 비로그인일 때 이 영역은 비워둔다.
- * 로그인 상태면 "오늘의 건강 카드"(금일 약 복용 현황)를 보여주고,
- * 아직 답 안 한 사람에게는 건강정보 입력 유도 배너도 같이 띄운다(팝업 대신 화면 안 카드 형태).
- * [주의] "안 뜨게 하기" 기록은 profile_id별로 따로 저장한다 - 계정 하나로 껐다고 다른 계정까지
- * (같은 브라우저라도) 영향받으면 안 되기 때문. */
+ * 화면 맨 위(인사말 바로 아래)엔 건강정보 입력 유도 배너를 먼저 두고, 그 아래에 가족 연결
+ * 요청 알림을 둔다(둘 다 화면 최상단 근처 - 다른 카드들보다 우선).
+ * 로그인 상태면 "오늘의 건강 카드"(금일 약 복용 현황)도 보여준다.
+ * [주의] "안 뜨게 하기"는 이번 로그인 세션 동안만 유지된다(sessionStorage) - 앱을 껐다 켜거나
+ * 다시 로그인하면 매번 새로 물어본다. healthBannerDismiss.ts 참고. */
 export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [showBanner, setShowBanner] = useState(false);
   const [healthInfo, setHealthInfo] = useState<HealthInfoResult | null>(null);
   const [showMyInfo, setShowMyInfo] = useState(false);
+
+  // 가족관리 - 내가 받은, 아직 응답 안 한 연결 요청. 더보기 > 가족관리 화면 안에서만 보이면
+  // 못 보고 지나치기 쉬워서, 홈 화면 맨 위에도 같이 띄운다(실시간 푸시는 아니고, 홈 화면을
+  // 열 때/새로고침할 때 보이는 방식 - 웹푸시 인프라는 다음 단계 작업).
+  const [pendingFamilyRequests, setPendingFamilyRequests] = useState<FamilyLinkItem[]>([]);
 
   const [meds, setMeds] = useState<MedicationSchedule[]>([]);
   const [alarms, setAlarms] = useState<NotificationScheduleResult[]>([]);
@@ -64,7 +70,7 @@ export default function HomePage() {
   const nearbyLocation = useNearbyRegionLabel();
 
   useEffect(() => {
-    if (user && localStorage.getItem(DISMISS_KEY_PREFIX + user.profile_id) !== "true") {
+    if (user && !isDismissedThisSession(user.profile_id)) {
       setShowBanner(true);
     } else {
       setShowBanner(false);
@@ -107,6 +113,43 @@ export default function HomePage() {
       .catch(() => setHabitsToday(null));
   }, [user]);
 
+  async function loadPendingFamilyRequests() {
+    if (!user) {
+      setPendingFamilyRequests([]);
+      return;
+    }
+    try {
+      const result = await familyApi.list();
+      setPendingFamilyRequests(result.as_member_pending);
+    } catch {
+      // 가족 요청 카드는 부가 정보라, 실패해도 홈 화면 전체를 막지 않고 조용히 숨긴다.
+      setPendingFamilyRequests([]);
+    }
+  }
+
+  useEffect(() => {
+    loadPendingFamilyRequests();
+  }, [user]);
+
+  async function handleAcceptFamilyRequest(linkId: number) {
+    try {
+      await familyApi.accept(linkId);
+      await loadPendingFamilyRequests();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "수락에 실패했습니다.");
+    }
+  }
+
+  async function handleRejectFamilyRequest(linkId: number) {
+    if (!window.confirm("이 연결 요청을 거절할까요?")) return;
+    try {
+      await familyApi.reject(linkId);
+      await loadPendingFamilyRequests();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "거절에 실패했습니다.");
+    }
+  }
+
   useEffect(() => {
     contentApi
       .getContents("MEDICAL_NEWS", 1)
@@ -135,12 +178,12 @@ export default function HomePage() {
   }
 
   function handleDismiss() {
-    if (user) localStorage.setItem(DISMISS_KEY_PREFIX + user.profile_id, "true");
+    if (user) dismissForSession(user.profile_id);
     setShowBanner(false);
   }
 
   function handleConfirm() {
-    if (user) localStorage.setItem(DISMISS_KEY_PREFIX + user.profile_id, "true");
+    if (user) dismissForSession(user.profile_id);
     setShowBanner(false);
     navigate("/health-info/consent");
   }
@@ -160,6 +203,125 @@ export default function HomePage() {
         <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 10px" }}>
           👋 안녕하세요{user ? `, ${user.name}님` : ""}!
         </h1>
+
+        {/* 건강정보 입력 유도 배너를 먼저 두고, 가족 연결 요청은 그 아래에 둔다. */}
+        {showBanner && (
+          <div
+            style={{
+              background: pinkTheme.primarySoft,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: "12px",
+              padding: "16px 20px",
+              marginBottom: 16,
+            }}
+          >
+            <p style={{ color: pinkTheme.text, fontWeight: 600, margin: "0 0 12px" }}>
+              안녕하세요 건강정보를 입력해주시면 더 좋은 서비스가 가능합니다! 입력하시겠습니까?
+            </p>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="button"
+                onClick={handleConfirm}
+                style={{
+                  flex: 1,
+                  padding: "10px",
+                  border: "none",
+                  borderRadius: "8px",
+                  background: pinkTheme.primary,
+                  color: "#fff",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                확인
+              </button>
+              <button
+                type="button"
+                onClick={handleDismiss}
+                style={{
+                  flex: 1,
+                  padding: "10px",
+                  border: `1px solid ${pinkTheme.border}`,
+                  borderRadius: "8px",
+                  background: pinkTheme.cardBg,
+                  color: pinkTheme.textMuted,
+                  cursor: "pointer",
+                }}
+              >
+                아니오
+              </button>
+            </div>
+          </div>
+        )}
+
+        {pendingFamilyRequests.length > 0 && (
+          <div
+            style={{
+              background: pinkTheme.primarySoft,
+              border: `1.5px solid ${pinkTheme.primary}`,
+              borderRadius: "12px",
+              padding: "16px 20px",
+              marginBottom: 16,
+            }}
+          >
+            <p style={{ color: pinkTheme.primary, fontWeight: 700, margin: "0 0 10px" }}>
+              🔔 받은 가족 연결 요청
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {pendingFamilyRequests.map((req) => (
+                <div
+                  key={req.link_id}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    background: pinkTheme.cardBg,
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ fontSize: 14, color: pinkTheme.text }}>
+                    {req.name}님이 나를 "{req.relation_label}"(으)로 등록하고 싶어해요
+                  </span>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleAcceptFamilyRequest(req.link_id)}
+                      style={{
+                        border: "none",
+                        borderRadius: 8,
+                        background: pinkTheme.primary,
+                        color: "#fff",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        padding: "6px 12px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      수락
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRejectFamilyRequest(req.link_id)}
+                      style={{
+                        border: `1px solid ${pinkTheme.border}`,
+                        borderRadius: 8,
+                        background: pinkTheme.cardBg,
+                        color: pinkTheme.textMuted,
+                        fontSize: 12,
+                        padding: "6px 12px",
+                        cursor: "pointer",
+                      }}
+                    >
+                      거절
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {user && (
           <button
@@ -685,55 +847,6 @@ export default function HomePage() {
               </button>
             </div>
           </Modal>
-        )}
-
-        {showBanner && (
-          <div
-            style={{
-              background: pinkTheme.primarySoft,
-              border: `1px solid ${pinkTheme.border}`,
-              borderRadius: "12px",
-              padding: "16px 20px",
-              marginBottom: 16,
-            }}
-          >
-            <p style={{ color: pinkTheme.text, fontWeight: 600, margin: "0 0 12px" }}>
-              안녕하세요 건강정보를 입력해주시면 더 좋은 서비스가 가능합니다! 입력하시겠습니까?
-            </p>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <button
-                type="button"
-                onClick={handleConfirm}
-                style={{
-                  flex: 1,
-                  padding: "10px",
-                  border: "none",
-                  borderRadius: "8px",
-                  background: pinkTheme.primary,
-                  color: "#fff",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                확인
-              </button>
-              <button
-                type="button"
-                onClick={handleDismiss}
-                style={{
-                  flex: 1,
-                  padding: "10px",
-                  border: `1px solid ${pinkTheme.border}`,
-                  borderRadius: "8px",
-                  background: pinkTheme.cardBg,
-                  color: pinkTheme.textMuted,
-                  cursor: "pointer",
-                }}
-              >
-                아니오
-              </button>
-            </div>
-          </div>
         )}
 
         {/* 내 정보 모달 — 상단 "🙋 내 정보" 버튼으로 연다. 수정은 개인건강정보 화면에서. */}
