@@ -2,14 +2,12 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
-import { contentApi } from "../../api/contentApi";
 import { familyApi, type FamilyLinkItem } from "../../api/familyApi";
 import { habitApi } from "../../api/habitApi";
 import { healthInfoApi } from "../../api/healthInfoApi";
 import { notificationApi } from "../../api/notificationApi";
 import type {
   HabitsTodayResult,
-  HealthContentResult,
   HealthInfoResult,
   NotificationScheduleResult,
 } from "../../api/types";
@@ -63,8 +61,6 @@ export default function HomePage() {
   const [showLifestyleModal, setShowLifestyleModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
 
-  // 정보 탭과 같은 소스 — 의학뉴스 최신 1건 헤드라인만 미리보기로 보여준다.
-  const [newsHeadline, setNewsHeadline] = useState<HealthContentResult | null>(null);
   const [chatInput, setChatInput] = useState("");
 
   // 가까운 병원/약국 찾기 카드 — 위치를 허용하면 그 지역 기준으로, 아니면 서울 기준으로 검색한다.
@@ -150,13 +146,6 @@ export default function HomePage() {
       window.alert(err instanceof Error ? err.message : "거절에 실패했습니다.");
     }
   }
-
-  useEffect(() => {
-    contentApi
-      .getContents("MEDICAL_NEWS", 1)
-      .then((result) => setNewsHeadline(result.items[0] ?? null))
-      .catch(() => setNewsHeadline(null));
-  }, []);
 
   function handleAskAi() {
     const text = chatInput.trim();
@@ -473,11 +462,19 @@ export default function HomePage() {
           </div>
         )}
 
-        {/* 오늘의 습관 트래커 미리보기 — 누르면 모달로 실제 체크 화면이 뜬다. */}
-        {user && habitsToday && habitsToday.habits.length > 0 && (
+        {/* 오늘의 습관 트래커 미리보기 — 선택한 게 있으면 모달로 체크 화면이 뜨고, 아직 하나도
+            선택 안 했으면(카드 자체는 계속 보여준다 - 사라지면 습관 기능이 있다는 걸 아예
+            모를 수 있다) 눌렀을 때 바로 습관 선택 페이지로 보낸다. */}
+        {user && habitsToday && (
           <button
             type="button"
-            onClick={() => setShowLifestyleModal(true)}
+            onClick={() => {
+              if (habitsToday.habits.length > 0) {
+                setShowLifestyleModal(true);
+              } else {
+                navigate("/habit-selection");
+              }
+            }}
             style={{
               display: "block",
               width: "100%",
@@ -497,9 +494,9 @@ export default function HomePage() {
                   🌿 {user.name}님을 위한 추천 라이프스타일
                 </p>
                 <p style={{ margin: "4px 0 0", fontSize: 12, color: pinkTheme.textMuted }}>
-                  오늘의 당신, 할 수 있어요! ·{" "}
-                  {habitsToday.habits.filter((h) => h.completed).length}/{habitsToday.habits.length}
-                  개 완료
+                  {habitsToday.habits.length > 0
+                    ? `오늘의 당신, 할 수 있어요! · ${habitsToday.habits.filter((h) => h.completed).length}/${habitsToday.habits.length}개 완료`
+                    : "아직 선택한 습관이 없어요 · 눌러서 오늘의 습관을 골라보세요"}
                 </p>
               </div>
               <span style={{ color: pinkTheme.primary, fontSize: 18 }} aria-hidden>
@@ -601,41 +598,6 @@ export default function HomePage() {
             </button>
           </div>
         </div>
-
-        {newsHeadline && (
-          <div
-            style={{
-              background: pinkTheme.cardBg,
-              border: `1px solid ${pinkTheme.border}`,
-              borderRadius: 16,
-              padding: 18,
-              marginBottom: 16,
-              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 8,
-              }}
-            >
-              <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.text }}>
-                건강 정보
-              </p>
-              <Link
-                to="/info"
-                style={{ fontSize: 12, color: pinkTheme.primary, textDecoration: "none" }}
-              >
-                더보기 →
-              </Link>
-            </div>
-            <p style={{ margin: 0, fontSize: 13, color: pinkTheme.textMuted }}>
-              {newsHeadline.title}
-            </p>
-          </div>
-        )}
 
         {/* 가까운 병원/약국 찾기 — 위치를 허용하면 그 지역 기준으로, 아니면 서울 기준으로 검색한다
             (자세한 위치 기반 안내는 더보기 > 응급안내 참고). */}
