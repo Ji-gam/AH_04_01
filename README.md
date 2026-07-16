@@ -98,6 +98,25 @@ docker-compose up -d --build
 - **API 서버**: [http://localhost/api/docs](http://localhost/api/docs) (Swagger UI)
 - **Nginx**: 80 포트를 통해 API 서버로 요청을 전달합니다.
 
+#### ⚠️ 데이터 시딩 (최초 1회)
+
+`docker compose up`은 `alembic upgrade head`로 테이블만 생성할 뿐, 그 안의 데이터까지 채워주지는
+않습니다. `mysql_data` 볼륨이 없는 새 환경(신규 팀원 로컬, 새 dev/prod DB)에서는 필요에 따라
+아래 스크립트를 한 번 실행하세요. 볼륨이 살아있는 한(`docker compose down -v`로 지우지 않는 한)
+컨테이너를 껐다 켜도 다시 실행할 필요는 없습니다.
+
+```bash
+# 음식-약물 상호작용 참조 테이블 (식약처 가이드북 기반) — 매칭 기능이 실제로 동작하려면 필수
+docker compose exec fastapi uv run python -m app.scripts.seed_food_drug_interaction
+
+# 개발/테스트용 데모 계정 3개 + 습관·복약·알림·AI상담 더미 데이터 — 기능 화면을 바로 확인하고 싶을 때(선택)
+docker compose exec fastapi uv run python -m app.scripts.seed_demo_data
+```
+
+두 스크립트 모두 재실행해도 안전합니다(이미 있는 데이터는 건너뜀 — 단, `seed_food_drug_interaction`은
+참조 테이블 전체를 지우고 다시 채우는 방식으로 "안전"합니다. 데모 계정과 달리 정적 참조 데이터라
+증분 갱신할 이유가 없기 때문).
+
 #### 로컬에서 개별 실행 (개발용)
 
 **FastAPI 서버 실행:**
