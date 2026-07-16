@@ -304,13 +304,12 @@ export default function MorePage() {
             </span>
           </Link>
 
-          {/* 공지사항 - 아직 페이지가 없어 버튼만 두고 연결은 다음 단계로 미룬다 */}
-          <div style={{ ...menuCardStyle, cursor: "default", opacity: 0.55 }}>
+          <Link to="/notices" state={{ from: "more" }} style={menuCardStyle}>
             <span>📢 공지사항</span>
             <span aria-hidden style={{ color: pinkTheme.textMuted }}>
               ›
             </span>
-          </div>
+          </Link>
 
           <Link to="/content-generation" style={menuCardStyle}>
             <span>
