@@ -17,7 +17,9 @@ const inputStyle: React.CSSProperties = {
  * - [변경] 이름(닉네임)만 수정 가능. 이메일은 로그인 식별자라 고정, PATCH /users/me가 애초에 안 받음.
  *   전화번호는 당장 안 쓰고, 성별은 더보기 > 개인건강정보에서 이미 받으므로 여기서는 뺐다.
  *   생년월일은 더 이상 안 쓴다 - 나이는 더보기 > 개인건강정보에서 관리한다.
- * - 회원탈퇴는 개인정보보호법 기준으로 즉시 완전 삭제라 되돌릴 수 없음 - 비밀번호 재확인 + 확인 문구 입력을 요구한다. */
+ * - 회원탈퇴는 개인정보보호법 기준으로 즉시 완전 삭제라 되돌릴 수 없음 - 비밀번호 재확인 + 확인 문구 입력을 요구한다.
+ * - 로그아웃은 더보기 화면 대신 여기(계정관리 > 회원탈퇴 아래)로 옮겼다 - 계정에 관한 동작은
+ *   한 곳에 모아두는 게 자연스럽다는 디자인 반영(2026-07-16). */
 export default function AccountSettingsPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -46,6 +48,11 @@ export default function AccountSettingsPage() {
     } finally {
       setIsSaving(false);
     }
+  }
+
+  function handleLogout() {
+    logout();
+    navigate("/", { replace: true });
   }
 
   async function handleWithdraw(e: FormEvent) {
@@ -250,6 +257,24 @@ export default function AccountSettingsPage() {
             </form>
           )}
         </div>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          style={{
+            marginTop: 12,
+            width: "100%",
+            padding: "12px 0",
+            border: `1px solid ${pinkTheme.border}`,
+            borderRadius: 10,
+            background: pinkTheme.cardBg,
+            color: pinkTheme.textMuted,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          로그아웃
+        </button>
       </div>
     </div>
   );

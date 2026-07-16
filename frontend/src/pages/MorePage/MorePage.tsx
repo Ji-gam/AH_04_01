@@ -2,7 +2,9 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
+import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
+import Modal from "../AlarmPage/components/Modal";
 
 interface SearchResultItem {
   item_name: string;
@@ -32,16 +34,26 @@ const menuCardStyle: React.CSSProperties = {
   boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
 };
 
-const menuDescStyle: React.CSSProperties = {
-  display: "block",
-  fontSize: 12,
-  color: pinkTheme.textMuted,
-  marginTop: 2,
-};
+interface GridItemSpec {
+  key: string;
+  label: string;
+  icon: string;
+  bg: string;
+  onClick: () => void;
+}
 
+/** 더보기 화면. 디자인 시안 반영(2026-07-16) - 상단 프로필 카드 + 3x2 바로가기 그리드 +
+ * 하단 리스트(알림설정/데이터활용동의/공지사항/관리자컨텐츠생성) 구조로 재구성했다.
+ * "약품검색"은 기존처럼 페이지 이동이 아니라 모달로 뜬다(원래 동작 유지) - "내 정보"도
+ * 개인건강정보/생활습관정보/복약스케줄 3개를 모아 보여주는 모달로 새로 만들었다.
+ * 프로필 사진(아바타)은 이번엔 업로드 기능 없이 이름 첫 글자만 표시한다(다음 단계에서 실제
+ * 업로드로 교체 예정). 로그아웃은 계정관리(개인정보수정) 페이지의 회원탈퇴 아래로 옮겼다. */
 export default function MorePage() {
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const [isDurModalOpen, setIsDurModalOpen] = useState(false);
+  const [isMyInfoModalOpen, setIsMyInfoModalOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const [results, setResults] = useState<SearchResultItem[]>([]);
@@ -69,8 +81,8 @@ export default function MorePage() {
     }
   };
 
-  const handleOpenModal = () => {
-    setIsModalOpen(true);
+  const handleOpenDurModal = () => {
+    setIsDurModalOpen(true);
     setQuery("");
     setResults([]);
     setNotFoundReason(null);
@@ -78,124 +90,238 @@ export default function MorePage() {
     setError(null);
   };
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-  };
-
   // 검색 결과 약을 바로 복약알림 등록 화면으로 넘긴다 — 약 이름을 미리 채운 채 폼이 열린다.
   const handleRegisterReminder = (itemName: string) => {
-    setIsModalOpen(false);
+    setIsDurModalOpen(false);
     navigate("/alarms", { state: { prefillMedicationName: itemName } });
   };
+
+  const gridItems: GridItemSpec[] = [
+    {
+      key: "my-info",
+      label: "내 정보",
+      icon: "👤",
+      bg: "#DCE7FB",
+      onClick: () => setIsMyInfoModalOpen(true),
+    },
+    {
+      key: "drug-search",
+      label: "의약품 검색",
+      icon: "🔍",
+      bg: "#DCF3E7",
+      onClick: handleOpenDurModal,
+    },
+    {
+      key: "emergency",
+      label: "응급안내",
+      icon: "🚨",
+      bg: "#FCE1E6",
+      onClick: () => navigate("/emergency-guide"),
+    },
+    {
+      key: "prescription",
+      label: "처방전 등록",
+      icon: "📝",
+      bg: "#DCEEF9",
+      onClick: () => navigate("/track"),
+    },
+    {
+      key: "family",
+      label: "가족관리",
+      icon: "👨‍👩‍👧",
+      bg: "#FBE1E1",
+      onClick: () => navigate("/family"),
+    },
+    {
+      key: "lifestyle",
+      label: "생활습관 추천",
+      icon: "🎉",
+      bg: "#FCEFD1",
+      onClick: () => navigate("/habit-selection"),
+    },
+  ];
 
   return (
     <div style={{ background: pinkTheme.pageBg, minHeight: "100%", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 20px" }}>
-          🗂️ 더보기
-        </h1>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 20,
+          }}
+        >
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: pinkTheme.text, margin: 0 }}>
+            더보기
+          </h1>
+          <Link
+            to="/account-settings"
+            style={{
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 999,
+              padding: "6px 14px",
+              fontSize: 13,
+              fontWeight: 600,
+              color: pinkTheme.text,
+              background: pinkTheme.cardBg,
+              textDecoration: "none",
+            }}
+          >
+            계정관리
+          </Link>
+        </div>
+
+        {/* 프로필 카드 - 아바타는 꾸밈 요소(업로드 기능은 다음 단계) */}
+        <div
+          style={{
+            background: pinkTheme.primarySoft,
+            borderRadius: 16,
+            padding: 18,
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: "50%",
+              flexShrink: 0,
+              border: `1.5px dashed ${pinkTheme.border}`,
+              background: pinkTheme.cardBg,
+              color: pinkTheme.primary,
+              fontSize: user ? 20 : 18,
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            {user ? user.name.charAt(0) : "👤"}
+          </span>
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: pinkTheme.text }}>
+              {user ? `${user.name}님, 환영합니다` : "로그인이 필요해요"}
+            </p>
+            {!user && (
+              <Link
+                to="/login"
+                style={{
+                  fontSize: 12,
+                  color: pinkTheme.primary,
+                  textDecoration: "none",
+                  fontWeight: 600,
+                }}
+              >
+                로그인하러 가기 →
+              </Link>
+            )}
+          </div>
+        </div>
+
+        {/* 3x2 바로가기 그리드 */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 10,
+            marginBottom: 20,
+          }}
+        >
+          {gridItems.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={item.onClick}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 8,
+                padding: "16px 6px",
+                border: `1px solid ${pinkTheme.border}`,
+                borderRadius: 16,
+                background: pinkTheme.cardBg,
+                cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
+              }}
+            >
+              <span
+                aria-hidden
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: "50%",
+                  background: item.bg,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 19,
+                }}
+              >
+                {item.icon}
+              </span>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: pinkTheme.text }}>
+                {item.label}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* 리스트 항목 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {/* 약품검색 바로가기 버튼 */}
-          <button onClick={handleOpenModal} style={{ ...menuCardStyle, cursor: "pointer" }}>
-            <span style={{ textAlign: "left" }}>
-              <strong>🔍 약품검색</strong>
-              <span style={menuDescStyle}>
-                의약품의 효능 및 식약처 DUR 임부금기/노인주의 규칙을 검색합니다.
-              </span>
-            </span>
-            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
-              ›
-            </span>
-          </button>
-
-          <Link to="/schedule" style={menuCardStyle}>
-            <span>
-              ⏰ 복약 스케줄
-              <span style={menuDescStyle}>오늘 먹을 약을 시간순으로 확인하고 복용 체크해요</span>
-            </span>
-            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
-              ›
-            </span>
-          </Link>
-
-          <Link to="/health-info" style={menuCardStyle}>
-            <span>
-              🩺 개인건강정보
-              <span style={menuDescStyle}>키/체중/BMI, 진단병력·가족력, 특이사항을 관리해요</span>
-            </span>
-            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
-              ›
-            </span>
-          </Link>
-
-          <Link to="/family" style={menuCardStyle}>
-            <span>
-              👨‍👩‍👧 가족관리
-              <span style={menuDescStyle}>
-                부모님 등 가족을 연결하고, 그분 몫으로 약을 등록해요
-              </span>
-            </span>
-            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
-              ›
-            </span>
-          </Link>
-
-          <Link to="/lifestyle-info" style={menuCardStyle}>
-            <span>
-              🌙 생활습관 정보
-              <span style={menuDescStyle}>기상·식사·취침 시간을 설정해 복약 리듬을 맞춰요</span>
-            </span>
-            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
-              ›
-            </span>
-          </Link>
-
-          <Link to="/habit-selection" style={menuCardStyle}>
-            <span>
-              🌿 오늘의 추천 습관
-              <span style={menuDescStyle}>
-                매일 추천되는 습관 중 최대 5개를 골라 홈에서 실천해요
-              </span>
-            </span>
-            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
-              ›
-            </span>
-          </Link>
-
-          <Link to="/emergency-guide" style={menuCardStyle}>
-            <span>
-              🚨 응급안내
-              <span style={menuDescStyle}>119·가까운 병원·약국·응급실을 빠르게 찾아요</span>
-            </span>
-            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
-              ›
-            </span>
-          </Link>
-
           <Link to="/notification-settings" style={menuCardStyle}>
-            <span>
-              🔔 알림설정
-              <span style={menuDescStyle}>푸시·무음 시간대·알림 강도를 설정해요</span>
-            </span>
+            <span>🔔 알림 설정</span>
             <span aria-hidden style={{ color: pinkTheme.textMuted }}>
               ›
             </span>
           </Link>
 
           <Link to="/data-consent" style={menuCardStyle}>
-            <span>
+            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
               📋 데이터 활용 동의
-              <span style={menuDescStyle}>건강정보·AI상담·위치정보·마케팅 동의를 관리해요</span>
+              <span
+                aria-hidden
+                style={{
+                  background: pinkTheme.primary,
+                  color: "#fff",
+                  borderRadius: 999,
+                  padding: "2px 8px",
+                  fontSize: 10.5,
+                  fontWeight: 700,
+                }}
+              >
+                혜택
+              </span>
             </span>
             <span aria-hidden style={{ color: pinkTheme.textMuted }}>
               ›
             </span>
           </Link>
 
+          {/* 공지사항 - 아직 페이지가 없어 버튼만 두고 연결은 다음 단계로 미룬다 */}
+          <div style={{ ...menuCardStyle, cursor: "default", opacity: 0.55 }}>
+            <span>📢 공지사항</span>
+            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+              ›
+            </span>
+          </div>
+
           <Link to="/content-generation" style={menuCardStyle}>
             <span>
               🛠️ 관리자 컨텐츠생성
-              <span style={menuDescStyle}>
+              <span
+                style={{
+                  display: "block",
+                  fontSize: 12,
+                  color: pinkTheme.textMuted,
+                  marginTop: 2,
+                }}
+              >
                 실제 LLM으로 건강 콘텐츠 카드를 즉시 생성해 "정보" 탭에 반영해요
               </span>
             </span>
@@ -205,10 +331,104 @@ export default function MorePage() {
           </Link>
         </div>
 
-        {/* 의약품 DUR/효능 검색 모달 */}
-        {isModalOpen && (
+        {/* "내 정보" 모달 - 개인건강정보/생활습관정보/복약스케줄 모아보기 */}
+        {isMyInfoModalOpen && (
+          <Modal onClose={() => setIsMyInfoModalOpen(false)}>
+            <div
+              style={{
+                background: pinkTheme.cardBg,
+                border: `1px solid ${pinkTheme.border}`,
+                borderRadius: 16,
+                padding: 18,
+                boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+              }}
+            >
+              <p
+                style={{
+                  margin: "0 0 14px",
+                  fontSize: 15,
+                  fontWeight: 700,
+                  color: pinkTheme.primary,
+                }}
+              >
+                👤 내 정보
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <Link
+                  to="/health-info"
+                  onClick={() => setIsMyInfoModalOpen(false)}
+                  style={menuCardStyle}
+                >
+                  <span>
+                    🩺 개인건강정보
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 12,
+                        color: pinkTheme.textMuted,
+                        marginTop: 2,
+                      }}
+                    >
+                      키/체중/BMI, 진단병력·가족력, 특이사항을 관리해요
+                    </span>
+                  </span>
+                  <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+                    ›
+                  </span>
+                </Link>
+                <Link
+                  to="/lifestyle-info"
+                  onClick={() => setIsMyInfoModalOpen(false)}
+                  style={menuCardStyle}
+                >
+                  <span>
+                    🌙 생활습관 정보
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 12,
+                        color: pinkTheme.textMuted,
+                        marginTop: 2,
+                      }}
+                    >
+                      기상·식사·취침 시간을 설정해 복약 리듬을 맞춰요
+                    </span>
+                  </span>
+                  <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+                    ›
+                  </span>
+                </Link>
+                <Link
+                  to="/schedule"
+                  onClick={() => setIsMyInfoModalOpen(false)}
+                  style={menuCardStyle}
+                >
+                  <span>
+                    ⏰ 복약 스케줄
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 12,
+                        color: pinkTheme.textMuted,
+                        marginTop: 2,
+                      }}
+                    >
+                      오늘 먹을 약을 시간순으로 확인하고 복용 체크해요
+                    </span>
+                  </span>
+                  <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+                    ›
+                  </span>
+                </Link>
+              </div>
+            </div>
+          </Modal>
+        )}
+
+        {/* 의약품 DUR/효능 검색 모달 (기존 동작 그대로) */}
+        {isDurModalOpen && (
           <div
-            onClick={handleCloseModal}
+            onClick={() => setIsDurModalOpen(false)}
             style={{
               position: "fixed",
               inset: 0,
@@ -235,9 +455,8 @@ export default function MorePage() {
                 color: pinkTheme.text,
               }}
             >
-              {/* 닫기 버튼 */}
               <button
-                onClick={handleCloseModal}
+                onClick={() => setIsDurModalOpen(false)}
                 style={{
                   position: "absolute",
                   top: 12,
@@ -258,7 +477,6 @@ export default function MorePage() {
                 🔍 의약품 DUR 및 효능 검색
               </h3>
 
-              {/* 검색 폼 */}
               <form onSubmit={handleSearch} style={{ display: "flex", gap: 6, marginBottom: 14 }}>
                 <input
                   type="text"
@@ -299,7 +517,6 @@ export default function MorePage() {
                 </p>
               )}
 
-              {/* 결과 리스트 */}
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {results.length > 0
                   ? results.map((item, index) => (
