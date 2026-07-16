@@ -79,11 +79,18 @@ class FakeRetriever:
         is_emergency: bool = False,
         is_medical_related: bool = True,
         raise_on_structured: Exception | None = None,
+        paper_result: dict | None = None,
+        raise_on_paper_agent: Exception | None = None,
     ) -> None:
         self.is_emergency = is_emergency
         self.is_medical_related = is_medical_related
         self.raise_on_structured = raise_on_structured
         self.structured_calls: list[tuple[str, str, type]] = []
+        # 기본은 "논문 검색 범위 밖"(sources 빈 목록) — 기존 테스트가 전제하는 일반
+        # DUR RAG 흐름을 그대로 타도록 한다.
+        self.paper_result = paper_result if paper_result is not None else {"answer": "", "sources": []}
+        self.raise_on_paper_agent = raise_on_paper_agent
+        self.paper_agent_calls: list[str] = []
 
     async def search(self, query: str) -> list[dict]:
         return [{"content": "fake-chunk-1", "metadata": {"source": "fake_source.csv"}}]
@@ -97,6 +104,12 @@ class FakeRetriever:
         if schema is MedicalRelatednessClassification:
             return MedicalRelatednessClassification(is_medical_related=self.is_medical_related)
         raise AssertionError(f"예상치 못한 schema: {schema}")
+
+    async def ask_paper_agent(self, question: str) -> dict:
+        self.paper_agent_calls.append(question)
+        if self.raise_on_paper_agent is not None:
+            raise self.raise_on_paper_agent
+        return self.paper_result
 
 
 async def fake_llm_stream(message: str, context: dict, chunks: list[str]):
@@ -272,6 +285,71 @@ async def test_dur_warning_injected_for_geriatric_profile():
     assert chunks[-1]["disclaimer"] == DISCLAIMER_TEXT
     assert any("[노인주의 경고]" in c for c in spy_llm.received_chunks)
     assert fake_dur_repo.received_calls == [("아스피린", False, True)]
+
+
+async def test_paper_agent_answer_used_when_sources_present():
+    """paper-search가 sources를 반환하면(질문이 논문 검색 범위 안이라는 뜻) 그 답변+출처를
+    그대로 반환하고, 일반 DUR RAG 흐름(토큰 스트리밍)은 타지 않는다."""
+    repository = FakeChatRepository()
+    paper_sources = [{"name": "Paper A", "url": "https://pubmed.ncbi.nlm.nih.gov/111/"}]
+    retriever = FakeRetriever(paper_result={"answer": "HbA1c가 감소했습니다.", "sources": paper_sources})
+    service = _build_service(repository, retriever=retriever)
+
+    chunks = await _collect(
+        service.stream_reply(session=None, profile_id=1, session_id=10, message="당뇨 저혈당 관리 논문 알려줘")
+    )
+
+    assert chunks[0] == {"type": "paper_answer", "content": "HbA1c가 감소했습니다.", "sources": paper_sources}
+    assert chunks[-1]["type"] == "done"
+    assert not any(c["type"] == "token" for c in chunks)
+    assert repository.saved_messages == [
+        (10, MessageRole.USER, "당뇨 저혈당 관리 논문 알려줘"),
+        (10, MessageRole.ASSISTANT, "HbA1c가 감소했습니다.\n\n[출처: Paper A]"),
+    ]
+
+
+async def test_paper_agent_falls_back_to_generic_flow_when_no_sources():
+    """paper-search가 sources 없이 응답하면(범위 밖 질문) 기존 일반 DUR RAG 흐름으로 폴백한다."""
+    repository = FakeChatRepository()
+    profiles = FakeProfileRepository({1: FakeProfile(id=1, name="사용자")})
+    retriever = FakeRetriever()  # 기본값: sources=[]
+    service = _build_service(repository, profile_repository=profiles, retriever=retriever)
+
+    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="오늘 날씨 어때?"))
+
+    assert retriever.paper_agent_calls == ["오늘 날씨 어때?"]
+    assert any(c["type"] == "token" for c in chunks)
+    assert not any(c["type"] == "paper_answer" for c in chunks)
+
+
+async def test_paper_agent_unavailable_falls_back_to_generic_flow():
+    """ai_worker 논문 검색이 실패해도 전체 채팅은 막지 않고 일반 흐름으로 계속 진행한다."""
+    repository = FakeChatRepository()
+    profiles = FakeProfileRepository({1: FakeProfile(id=1, name="사용자")})
+    retriever = FakeRetriever(raise_on_paper_agent=AIWorkerUnavailableError("down"))
+    service = _build_service(repository, profile_repository=profiles, retriever=retriever)
+
+    chunks = await _collect(
+        service.stream_reply(session=None, profile_id=1, session_id=10, message="당뇨 저혈당 관리 논문 알려줘")
+    )
+
+    assert any(c["type"] == "token" for c in chunks)
+    assert not any(c["type"] == "paper_answer" for c in chunks)
+
+
+async def test_emergency_short_circuits_even_when_paper_agent_found_sources():
+    """응급이 감지되면 paper-search가 이미 sources를 찾아뒀더라도 노출하지 않고 fallback만 반환한다."""
+    repository = FakeChatRepository()
+    paper_sources = [{"name": "Paper A", "url": "https://pubmed.ncbi.nlm.nih.gov/111/"}]
+    retriever = FakeRetriever(paper_result={"answer": "논문 답변", "sources": paper_sources})
+    service = _build_service(repository, retriever=retriever)
+
+    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="가슴 통증 있어요"))
+
+    assert chunks == [
+        {"type": "emergency_fallback", "content": EMERGENCY_FALLBACK_MESSAGE, "disclaimer": DISCLAIMER_TEXT}
+    ]
+    assert repository.saved_messages == []
 
 
 def test_collect_dur_warnings_gates_on_pregnant_flag():

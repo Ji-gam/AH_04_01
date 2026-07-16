@@ -56,11 +56,19 @@ export interface NotificationScheduleUpdateRequest {
   is_active?: boolean;
 }
 
+// T-LLM-7-3: 질환 논문 검색 답변의 출처 각주 1건(제목 + 있으면 원문 링크).
+export interface ChatSourceRef {
+  name: string;
+  url?: string | null;
+}
+
 // ChatMessageChunk 스키마 (api_spec_core_v1.yaml). text/plain 스트림의 각 줄이 이 형태의 JSON이다.
+// paper_answer: 논문 검색 답변이 sources와 함께 한 번에(토큰 스트리밍 없이) 도착한다.
 export interface ChatMessageChunk {
-  type: "token" | "emergency_fallback" | "done";
+  type: "token" | "emergency_fallback" | "paper_answer" | "done";
   content: string;
   disclaimer?: string;
+  sources?: ChatSourceRef[];
 }
 
 export interface ChatSessionResponse {

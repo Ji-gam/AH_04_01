@@ -100,9 +100,16 @@ class ChatService:
         발사해두고, 실제 생성 직전에만 결과를 확인한다 — 매 턴 직렬 지연시간을 늘리지 않기
         위함이며, 응급으로 판명되면 그 전에 조회한 RAG/컨텍스트는 버려진다(트래픽이 적은
         지금은 이 비용보다 지연시간 감소가 더 중요하다는 판단).
+
+        T-LLM-7-3: 질환 논문 검색(`/agent/paper-search`)도 같은 이유로 병렬 발사한다.
+        그 결과 `sources`가 비어 있으면(질문이 논문 검색 범위 밖이라고 ai_worker가 이미
+        판단한 것) 기존 DUR RAG 흐름으로 그대로 폴백하고, 있으면 그 답변+출처를 한 번에
+        반환한다(paper_agent가 이미 자체 LLM으로 답변까지 만들어주므로, DUR 흐름처럼
+        토큰 스트리밍하지 않고 emergency_fallback과 같은 단일 청크로 전달한다).
         """
         keyword_emergency = safety_service.check_emergency(message)
         emergency_llm_task = asyncio.create_task(self._check_emergency_via_llm(message))
+        paper_task = asyncio.create_task(self._try_paper_agent(message))
 
         history = await self._repository.list_messages(session, session_id)
 
@@ -137,11 +144,28 @@ class ChatService:
             sources = sorted(sources)
 
         if keyword_emergency or await emergency_llm_task:
+            paper_task.cancel()
             yield {
                 "type": "emergency_fallback",
                 "content": safety_service.EMERGENCY_FALLBACK_MESSAGE,
                 "disclaimer": safety_service.DISCLAIMER_TEXT,
             }
+            return
+
+        paper_result = await paper_task
+        if paper_result and paper_result["sources"]:
+            paper_answer = paper_result["answer"]
+            paper_sources = paper_result["sources"]
+            yield {"type": "paper_answer", "content": paper_answer, "sources": paper_sources}
+
+            source_label = ", ".join(s["name"] for s in paper_sources)
+            await self._repository.save_message(session, session_id, MessageRole.USER, message)
+            await self._repository.save_message(
+                session, session_id, MessageRole.ASSISTANT, f"{paper_answer}\n\n[출처: {source_label}]"
+            )
+
+            is_medical = await self._check_if_medical_related_via_llm(message, paper_answer)
+            yield {"type": "done", "content": "", "disclaimer": safety_service.DISCLAIMER_TEXT if is_medical else ""}
             return
 
         full_response = ""
@@ -162,6 +186,18 @@ class ChatService:
         is_medical = await self._check_if_medical_related_via_llm(message, full_response)
 
         yield {"type": "done", "content": "", "disclaimer": safety_service.DISCLAIMER_TEXT if is_medical else ""}
+
+    async def _try_paper_agent(self, message: str) -> dict | None:
+        """`/agent/paper-search`를 매 턴 미리 발사해두고, 응급 판정과 마찬가지로 실제
+        사용 직전(`stream_reply`)에만 결과를 확인한다. ai_worker 쪽 `classify_query()`가
+        이미 "논문 검색 대상 질문인지"를 결정론적으로 판단하므로 여기서 다시 분류하지
+        않는다 — `sources`가 비어 있으면 범위 밖이라는 뜻이라 호출자가 일반 흐름으로
+        폴백한다. 장애 시에도 전체 채팅을 막지 않도록 None을 반환해 같은 폴백을 태운다."""
+        try:
+            return await self._retriever.ask_paper_agent(message)
+        except _AI_WORKER_ERRORS as e:
+            logger.error(f"논문 검색 에이전트 실패, 일반 답변 흐름으로 폴백: {e}")
+            return None
 
     async def _search_chunks(self, message: str) -> list[dict]:
         """ai_worker 검색 실패는 조용히 삼키지 않고 로깅 후 빈 컨텍스트로 계속 진행한다

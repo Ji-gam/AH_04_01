@@ -27,6 +27,8 @@ export default function ChatPage() {
   } = useChatStream({ skipRestoreOnMount: hasAutoMessageRef.current });
   const [input, setInput] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // T-LLM-7-3: 출처 칩을 클릭해 펼친 메시지 인덱스 집합("참고자료" 팝오버 토글).
+  const [expandedSourcesIndex, setExpandedSourcesIndex] = useState<number | null>(null);
   useEffect(() => {
     const autoMessage = (location.state as { autoMessage?: string } | null)?.autoMessage;
     if (autoMessage && !autoSentRef.current) {
@@ -353,6 +355,78 @@ export default function ChatPage() {
                   >
                     ⚠ {m.disclaimer}
                   </span>
+                )}
+                {m.sources && m.sources.length > 0 && (
+                  <div style={{ position: "relative", display: "inline-block", marginTop: "6px" }}>
+                    <button
+                      onClick={() =>
+                        setExpandedSourcesIndex(expandedSourcesIndex === i ? null : i)
+                      }
+                      style={{
+                        fontSize: "11px",
+                        padding: "3px 10px",
+                        borderRadius: 999,
+                        border: `1px solid ${pinkTheme.border}`,
+                        background: pinkTheme.primarySoft,
+                        color: pinkTheme.primary,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      📎 출처 {m.sources.length}
+                    </button>
+                    {expandedSourcesIndex === i && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "calc(100% + 6px)",
+                          left: 0,
+                          zIndex: 10,
+                          minWidth: "220px",
+                          maxWidth: "280px",
+                          background: pinkTheme.cardBg,
+                          border: `1px solid ${pinkTheme.border}`,
+                          borderRadius: 10,
+                          padding: "8px 10px",
+                          boxShadow: "0 4px 14px rgba(90, 74, 78, 0.15)",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "6px",
+                        }}
+                      >
+                        {m.sources.map((s, si) => (
+                          <div
+                            key={si}
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              gap: "8px",
+                            }}
+                          >
+                            <span style={{ fontSize: "12px", color: pinkTheme.text, lineHeight: 1.3 }}>
+                              {s.name}
+                            </span>
+                            {s.url && (
+                              <a
+                                href={s.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{
+                                  fontSize: "11px",
+                                  color: pinkTheme.primary,
+                                  fontWeight: 700,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                바로가기 ↗
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             );

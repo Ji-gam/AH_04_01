@@ -4,12 +4,13 @@
 import { useEffect, useState } from "react";
 
 import { chatApi } from "../api/chatApi";
-import type { ChatSessionResponse } from "../api/types";
+import type { ChatSessionResponse, ChatSourceRef } from "../api/types";
 
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   disclaimer?: string;
+  sources?: ChatSourceRef[];
 }
 
 interface Options {
@@ -103,6 +104,14 @@ export function useChatStream(options: Options = {}) {
           setMessages((prev) => [
             ...prev,
             { role: "assistant", content: chunk.content, disclaimer: chunk.disclaimer },
+          ]);
+        } else if (chunk.type === "paper_answer") {
+          // 논문 검색 답변은 paper_agent가 이미 완성해서 보내주므로 토큰 스트리밍 없이
+          // 한 번에 추가한다("assistantStarted"를 켜서 뒤이어 올 done의 disclaimer 갱신 대상이 되게 함).
+          assistantStarted = true;
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: chunk.content, sources: chunk.sources },
           ]);
         } else if (chunk.type === "done") {
           const hasAssistantMessage = assistantStarted;

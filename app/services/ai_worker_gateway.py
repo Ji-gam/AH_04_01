@@ -58,6 +58,29 @@ class AIWorkerGateway:
         except (KeyError, ValueError) as e:
             raise AIWorkerProcessingError(f"검색 응답 형식 이상: {e}") from e
 
+    async def ask_paper_agent(self, question: str) -> dict:
+        """`ai_worker`의 `/agent/paper-search`(T-LLM-7-3)를 호출한다. 질환 논문 벡터
+        검색+답변을 한 번에 반환하며, `sources`(제목+URL 목록)가 비어 있으면 그 질문이
+        논문 검색 범위 밖이라는 뜻이다 — 호출자가 그 경우 일반 답변 흐름으로 폴백한다."""
+        try:
+            async with httpx.AsyncClient(timeout=self._generate_timeout) as client:
+                response = await client.post(f"{self._base_url}/agent/paper-search", json={"question": question})
+        except httpx.HTTPError as e:
+            raise AIWorkerUnavailableError(f"ai_worker 논문 검색 요청 실패: {e}") from e
+
+        if response.status_code == 503:
+            raise AIWorkerUnavailableError(f"ai_worker 논문 검색 불가: {response.text}")
+        if response.status_code == 422:
+            raise AIWorkerInvalidRequestError(f"잘못된 논문 검색 요청: {response.text}")
+        if response.status_code != 200:
+            raise AIWorkerUnavailableError(f"ai_worker 논문 검색 실패(status={response.status_code}): {response.text}")
+
+        try:
+            data = response.json()
+            return {"answer": data["answer"], "sources": data["sources"]}
+        except (KeyError, ValueError) as e:
+            raise AIWorkerProcessingError(f"논문 검색 응답 형식 이상: {e}") from e
+
     async def call_structured(self, system_prompt: str, user_input: str, schema: type[BaseModel]) -> BaseModel:
         """`ai_worker`의 `/generate-structured`를 호출해 `schema`를 만족하는 응답을 받아
         검증한다. 프롬프트 문구와 스키마 정의는 호출하는 도메인의 책임이다."""
