@@ -1,4 +1,5 @@
-"""서버 기동 없이 paper_retrieve_service의 순수 로직(disease 필터, threshold)을 검증한다."""
+"""서버 기동 없이 paper_retrieve_service의 순수 로직(threshold)을 검증한다.
+T-LLM-7-3-2: 질환 사전 분류/필터를 제거하고 전체 컬렉션을 검색하도록 바뀌었다."""
 
 from langchain_core.documents import Document
 
@@ -12,24 +13,7 @@ class FakePaperChromaDb:
         self._docs_with_scores = docs_with_scores
 
     def similarity_search_with_score(self, query: str, k: int, filter: dict | None = None):
-        if filter is None:
-            return self._docs_with_scores[:k]
-        return [
-            (doc, score)
-            for doc, score in self._docs_with_scores
-            if doc.metadata.get("disease") == filter.get("disease")
-        ][:k]
-
-
-def test_search_papers_applies_disease_filter():
-    matching = Document(page_content="당뇨 문서", metadata={"disease": "당뇨", "pmid": "1"})
-    other = Document(page_content="암 문서", metadata={"disease": "암", "pmid": "2"})
-    db = FakePaperChromaDb([(matching, 0.1), (other, 0.1)])
-
-    chunks = paper_retrieve_service.search_papers(db, "당뇨 질문", disease="당뇨", limit=3)
-
-    assert len(chunks) == 1
-    assert chunks[0].content == matching.page_content
+        return self._docs_with_scores[:k]
 
 
 def test_search_papers_filters_by_similarity_threshold(monkeypatch):
@@ -38,7 +22,7 @@ def test_search_papers_filters_by_similarity_threshold(monkeypatch):
     irrelevant = Document(page_content="무관", metadata={"disease": "당뇨", "pmid": "2"})
     db = FakePaperChromaDb([(relevant, 0.5), (irrelevant, 2.0)])
 
-    chunks = paper_retrieve_service.search_papers(db, "질문", disease="당뇨", limit=3)
+    chunks = paper_retrieve_service.search_papers(db, "질문", limit=3)
 
     assert len(chunks) == 1
     assert chunks[0].content == relevant.page_content
@@ -47,7 +31,7 @@ def test_search_papers_filters_by_similarity_threshold(monkeypatch):
 def test_search_papers_returns_empty_when_no_match():
     db = FakePaperChromaDb([])
 
-    chunks = paper_retrieve_service.search_papers(db, "질문", disease="당뇨", limit=3)
+    chunks = paper_retrieve_service.search_papers(db, "질문", limit=3)
 
     assert chunks == []
 

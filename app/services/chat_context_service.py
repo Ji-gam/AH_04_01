@@ -1,8 +1,10 @@
 """
 T-LLM-2: 챗봇 LLM 프롬프트에 넘길 사용자 건강 컨텍스트 조립.
-`app/services/llm_stub.py`가 이 dict를 그대로 문자열화(`f"{context}"`)해서 프롬프트에
-박아넣으므로, 사람이 읽기 좋은 서술형 필드로 구성한다. `Profile`/복약 스케줄은 이미
-호출자(`ChatService`)가 턴당 한 번만 조회해서 넘겨준다 — 여기서 추가 DB 조회는 하지 않는다.
+T-LLM-7-3-2: 이 dict는 `ChatService`가 `ai_worker`의 `/agent/chat`으로 그대로 넘기고,
+`ai_worker/tasks/chat_agent.py`가 문자열화(`f"{context}"`)해서 프롬프트에 박아넣는다
+(LLM 호출 자체가 app/에서 ai_worker로 옮겨감 — 이전엔 app/services/llm_stub.py가 담당).
+사람이 읽기 좋은 서술형 필드로 구성한다. `Profile`/복약 스케줄은 이미 호출자(`ChatService`)가
+턴당 한 번만 조회해서 넘겨준다 — 여기서 추가 DB 조회는 하지 않는다.
 [#71 해결] `is_pregnant`는 이제 `Profile.is_pregnant`(개인건강정보에서 선택 입력)로부터
 실제 값을 읽는다 - 미입력(None)이면 모르는 상태이므로 임부금기 DUR 경고 게이팅에서는
 False로 취급한다(구조적으로 "모른다"와 "아니다"를 다르게 다루고 싶으면 이 부분만 고치면 됨).

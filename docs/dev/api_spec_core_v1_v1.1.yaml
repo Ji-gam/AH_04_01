@@ -190,15 +190,33 @@ components:
         실제 응답은 text/plain 청크 스트림으로 전송됨 (OpenAPI로 스트림 자체는 표현 불가).
         이 스키마는 각 청크의 논리적 구조를 문서화하기 위함.
       properties:
-        type: { type: string, enum: [token, emergency_fallback, done] }
+        type: { type: string, enum: [sources, token, emergency_fallback, done] }
         content: { type: string }
         disclaimer: { type: string, description: "T-LLM-1: 응답에 항상 동반되는 면책 문구" }
+        sources:
+          type: array
+          description: "T-LLM-7-3-2: 통합 RAG(DUR+논문) 답변에 쓰인 출처 목록. token보다 먼저 도착."
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              url: { type: string, nullable: true }
 
     ChatHistoryItem:
       type: object
       properties:
         role: { type: string, enum: [user, assistant] }
         content: { type: string }
+        sources:
+          type: array
+          nullable: true
+          description: "T-LLM-7-3-2: 답변 생성에 쓰인 DUR/논문 출처 목록. user 메시지는 항상 null"
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              url: { type: string, nullable: true }
+        disclaimer: { type: string, nullable: true, description: "의료 관련 답변에만 붙는 면책 문구. 없으면 null" }
         created_at: { type: string, format: date-time }
 
     # ---------- Push 구독 ----------

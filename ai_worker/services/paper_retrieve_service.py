@@ -24,16 +24,17 @@ def ensure_paper_db() -> Chroma:
     return db
 
 
-def search_papers(db: Chroma, query: str, disease: str, limit: int) -> list[DocumentChunk]:
-    """disease로 정확히 필터링한 뒤(classify_query()가 이미 질환을 정확히 뽑아주므로
-    DUR처럼 substring 매칭을 흉내낼 필요 없음) 쿼리와 유사한 논문 청크를 검색한다."""
-    logger.info(f"Retrieving paper chunks for query: '{query}' (disease: {disease}, limit: {limit})")
+def search_papers(db: Chroma, query: str, limit: int) -> list[DocumentChunk]:
+    """T-LLM-7-3-2: 질문 그대로 pubmed_papers 컬렉션 전체를 벡터 검색한다(질환 사전
+    분류 없음). 통합 RAG 설계상 "이 질문이 논문 검색 대상인지"를 별도 LLM 분류로
+    판단하지 않고, 임계값을 통과하는 청크가 있는지로만 판단한다 — 관용구 등 무관한
+    질문은 임베딩 거리 자체가 멀어 자연히 걸러진다는 전제."""
+    logger.info(f"Retrieving paper chunks for query: '{query}' (limit: {limit})")
 
-    filter_dict = {"disease": disease}
-    docs_with_scores = db.similarity_search_with_score(query, k=limit, filter=filter_dict)
+    docs_with_scores = db.similarity_search_with_score(query, k=limit)
 
     for doc, score in docs_with_scores:
-        logger.info(f"DEBUG_SCORE: PMID={doc.metadata.get('pmid')}, score={score}, disease={disease}")
+        logger.info(f"DEBUG_SCORE: PMID={doc.metadata.get('pmid')}, score={score}")
 
     threshold = settings.PAPER_SIMILARITY_THRESHOLD
     valid_docs = [doc for doc, score in docs_with_scores if score < threshold]

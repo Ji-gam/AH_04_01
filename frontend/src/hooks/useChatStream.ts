@@ -43,8 +43,16 @@ export function useChatStream(options: Options = {}) {
     setIsStreaming(false);
     try {
       const history = await chatApi.listMessages(sessionId);
-      // 기존 메시지는 생성 시각 순서대로 정렬되어 반환됨
-      setMessages(history.map((m) => ({ role: m.role, content: m.content })));
+      // 기존 메시지는 생성 시각 순서대로 정렬되어 반환됨. sources/disclaimer는 어시스턴트
+      // 메시지에만 저장되어 있으며(T-LLM-7-3-2), 없으면 undefined로 둬 칩/면책문구를 렌더링하지 않는다.
+      setMessages(
+        history.map((m) => ({
+          role: m.role,
+          content: m.content,
+          sources: m.sources ?? undefined,
+          disclaimer: m.disclaimer ?? undefined,
+        })),
+      );
     } catch (err) {
       console.error("이전 대화 로드 실패:", err);
     }
@@ -85,16 +93,19 @@ export function useChatStream(options: Options = {}) {
 
     try {
       const sessionId = await ensureSession();
-      let assistantStarted = false;
 
+      // T-LLM-7-3-2: 통합 RAG 스트리밍 프로토콜은 매 답변마다 "sources"가 먼저 도착해
+      // 새 어시스턴트 메시지를 열고(DUR+논문 출처가 합쳐진 목록, 없으면 빈 배열), 그
+      // 다음 "token"이 그 메시지에 이어붙는다 — emergency_fallback만 예외로 sources 없이
+      // 단독 메시지를 만든다.
       for await (const chunk of chatApi.sendMessage(sessionId, text)) {
-        if (chunk.type === "token") {
-          const isFirstToken = !assistantStarted;
-          assistantStarted = true;
+        if (chunk.type === "sources") {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: "", sources: chunk.sources },
+          ]);
+        } else if (chunk.type === "token") {
           setMessages((prev) => {
-            if (isFirstToken) {
-              return [...prev, { role: "assistant", content: chunk.content }];
-            }
             const next = [...prev];
             const last = next[next.length - 1];
             next[next.length - 1] = { ...last, content: last.content + chunk.content };
@@ -105,18 +116,8 @@ export function useChatStream(options: Options = {}) {
             ...prev,
             { role: "assistant", content: chunk.content, disclaimer: chunk.disclaimer },
           ]);
-        } else if (chunk.type === "paper_answer") {
-          // 논문 검색 답변은 paper_agent가 이미 완성해서 보내주므로 토큰 스트리밍 없이
-          // 한 번에 추가한다("assistantStarted"를 켜서 뒤이어 올 done의 disclaimer 갱신 대상이 되게 함).
-          assistantStarted = true;
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", content: chunk.content, sources: chunk.sources },
-          ]);
         } else if (chunk.type === "done") {
-          const hasAssistantMessage = assistantStarted;
           setMessages((prev) => {
-            if (!hasAssistantMessage) return prev;
             const next = [...prev];
             const last = next[next.length - 1];
             next[next.length - 1] = { ...last, disclaimer: chunk.disclaimer };

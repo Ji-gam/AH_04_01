@@ -1,12 +1,23 @@
 """
-T-LLM-2: 응급 감지 → (아니면) 컨텍스트 조회 → RAG 검색 → LLM 스트리밍 → 대화 저장.
+T-LLM-2: 응급 감지 → (아니면) 히스토리/컨텍스트 조회 → 통합 RAG 스트리밍 → 대화 저장.
 `docs/dev/sample_code_chat/app/services/chat_service.py`의 검증된 흐름을 실제
 SQLAlchemy(AsyncSession) 기반으로 옮긴 것 — 흐름 구조 자체는 동일하다.
+
+T-LLM-7-3-2: DUR 검색(`/retrieve`)과 논문 검색+답변(`/agent/paper-search`)이 따로
+놀고, 실제 답변 생성(LLM 호출)은 `app/`가 자체적으로(`llm_stub.py`) 하던 구조를
+걷어냈다. 이제 DUR+논문 검색과 LLM 생성 전부가 `ai_worker`의 통합 스트리밍
+엔드포인트(`/agent/chat`) 하나로 들어가 있고, `app/`는 응급 판정(안전 게이팅)과
+사용자 개인 복약정보 기반 DUR 경고(SQL 조회라 ai_worker가 계산 못 함)만 처리해
+`injected_context`로 넘긴 뒤, 그 스트림을 그대로 중계 + 저장 + 면책문구 부착만 한다.
+
+응급 판정은 키워드 필터링만 쓴다(결정: 2026-07-16). 한때 LLM 분류를 병행 추가했었으나
+(파라프레이즈로 키워드를 피해가는 표현을 잡기 위함) 매 턴 ~1.3초의 직렬 대기가 추가돼
+되돌렸다 — 속도를 우선하기로 한 결정이며, 키워드 목록이 놓치는 표현이 실제로 문제가
+되면 그때 키워드를 보강하는 쪽으로 대응한다(LLM 분류 재도입이 아니라).
 """
 
-import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator
 from typing import cast
 
 from pydantic import BaseModel
@@ -25,30 +36,20 @@ from app.services.ai_worker_gateway import (
     AIWorkerUnavailableError,
 )
 from app.services.chat_context_service import ChatContextService
-from app.services.llm_stub import stream_llm_reply
 
 logger = logging.getLogger("app.chat_service")
 
-LlmStream = Callable[[str, dict, list[str]], AsyncIterator[str]]
-
 _AI_WORKER_ERRORS = (AIWorkerUnavailableError, AIWorkerProcessingError, AIWorkerInvalidRequestError)
 
-
-class EmergencyClassification(BaseModel):
-    is_emergency: bool
+# 스트림이 이미 시작된 뒤(사용자에게 이미 일부 토큰이 보인 뒤) 실패하면 상태 코드로
+# 알릴 수 없으므로, 받은 만큼만 살리고 이 안내문을 이어붙인 뒤 정상 종료 절차(저장/면책
+# 문구 판정)를 그대로 밟는다.
+_STREAM_INTERRUPTED_NOTICE = "[응답이 중단되었습니다. 잠시 후 다시 시도해주세요.]"
 
 
 class MedicalRelatednessClassification(BaseModel):
     is_medical_related: bool
 
-
-_EMERGENCY_SYSTEM_PROMPT = (
-    "당신은 사용자 메시지 하나를 보고 즉각적인 생명 위협 응급 상황(예: 의식 소실, 심정지, "
-    "자살/자해 의도, 심한 호흡곤란, 심한 흉통, 발작/경련 등)을 나타내는지 판단하는 안전 분류기입니다.\n"
-    "조금이라도 응급 상황일 가능성이 있으면 true로 판단하세요(과다 판정이 과소 판정보다 안전합니다).\n"
-    "일상적인 건강 질문, 만성질환 관리, 가벼운 불편감은 false입니다.\n"
-    'JSON 형식으로만 답하세요: {"is_emergency": true} 또는 {"is_emergency": false}'
-)
 
 _MEDICAL_RELATEDNESS_SYSTEM_PROMPT = (
     "당신은 대화 한 턴(사용자 질문 + 어시스턴트 답변)을 보고, 하단에 의학적 조언이 아니라는 "
@@ -73,7 +74,6 @@ class ChatService:
         repository: ChatRepository | None = None,
         chat_context_service: ChatContextService | None = None,
         retriever: AIWorkerGateway | None = None,
-        llm_stream: LlmStream | None = None,
         dur_drug_repository: DurDrugRepository | None = None,
         profile_repository: ProfileRepository | None = None,
         medication_repository: MedicationRepository | None = None,
@@ -81,7 +81,6 @@ class ChatService:
         self._repository = repository or ChatRepository()
         self._chat_context_service = chat_context_service or ChatContextService()
         self._retriever = retriever or AIWorkerGateway()
-        self._llm_stream = llm_stream or stream_llm_reply
         self._dur_drug_repository = dur_drug_repository or DurDrugRepository()
         self._profile_repository = profile_repository or ProfileRepository()
         self._medication_repository = medication_repository or MedicationRepository()
@@ -95,21 +94,14 @@ class ChatService:
         """
         응급 키워드가 감지되면 LLM을 호출하지 않고 고정 fallback만 반환한다(T-LLM-1 원칙).
         이 경우 대화 기록도 저장하지 않는다.
-
-        키워드 판정과 별개로 LLM 기반 응급 판정을 히스토리/컨텍스트/RAG 조회와 병렬로 미리
-        발사해두고, 실제 생성 직전에만 결과를 확인한다 — 매 턴 직렬 지연시간을 늘리지 않기
-        위함이며, 응급으로 판명되면 그 전에 조회한 RAG/컨텍스트는 버려진다(트래픽이 적은
-        지금은 이 비용보다 지연시간 감소가 더 중요하다는 판단).
-
-        T-LLM-7-3: 질환 논문 검색(`/agent/paper-search`)도 같은 이유로 병렬 발사한다.
-        그 결과 `sources`가 비어 있으면(질문이 논문 검색 범위 밖이라고 ai_worker가 이미
-        판단한 것) 기존 DUR RAG 흐름으로 그대로 폴백하고, 있으면 그 답변+출처를 한 번에
-        반환한다(paper_agent가 이미 자체 LLM으로 답변까지 만들어주므로, DUR 흐름처럼
-        토큰 스트리밍하지 않고 emergency_fallback과 같은 단일 청크로 전달한다).
         """
-        keyword_emergency = safety_service.check_emergency(message)
-        emergency_llm_task = asyncio.create_task(self._check_emergency_via_llm(message))
-        paper_task = asyncio.create_task(self._try_paper_agent(message))
+        if safety_service.check_emergency(message):
+            yield {
+                "type": "emergency_fallback",
+                "content": safety_service.EMERGENCY_FALLBACK_MESSAGE,
+                "disclaimer": safety_service.DISCLAIMER_TEXT,
+            }
+            return
 
         history = await self._repository.list_messages(session, session_id)
 
@@ -119,94 +111,67 @@ class ChatService:
             await self._medication_repository.list_schedules_by_profile(session, profile_id) if profile else []
         )
         context = self._chat_context_service.build(profile, medications)
-
-        context["history"] = [{"role": m.role, "content": m.content} for m in history]
-
-        chunks = await self._search_chunks(message)
-        content_chunks = [chunk.get("content", "") for chunk in chunks]
-        sources = sorted(
-            {
-                chunk["metadata"]["source"]
-                for chunk in chunks
-                if chunk.get("metadata") and chunk["metadata"].get("source")
-            }
-        )
+        # MessageRole enum 값 자체가 "USER"/"ASSISTANT"(대문자)라, OpenAI 메시지 role로
+        # 그대로 보내면 거부당한다(소문자 "user"/"assistant"만 허용) — chat_routers.py의
+        # 이력 조회 응답과 동일하게 여기서도 API 경계에서 소문자로 변환한다.
+        history_payload = [{"role": m.role.value.lower(), "content": m.content} for m in history]
 
         dur_warnings = self._collect_dur_warnings(
             context["medications"], context["is_pregnant"], context["is_geriatric"]
         )
-
-        if dur_warnings:
-            for warning in dur_warnings:
-                content_chunks.insert(0, f"[DUR 안전 경고 정보] 복용 약물 중 위험 경고 발견: {warning}")
-            if "식약처 DUR 안전 정보" not in sources:
-                sources.append("식약처 DUR 안전 정보")
-            sources = sorted(sources)
-
-        if keyword_emergency or await emergency_llm_task:
-            paper_task.cancel()
-            yield {
-                "type": "emergency_fallback",
-                "content": safety_service.EMERGENCY_FALLBACK_MESSAGE,
-                "disclaimer": safety_service.DISCLAIMER_TEXT,
-            }
-            return
-
-        paper_result = await paper_task
-        if paper_result and paper_result["sources"]:
-            paper_answer = paper_result["answer"]
-            paper_sources = paper_result["sources"]
-            yield {"type": "paper_answer", "content": paper_answer, "sources": paper_sources}
-
-            source_label = ", ".join(s["name"] for s in paper_sources)
-            await self._repository.save_message(session, session_id, MessageRole.USER, message)
-            await self._repository.save_message(
-                session, session_id, MessageRole.ASSISTANT, f"{paper_answer}\n\n[출처: {source_label}]"
-            )
-
-            is_medical = await self._check_if_medical_related_via_llm(message, paper_answer)
-            yield {"type": "done", "content": "", "disclaimer": safety_service.DISCLAIMER_TEXT if is_medical else ""}
-            return
+        injected_context = [f"[DUR 안전 경고 정보] 복용 약물 중 위험 경고 발견: {w}" for w in dur_warnings]
 
         full_response = ""
-        async for token in self._llm_stream(message, context, content_chunks):
-            full_response += token
-            yield {"type": "token", "content": token}
+        sources: list[dict] = []
+        has_sources = bool(injected_context)  # 개인 DUR 경고가 있으면 이미 의료 관련 확정
+        try:
+            async for chunk in self._retriever.stream_chat(message, context, history_payload, injected_context):
+                if chunk["type"] == "token":
+                    full_response += chunk["content"]
+                    yield chunk
+                elif chunk["type"] == "sources":
+                    sources = chunk["sources"]
+                    has_sources = has_sources or bool(sources)
+                    yield chunk
+                elif chunk["type"] == "error":
+                    logger.error(f"채팅 스트림 도중 오류(ai_worker 보고), 받은 만큼만 저장: {chunk['content']}")
+                    full_response = self._append_interrupted_notice(full_response)
+                    yield {"type": "token", "content": _STREAM_INTERRUPTED_NOTICE}
+                    break
+        except _AI_WORKER_ERRORS as e:
+            logger.error(f"채팅 스트림 연결 실패, 받은 만큼만 저장: {e}")
+            full_response = self._append_interrupted_notice(full_response)
+            yield {"type": "token", "content": _STREAM_INTERRUPTED_NOTICE}
 
-        # RAG 메타데이터 출처가 존재할 경우, 답변 끝에 출처를 합성하여 노출하고 데이터베이스에도 함께 기록합니다.
-        if sources:
-            source_text = f"\n\n[출처: {', '.join(sources)}]"
-            full_response += source_text
-            yield {"type": "token", "content": source_text}
+        # DUR/논문 출처(또는 개인 DUR 경고)가 전혀 없으면 의료 관련 콘텐츠일 가능성이 낮으므로,
+        # 매 턴 LLM 왕복(~1초) 없이 키워드 폴백만으로 판정한다 — 있으면 정밀도 위해 LLM 분류.
+        # 저장 전에 먼저 계산해야 어시스턴트 메시지에 면책 문구를 함께 저장할 수 있다(과거엔
+        # "done" 청크로만 내보내고 저장하지 않아, 히스토리를 다시 불러오면 면책 문구가
+        # 사라지는 버그가 있었음).
+        is_medical = (
+            await self._check_if_medical_related_via_llm(message, full_response)
+            if has_sources
+            else self._is_medical_related_fallback(message, full_response)
+        )
+        disclaimer = safety_service.DISCLAIMER_TEXT if is_medical else ""
 
         await self._repository.save_message(session, session_id, MessageRole.USER, message)
-        await self._repository.save_message(session, session_id, MessageRole.ASSISTANT, full_response)
+        await self._repository.save_message(
+            session,
+            session_id,
+            MessageRole.ASSISTANT,
+            full_response,
+            sources=sources or None,
+            disclaimer=disclaimer or None,
+        )
 
-        # LLM 판정 및 기존 키워드 폴백 적용
-        is_medical = await self._check_if_medical_related_via_llm(message, full_response)
+        yield {"type": "done", "content": "", "disclaimer": disclaimer}
 
-        yield {"type": "done", "content": "", "disclaimer": safety_service.DISCLAIMER_TEXT if is_medical else ""}
-
-    async def _try_paper_agent(self, message: str) -> dict | None:
-        """`/agent/paper-search`를 매 턴 미리 발사해두고, 응급 판정과 마찬가지로 실제
-        사용 직전(`stream_reply`)에만 결과를 확인한다. ai_worker 쪽 `classify_query()`가
-        이미 "논문 검색 대상 질문인지"를 결정론적으로 판단하므로 여기서 다시 분류하지
-        않는다 — `sources`가 비어 있으면 범위 밖이라는 뜻이라 호출자가 일반 흐름으로
-        폴백한다. 장애 시에도 전체 채팅을 막지 않도록 None을 반환해 같은 폴백을 태운다."""
-        try:
-            return await self._retriever.ask_paper_agent(message)
-        except _AI_WORKER_ERRORS as e:
-            logger.error(f"논문 검색 에이전트 실패, 일반 답변 흐름으로 폴백: {e}")
-            return None
-
-    async def _search_chunks(self, message: str) -> list[dict]:
-        """ai_worker 검색 실패는 조용히 삼키지 않고 로깅 후 빈 컨텍스트로 계속 진행한다
-        (`AIWorkerGateway`가 실패를 예외로 알리므로, 그 예외를 여기서만 흡수한다)."""
-        try:
-            return await self._retriever.search(message)
-        except (AIWorkerUnavailableError, AIWorkerProcessingError) as e:
-            logger.error(f"ai_worker 검색 실패, 컨텍스트 없이 계속 진행: {e}")
-            return []
+    @staticmethod
+    def _append_interrupted_notice(full_response: str) -> str:
+        if not full_response:
+            return _STREAM_INTERRUPTED_NOTICE
+        return f"{full_response}\n\n{_STREAM_INTERRUPTED_NOTICE}"
 
     def _collect_dur_warnings(self, meds: list[dict], is_pregnant: bool, is_geriatric: bool) -> list[str]:
         if not ((is_pregnant or is_geriatric) and meds):
@@ -219,20 +184,6 @@ class ChatService:
                 self._dur_drug_repository.find_dur_warnings(med_name, pregnant=is_pregnant, geriatric=is_geriatric)
             )
         return list(set(dur_warnings))
-
-    async def _check_emergency_via_llm(self, message: str) -> bool:
-        """ai_worker 장애 시 키워드 판정만으로 게이팅하도록 False를 반환한다(fail-safe —
-        전체 채팅을 막지는 않되 키워드 레이어는 그대로 유지)."""
-        try:
-            result = await self._retriever.call_structured(
-                system_prompt=_EMERGENCY_SYSTEM_PROMPT,
-                user_input=message,
-                schema=EmergencyClassification,
-            )
-        except _AI_WORKER_ERRORS as e:
-            logger.error(f"응급 LLM 분류 실패, 키워드 판정만으로 게이팅: {e}")
-            return False
-        return cast(EmergencyClassification, result).is_emergency
 
     async def _check_if_medical_related_via_llm(self, message: str, response: str) -> bool:
         try:
