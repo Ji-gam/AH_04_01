@@ -7,6 +7,15 @@ from app.core.db import databases
 from app.main import app
 from app.models.base import Base
 from app.models.disease_entries import SEED_DISEASE_SUBTYPES, DiseaseSubtype
+from app.scripts.seed_food_drug_interaction import seed_food_drug_interaction
+from app.services.medication_service import refresh_food_drug_interaction_cache
+
+_FOOD_DRUG_REFERENCE_TABLES = {
+    "food_drug_sources",
+    "food_drug_categories",
+    "food_drug_ingredients",
+    "food_drug_food_items",
+}
 
 TEST_DATABASE_URL = f"mysql+asyncmy://{config.DB_USER}:{config.DB_PASSWORD}@{config.DB_HOST}:{config.DB_PORT}/test"
 
@@ -29,6 +38,14 @@ async def prepare_database():
                 session.add(DiseaseSubtype(category=category, name=name, is_custom=False))
         await session.commit()
 
+    # `_food_drug_interaction_repository`(app/services/medication_service.py)는 프로덕션처럼
+    # app.main.lifespan에서 채워지지 않으므로, 여기서 테스트 DB에 같은 참조 데이터를 시딩하고
+    # 캐시를 직접 채운다 — 안 하면 실제 참조 테이블 매칭(예: 와파린-비타민K)을 검증하는
+    # 테스트들이 빈 캐시 때문에 실패한다.
+    await seed_food_drug_interaction(session_factory=TestSessionLocal)
+    async with TestSessionLocal() as session:
+        await refresh_food_drug_interaction_cache(session)
+
     yield
     await test_engine.dispose()
 
@@ -49,10 +66,10 @@ async def clean_tables():
     yield
     async with TestSessionLocal() as session:
         for table in reversed(Base.metadata.sorted_tables):
-            # disease_subtypes는 시드 참조데이터라 테스트 사이에 지우지 않는다 - 지우면 매번
-            # 새로 심어야 하고, "같은 이름 중복 안 생김" 테스트도 다른 테스트가 남긴 잔여 데이터와
-            # 뒤섞여 깨질 수 있다.
-            if table.name == "disease_subtypes":
+            # disease_subtypes/food_drug_*는 시드 참조데이터라 테스트 사이에 지우지 않는다 -
+            # 지우면 매번 새로 심어야 하고(food_drug_*는 세션 시작 시 1회만 시딩), 캐시된
+            # `_food_drug_interaction_repository`가 이제 빈 DB를 가리키게 되어 불일치가 생긴다.
+            if table.name == "disease_subtypes" or table.name in _FOOD_DRUG_REFERENCE_TABLES:
                 continue
             await session.execute(table.delete())
         await session.commit()
