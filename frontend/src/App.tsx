@@ -7,6 +7,7 @@
  */
 import { createBrowserRouter } from "react-router-dom";
 
+import HomeEntry from "./components/common/HomeEntry";
 import Layout from "./components/common/Layout";
 import RequireAuth from "./components/common/RequireAuth";
 import AccountSettingsPage from "./pages/AccountSettingsPage/AccountSettingsPage";
@@ -21,7 +22,6 @@ import EmergencyGuidePage from "./pages/EmergencyGuidePage/EmergencyGuidePage";
 import FamilyPage from "./pages/FamilyPage/FamilyPage";
 import HabitSelectionPage from "./pages/HabitSelectionPage/HabitSelectionPage";
 import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
-import HomePage from "./pages/HomePage/HomePage";
 import InfoDetailPage from "./pages/InfoDetailPage/InfoDetailPage";
 import InfoPage from "./pages/InfoPage/InfoPage";
 import LifestyleInfoPage from "./pages/LifestyleInfoPage/LifestyleInfoPage";
@@ -43,7 +43,8 @@ export const router = createBrowserRouter([
     element: <Layout />,
     children: [
       // 홈 + 대부분의 탭은 로그인 안 해도 기본적으로 볼 수 있다.
-      { path: "/", element: <HomePage /> },
+      // 비로그인 첫 진입(이번 세션에 온보딩 안 봄)이면 HomeEntry가 HomePage 대신 온보딩을 띄운다.
+      { path: "/", element: <HomeEntry /> },
       { path: "/alarms", element: <AlarmPage /> },
       { path: "/schedule", element: <SchedulePage /> },
       { path: "/track", element: <TrackPage /> },
