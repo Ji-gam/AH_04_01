@@ -8,8 +8,8 @@ from app.repositories.chat_repository import ChatRepository
 from app.repositories.dur_drug_repository import DurDrugRepository
 from app.repositories.medication_repository import MedicationRepository
 from app.repositories.profile_repository import ProfileRepository
-from app.services.ai_worker_gateway import AIWorkerGateway
-from app.services.chat_service import ChatService
+from app.services.ai_worker_gateway import AIWorkerGateway, AIWorkerUnavailableError
+from app.services.chat_service import ChatService, EmergencyClassification, MedicalRelatednessClassification
 from app.services.safety_service import DISCLAIMER_TEXT, EMERGENCY_FALLBACK_MESSAGE
 
 
@@ -70,8 +70,33 @@ class FakeMedicationRepository:
 
 
 class FakeRetriever:
+    """`call_structured`는 기본적으로 응급=False/의료관련=True를 반환한다("두통약 뭐가 좋아요?"
+    같은 기존 테스트 메시지들이 면책문구를 받는다고 가정하던 동작을 그대로 유지하기 위함).
+    `raise_on_structured`를 주면 두 분류 호출 모두 그 예외를 던져 ai_worker 장애 상황을 재현한다."""
+
+    def __init__(
+        self,
+        is_emergency: bool = False,
+        is_medical_related: bool = True,
+        raise_on_structured: Exception | None = None,
+    ) -> None:
+        self.is_emergency = is_emergency
+        self.is_medical_related = is_medical_related
+        self.raise_on_structured = raise_on_structured
+        self.structured_calls: list[tuple[str, str, type]] = []
+
     async def search(self, query: str) -> list[dict]:
         return [{"content": "fake-chunk-1", "metadata": {"source": "fake_source.csv"}}]
+
+    async def call_structured(self, system_prompt: str, user_input: str, schema: type):
+        self.structured_calls.append((system_prompt, user_input, schema))
+        if self.raise_on_structured is not None:
+            raise self.raise_on_structured
+        if schema is EmergencyClassification:
+            return EmergencyClassification(is_emergency=self.is_emergency)
+        if schema is MedicalRelatednessClassification:
+            return MedicalRelatednessClassification(is_medical_related=self.is_medical_related)
+        raise AssertionError(f"예상치 못한 schema: {schema}")
 
 
 async def fake_llm_stream(message: str, context: dict, chunks: list[str]):
@@ -85,11 +110,12 @@ def _build_service(
     medication_repository: FakeMedicationRepository | None = None,
     llm_stream=fake_llm_stream,
     dur_drug_repository=None,
+    retriever: FakeRetriever | None = None,
 ) -> ChatService:
     # Fake들은 실제 클래스와 시그니처만 맞춘 덕타이핑 객체라 mypy 통과용으로 cast한다.
     kwargs = dict(
         repository=cast(ChatRepository, repository),
-        retriever=cast(AIWorkerGateway, FakeRetriever()),
+        retriever=cast(AIWorkerGateway, retriever or FakeRetriever()),
         llm_stream=llm_stream,
         profile_repository=cast(ProfileRepository, profile_repository or FakeProfileRepository()),
         medication_repository=cast(MedicationRepository, medication_repository or FakeMedicationRepository()),
@@ -151,17 +177,53 @@ def test_is_medical_related_fallback():
     )
 
 
-async def test_check_if_medical_uses_keyword_fallback_without_api_key(monkeypatch):
-    """OPENAI_API_KEY가 없으면(config 경유) LLM 호출 없이 키워드 폴백으로 판정한다."""
-    from app.core import config
+async def test_check_if_medical_related_uses_ai_worker_result():
+    """ai_worker(`call_structured`)가 성공하면 그 결과를 그대로 신뢰한다(키워드 폴백 미사용)."""
+    retriever = FakeRetriever(is_medical_related=True)
+    service = ChatService(retriever=cast(AIWorkerGateway, retriever))
 
-    monkeypatch.setattr(config, "OPENAI_API_KEY", None)
-    service = ChatService()
+    assert await service._check_if_medical_related_via_llm("오늘 아침 뭘 먹을까?", "계란후라이 어때요?") is True
+    assert retriever.structured_calls[-1][2] is MedicalRelatednessClassification
+
+
+async def test_check_if_medical_related_falls_back_to_keyword_when_ai_worker_unavailable():
+    """ai_worker 호출이 실패하면 키워드 폴백(`_is_medical_related_fallback`)으로 전환한다."""
+    retriever = FakeRetriever(raise_on_structured=AIWorkerUnavailableError("down"))
+    service = ChatService(retriever=cast(AIWorkerGateway, retriever))
 
     assert (
         await service._check_if_medical_related_via_llm("아스피린 부작용 있나요?", "부작용이 있을 수 있습니다.") is True
     )
     assert await service._check_if_medical_related_via_llm("오늘 날씨 어때?", "맑고 따뜻합니다.") is False
+
+
+async def test_emergency_llm_check_catches_phrase_outside_keyword_list():
+    """키워드 목록에 없는 표현도 ai_worker LLM 판정이 응급으로 잡으면 short-circuit한다."""
+    repository = FakeChatRepository()
+    retriever = FakeRetriever(is_emergency=True)
+    service = _build_service(repository, retriever=retriever)
+
+    chunks = await _collect(
+        service.stream_reply(session=None, profile_id=1, session_id=10, message="갑자기 말이 잘 안 나와요")
+    )
+
+    assert chunks == [
+        {"type": "emergency_fallback", "content": EMERGENCY_FALLBACK_MESSAGE, "disclaimer": DISCLAIMER_TEXT}
+    ]
+    assert repository.saved_messages == []
+
+
+async def test_ai_worker_unavailable_falls_back_to_keyword_only_emergency_gating():
+    """ai_worker가 응답 불가면 응급 판정은 키워드 결과만으로 게이팅한다(전체 채팅을 막지 않음)."""
+    repository = FakeChatRepository()
+    profiles = FakeProfileRepository({1: FakeProfile(id=1, name="사용자")})
+    retriever = FakeRetriever(raise_on_structured=AIWorkerUnavailableError("down"), is_medical_related=False)
+    service = _build_service(repository, profile_repository=profiles, retriever=retriever)
+
+    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="안녕하세요"))
+
+    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": ""}
+    assert repository.saved_messages != []
 
 
 class SpyLlmStream:
