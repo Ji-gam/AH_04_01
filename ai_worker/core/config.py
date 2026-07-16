@@ -26,6 +26,13 @@ class Config(BaseSettings):
     # esearch/efetch 각각에 적용되는 타임아웃(순차 2회 호출이라 총 지연은 최대 2배).
     PUBMED_TIMEOUT: float = 8.0
 
+    # 논문 RAG 검색 유사도 임계값. RAG_SIMILARITY_THRESHOLD(1.4)는 DUR의 짧고 균일한
+    # 템플릿 문장 기준으로 튜닝된 값이라 그대로 재사용하면 안 맞을 가능성이 높아 별도로 둔다.
+    # 잠정값 — 실제 인제스천 후 진짜 질문의 점수 분포를 보고 조정한다.
+    PAPER_SIMILARITY_THRESHOLD: float = 1.6
+    # 논문 검색 시 반환할 최대 청크 수(멀티 논문 인용).
+    PAPER_RETRIEVAL_LIMIT: int = 5
+
 
 # 글로벌 싱글톤 인스턴스 생성
 settings = Config()

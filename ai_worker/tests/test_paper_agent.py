@@ -1,23 +1,30 @@
 """
 T-LLM-7/7-1/7-2/7-3: 질환 논문 검색 파이프라인 회귀 테스트.
 
-주의(중요) — 이 테스트들은 "판단력 시험"의 회귀 방지용일 뿐이다. LLM 호출과 PubMed
-호출을 모킹하므로 우리가 짠 시나리오만 검증하며, 실제 LLM이 무관한 질문에 도구를
-정말 호출하지 않는지, PubMed가 실제로 유의미한 결과를 주는지는 이 테스트로 보장되지
-않는다. 진짜 동작은 `OPENAI_API_KEY`를 채운 상태로 최소 1회 수동 실행해서 눈으로
-확인해야 한다.
+주의(중요) — 이 테스트들은 "판단력 시험"의 회귀 방지용일 뿐이다. LLM 호출과 벡터
+검색(`search_papers`)을 모킹하므로 우리가 짠 시나리오만 검증하며, 실제 LLM이 무관한
+질문에 검색을 정말 안 하는지, 실제 임베딩 검색이 유의미한 결과를 주는지는 이 테스트로
+보장되지 않는다. 진짜 동작은 `OPENAI_API_KEY`를 채운 상태로 최소 1회 수동 실행해서
+눈으로 확인해야 한다. PubMed 수집/색인 자체는 test_ingest_papers.py, 벡터 검색 순수
+로직은 test_paper_retrieve_service.py 참고.
 """
 
 from collections.abc import Iterator
+from importlib import import_module
 
-import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from ai_worker.main import app
+from ai_worker.schemas.retrieval_schema import DocumentChunk
 from ai_worker.tasks import paper_agent as paper_agent_module
-from ai_worker.tasks.paper_agent import QueryClassification
-from ai_worker.tools.paper_search import PaperSearchUnavailableError, search_disease_paper
+from ai_worker.tasks.ingest import EmbeddingMismatchError, EmbeddingUnavailableError
+
+# `ai_worker/routers/__init__.py`가 `paper_agent_router` 이름을 라우터 인스턴스로
+# 재바인딩해두어서, `import ai_worker.routers.paper_agent_router as m`(속성 체이닝으로
+# 해석됨)는 모듈이 아니라 그 인스턴스를 가져온다. import_module로 sys.modules에서
+# 직접 모듈 객체를 가져와 이 함정을 피한다.
+paper_agent_router_module = import_module("ai_worker.routers.paper_agent_router")
 
 
 @pytest.fixture(autouse=True)
@@ -27,154 +34,14 @@ def reset_settings() -> Iterator[None]:
     paper_agent_module.settings.OPENAI_API_KEY = original_api_key
 
 
-def _mock_transport(handler):
-    """httpx.AsyncClient(timeout=...)처럼 kwargs가 붙는 생성 호출도 그대로 통과시키면서
-    transport만 가짜로 바꿔치기한다."""
-    real_async_client = httpx.AsyncClient
-
-    def _patched_client(*args, **kwargs):
-        kwargs["transport"] = httpx.MockTransport(handler)
-        return real_async_client(*args, **kwargs)
-
-    return _patched_client
-
-
-_EFETCH_XML_ONE_ARTICLE = """<?xml version="1.0"?>
-<PubmedArticleSet>
-<PubmedArticle>
-<MedlineCitation>
-<PMID>11111111</PMID>
-<Article>
-<ArticleTitle>Continuous Glucose Monitoring and HbA1c Reduction</ArticleTitle>
-<Abstract><AbstractText>HbA1c was significantly reduced in the intervention group.</AbstractText></Abstract>
-</Article>
-</MedlineCitation>
-</PubmedArticle>
-</PubmedArticleSet>
-"""
-
-_EFETCH_XML_NO_ABSTRACT_THEN_ONE = """<?xml version="1.0"?>
-<PubmedArticleSet>
-<PubmedArticle>
-<MedlineCitation>
-<PMID>22222222</PMID>
-<Article><ArticleTitle>No Abstract Article</ArticleTitle></Article>
-</MedlineCitation>
-</PubmedArticle>
-<PubmedArticle>
-<MedlineCitation>
-<PMID>33333333</PMID>
-<Article>
-<ArticleTitle>Second Article With Abstract</ArticleTitle>
-<Abstract><AbstractText>This one has an abstract.</AbstractText></Abstract>
-</Article>
-</MedlineCitation>
-</PubmedArticle>
-</PubmedArticleSet>
-"""
-
-
-def _pubmed_handler(esearch_ids: list[str], efetch_xml: str):
-    def handler(request: httpx.Request) -> httpx.Response:
-        if "esearch.fcgi" in str(request.url):
-            return httpx.Response(200, json={"esearchresult": {"idlist": esearch_ids}})
-        if "efetch.fcgi" in str(request.url):
-            return httpx.Response(200, text=efetch_xml)
-        raise AssertionError(f"예상치 못한 요청: {request.url}")
-
-    return handler
-
-
-async def test_search_disease_paper_returns_parsed_result_for_supported_disease(monkeypatch):
-    handler = _pubmed_handler(["11111111"], _EFETCH_XML_ONE_ARTICLE)
-    monkeypatch.setattr(httpx, "AsyncClient", _mock_transport(handler))
-
-    result = await search_disease_paper.ainvoke({"disease": "당뇨"})
-
-    assert "Continuous Glucose Monitoring" in result
-    assert "HbA1c was significantly reduced" in result
-    assert "PMID: 11111111" in result
-    assert "https://pubmed.ncbi.nlm.nih.gov/11111111/" in result
-
-
-async def test_search_disease_paper_skips_articles_without_abstract(monkeypatch):
-    handler = _pubmed_handler(["22222222", "33333333"], _EFETCH_XML_NO_ABSTRACT_THEN_ONE)
-    monkeypatch.setattr(httpx, "AsyncClient", _mock_transport(handler))
-
-    result = await search_disease_paper.ainvoke({"disease": "암"})
-
-    assert "Second Article With Abstract" in result
-    assert "PMID: 33333333" in result
-    assert "No Abstract Article" not in result
-
-
-async def test_search_disease_paper_returns_not_found_when_no_results(monkeypatch):
-    handler = _pubmed_handler([], "")
-    monkeypatch.setattr(httpx, "AsyncClient", _mock_transport(handler))
-
-    result = await search_disease_paper.ainvoke({"disease": "간질환"})
-
-    assert "찾지 못했습니다" in result
-
-
-async def test_search_disease_paper_raises_on_esearch_non_200_status(monkeypatch):
-    def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(500, text="internal error")
-
-    monkeypatch.setattr(httpx, "AsyncClient", _mock_transport(handler))
-
-    with pytest.raises(PaperSearchUnavailableError):
-        await search_disease_paper.ainvoke({"disease": "당뇨"})
-
-
-async def test_search_disease_paper_raises_on_network_error(monkeypatch):
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectTimeout("boom")
-
-    monkeypatch.setattr(httpx, "AsyncClient", _mock_transport(handler))
-
-    with pytest.raises(PaperSearchUnavailableError):
-        await search_disease_paper.ainvoke({"disease": "당뇨"})
-
-
-async def test_search_disease_paper_raises_on_malformed_efetch_xml(monkeypatch):
-    handler = _pubmed_handler(["11111111"], "not valid xml <<<")
-    monkeypatch.setattr(httpx, "AsyncClient", _mock_transport(handler))
-
-    with pytest.raises(PaperSearchUnavailableError):
-        await search_disease_paper.ainvoke({"disease": "당뇨"})
-
-
-async def test_search_disease_paper_reports_unsupported_disease():
-    result = await search_disease_paper.ainvoke({"disease": "감기"})
-
-    assert "찾지 못했습니다" in result
-
-
-@pytest.mark.parametrize("malicious", ["../../etc/passwd", "당뇨/../../secret", "..", "/etc/hosts", "해킹"])
-async def test_search_disease_paper_rejects_unsupported_disease_without_http_call(malicious, monkeypatch):
-    """화이트리스트 밖 disease는 PubMed에 질의하지 않고 즉시 거부한다."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise AssertionError("화이트리스트 밖 disease인데 HTTP 호출이 발생했다")
-
-    monkeypatch.setattr(httpx, "AsyncClient", _mock_transport(handler))
-
-    result = await search_disease_paper.ainvoke({"disease": malicious})
-
-    assert "찾지 못했습니다" in result
+class _FakePaperDb:
+    """ensure_paper_db()가 반환할 자리표시자. search_papers는 아래에서 직접
+    몽키패치하므로 실제 Chroma 메서드를 호출할 필요가 없다."""
 
 
 class _FakeMessage:
     def __init__(self, content: str) -> None:
         self.content = content
-
-
-def _fake_classify(disease: str | None, is_information_request: bool):
-    async def _classify(question: str) -> QueryClassification:
-        return QueryClassification(disease=disease, is_information_request=is_information_request)
-
-    return _classify
 
 
 class FakeAnswerLLM:
@@ -187,37 +54,95 @@ class FakeAnswerLLM:
         return _FakeMessage(self._content)
 
 
-class _FakeSearchTool:
-    """search_disease_paper 도구 자체를 대신하는 가짜 — PubMed 연동은 별도로
-    검증하므로, ask_paper_agent의 분류/답변 로직 테스트에서는 네트워크를 타지
-    않도록 이 페이크로 치환한다."""
+def _fake_classify(disease: str | None, is_information_request: bool):
+    async def _classify(question: str) -> paper_agent_module.QueryClassification:
+        return paper_agent_module.QueryClassification(disease=disease, is_information_request=is_information_request)
 
-    def __init__(self, result: str | None = None, error: Exception | None = None) -> None:
-        self._result = result
-        self._error = error
+    return _classify
 
-    async def ainvoke(self, args: dict) -> str:
-        if self._error is not None:
-            raise self._error
-        assert self._result is not None
-        return self._result
+
+def _fake_search_papers(chunks: list[DocumentChunk]):
+    def _search(db, query: str, disease: str, limit: int) -> list[DocumentChunk]:
+        return chunks
+
+    return _search
+
+
+@pytest.fixture(autouse=True)
+def stub_paper_db(monkeypatch):
+    """라우터의 ensure_paper_db()가 실제 Chroma를 열지 않도록 자리표시자로 대체한다."""
+    monkeypatch.setattr(paper_agent_router_module, "ensure_paper_db", lambda: _FakePaperDb())
 
 
 async def test_paper_agent_searches_when_disease_and_information_request(monkeypatch):
+    chunks = [
+        DocumentChunk(
+            content="HbA1c가 감소했습니다.",
+            metadata={
+                "pmid": "111",
+                "title": "Paper A",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/111/",
+            },
+        ),
+        DocumentChunk(
+            content="공복혈당도 개선됐습니다.",
+            metadata={
+                "pmid": "222",
+                "title": "Paper B",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/222/",
+            },
+        ),
+    ]
     monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
     monkeypatch.setattr(paper_agent_module, "classify_query", _fake_classify("당뇨", True))
-    monkeypatch.setattr(paper_agent_module, "search_disease_paper", _FakeSearchTool(result="제목: X\n초록: Y"))
+    monkeypatch.setattr(paper_agent_module, "search_papers", _fake_search_papers(chunks))
     monkeypatch.setattr(paper_agent_module, "_build_llm", lambda: FakeAnswerLLM("HbA1c가 감소했습니다."))
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/agent/paper-search", json={"question": "당뇨병 논문 알려줘"})
 
     assert response.status_code == 200
-    assert "HbA1c" in response.json()["answer"]
+    body = response.json()
+    assert "HbA1c" in body["answer"]
+    assert body["sources"] == [
+        {"name": "Paper A", "url": "https://pubmed.ncbi.nlm.nih.gov/111/"},
+        {"name": "Paper B", "url": "https://pubmed.ncbi.nlm.nih.gov/222/"},
+    ]
+
+
+async def test_paper_agent_deduplicates_sources_by_pmid_when_chunks_split_same_paper(monkeypatch):
+    chunks = [
+        DocumentChunk(content="앞부분", metadata={"pmid": "111", "title": "Paper A", "url": "https://x/111/"}),
+        DocumentChunk(content="뒷부분", metadata={"pmid": "111", "title": "Paper A", "url": "https://x/111/"}),
+    ]
+    monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
+    monkeypatch.setattr(paper_agent_module, "classify_query", _fake_classify("당뇨", True))
+    monkeypatch.setattr(paper_agent_module, "search_papers", _fake_search_papers(chunks))
+    monkeypatch.setattr(paper_agent_module, "_build_llm", lambda: FakeAnswerLLM("답변"))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/agent/paper-search", json={"question": "당뇨병 논문 알려줘"})
+
+    assert response.status_code == 200
+    assert len(response.json()["sources"]) == 1
+
+
+async def test_paper_agent_returns_not_found_message_when_no_chunks_found(monkeypatch):
+    monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
+    monkeypatch.setattr(paper_agent_module, "classify_query", _fake_classify("당뇨", True))
+    monkeypatch.setattr(paper_agent_module, "search_papers", _fake_search_papers([]))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/agent/paper-search", json={"question": "당뇨병 논문 알려줘"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "찾지 못했습니다" in body["answer"]
+    assert body["sources"] == []
 
 
 async def test_paper_agent_refuses_when_disease_mentioned_but_not_information_request(monkeypatch):
-    """관용구 케이스: 질환 단어는 감지돼도(예: "심장") 정보 요청이 아니면 도구를 안 부른다."""
+    """관용구 케이스: 질환 단어는 감지돼도(예: "심장") 정보 요청이 아니면 검색을 안 한다."""
     monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
     monkeypatch.setattr(paper_agent_module, "classify_query", _fake_classify("심장질환", False))
     monkeypatch.setattr(paper_agent_module, "_build_llm", lambda: FakeAnswerLLM("도움이 필요하시면 말씀해 주세요."))
@@ -226,7 +151,9 @@ async def test_paper_agent_refuses_when_disease_mentioned_but_not_information_re
         response = await client.post("/agent/paper-search", json={"question": "나 심장이 너무 쫄려..."})
 
     assert response.status_code == 200
-    assert response.json()["answer"] == "도움이 필요하시면 말씀해 주세요."
+    body = response.json()
+    assert body["answer"] == "도움이 필요하시면 말씀해 주세요."
+    assert body["sources"] == []
 
 
 async def test_paper_agent_refuses_when_no_disease_mentioned(monkeypatch):
@@ -250,14 +177,23 @@ async def test_paper_agent_returns_503_without_api_key(monkeypatch):
     assert response.status_code == 503
 
 
-async def test_paper_agent_returns_503_when_pubmed_unavailable(monkeypatch):
-    monkeypatch.setattr(paper_agent_module.settings, "OPENAI_API_KEY", "fake-key")
-    monkeypatch.setattr(paper_agent_module, "classify_query", _fake_classify("당뇨", True))
-    monkeypatch.setattr(
-        paper_agent_module,
-        "search_disease_paper",
-        _FakeSearchTool(error=PaperSearchUnavailableError("PubMed 요청 중 네트워크 오류가 발생했습니다.")),
-    )
+async def test_paper_agent_returns_503_when_embedding_unavailable(monkeypatch):
+    def _raise():
+        raise EmbeddingUnavailableError("OPENAI_EMBEDDING_API_KEY가 설정되지 않았습니다.")
+
+    monkeypatch.setattr(paper_agent_router_module, "ensure_paper_db", _raise)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/agent/paper-search", json={"question": "당뇨 논문 알려줘"})
+
+    assert response.status_code == 503
+
+
+async def test_paper_agent_returns_503_when_embedding_mismatch(monkeypatch):
+    def _raise(db):
+        raise EmbeddingMismatchError("임베딩 모델이 일치하지 않습니다.")
+
+    monkeypatch.setattr(paper_agent_router_module, "assert_embedding_compatible", _raise)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.post("/agent/paper-search", json={"question": "당뇨 논문 알려줘"})
@@ -287,3 +223,27 @@ def test_is_valid_disease_rejects_literal_null_string():
     assert paper_agent_module._is_valid_disease("NONE") is False
     assert paper_agent_module._is_valid_disease(None) is False
     assert paper_agent_module._is_valid_disease("당뇨") is True
+
+
+def test_build_sources_deduplicates_by_pmid_preserving_first_occurrence_order():
+    chunks = [
+        DocumentChunk(content="a", metadata={"pmid": "2", "title": "B", "url": "u2"}),
+        DocumentChunk(content="b", metadata={"pmid": "1", "title": "A", "url": "u1"}),
+        DocumentChunk(content="c", metadata={"pmid": "2", "title": "B", "url": "u2"}),
+    ]
+
+    sources = paper_agent_module._build_sources(chunks)
+
+    assert [s.name for s in sources] == ["B", "A"]
+
+
+def test_format_search_context_numbers_chunks_with_pmid():
+    chunks = [
+        DocumentChunk(content="내용1", metadata={"pmid": "1", "title": "T1"}),
+        DocumentChunk(content="내용2", metadata={"pmid": "2", "title": "T2"}),
+    ]
+
+    context = paper_agent_module._format_search_context(chunks)
+
+    assert "[1] PMID 1: T1" in context
+    assert "[2] PMID 2: T2" in context

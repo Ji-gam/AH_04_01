@@ -3,18 +3,26 @@ T-LLM-7: 도구 1개(질환 논문 검색)로 시작한 최소 파이프라인.
 T-LLM-7-1: 도구 호출 전 질문을 정규화하는 Query Rewriting 단계 추가(1차 개선).
 T-LLM-7-2: "질환 인식"과 "도구 호출 여부"를 하나의 LLM 판단으로 뭉뚱그리던 것을
 분리 — 구조화 출력(disease + is_information_request) 2축 분류기로 바꾸고, 두 조건이
-모두 참일 때만 코드가 결정론적으로 도구를 호출한다(LLM 재판단 없음). 이전엔
-`create_agent`(LangGraph)가 "도구를 부를지"까지 자체 판단해서, 같은 질환이 언급돼도
-문구(phrasing)에 따라 호출 여부가 오락가락했다("확률적 개선"에 그침) — 그 원인을
-구조적으로 제거한다. 참고: agentic RAG의 Router 분리 패턴, forced tool calling.
+모두 참일 때만 코드가 결정론적으로 도구를 호출한다(LLM 재판단 없음).
+T-LLM-7-3(개정): 라이브 PubMed 호출(`@tool search_disease_paper`)을 폐기하고, 오프라인
+인제스천으로 미리 색인된 pubmed_papers 컬렉션의 벡터 검색(`search_papers`)으로 교체했다.
+classify_query()가 이미 질환을 결정론적으로 뽑아주므로 "도구를 부를지"를 LLM이 재판단하는
+agentic tool-calling(`@tool` 래핑)이 더 이상 필요 없어져, 직접 함수 호출로 바뀌었다.
+멀티 논문 인용: 청크 여러 개를 프롬프트에 번호 매겨 넣고, 각 수치가 어느 PMID의 것인지
+구분해 답하도록 지시한다. `sources`로 PMID 기준 중복 제거된 출처 목록(제목+URL)을
+답변과 별도로 반환해, 프론트엔드가 출처 각주 UI를 붙일 수 있게 해둔다(칩 UI 자체는
+별도 작업).
 """
 
+from langchain_chroma import Chroma
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field, SecretStr
 
 from ai_worker.core.config import settings
+from ai_worker.schemas.retrieval_schema import DocumentChunk, PaperSourceRef
+from ai_worker.services.paper_retrieve_service import search_papers
 from ai_worker.tasks.generate_structured import GenerationUnavailableError
-from ai_worker.tools.paper_search import SUPPORTED_DISEASES, search_disease_paper
+from ai_worker.tasks.ingest_papers import SUPPORTED_DISEASES
 
 
 class QueryClassification(BaseModel):
@@ -44,11 +52,15 @@ _CLASSIFY_SYSTEM_PROMPT = (
 )
 
 _ANSWER_SYSTEM_PROMPT = (
-    "당신은 의학 논문 검색 비서입니다. 주어진 검색 자료의 구체적 수치를 인용해 답하고, "
-    "이것이 단일 연구 결과임을 밝히세요."
+    "당신은 의학 논문 검색 비서입니다. 주어진 검색 자료(서로 다른 여러 연구일 수 있습니다)의 "
+    "구체적 수치를 인용해 답하고, 각 수치가 어느 논문(PMID)의 것인지 구분해서 밝히세요."
 )
 
 _REFUSE_SYSTEM_PROMPT = "당신은 의학 논문 검색 비서입니다. 이 질문은 논문 검색 범위 밖입니다. 정중히 안내하세요."
+
+
+def _not_found_message(disease: str) -> str:
+    return f"'{disease}'에 대한 논문 자료를 찾지 못했습니다."
 
 
 def _build_llm() -> ChatOpenAI:
@@ -80,19 +92,51 @@ def _is_valid_disease(disease: str | None) -> bool:
     return disease is not None and disease.strip().lower() not in {"null", "none", ""}
 
 
-async def ask_paper_agent(question: str) -> str:
+def _format_search_context(chunks: list[DocumentChunk]) -> str:
+    """청크 여러 개를 번호 매겨 프롬프트에 넣는다 — LLM이 "[번호]"로 답변에서
+    어느 논문을 인용했는지 구분해 밝힐 수 있게 한다."""
+    parts = []
+    for i, chunk in enumerate(chunks, start=1):
+        pmid = chunk.metadata.get("pmid")
+        title = chunk.metadata.get("title")
+        parts.append(f"[{i}] PMID {pmid}: {title}\n{chunk.content}")
+    return "\n\n".join(parts)
+
+
+def _build_sources(chunks: list[DocumentChunk]) -> list[PaperSourceRef]:
+    """청크(같은 논문이 여러 청크로 쪼개졌을 수 있음)에서 PMID 기준 중복 제거된
+    출처 목록을 만든다. 프론트엔드 출처 칩이 그대로 소비할 수 있는 형태."""
+    seen_pmids: set[str] = set()
+    sources: list[PaperSourceRef] = []
+    for chunk in chunks:
+        pmid = chunk.metadata.get("pmid")
+        if not pmid or pmid in seen_pmids:
+            continue
+        seen_pmids.add(pmid)
+        title = chunk.metadata.get("title") or f"PMID {pmid}"
+        sources.append(PaperSourceRef(name=title, url=chunk.metadata.get("url")))
+    return sources
+
+
+async def ask_paper_agent(question: str, db: Chroma) -> tuple[str, list[PaperSourceRef]]:
     classification = await classify_query(question)
 
     if _is_valid_disease(classification.disease) and classification.is_information_request:
-        paper_result = await search_disease_paper.ainvoke({"disease": classification.disease})
+        disease = classification.disease
+        assert disease is not None  # _is_valid_disease가 이미 보장
+        chunks = search_papers(db, question, disease, limit=settings.PAPER_RETRIEVAL_LIMIT)
+        if not chunks:
+            return _not_found_message(disease), []
+
         llm = _build_llm()
+        context = _format_search_context(chunks)
         answer = await llm.ainvoke(
             [
                 {"role": "system", "content": _ANSWER_SYSTEM_PROMPT},
-                {"role": "user", "content": f"질문: {question}\n\n검색된 자료:\n{paper_result}"},
+                {"role": "user", "content": f"질문: {question}\n\n검색된 자료:\n{context}"},
             ]
         )
-        return str(answer.content)
+        return str(answer.content), _build_sources(chunks)
 
     llm = _build_llm()
     answer = await llm.ainvoke(
@@ -101,4 +145,4 @@ async def ask_paper_agent(question: str) -> str:
             {"role": "user", "content": question},
         ]
     )
-    return str(answer.content)
+    return str(answer.content), []

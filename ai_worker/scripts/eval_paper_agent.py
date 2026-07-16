@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+from ai_worker.services.paper_retrieve_service import ensure_paper_db  # noqa: E402
 from ai_worker.tasks.paper_agent import ask_paper_agent  # noqa: E402
 
 # 질환 5개 × (정확 표현 1 + 변형 표현 1) = 10문항.
@@ -41,9 +42,11 @@ EVAL_QUESTIONS = [
 
 
 async def run_eval() -> None:
+    db = ensure_paper_db()
     for item in EVAL_QUESTIONS:
-        answer = await ask_paper_agent(item["question"])
-        print(f"[{item['disease']}] Q: {item['question']}\nA: {answer}\n")
+        answer, sources = await ask_paper_agent(item["question"], db)
+        source_lines = "\n".join(f"  - {s.name} ({s.url})" for s in sources)
+        print(f"[{item['disease']}] Q: {item['question']}\nA: {answer}\n출처:\n{source_lines}\n")
 
 
 if __name__ == "__main__":
