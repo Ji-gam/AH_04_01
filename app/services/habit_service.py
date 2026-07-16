@@ -188,7 +188,7 @@ class HabitService:
         if not sanitized:
             return []
 
-        saved = await self._repository.save_subtype_suggestions(session, subtype.id, sanitized)
+        saved = await self._repository.save_subtype_suggestions(subtype.id, sanitized)
         return [
             HabitDef(
                 key=f"subtype_{row.disease_subtype_id}_{row.slot}",

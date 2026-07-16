@@ -54,7 +54,7 @@ class FakeHabitRepository:
         return self._suggestions.get(disease_subtype_id, [])
 
     async def save_subtype_suggestions(
-        self, session: Any, disease_subtype_id: int, suggestions: list[dict]
+        self, disease_subtype_id: int, suggestions: list[dict]
     ) -> list[FakeSuggestionRow]:
         rows = [
             FakeSuggestionRow(disease_subtype_id=disease_subtype_id, slot=slot, **suggestion)
