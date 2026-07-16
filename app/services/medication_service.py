@@ -225,12 +225,16 @@ def _extract_food_related_sentences(intrc_text: str) -> str | None:
 # API 9개 카테고리에도 음식 카테고리가 없음을 확인함), 식약처가 직접 발간한 PDF 가이드북("약과
 # 음식 상호작용을 피하는 복약안내서")을 파싱해 만든 성분 단위 참조 테이블을 우선 사용하고, 매칭되는
 # 성분이 없으면(주로 상표명) 기존 e약은요 키워드 필터로 폴백한다.
-# 참조 테이블은 `app/database/food_drug_interaction.db`(SQLite, drug_light.db와 동일한 다른
-# DB들과 형식을 통일하기 위해 2026-07-15 JSON에서 이전)에서 읽는다 — 상세: 저장소 docstring,
-# `docs/decision_log/2026-07-15-food-drug-interaction-sqlite-migration.md`.
+# 참조 테이블은 MySQL(`food_drug_categories` 등, 2026-07-16 SQLite에서 이전)에서 앱 기동 시
+# 1회 읽어 캐싱한다 — 상세: 저장소 docstring, `docs/decision_log/2026-07-16-food-drug-interaction-mysql-migration.md`.
 _FOOD_DRUG_REFERENCE_SOURCE_NOTE = "(출처: 식약처 식품의약품안전평가원 「약과 음식 상호작용을 피하는 복약안내서」)"
 
 _food_drug_interaction_repository = FoodDrugInteractionRepository()
+
+
+async def refresh_food_drug_interaction_cache(session: AsyncSession) -> None:
+    """앱 기동 시 1회 호출해 MySQL 참조 테이블을 프로세스 메모리 캐시로 읽어들인다."""
+    await _food_drug_interaction_repository.refresh(session)
 
 
 def _match_food_drug_reference(medication_name: str) -> dict | None:
