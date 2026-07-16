@@ -197,6 +197,19 @@ export interface HabitsTodayResult {
   all_completed: boolean;
 }
 
+export interface HabitRecommendationItemResult {
+  key: string;
+  label: string;
+  icon: string;
+  unit: string;
+  target: number;
+}
+
+export interface HabitRecommendationsResult {
+  habits: HabitRecommendationItemResult[];
+  selected_keys: string[];
+}
+
 // 백엔드 app/dtos/dur_dto.py와 1:1로 수동 동기화 (T-MED-14). 처방/약품명 배열을 넣으면 DUR(의약품
 // 안전사용) 정보를 3단계로 내려주는 스크리닝 API. drug_names만 보내면 되고 로그인 불필요.
 

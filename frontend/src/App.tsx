@@ -19,6 +19,7 @@ import DataConsentPage from "./pages/DataConsentPage/DataConsentPage";
 import DurScreeningPage from "./pages/dur/DurScreeningPage";
 import EmergencyGuidePage from "./pages/EmergencyGuidePage/EmergencyGuidePage";
 import FamilyPage from "./pages/FamilyPage/FamilyPage";
+import HabitSelectionPage from "./pages/HabitSelectionPage/HabitSelectionPage";
 import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
 import HomePage from "./pages/HomePage/HomePage";
 import InfoDetailPage from "./pages/InfoDetailPage/InfoDetailPage";
@@ -67,6 +68,7 @@ export const router = createBrowserRouter([
           { path: "/health-info/consent", element: <ConsentPage /> },
           { path: "/medication", element: <MedicationPage /> },
           { path: "/family", element: <FamilyPage /> },
+          { path: "/habit-selection", element: <HabitSelectionPage /> },
         ],
       },
     ],

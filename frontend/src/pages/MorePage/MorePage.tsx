@@ -150,6 +150,18 @@ export default function MorePage() {
             </span>
           </Link>
 
+          <Link to="/habit-selection" style={menuCardStyle}>
+            <span>
+              🌿 오늘의 추천 습관
+              <span style={menuDescStyle}>
+                매일 추천되는 습관 중 최대 5개를 골라 홈에서 실천해요
+              </span>
+            </span>
+            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+              ›
+            </span>
+          </Link>
+
           <Link to="/emergency-guide" style={menuCardStyle}>
             <span>
               🚨 응급안내
