@@ -123,14 +123,14 @@ export default function MorePage() {
       label: "처방전 등록",
       icon: "📝",
       bg: "#DCEEF9",
-      onClick: () => navigate("/track"),
+      onClick: () => navigate("/track", { state: { from: "more" } }),
     },
     {
       key: "family",
       label: "가족관리",
       icon: "👨‍👩‍👧",
       bg: "#FBE1E1",
-      onClick: () => navigate("/family"),
+      onClick: () => navigate("/family", { state: { from: "more" } }),
     },
     {
       key: "lifestyle",
@@ -157,6 +157,7 @@ export default function MorePage() {
           </h1>
           <Link
             to="/account-settings"
+            state={{ from: "more" }}
             style={{
               border: `1px solid ${pinkTheme.border}`,
               borderRadius: 999,
@@ -356,6 +357,7 @@ export default function MorePage() {
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <Link
                   to="/health-info"
+                  state={{ from: "more" }}
                   onClick={() => setIsMyInfoModalOpen(false)}
                   style={menuCardStyle}
                 >
@@ -461,13 +463,14 @@ export default function MorePage() {
                   position: "absolute",
                   top: 12,
                   right: 12,
-                  border: `1px solid ${pinkTheme.border}`,
+                  border: "none",
                   borderRadius: 8,
-                  background: pinkTheme.cardBg,
-                  color: pinkTheme.textMuted,
+                  background: pinkTheme.primarySoft,
+                  color: pinkTheme.primary,
                   cursor: "pointer",
                   padding: "4px 10px",
                   fontSize: 12,
+                  fontWeight: 600,
                 }}
               >
                 닫기

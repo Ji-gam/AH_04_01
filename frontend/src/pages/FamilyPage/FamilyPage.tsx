@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import {
   familyApi,
@@ -67,6 +68,9 @@ function LinkRow({ item, right }: { item: FamilyLinkItem; right?: React.ReactNod
  * 절차 없이 바로 연결된다(코드를 안다는 것 자체가 이미 상호 동의로 간주).
  * 확인/미루기를 양쪽 화면에서 동기화하는 기능은 다음 PR에서 다룬다. */
 export default function FamilyPage() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const cameFromMore = (location.state as { from?: string } | null)?.from === "more";
   const [data, setData] = useState<FamilyMembersResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -203,6 +207,21 @@ export default function FamilyPage() {
           gap: 16,
         }}
       >
+        <button
+          type="button"
+          onClick={() => navigate(cameFromMore ? "/more" : "/")}
+          style={{
+            background: "none",
+            border: "none",
+            color: pinkTheme.textMuted,
+            padding: 0,
+            alignSelf: "flex-start",
+            cursor: "pointer",
+            fontSize: 13,
+          }}
+        >
+          ← 뒤로가기
+        </button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: 0 }}>
           👨‍👩‍👧 가족관리
         </h1>

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { authApi } from "../../api/authApi";
 import { useAuth } from "../../hooks/useAuth";
@@ -23,6 +23,8 @@ const inputStyle: React.CSSProperties = {
 export default function AccountSettingsPage() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const cameFromMore = (location.state as { from?: string } | null)?.from === "more";
 
   const [name, setName] = useState(user?.name ?? "");
 
@@ -75,7 +77,7 @@ export default function AccountSettingsPage() {
       <div style={{ maxWidth: 400, margin: "0 auto" }}>
         <button
           type="button"
-          onClick={() => navigate("/")}
+          onClick={() => navigate(cameFromMore ? "/more" : "/")}
           style={{
             background: "none",
             border: "none",
