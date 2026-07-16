@@ -1,13 +1,32 @@
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { pinkTheme } from "../../theme/pinkTheme";
 
+/** 더보기 > 처방전 등록에서 열었을 때만 뒤로가기가 더보기로 돌아간다(2026-07-16) - 상단
+ * 네비게이션의 "트랙커" 탭으로 들어왔을 때는 홈으로 나간다. */
 export default function TrackPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const cameFromMore = (location.state as { from?: string } | null)?.from === "more";
 
   return (
     <div style={{ background: pinkTheme.pageBg, minHeight: "100%", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
+        <button
+          type="button"
+          onClick={() => navigate(cameFromMore ? "/more" : "/")}
+          style={{
+            background: "none",
+            border: "none",
+            color: pinkTheme.textMuted,
+            padding: 0,
+            marginBottom: 10,
+            cursor: "pointer",
+            fontSize: 13,
+          }}
+        >
+          ← 뒤로가기
+        </button>
         <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 20px" }}>
           📊 트랙커
         </h1>

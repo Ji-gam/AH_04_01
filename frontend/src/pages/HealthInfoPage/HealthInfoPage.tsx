@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { healthInfoApi } from "../../api/healthInfoApi";
 import type {
@@ -496,6 +496,8 @@ const inputStyle: React.CSSProperties = {
  * - 진단병력/가족력은 질환 체크박스(+ 기타) + "없음" 체크박스 + 항목별 구조화된 상세입력으로 관리한다. */
 export default function HealthInfoPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const cameFromMore = (location.state as { from?: string } | null)?.from === "more";
   const { user } = useAuth();
   const [mode, setMode] = useState<Mode>("view");
   const [info, setInfo] = useState<HealthInfoResult | null>(null);
@@ -591,12 +593,13 @@ export default function HealthInfoPage() {
 
   // 상단 "뒤로가기" 버튼 전용. 원래 정보가 있었는데 수정하러 들어온 거면 그냥 보기 화면으로
   // 돌아가고(취소하고 보기로 돌아가기와 동일), 애초에 정보가 없어서 자동으로 입력화면에
-  // 들어온 거거나 처음부터 보기 화면이었으면 홈으로 나간다.
+  // 들어온 거거나 처음부터 보기 화면이었으면 나간다 - 더보기에서 열었을 때만 더보기로,
+  // 그 외(홈 등)에서 열었으면 홈으로 나간다.
   function handleTopBack() {
     if (mode === "edit" && hadDataOnLoad) {
       handleCancelEdit();
     } else {
-      navigate("/");
+      navigate(cameFromMore ? "/more" : "/");
     }
   }
 
