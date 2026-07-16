@@ -3,6 +3,8 @@ import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
 
+import BottomNav from "./BottomNav";
+
 // 모든 탭 링크를 복약알림과 같은 톤(핑크·볼드)으로 통일한다.
 const navLinkStyle: React.CSSProperties = {
   color: pinkTheme.primary,
@@ -92,9 +94,11 @@ export default function Layout() {
       </nav>
       {/* nav 높이를 뺀 나머지 전체를 자식(Outlet)에 넘긴다 — 자식이 height:100dvh를 다시
           쓰면 nav 높이만큼 화면 아래로 넘쳐서 폼 같은 하단 요소가 잘려 보이지 않는다. */}
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         <Outlet />
       </div>
+      {/* 앱 패키징을 대비한 하단 아이콘 탭 바 - 모든 화면에서 항상 보인다. */}
+      <BottomNav />
     </div>
   );
 }
