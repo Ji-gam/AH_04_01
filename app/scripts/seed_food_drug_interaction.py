@@ -13,9 +13,11 @@
 
 import asyncio
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 
 from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.db.databases import AsyncSessionLocal
 from app.models.food_drug_interaction import (
@@ -53,10 +55,15 @@ def _read_sqlite(sqlite_path: Path) -> dict:
         conn.close()
 
 
-async def seed_food_drug_interaction(sqlite_path: Path = SQLITE_PATH) -> int:
+async def seed_food_drug_interaction(
+    sqlite_path: Path = SQLITE_PATH,
+    session_factory: Callable[[], AsyncSession] | async_sessionmaker[AsyncSession] = AsyncSessionLocal,
+) -> int:
+    """`session_factory`는 기본적으로 운영 MySQL 세션이지만, 테스트 스위트가 격리된 테스트 DB에
+    같은 참조 데이터를 시딩할 때도 재사용한다(`app/tests/conftest.py`)."""
     data = _read_sqlite(sqlite_path)
 
-    async with AsyncSessionLocal() as session:
+    async with session_factory() as session:
         await session.execute(delete(FoodDrugFoodItem))
         await session.execute(delete(FoodDrugIngredient))
         await session.execute(delete(FoodDrugCategory))
