@@ -51,9 +51,7 @@ class FoodDrugCategory(Base):
     ingredients: Mapped[list["FoodDrugIngredient"]] = relationship(
         back_populates="category", cascade="all, delete-orphan"
     )
-    food_items: Mapped[list["FoodDrugFoodItem"]] = relationship(
-        back_populates="category", cascade="all, delete-orphan"
-    )
+    food_items: Mapped[list["FoodDrugFoodItem"]] = relationship(back_populates="category", cascade="all, delete-orphan")
 
 
 class FoodDrugIngredient(Base):
