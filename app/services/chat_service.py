@@ -4,27 +4,67 @@ T-LLM-2: 응급 감지 → (아니면) 컨텍스트 조회 → RAG 검색 → LL
 SQLAlchemy(AsyncSession) 기반으로 옮긴 것 — 흐름 구조 자체는 동일하다.
 """
 
-import json
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable
+from typing import cast
 
-from openai import AsyncOpenAI
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core import config
 from app.models.chat import MessageRole
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.dur_drug_repository import DurDrugRepository
 from app.repositories.medication_repository import MedicationRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.services import safety_service
-from app.services.ai_worker_gateway import AIWorkerGateway, AIWorkerProcessingError, AIWorkerUnavailableError
+from app.services.ai_worker_gateway import (
+    AIWorkerGateway,
+    AIWorkerInvalidRequestError,
+    AIWorkerProcessingError,
+    AIWorkerUnavailableError,
+)
 from app.services.chat_context_service import ChatContextService
 from app.services.llm_stub import stream_llm_reply
 
 logger = logging.getLogger("app.chat_service")
 
 LlmStream = Callable[[str, dict, list[str]], AsyncIterator[str]]
+
+_AI_WORKER_ERRORS = (AIWorkerUnavailableError, AIWorkerProcessingError, AIWorkerInvalidRequestError)
+
+
+class EmergencyClassification(BaseModel):
+    is_emergency: bool
+
+
+class MedicalRelatednessClassification(BaseModel):
+    is_medical_related: bool
+
+
+_EMERGENCY_SYSTEM_PROMPT = (
+    "당신은 사용자 메시지 하나를 보고 즉각적인 생명 위협 응급 상황(예: 의식 소실, 심정지, "
+    "자살/자해 의도, 심한 호흡곤란, 심한 흉통, 발작/경련 등)을 나타내는지 판단하는 안전 분류기입니다.\n"
+    "조금이라도 응급 상황일 가능성이 있으면 true로 판단하세요(과다 판정이 과소 판정보다 안전합니다).\n"
+    "일상적인 건강 질문, 만성질환 관리, 가벼운 불편감은 false입니다.\n"
+    'JSON 형식으로만 답하세요: {"is_emergency": true} 또는 {"is_emergency": false}'
+)
+
+_MEDICAL_RELATEDNESS_SYSTEM_PROMPT = (
+    "당신은 대화 한 턴(사용자 질문 + 어시스턴트 답변)을 보고, 하단에 의학적 조언이 아니라는 "
+    "면책 문구를 노출해야 하는지 판단하는 분류기입니다.\n"
+    "다음 중 하나라도 답변에 실제로 포함된 경우에만 true로 판단하세요:\n"
+    "- 특정 약물의 복용법/부작용/상호작용/DUR 경고\n"
+    "- 질병 진단 또는 감별 진단 관련 언급\n"
+    "- 특정 증상에 대한 임상적 처치/치료 조언\n"
+    "- 생리적 부작용이나 신체 반응에 대한 구체적 설명\n"
+    "다음은 명확히 false로 판단해야 하는 예시입니다(자주 오탐되는 경계 사례):\n"
+    "- '오늘 아침 뭘 먹을까' 같은 일반 식단/레시피 질문 → false\n"
+    "- 운동 계획, 수면 시간, 일정 관리 등 생활 습관 질문(질병/약물과 무관) → false\n"
+    "- 일반 잡담, 인사, 감정 표현 → false\n"
+    "확신이 서지 않으면 false를 반환하세요(과다 판정보다 과소 판정이 낫습니다).\n"
+    'JSON 형식으로만 답하세요: {"is_medical_related": true} 또는 {"is_medical_related": false}'
+)
 
 
 class ChatService:
@@ -55,14 +95,14 @@ class ChatService:
         """
         응급 키워드가 감지되면 LLM을 호출하지 않고 고정 fallback만 반환한다(T-LLM-1 원칙).
         이 경우 대화 기록도 저장하지 않는다.
+
+        키워드 판정과 별개로 LLM 기반 응급 판정을 히스토리/컨텍스트/RAG 조회와 병렬로 미리
+        발사해두고, 실제 생성 직전에만 결과를 확인한다 — 매 턴 직렬 지연시간을 늘리지 않기
+        위함이며, 응급으로 판명되면 그 전에 조회한 RAG/컨텍스트는 버려진다(트래픽이 적은
+        지금은 이 비용보다 지연시간 감소가 더 중요하다는 판단).
         """
-        if safety_service.check_emergency(message):
-            yield {
-                "type": "emergency_fallback",
-                "content": safety_service.EMERGENCY_FALLBACK_MESSAGE,
-                "disclaimer": safety_service.DISCLAIMER_TEXT,
-            }
-            return
+        keyword_emergency = safety_service.check_emergency(message)
+        emergency_llm_task = asyncio.create_task(self._check_emergency_via_llm(message))
 
         history = await self._repository.list_messages(session, session_id)
 
@@ -95,6 +135,14 @@ class ChatService:
             if "식약처 DUR 안전 정보" not in sources:
                 sources.append("식약처 DUR 안전 정보")
             sources = sorted(sources)
+
+        if keyword_emergency or await emergency_llm_task:
+            yield {
+                "type": "emergency_fallback",
+                "content": safety_service.EMERGENCY_FALLBACK_MESSAGE,
+                "disclaimer": safety_service.DISCLAIMER_TEXT,
+            }
+            return
 
         full_response = ""
         async for token in self._llm_stream(message, context, content_chunks):
@@ -136,40 +184,31 @@ class ChatService:
             )
         return list(set(dur_warnings))
 
-    async def _check_if_medical_related_via_llm(self, message: str, response: str) -> bool:
-        api_key = config.OPENAI_API_KEY
-        if not api_key:
-            return self._is_medical_related_fallback(message, response)
-
+    async def _check_emergency_via_llm(self, message: str) -> bool:
+        """ai_worker 장애 시 키워드 판정만으로 게이팅하도록 False를 반환한다(fail-safe —
+        전체 채팅을 막지는 않되 키워드 레이어는 그대로 유지)."""
         try:
-            client = AsyncOpenAI(api_key=api_key)
-            chat_completion = await client.chat.completions.create(
-                model=config.OPENAI_MODEL,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a clinical classification assistant. Your task is to analyze the conversation and "
-                            "determine if the assistant's response contains any clinical advice, medical warnings, "
-                            "drug safety warnings (DUR), disease diagnoses, drug interaction guidance, or physiological side effects. "
-                            "If the response is purely about general nutrition, diet recipe recommendations, sports, scheduling, "
-                            "general chat, or non-medical life choices, output false. "
-                            'Return JSON format: {"is_medical_related": true} or {"is_medical_related": false}.'
-                        ),
-                    },
-                    {"role": "user", "content": f"User: {message}\nAssistant: {response}"},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.0,
+            result = await self._retriever.call_structured(
+                system_prompt=_EMERGENCY_SYSTEM_PROMPT,
+                user_input=message,
+                schema=EmergencyClassification,
             )
-            result_text = chat_completion.choices[0].message.content
-            if result_text:
-                result_json = json.loads(result_text)
-                return bool(result_json.get("is_medical_related", False))
-        except Exception as e:
-            logger.warning(f"의료 관련성 LLM 분류 실패, 키워드 폴백으로 전환: {e}")
+        except _AI_WORKER_ERRORS as e:
+            logger.error(f"응급 LLM 분류 실패, 키워드 판정만으로 게이팅: {e}")
+            return False
+        return cast(EmergencyClassification, result).is_emergency
 
-        return self._is_medical_related_fallback(message, response)
+    async def _check_if_medical_related_via_llm(self, message: str, response: str) -> bool:
+        try:
+            result = await self._retriever.call_structured(
+                system_prompt=_MEDICAL_RELATEDNESS_SYSTEM_PROMPT,
+                user_input=f"User: {message}\nAssistant: {response}",
+                schema=MedicalRelatednessClassification,
+            )
+        except _AI_WORKER_ERRORS as e:
+            logger.warning(f"의료 관련성 LLM 분류 실패, 키워드 폴백으로 전환: {e}")
+            return self._is_medical_related_fallback(message, response)
+        return cast(MedicalRelatednessClassification, result).is_medical_related
 
     def _is_medical_related_fallback(self, message: str, response: str) -> bool:
         # 의료 키워드 목록은 safety_service가 단일 소유한다("판단은 여기서만" 원칙).
