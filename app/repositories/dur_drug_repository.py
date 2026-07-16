@@ -1,32 +1,30 @@
 """
-T-LLM-2-dur-repository: `app/database/dur_drug_light.db`(의약품 제품/성분/DUR 규칙 SQLite)
-조회를 캡슐화한다. `chat_service.py`가 raw sqlite3 쿼리를 인라인으로 갖고 있던 것을
-여기로 옮긴다. `app/apis/v1/medication.py`(다른 스쿼드 소유)의 조회 로직은 건드리지 않는다.
+T-LLM-2-dur-repository: `app/models/dur.py`(MySQL, `app/scripts/seed_dur.py`가 `app/database/
+drugs_full.db` SQLite - 공공데이터포털 API 22종 전수 수집본 - 에서 이전) 조회를 캡슐화한다.
+과거에는 경량화 SQLite(`dur_drug_light.db`, 효능 데이터 커버리지 17%뿐)를 직접 읽었으나, 전수
+데이터를 MySQL로 옮기면서 이 리포지토리도 MySQL 조회로 전환했다.
 
-알려진 한계: 이 DB는 경량화 버전이라 효능 데이터 커버리지가 낮다(전체 제품의 일부만
-`drugs_einfo`에 데이터 존재). 스테이징 환경에서 풀버전으로 교체 예정이며, 이 리포지토리의
-쿼리 자체는 어느 버전이든 동일한 스키마를 가정하므로 교체 시 코드 변경이 필요 없다.
+알려진 한계: 1일 최대투여량(`max_dosages`)은 원본이 성분코드(INGR_CODE)가 아니라 별도 코드체계
+(CPNT_CD)를 쓰고, 그 사이를 잇던 매핑(`ingredient_mappings`, 예전 dur_drug_light.db 전용
+파생 테이블)이 이번 22종 API 전수 수집 범위 밖이라 재구성할 수 없다 - 이 필드는 항상 빈
+리스트를 반환한다.
 
-T-LLM-2-drug-gateway: `drug_data()`는 위 SQLite 조회 위에 MySQL 캐시 → 외부 e약은요 API
-폴백을 더한 단일 파사드다. 각 단계에서 핵심 필드(효능/용법/주의사항/부작용)가 비어 있으면
-다음 단계로 넘어가 그 필드만 채우고(병합), SQLite 전용 필드(성분/DUR규칙/최대투여량/식별
-정보/리콜 — API에는 없음)는 항상 보존한다. API가 실제 내용을 채운 경우에만 MySQL 캐시에
+T-LLM-2-drug-gateway: `drug_data()`는 위 MySQL 조회 위에 캐시(같은 MySQL의 `DrugDataCache`
+테이블) → 외부 e약은요 API 폴백을 더한 단일 파사드다. 각 단계에서 핵심 필드(효능/용법/주의사항/
+부작용)가 비어 있으면 다음 단계로 넘어가 그 필드만 채우고(병합), 1단계 전용 필드(성분/DUR규칙/
+식별정보/리콜 — API에는 없음)는 항상 보존한다. API가 실제 내용을 채운 경우에만 MySQL 캐시에
 write-back한다(빈 응답을 캐싱하면 나중에 API에 데이터가 채워져도 영영 못 찾으므로).
 """
 
-import asyncio
-import os
-import sqlite3
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.drug_data_cache_model import DrugDataCache
+from app.repositories.dur_repository import SINGLE_DRUG_RULE_TABLES
 from app.services import drug_public_api_client
-
-DB_PATH = os.path.join(os.path.dirname(__file__), "..", "database", "dur_drug_light.db")
 
 
 @dataclass
@@ -67,9 +65,9 @@ def _any_has_content(profiles: list[DrugProfile]) -> bool:
 
 
 def _merge_profiles(base: list[DrugProfile], enrich: list[DrugProfile]) -> list[DrugProfile]:
-    """`base`(SQLite)의 빈 필드만 `enrich`(캐시/API)로 채운다. `base`에만 있는 구조화 필드
+    """`base`(1단계 MySQL)의 빈 필드만 `enrich`(캐시/API)로 채운다. `base`에만 있는 구조화 필드
     (성분/DUR규칙/최대투여량/식별정보/리콜)는 항상 보존한다. 이름이 일치하지 않는 `enrich`
-    항목(SQLite가 못 찾은 제품)은 새 항목으로 추가한다."""
+    항목(1단계가 못 찾은 제품)은 새 항목으로 추가한다."""
     if not base:
         return list(enrich)
     if not enrich:
@@ -122,80 +120,58 @@ def _profile_from_api_item(item: dict) -> DrugProfile:
 
 
 class DurDrugRepository:
-    def __init__(self, db_path: str | None = None) -> None:
-        self._db_path = db_path or DB_PATH
-
-    def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self._db_path)
-
-    def search_item_names(self, item_name: str, limit: int) -> list[tuple[str, str]]:
+    async def search_item_names(self, session: AsyncSession, item_name: str, limit: int) -> list[tuple[str, str]]:
         """(#108) 이름 부분일치로 (item_seq, item_name)만 가볍게 조회한다. `find_drug_info`는
-        성분/DUR규칙/최대투여량 등 여러 join을 동반해 이름 매칭용으로 쓰기엔 무겁다."""
-        conn = self._connect()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT item_seq, item_name FROM products WHERE item_name LIKE ? LIMIT ?",
-                (f"%{item_name}%", limit),
-            )
-            return cursor.fetchall()
-        finally:
-            conn.close()
+        성분/DUR규칙 등 여러 조회를 동반해 이름 매칭용으로 쓰기엔 무겁다."""
+        result = await session.execute(
+            text("SELECT item_seq, item_name FROM drugs_data WHERE item_name LIKE :q LIMIT :limit"),
+            {"q": f"%{item_name}%", "limit": limit},
+        )
+        return [(row.item_seq, row.item_name) for row in result.all()]
 
-    def search_item_names_by_prefix(self, prefix: str, limit: int) -> list[tuple[str, str]]:
+    async def search_item_names_by_prefix(
+        self, session: AsyncSession, prefix: str, limit: int
+    ) -> list[tuple[str, str]]:
         """(#108) 27,000여 개 전체를 매번 스캔하지 않도록, OCR 텍스트 앞 몇 글자를 접두어로
-        후보를 좁힌 뒤(SQLite 인덱스 활용) 그 안에서만 유사도 비교를 하기 위한 조회."""
-        conn = self._connect()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT item_seq, item_name FROM products WHERE item_name LIKE ? LIMIT ?",
-                (f"{prefix}%", limit),
-            )
-            return cursor.fetchall()
-        finally:
-            conn.close()
+        후보를 좁힌 뒤(인덱스 활용) 그 안에서만 유사도 비교를 하기 위한 조회."""
+        result = await session.execute(
+            text("SELECT item_seq, item_name FROM drugs_data WHERE item_name LIKE :q LIMIT :limit"),
+            {"q": f"{prefix}%", "limit": limit},
+        )
+        return [(row.item_seq, row.item_name) for row in result.all()]
 
-    def find_drug_info(self, item_name: str) -> list[DrugProfile]:
+    async def find_drug_info(self, session: AsyncSession, item_name: str) -> list[DrugProfile]:
         """제품명 부분 일치로 검색해, 매칭된 제품마다 관련 데이터를 모두 모아 반환한다."""
-        conn = self._connect()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT item_seq, item_name, entp_name FROM products WHERE item_name LIKE ?",
-                (f"%{item_name}%",),
-            )
-            return [
-                self._build_profile(cursor, item_seq, name, entp_name)
-                for item_seq, name, entp_name in cursor.fetchall()
-            ]
-        finally:
-            conn.close()
-
-    def _build_profile(self, cursor: sqlite3.Cursor, item_seq: str, item_name: str, entp_name: str) -> DrugProfile:
-        cursor.execute(
-            """
-            SELECT i.ingr_kor_name FROM product_ingredients pi
-            JOIN ingredients i ON pi.ingr_code = i.ingr_code
-            WHERE pi.item_seq = ?
-            """,
-            (item_seq,),
+        result = await session.execute(
+            text(
+                """
+                SELECT item_seq, item_name, entp_name, efcy_qesitm, use_method_qesitm,
+                       atpn_qesitm, atpn_warn_qesitm, intrc_qesitm, se_qesitm
+                FROM drugs_data
+                WHERE item_name LIKE :q
+                """
+            ),
+            {"q": f"%{item_name}%"},
         )
-        ingredients = [row[0] for row in cursor.fetchall()]
+        rows = result.mappings().all()
+        return [await self._build_profile(session, row) for row in rows]
 
-        cursor.execute(
-            "SELECT efcy_qesitm, use_method_qesitm, atpn_qesitm, se_qesitm FROM drugs_einfo WHERE item_seq = ?",
-            (item_seq,),
-        )
-        einfo_row = cursor.fetchone()
-        efficacy, usage_method, precautions, side_effects = einfo_row if einfo_row else (None, None, None, None)
+    async def _build_profile(self, session: AsyncSession, row) -> DrugProfile:
+        item_seq = row["item_seq"]
 
-        cursor.execute(
-            "SELECT chart, form_name, color_class1, color_class2, drug_image_url "
-            "FROM product_identifications WHERE item_seq = ?",
-            (item_seq,),
+        ingr_result = await session.execute(
+            text("SELECT ingr_name FROM item_ingredient_map WHERE item_seq = :seq"), {"seq": item_seq}
         )
-        ident_row = cursor.fetchone()
+        ingredients = [r[0] for r in ingr_result.all() if r[0]]
+
+        ident_result = await session.execute(
+            text(
+                "SELECT chart, form_code_name, color_class1, color_class2, item_image "
+                "FROM drug_identification WHERE item_seq = :seq"
+            ),
+            {"seq": item_seq},
+        )
+        ident_row = ident_result.first()
         identification = (
             {
                 "chart": ident_row[0],
@@ -208,103 +184,102 @@ class DurDrugRepository:
             else None
         )
 
-        cursor.execute("SELECT rtrvl_resn, recall_command_date FROM product_recalls WHERE item_seq = ?", (item_seq,))
-        recalls = [{"reason": r[0], "recall_date": r[1]} for r in cursor.fetchall()]
-
-        cursor.execute(
-            "SELECT rule_type, ingr_name, prohbt_content, max_dosage, max_term "
-            "FROM dur_product_rules WHERE item_seq = ?",
-            (item_seq,),
+        recalls_result = await session.execute(
+            text("SELECT rtrvl_resn, recall_command_date FROM medicine_recalls WHERE item_seq = :seq"),
+            {"seq": item_seq},
         )
-        dur_rules = [
-            {"rule_type": r[0], "ingr_name": r[1], "prohbt_content": r[2], "max_dosage": r[3], "max_term": r[4]}
-            for r in cursor.fetchall()
-        ]
+        recalls = [{"reason": r[0], "recall_date": r[1]} for r in recalls_result.all()]
 
-        cursor.execute(
-            """
-            SELECT DISTINCT dm.cpnt_name, dm.day_max_dosg_qy, dm.day_max_dosg_qy_unit
-            FROM product_ingredients pi
-            JOIN ingredient_mappings im ON pi.ingr_code = im.ingr_code
-            JOIN drug_max_dosages dm ON im.cpnt_code = dm.cpnt_code
-            WHERE pi.item_seq = ?
-            """,
-            (item_seq,),
-        )
-        max_dosages = [{"name": r[0], "max_qty": r[1], "unit": r[2]} for r in cursor.fetchall()]
+        dur_rules: list[dict] = []
+        for table, _code, label in SINGLE_DRUG_RULE_TABLES:
+            rule_result = await session.execute(
+                text(f"SELECT ingr_name, prohbt_content FROM {table} WHERE item_seq = :seq"), {"seq": item_seq}
+            )
+            for ingr_name, prohbt_content in rule_result.all():
+                dur_rules.append(
+                    {
+                        "rule_type": label,
+                        "ingr_name": ingr_name,
+                        "prohbt_content": prohbt_content,
+                        # 1일최대투여량(max_dosage/max_term)은 모듈 docstring에 적은 대로
+                        # 성분코드<->CPNT_CD 매핑이 없어 재구성 불가 - 항상 None.
+                        "max_dosage": None,
+                        "max_term": None,
+                    }
+                )
+
+        precaution_parts = [row["atpn_qesitm"], row["atpn_warn_qesitm"], row["intrc_qesitm"]]
+        precautions = " ".join(p.strip() for p in precaution_parts if p and p.strip()) or None
 
         return DrugProfile(
             item_seq=item_seq,
-            item_name=item_name,
-            entp_name=entp_name,
+            item_name=row["item_name"],
+            entp_name=row["entp_name"] or "",
             ingredients=ingredients,
-            efficacy=efficacy,
-            usage_method=usage_method,
+            efficacy=row["efcy_qesitm"] or None,
+            usage_method=row["use_method_qesitm"] or None,
             precautions=precautions,
-            side_effects=side_effects,
-            max_dosages=max_dosages,
+            side_effects=row["se_qesitm"] or None,
+            max_dosages=[],
             identification=identification,
             recalls=recalls,
             dur_rules=dur_rules,
         )
 
-    def find_dur_warnings(self, item_name: str, *, pregnant: bool, geriatric: bool) -> list[str]:
+    async def find_dur_warnings(
+        self, session: AsyncSession, item_name: str, *, pregnant: bool, geriatric: bool
+    ) -> list[str]:
         """임부(PWNM)/노인(ODSN) 주의 경고 문구만 필요한 좁은 조회(chat_service 용도)."""
         if not (pregnant or geriatric):
             return []
 
-        conn = self._connect()
-        try:
-            cursor = conn.cursor()
-            cursor.execute(
+        warnings: list[str] = []
+        if pregnant:
+            warnings.extend(await self._collect_rule_warnings(session, "dur_prod_pwnm_taboo", item_name, "임부금기"))
+        if geriatric:
+            warnings.extend(await self._collect_rule_warnings(session, "dur_prod_odsn_atent", item_name, "노인주의"))
+        return list(set(warnings))
+
+    async def _collect_rule_warnings(
+        self, session: AsyncSession, table: str, item_name: str, label: str
+    ) -> list[str]:
+        result = await session.execute(
+            text(
+                f"""
+                SELECT item_name, prohbt_content FROM {table}
+                WHERE item_name LIKE :like_q OR :q LIKE CONCAT('%', item_name, '%')
                 """
-                SELECT p.item_name, r.rule_type, r.prohbt_content
-                FROM dur_product_rules r
-                JOIN products p ON r.item_seq = p.item_seq
-                WHERE (p.item_name LIKE ? OR ? LIKE '%' || p.item_name || '%')
-                  AND (
-                      (r.rule_type = 'PWNM' AND ? = 1)
-                      OR (r.rule_type = 'ODSN' AND ? = 1)
-                  )
-                """,
-                (f"%{item_name}%", item_name, 1 if pregnant else 0, 1 if geriatric else 0),
-            )
-            warnings = []
-            for matched_name, rule_type, content in cursor.fetchall():
-                prefix = "[임부금기 경고]" if rule_type == "PWNM" else "[노인주의 경고]"
-                warnings.append(f"{prefix} {matched_name}: {content}")
-            return list(set(warnings))
-        except sqlite3.Error:
-            return []
-        finally:
-            conn.close()
+            ),
+            {"like_q": f"%{item_name}%", "q": item_name},
+        )
+        return [f"[{label} 경고] {matched_name}: {content}" for matched_name, content in result.all()]
 
     async def drug_data(self, session: AsyncSession, item_name: str) -> DrugDataResult:
         """`request(약품명) -> response(약품 상세 + 주의 정보)` 단일 파사드.
-        SQLite → MySQL 캐시(쿼리 문자열 정확매치) → 외부 e약은요 API 순으로 캐스케이드하며,
+        MySQL(1단계) → MySQL 캐시(쿼리 문자열 정확매치) → 외부 e약은요 API 순으로 캐스케이드하며,
         각 단계는 이전 단계가 채우지 못한 필드만 보완한다."""
         query_name = item_name.strip()
 
-        sqlite_profiles = await asyncio.to_thread(self.find_drug_info, query_name)
-        if sqlite_profiles and _any_has_content(sqlite_profiles):
-            return DrugDataResult(profiles=sqlite_profiles, provenance=DrugDataProvenance.SQLITE)
+        base_profiles = await self.find_drug_info(session, query_name)
+        if base_profiles and _any_has_content(base_profiles):
+            return DrugDataResult(profiles=base_profiles, provenance=DrugDataProvenance.SQLITE)
 
         cached = await self._get_cached(session, query_name)
         if cached is not None:
             cached_profiles = [DrugProfile(**p) for p in cached.profiles]
-            merged = _merge_profiles(sqlite_profiles, cached_profiles)
+            merged = _merge_profiles(base_profiles, cached_profiles)
             return DrugDataResult(profiles=merged, provenance=DrugDataProvenance.CACHE)
 
         api_items = await drug_public_api_client.fetch_drug_summary(query_name)
         api_profiles = [_profile_from_api_item(item) for item in api_items]
-        merged = _merge_profiles(sqlite_profiles, api_profiles)
+        merged = _merge_profiles(base_profiles, api_profiles)
 
         if _any_has_content(api_profiles):
             await self._write_back(session, query_name, api_profiles)
             return DrugDataResult(profiles=merged, provenance=DrugDataProvenance.API)
 
-        if sqlite_profiles:
-            return DrugDataResult(profiles=sqlite_profiles, provenance=DrugDataProvenance.SQLITE)
+        if base_profiles:
+            return DrugDataResult(profiles=base_profiles, provenance=DrugDataProvenance.SQLITE)
 
         return DrugDataResult(profiles=[], provenance=DrugDataProvenance.MISS)
 

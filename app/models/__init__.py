@@ -1,6 +1,7 @@
 from app.models.chat import ChatMessage, ChatSession
 from app.models.content import ContentCategory, HealthContent
 from app.models.disease_entries import DiagnosisEntry, DiseaseSubtype, FamilyHistoryEntry
+from app.models.dur import ALL_DUR_MODELS
 from app.models.family_invite_code import FamilyInviteCode
 from app.models.family_link import FamilyLink
 from app.models.food_drug_interaction import (
@@ -19,6 +20,7 @@ from app.models.profiles import Profile
 from app.models.users import User
 
 __all__ = [
+    "ALL_DUR_MODELS",
     "ChatMessage",
     "ChatSession",
     "ContentCategory",

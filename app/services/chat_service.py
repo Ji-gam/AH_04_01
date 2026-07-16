@@ -119,8 +119,8 @@ class ChatService:
         # 이력 조회 응답과 동일하게 여기서도 API 경계에서 소문자로 변환한다.
         history_payload = [{"role": m.role.value.lower(), "content": m.content} for m in history]
 
-        dur_warnings = self._collect_dur_warnings(
-            context["medications"], context["is_pregnant"], context["is_geriatric"]
+        dur_warnings = await self._collect_dur_warnings(
+            session, context["medications"], context["is_pregnant"], context["is_geriatric"]
         )
         interaction_warnings = await self._collect_interaction_warnings(context["medications"])
         injected_context = [f"[DUR 안전 경고 정보] 복용 약물 중 위험 경고 발견: {w}" for w in dur_warnings] + [
@@ -179,7 +179,9 @@ class ChatService:
             return _STREAM_INTERRUPTED_NOTICE
         return f"{full_response}\n\n{_STREAM_INTERRUPTED_NOTICE}"
 
-    def _collect_dur_warnings(self, meds: list[dict], is_pregnant: bool, is_geriatric: bool) -> list[str]:
+    async def _collect_dur_warnings(
+        self, session: AsyncSession, meds: list[dict], is_pregnant: bool, is_geriatric: bool
+    ) -> list[str]:
         if not ((is_pregnant or is_geriatric) and meds):
             return []
 
@@ -187,7 +189,9 @@ class ChatService:
         for med in meds:
             med_name = med.get("name", "")
             dur_warnings.extend(
-                self._dur_drug_repository.find_dur_warnings(med_name, pregnant=is_pregnant, geriatric=is_geriatric)
+                await self._dur_drug_repository.find_dur_warnings(
+                    session, med_name, pregnant=is_pregnant, geriatric=is_geriatric
+                )
             )
         return list(set(dur_warnings))
 

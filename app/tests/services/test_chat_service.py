@@ -445,17 +445,17 @@ class FakeDurDrugRepository:
         self._warnings = warnings
         self.received_calls: list[tuple[str, bool, bool]] = []
 
-    def find_dur_warnings(self, item_name: str, *, pregnant: bool, geriatric: bool) -> list[str]:
+    async def find_dur_warnings(self, session, item_name: str, *, pregnant: bool, geriatric: bool) -> list[str]:
         self.received_calls.append((item_name, pregnant, geriatric))
         return self._warnings
 
 
-def test_collect_dur_warnings_gates_on_pregnant_flag():
+async def test_collect_dur_warnings_gates_on_pregnant_flag():
     """임부금기 게이팅 로직 자체(진짜 프로필로는 재현 불가)를 직접 검증한다."""
     fake_dur_repo = FakeDurDrugRepository(["[임부금기 경고] 콘서타: 테스트용 경고 문구"])
     service = ChatService(dur_drug_repository=cast(DurDrugRepository, fake_dur_repo))
 
-    warnings = service._collect_dur_warnings([{"name": "콘서타"}], is_pregnant=True, is_geriatric=False)
+    warnings = await service._collect_dur_warnings(None, [{"name": "콘서타"}], is_pregnant=True, is_geriatric=False)
 
     assert warnings == ["[임부금기 경고] 콘서타: 테스트용 경고 문구"]
     assert fake_dur_repo.received_calls == [("콘서타", True, False)]

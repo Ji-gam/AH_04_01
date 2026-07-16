@@ -7,6 +7,8 @@ from app.core.db import databases
 from app.main import app
 from app.models.base import Base
 from app.models.disease_entries import SEED_DISEASE_SUBTYPES, DiseaseSubtype
+from app.models.dur import ALL_DUR_MODELS
+from app.scripts.seed_dur import seed_dur
 from app.scripts.seed_food_drug_interaction import seed_food_drug_interaction
 from app.services.medication_service import refresh_food_drug_interaction_cache
 
@@ -16,6 +18,7 @@ _FOOD_DRUG_REFERENCE_TABLES = {
     "food_drug_ingredients",
     "food_drug_food_items",
 }
+_DUR_REFERENCE_TABLES = {model.__tablename__ for model in ALL_DUR_MODELS}
 
 TEST_DATABASE_URL = f"mysql+asyncmy://{config.DB_USER}:{config.DB_PASSWORD}@{config.DB_HOST}:{config.DB_PORT}/test"
 
@@ -46,6 +49,10 @@ async def prepare_database():
     async with TestSessionLocal() as session:
         await refresh_food_drug_interaction_cache(session)
 
+    # DUR 참조 데이터도 실제 `drugs_full.db`(전체 수집본)를 그대로 테스트 DB에 시딩한다 -
+    # `dur_prod_usjnt_taboo`가 80만 행대라 세션당 1회뿐이라도 시간이 걸릴 수 있다.
+    await seed_dur(session_factory=TestSessionLocal)
+
     yield
     await test_engine.dispose()
 
@@ -66,10 +73,15 @@ async def clean_tables():
     yield
     async with TestSessionLocal() as session:
         for table in reversed(Base.metadata.sorted_tables):
-            # disease_subtypes/food_drug_*는 시드 참조데이터라 테스트 사이에 지우지 않는다 -
-            # 지우면 매번 새로 심어야 하고(food_drug_*는 세션 시작 시 1회만 시딩), 캐시된
-            # `_food_drug_interaction_repository`가 이제 빈 DB를 가리키게 되어 불일치가 생긴다.
-            if table.name == "disease_subtypes" or table.name in _FOOD_DRUG_REFERENCE_TABLES:
+            # disease_subtypes/food_drug_*/DUR 테이블은 시드 참조데이터라 테스트 사이에 지우지
+            # 않는다 - 지우면 매번 새로 심어야 하고(세션 시작 시 1회만 시딩, DUR은 80만 행대라
+            # 특히 비용이 큼), 캐시된 `_food_drug_interaction_repository`가 이제 빈 DB를 가리키게
+            # 되어 불일치가 생긴다.
+            if (
+                table.name == "disease_subtypes"
+                or table.name in _FOOD_DRUG_REFERENCE_TABLES
+                or table.name in _DUR_REFERENCE_TABLES
+            ):
                 continue
             await session.execute(table.delete())
         await session.commit()

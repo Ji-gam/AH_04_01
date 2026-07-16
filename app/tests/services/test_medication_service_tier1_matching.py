@@ -14,10 +14,10 @@ class _FakeDurDrugRepository:
     def __init__(self, items: list[tuple[str, str]]):
         self._items = items
 
-    def search_item_names(self, item_name: str, limit: int) -> list[tuple[str, str]]:
+    async def search_item_names(self, session, item_name: str, limit: int) -> list[tuple[str, str]]:
         return [(seq, name) for seq, name in self._items if item_name in name][:limit]
 
-    def search_item_names_by_prefix(self, prefix: str, limit: int) -> list[tuple[str, str]]:
+    async def search_item_names_by_prefix(self, session, prefix: str, limit: int) -> list[tuple[str, str]]:
         return [(seq, name) for seq, name in self._items if name.startswith(prefix)][:limit]
 
 

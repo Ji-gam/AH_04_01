@@ -109,13 +109,17 @@ docker-compose up -d --build
 # 음식-약물 상호작용 참조 테이블 (식약처 가이드북 기반) — 매칭 기능이 실제로 동작하려면 필수
 docker compose exec fastapi uv run python -m app.scripts.seed_food_drug_interaction
 
+# DUR(의약품안전사용서비스) 참조 테이블 — app/database/drugs_full.db(공공데이터포털 API 22종
+# 전수 수집본, scripts/drug_info_sync/orchestrate_pipeline.py)가 있어야 실행 가능
+docker compose exec fastapi uv run python -m app.scripts.seed_dur
+
 # 개발/테스트용 데모 계정 3개 + 습관·복약·알림·AI상담 더미 데이터 — 기능 화면을 바로 확인하고 싶을 때(선택)
 docker compose exec fastapi uv run python -m app.scripts.seed_demo_data
 ```
 
-두 스크립트 모두 재실행해도 안전합니다(이미 있는 데이터는 건너뜀 — 단, `seed_food_drug_interaction`은
-참조 테이블 전체를 지우고 다시 채우는 방식으로 "안전"합니다. 데모 계정과 달리 정적 참조 데이터라
-증분 갱신할 이유가 없기 때문).
+세 스크립트 모두 재실행해도 안전합니다(이미 있는 데이터는 건너뜀 — 단, `seed_food_drug_interaction`과
+`seed_dur`은 참조 테이블 전체를 지우고 다시 채우는 방식으로 "안전"합니다. 데모 계정과 달리 정적
+참조 데이터라 증분 갱신할 이유가 없기 때문).
 
 #### ⚠️ RAG 벡터 시딩 (최초 1회, 팀원 각자 로컬에서)
 
