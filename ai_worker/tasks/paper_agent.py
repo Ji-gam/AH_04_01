@@ -84,7 +84,7 @@ async def ask_paper_agent(question: str) -> str:
     classification = await classify_query(question)
 
     if _is_valid_disease(classification.disease) and classification.is_information_request:
-        paper_result = search_disease_paper.invoke({"disease": classification.disease})
+        paper_result = await search_disease_paper.ainvoke({"disease": classification.disease})
         llm = _build_llm()
         answer = await llm.ainvoke(
             [

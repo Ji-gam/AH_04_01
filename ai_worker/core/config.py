@@ -20,6 +20,12 @@ class Config(BaseSettings):
     # 바뀌면 거리 스케일도 달라지므로 값이 코드에 박히지 않도록 config로 뺀다.
     RAG_SIMILARITY_THRESHOLD: float = 1.4
 
+    # PubMed E-utilities (T-LLM-7-3). 키 없이도 동작(3req/sec 제한), 무료 키 등록 시
+    # 10req/sec로 완화된다(https://www.ncbi.nlm.nih.gov/account/settings/).
+    PUBMED_API_KEY: str | None = None
+    # esearch/efetch 각각에 적용되는 타임아웃(순차 2회 호출이라 총 지연은 최대 2배).
+    PUBMED_TIMEOUT: float = 8.0
+
 
 # 글로벌 싱글톤 인스턴스 생성
 settings = Config()
