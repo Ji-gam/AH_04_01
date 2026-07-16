@@ -359,9 +359,7 @@ export default function ChatPage() {
                 {m.sources && m.sources.length > 0 && (
                   <div style={{ position: "relative", display: "inline-block", marginTop: "6px" }}>
                     <button
-                      onClick={() =>
-                        setExpandedSourcesIndex(expandedSourcesIndex === i ? null : i)
-                      }
+                      onClick={() => setExpandedSourcesIndex(expandedSourcesIndex === i ? null : i)}
                       style={{
                         fontSize: "11px",
                         padding: "3px 10px",
@@ -404,7 +402,9 @@ export default function ChatPage() {
                               gap: "8px",
                             }}
                           >
-                            <span style={{ fontSize: "12px", color: pinkTheme.text, lineHeight: 1.3 }}>
+                            <span
+                              style={{ fontSize: "12px", color: pinkTheme.text, lineHeight: 1.3 }}
+                            >
                               {s.name}
                             </span>
                             {s.url && (
