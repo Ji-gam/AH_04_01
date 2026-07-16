@@ -1,32 +1,27 @@
 from pydantic import BaseModel
 
 
-class RetrieveRequest(BaseModel):
-    query: str
-    limit: int = 3
-
-
 class DocumentChunk(BaseModel):
     content: str
     metadata: dict
 
 
-class RetrieveResponse(BaseModel):
-    chunks: list[DocumentChunk]
-
-
-class PaperAgentRequest(BaseModel):
-    question: str
-
-
-class PaperSourceRef(BaseModel):
-    """답변 생성에 쓰인 논문 1건의 출처 각주. url이 없는 소스가 나중에 추가될 수 있어
-    optional로 둔다 — 프론트엔드는 url이 있으면 [바로가기] 버튼을, 없으면 name만 표시한다."""
+class SourceRef(BaseModel):
+    """답변 생성에 쓰인 자료 1건의 출처 각주. DUR은 url이 없고(name만), 논문은 PubMed
+    URL이 있다 — url이 없는 소스도 있을 수 있어 optional로 둔다. 프론트엔드는 url이
+    있으면 [바로가기] 버튼을, 없으면 name만 표시한다."""
 
     name: str
     url: str | None = None
 
 
-class PaperAgentResponse(BaseModel):
-    answer: str
-    sources: list[PaperSourceRef]
+class ChatCompletionRequest(BaseModel):
+    """T-LLM-7-3-2: 통합 RAG 스트리밍 채팅 요청. DUR/논문 검색과 최종 답변 생성을
+    이 하나의 요청으로 전부 처리한다(기존 /retrieve, /agent/paper-search를 대체).
+    개인화 컨텍스트(진단병력/복약정보 등)와 개인 DUR 경고(SQL 조회 기반이라 ai_worker가
+    직접 계산 못 함)는 호출자(app/)가 만들어서 넘긴다."""
+
+    message: str
+    context: dict
+    history: list[dict]
+    injected_context: list[str] = []

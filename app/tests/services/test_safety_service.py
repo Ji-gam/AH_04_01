@@ -15,7 +15,7 @@ from app.services import safety_service
         "호흡곤란이 와요",
         "의식이 없어요",  # 기존
         "갑자기 쓰러졌어요",
-        "죽고 싶어요",  # 자살 위험 — fallback 1393 안내 대상
+        "죽고 싶어요",  # 자살 위험 — fallback 상담전화 안내 대상
     ],
 )
 def test_check_emergency_detects_variants(message):

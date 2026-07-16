@@ -37,10 +37,7 @@ class Config(BaseSettings):
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 14 * 24 * 60
     JWT_LEEWAY: int = 5
 
-    # T-LLM-2: 설정 안 하면 app/services/llm_stub.py가 고정 문자열 stub으로 폴백한다.
-    OPENAI_API_KEY: str | None = None
     OPENAI_EMBEDDING_API_KEY: str | None = None
-    OPENAI_MODEL: str = "gpt-4o-mini"
 
     # T-MED-4: 공공데이터포털(data.go.kr) 서비스키. 의약품 낱알식별 API와 의약품제품
     # 허가정보 API가 같은 계정의 서비스키를 공유한다. 설정 안 하면
@@ -48,12 +45,10 @@ class Config(BaseSettings):
     PUBLIC_DATA_API_KEY: str | None = None
 
     # T-LLM-2-async-gateway: ai-worker 서비스 기본 URL (docker-compose 네트워크 내부 호스트명).
-    # AIWorkerGateway가 여기에 /retrieve, /generate-structured 경로를 붙여 호출한다.
+    # AIWorkerGateway가 여기에 /agent/chat, /generate-structured 경로를 붙여 호출한다.
     AI_WORKER_BASE_URL: str = "http://ai-worker:8001"
-    # ai-worker 호출 타임아웃을 용도별로 분리한다. /retrieve는 벡터 검색이라 짧게,
-    # /generate-structured는 LLM 생성이라 5초를 흔히 넘기므로 넉넉히 둔다(정상 생성이
-    # 타임아웃으로 오인돼 AIWorkerUnavailableError가 나던 문제 방지).
-    AI_WORKER_RETRIEVE_TIMEOUT: float = 5.0
+    # /generate-structured, /agent/chat(RAG 검색+LLM 생성이라 5초를 흔히 넘김) 공통
+    # 타임아웃(정상 생성이 타임아웃으로 오인돼 AIWorkerUnavailableError가 나던 문제 방지).
     AI_WORKER_GENERATE_TIMEOUT: float = 60.0
     # T-LLM-2-async-gateway: Celery 브로커. docker-compose의 기존 redis 서비스를 재사용한다.
     CELERY_BROKER_URL: str = "redis://redis:6379/0"

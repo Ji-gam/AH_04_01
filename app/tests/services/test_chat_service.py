@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Any, cast
 
 from app.models.chat import MessageRole
 from app.models.profiles import Disease
@@ -9,19 +9,34 @@ from app.repositories.dur_drug_repository import DurDrugRepository
 from app.repositories.medication_repository import MedicationRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.services.ai_worker_gateway import AIWorkerGateway, AIWorkerUnavailableError
-from app.services.chat_service import ChatService, EmergencyClassification, MedicalRelatednessClassification
+from app.services.chat_service import ChatService, MedicalRelatednessClassification
 from app.services.safety_service import DISCLAIMER_TEXT, EMERGENCY_FALLBACK_MESSAGE
 
 
+@dataclass
+class FakeChatMessage:
+    role: MessageRole
+    content: str
+
+
 class FakeChatRepository:
-    def __init__(self) -> None:
-        self.saved_messages: list[tuple[int, MessageRole, str]] = []
+    def __init__(self, history: list[FakeChatMessage] | None = None) -> None:
+        self.saved_messages: list[tuple[int, MessageRole, str, list[dict] | None, str | None]] = []
+        self._history = history or []
 
-    async def save_message(self, session, session_id: int, role: MessageRole, content: str) -> None:
-        self.saved_messages.append((session_id, role, content))
+    async def save_message(
+        self,
+        session,
+        session_id: int,
+        role: MessageRole,
+        content: str,
+        sources: list[dict] | None = None,
+        disclaimer: str | None = None,
+    ) -> None:
+        self.saved_messages.append((session_id, role, content, sources, disclaimer))
 
-    async def list_messages(self, session, session_id: int, limit: int = 20) -> list[str]:
-        return []
+    async def list_messages(self, session, session_id: int, limit: int = 20) -> list[FakeChatMessage]:
+        return self._history
 
 
 @dataclass
@@ -69,67 +84,61 @@ class FakeMedicationRepository:
         return self._schedules.get(profile_id, [])
 
 
+_DEFAULT_STREAM_CHUNKS: list[dict] = [
+    {"type": "sources", "sources": []},
+    {"type": "token", "content": "fake-llm-reply"},
+]
+
+
 class FakeRetriever:
-    """`call_structured`는 기본적으로 응급=False/의료관련=True를 반환한다("두통약 뭐가 좋아요?"
-    같은 기존 테스트 메시지들이 면책문구를 받는다고 가정하던 동작을 그대로 유지하기 위함).
-    `raise_on_structured`를 주면 두 분류 호출 모두 그 예외를 던져 ai_worker 장애 상황을 재현한다."""
+    """`call_structured`는 기본적으로 의료관련=True를 반환한다. `raise_on_structured`를
+    주면 그 예외를 던져 ai_worker 장애 상황을 재현한다(의료관련성 분류에만 쓰인다 —
+    응급 판정은 키워드 전용이라 더 이상 `call_structured`를 타지 않는다).
+    `stream_chunks`는 `ai_worker`의 통합 RAG 스트리밍(`/agent/chat`) 응답을 그대로 흉내낸다."""
 
     def __init__(
         self,
-        is_emergency: bool = False,
         is_medical_related: bool = True,
         raise_on_structured: Exception | None = None,
-        paper_result: dict | None = None,
-        raise_on_paper_agent: Exception | None = None,
+        stream_chunks: list[dict] | None = None,
+        raise_after_stream_chunks: Exception | None = None,
     ) -> None:
-        self.is_emergency = is_emergency
         self.is_medical_related = is_medical_related
         self.raise_on_structured = raise_on_structured
         self.structured_calls: list[tuple[str, str, type]] = []
-        # 기본은 "논문 검색 범위 밖"(sources 빈 목록) — 기존 테스트가 전제하는 일반
-        # DUR RAG 흐름을 그대로 타도록 한다.
-        self.paper_result = paper_result if paper_result is not None else {"answer": "", "sources": []}
-        self.raise_on_paper_agent = raise_on_paper_agent
-        self.paper_agent_calls: list[str] = []
-
-    async def search(self, query: str) -> list[dict]:
-        return [{"content": "fake-chunk-1", "metadata": {"source": "fake_source.csv"}}]
+        self.stream_chunks = stream_chunks if stream_chunks is not None else list(_DEFAULT_STREAM_CHUNKS)
+        self.raise_after_stream_chunks = raise_after_stream_chunks
+        self.stream_chat_calls: list[tuple[str, dict, list[dict], list[str]]] = []
 
     async def call_structured(self, system_prompt: str, user_input: str, schema: type):
         self.structured_calls.append((system_prompt, user_input, schema))
         if self.raise_on_structured is not None:
             raise self.raise_on_structured
-        if schema is EmergencyClassification:
-            return EmergencyClassification(is_emergency=self.is_emergency)
         if schema is MedicalRelatednessClassification:
             return MedicalRelatednessClassification(is_medical_related=self.is_medical_related)
         raise AssertionError(f"예상치 못한 schema: {schema}")
 
-    async def ask_paper_agent(self, question: str) -> dict:
-        self.paper_agent_calls.append(question)
-        if self.raise_on_paper_agent is not None:
-            raise self.raise_on_paper_agent
-        return self.paper_result
-
-
-async def fake_llm_stream(message: str, context: dict, chunks: list[str]):
-    for char in "fake-llm-reply":
-        yield char
+    async def stream_chat(
+        self, message: str, context: dict, history: list[dict], injected_context: list[str]
+    ) -> AsyncIterator[dict]:
+        self.stream_chat_calls.append((message, context, history, injected_context))
+        for chunk in self.stream_chunks:
+            yield chunk
+        if self.raise_after_stream_chunks is not None:
+            raise self.raise_after_stream_chunks
 
 
 def _build_service(
     repository: FakeChatRepository,
     profile_repository: FakeProfileRepository | None = None,
     medication_repository: FakeMedicationRepository | None = None,
-    llm_stream=fake_llm_stream,
     dur_drug_repository=None,
     retriever: FakeRetriever | None = None,
 ) -> ChatService:
     # Fake들은 실제 클래스와 시그니처만 맞춘 덕타이핑 객체라 mypy 통과용으로 cast한다.
-    kwargs = dict(
+    kwargs: dict[str, Any] = dict(
         repository=cast(ChatRepository, repository),
         retriever=cast(AIWorkerGateway, retriever or FakeRetriever()),
-        llm_stream=llm_stream,
         profile_repository=cast(ProfileRepository, profile_repository or FakeProfileRepository()),
         medication_repository=cast(MedicationRepository, medication_repository or FakeMedicationRepository()),
     )
@@ -143,8 +152,10 @@ async def _collect(stream: AsyncIterator[dict]) -> list[dict]:
 
 
 async def test_emergency_keyword_short_circuits_without_saving():
+    """응급 판정은 키워드 전용이다(속도 우선 결정, 2026-07-16) — LLM 호출 자체가 없다."""
     repository = FakeChatRepository()
-    service = _build_service(repository)
+    retriever = FakeRetriever()
+    service = _build_service(repository, retriever=retriever)
 
     chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="가슴 통증 있어요"))
 
@@ -152,27 +163,128 @@ async def test_emergency_keyword_short_circuits_without_saving():
         {"type": "emergency_fallback", "content": EMERGENCY_FALLBACK_MESSAGE, "disclaimer": DISCLAIMER_TEXT}
     ]
     assert repository.saved_messages == []
+    # 응급이면 ai_worker에 RAG+생성 스트리밍 요청도, LLM 분류 호출도 전혀 보내지 않는다.
+    assert retriever.stream_chat_calls == []
+    assert retriever.structured_calls == []
 
 
-async def test_normal_message_streams_tokens_and_saves_conversation():
+async def test_normal_message_streams_sources_then_tokens_and_saves_conversation():
+    """sources는 ai_worker가 보낸 그대로 전달되고(본문 텍스트에 섞이지 않음),
+    저장되는 답변 내용도 순수 LLM 답변 텍스트뿐이다(옛 "[출처: ...]" 텍스트 접미사는 사라짐).
+    출처와 면책 문구 자체도 assistant 메시지와 함께 저장돼야 과거 대화를 다시 불러올 때
+    칩/면책 문구가 복원된다(버그: 과거엔 sources/disclaimer가 DB에 저장되지 않아 히스토리
+    로드 시 둘 다 사라졌음, 2026-07-16)."""
     repository = FakeChatRepository()
     profiles = FakeProfileRepository({1: FakeProfile(id=1, name="사용자")})
-    service = _build_service(repository, profile_repository=profiles)
+    stream_chunks = [
+        {"type": "sources", "sources": [{"name": "식약처 DUR 노인주의 정보", "url": None}]},
+        {"type": "token", "content": "fake-"},
+        {"type": "token", "content": "llm-reply"},
+    ]
+    retriever = FakeRetriever(stream_chunks=stream_chunks)
+    service = _build_service(repository, profile_repository=profiles, retriever=retriever)
 
     chunks = await _collect(
         service.stream_reply(session=None, profile_id=1, session_id=10, message="두통약 뭐가 좋아요?")
     )
 
+    assert chunks[0] == stream_chunks[0]
     assert chunks[-1] == {"type": "done", "content": "", "disclaimer": DISCLAIMER_TEXT}
     token_chunks = [c for c in chunks if c["type"] == "token"]
-    assert len(token_chunks) > 0
-
     full_reply = "".join(c["content"] for c in token_chunks)
-    assert "[출처: fake_source.csv]" in full_reply
+    assert full_reply == "fake-llm-reply"
     assert repository.saved_messages == [
-        (10, MessageRole.USER, "두통약 뭐가 좋아요?"),
-        (10, MessageRole.ASSISTANT, full_reply),
+        (10, MessageRole.USER, "두통약 뭐가 좋아요?", None, None),
+        (
+            10,
+            MessageRole.ASSISTANT,
+            "fake-llm-reply",
+            [{"name": "식약처 DUR 노인주의 정보", "url": None}],
+            DISCLAIMER_TEXT,
+        ),
     ]
+
+
+async def test_medical_response_saves_disclaimer_with_assistant_message():
+    """면책 문구도 sources와 같은 이유로 assistant 메시지에 저장돼야 한다 — 과거엔 "done"
+    청크로만 내보내고 저장하지 않아 히스토리를 다시 불러오면 면책 문구가 사라졌다(2026-07-16)."""
+    repository = FakeChatRepository()
+    stream_chunks = [
+        {"type": "sources", "sources": [{"name": "식약처 DUR 노인주의 정보", "url": None}]},
+        {"type": "token", "content": "약물 답변"},
+    ]
+    retriever = FakeRetriever(stream_chunks=stream_chunks, is_medical_related=True)
+    service = _build_service(repository, retriever=retriever)
+
+    chunks = await _collect(
+        service.stream_reply(session=None, profile_id=1, session_id=10, message="타이레놀 먹어도 되나요?")
+    )
+
+    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": DISCLAIMER_TEXT}
+    saved_disclaimer = repository.saved_messages[-1][4]
+    assert saved_disclaimer == DISCLAIMER_TEXT
+
+
+async def test_normal_message_saves_none_sources_when_no_rag_matches():
+    """RAG 매칭이 하나도 없으면 빈 배열이 아니라 None으로 저장한다(스트림 응답 자체는
+    그대로 빈 배열 chunk를 유지 — 프론트 프로토콜은 안 바뀜)."""
+    repository = FakeChatRepository()
+    retriever = FakeRetriever()  # 기본 stream_chunks: sources=[]
+
+    service = _build_service(repository, retriever=retriever)
+
+    await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="잡담"))
+
+    assert repository.saved_messages[-1] == (10, MessageRole.ASSISTANT, "fake-llm-reply", None, None)
+
+
+async def test_stream_reply_lowercases_history_roles_for_openai_compatibility():
+    """MessageRole enum 값 자체가 "USER"/"ASSISTANT"(대문자)인데, ai_worker가 이 history를
+    그대로 OpenAI 메시지 role에 spread하므로 소문자가 아니면 두 번째 턴부터 OpenAI가
+    거부한다(400) — API 경계에서 반드시 소문자로 변환해야 한다."""
+    repository = FakeChatRepository(
+        history=[
+            FakeChatMessage(role=MessageRole.USER, content="이전 질문"),
+            FakeChatMessage(role=MessageRole.ASSISTANT, content="이전 답변"),
+        ]
+    )
+    retriever = FakeRetriever()
+    service = _build_service(repository, retriever=retriever)
+
+    await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="다음 질문"))
+
+    _, _, history_payload, _ = retriever.stream_chat_calls[0]
+    assert history_payload == [
+        {"role": "user", "content": "이전 질문"},
+        {"role": "assistant", "content": "이전 답변"},
+    ]
+
+
+async def test_stream_reply_passes_history_context_and_injected_dur_warnings():
+    repository = FakeChatRepository()
+    profiles = FakeProfileRepository({2: FakeProfile(id=2, name="어르신", age=75)})
+    medications = FakeMedicationRepository({2: [FakeMedicationSchedule(medication=FakeMedication("아스피린"))]})
+    fake_dur_repo = FakeDurDrugRepository(["[노인주의 경고] 아스피린: 테스트용 경고 문구"])
+    retriever = FakeRetriever()
+    service = _build_service(
+        repository,
+        profile_repository=profiles,
+        medication_repository=medications,
+        dur_drug_repository=fake_dur_repo,
+        retriever=retriever,
+    )
+
+    await _collect(
+        service.stream_reply(session=None, profile_id=2, session_id=11, message="아스피린 먹어도 괜찮은지 물어봅니다.")
+    )
+
+    assert len(retriever.stream_chat_calls) == 1
+    message, context, history, injected_context = retriever.stream_chat_calls[0]
+    assert message == "아스피린 먹어도 괜찮은지 물어봅니다."
+    assert context["name"] == "어르신"
+    assert history == []
+    assert any("[노인주의 경고] 아스피린" in c for c in injected_context)
+    assert fake_dur_repo.received_calls == [("아스피린", False, True)]
 
 
 def test_is_medical_related_fallback():
@@ -210,43 +322,117 @@ async def test_check_if_medical_related_falls_back_to_keyword_when_ai_worker_una
     assert await service._check_if_medical_related_via_llm("오늘 날씨 어때?", "맑고 따뜻합니다.") is False
 
 
-async def test_emergency_llm_check_catches_phrase_outside_keyword_list():
-    """키워드 목록에 없는 표현도 ai_worker LLM 판정이 응급으로 잡으면 short-circuit한다."""
+async def test_medical_relatedness_uses_llm_when_ai_worker_sources_present():
+    """DUR/논문 출처가 하나라도 있으면 정밀도를 위해 LLM 분류를 호출한다."""
     repository = FakeChatRepository()
-    retriever = FakeRetriever(is_emergency=True)
+    stream_chunks = [
+        {"type": "sources", "sources": [{"name": "식약처 DUR 노인주의 정보", "url": None}]},
+        {"type": "token", "content": "답변"},
+    ]
+    retriever = FakeRetriever(stream_chunks=stream_chunks, is_medical_related=True)
     service = _build_service(repository, retriever=retriever)
 
-    chunks = await _collect(
-        service.stream_reply(session=None, profile_id=1, session_id=10, message="갑자기 말이 잘 안 나와요")
+    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="질문"))
+
+    assert retriever.structured_calls
+    assert retriever.structured_calls[-1][2] is MedicalRelatednessClassification
+    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": DISCLAIMER_TEXT}
+
+
+async def test_medical_relatedness_skips_llm_when_no_sources_at_all():
+    """출처가 전혀 없으면(RAG 매칭 0건, 개인 DUR 경고도 없음) 매 턴 ~1초짜리 LLM 왕복을
+    아끼기 위해 호출 없이 키워드 폴백만 쓴다."""
+    repository = FakeChatRepository()
+    stream_chunks = [
+        {"type": "sources", "sources": []},
+        {"type": "token", "content": "오늘 날씨는 맑습니다"},
+    ]
+    retriever = FakeRetriever(stream_chunks=stream_chunks)
+    service = _build_service(repository, retriever=retriever)
+
+    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="오늘 날씨 어때?"))
+
+    assert retriever.structured_calls == []
+    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": ""}
+
+
+async def test_medical_relatedness_uses_llm_when_injected_dur_warning_present_even_without_ai_worker_sources():
+    """개인 DUR 경고(SQL 조회)가 있으면 ai_worker의 sources가 비어 있어도 LLM 분류를 쓴다
+    (개인 경고 자체가 이미 의료 관련 콘텐츠라는 신호이기 때문)."""
+    repository = FakeChatRepository()
+    profiles = FakeProfileRepository({2: FakeProfile(id=2, name="어르신", age=75)})
+    medications = FakeMedicationRepository({2: [FakeMedicationSchedule(medication=FakeMedication("아스피린"))]})
+    fake_dur_repo = FakeDurDrugRepository(["[노인주의 경고] 아스피린: 테스트용 경고 문구"])
+    stream_chunks = [{"type": "sources", "sources": []}, {"type": "token", "content": "답변"}]
+    retriever = FakeRetriever(stream_chunks=stream_chunks, is_medical_related=True)
+    service = _build_service(
+        repository,
+        profile_repository=profiles,
+        medication_repository=medications,
+        dur_drug_repository=fake_dur_repo,
+        retriever=retriever,
     )
 
-    assert chunks == [
-        {"type": "emergency_fallback", "content": EMERGENCY_FALLBACK_MESSAGE, "disclaimer": DISCLAIMER_TEXT}
-    ]
-    assert repository.saved_messages == []
+    await _collect(service.stream_reply(session=None, profile_id=2, session_id=11, message="아스피린 먹어도 되나요"))
+
+    assert retriever.structured_calls
+    assert retriever.structured_calls[-1][2] is MedicalRelatednessClassification
 
 
-async def test_ai_worker_unavailable_falls_back_to_keyword_only_emergency_gating():
-    """ai_worker가 응답 불가면 응급 판정은 키워드 결과만으로 게이팅한다(전체 채팅을 막지 않음)."""
+async def test_stream_reply_saves_partial_content_when_ai_worker_reports_inband_error():
+    """ai_worker가 스트림 도중 {"type": "error", ...}를 보내면(상태 코드로는 이미 알릴 수
+    없는 시점) 그때까지 받은 토큰만 살려서 저장하고, 중단 안내문을 이어붙인다."""
     repository = FakeChatRepository()
-    profiles = FakeProfileRepository({1: FakeProfile(id=1, name="사용자")})
-    retriever = FakeRetriever(raise_on_structured=AIWorkerUnavailableError("down"), is_medical_related=False)
-    service = _build_service(repository, profile_repository=profiles, retriever=retriever)
+    stream_chunks = [
+        {"type": "sources", "sources": []},
+        {"type": "token", "content": "부분 답변"},
+        {"type": "error", "content": "OpenAI 오류"},
+    ]
+    retriever = FakeRetriever(stream_chunks=stream_chunks)
+    service = _build_service(repository, retriever=retriever)
 
-    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="안녕하세요"))
+    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="질문"))
 
-    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": ""}
-    assert repository.saved_messages != []
+    assert chunks[-1]["type"] == "done"
+    saved_answer = repository.saved_messages[-1][2]
+    assert saved_answer.startswith("부분 답변")
+    assert "중단되었습니다" in saved_answer
 
 
-class SpyLlmStream:
-    def __init__(self):
-        self.received_chunks = []
+async def test_stream_reply_saves_partial_content_when_stream_connection_fails_midway():
+    """ai_worker와의 연결 자체가 스트림 도중 끊기면(AIWorkerUnavailableError) 그때까지
+    받은 토큰만 살려서 저장하고, 중단 안내문을 이어붙인다."""
+    repository = FakeChatRepository()
+    stream_chunks = [
+        {"type": "sources", "sources": []},
+        {"type": "token", "content": "일부만 "},
+        {"type": "token", "content": "도착함"},
+    ]
+    retriever = FakeRetriever(
+        stream_chunks=stream_chunks, raise_after_stream_chunks=AIWorkerUnavailableError("dropped")
+    )
+    service = _build_service(repository, retriever=retriever)
 
-    async def __call__(self, message: str, context: dict, chunks: list[str]):
-        self.received_chunks = chunks
-        for char in "fake-llm-reply":
-            yield char
+    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="질문"))
+
+    assert chunks[-1]["type"] == "done"
+    saved_answer = repository.saved_messages[-1][2]
+    assert saved_answer.startswith("일부만 도착함")
+    assert "중단되었습니다" in saved_answer
+
+
+async def test_stream_reply_saves_interruption_notice_when_connection_fails_before_any_token():
+    """토큰이 하나도 오기 전에 연결이 끊겨도(예: 첫 요청부터 실패) 빈 답변을 저장하는
+    대신 중단 안내문을 답변으로 남긴다."""
+    repository = FakeChatRepository()
+    retriever = FakeRetriever(stream_chunks=[], raise_after_stream_chunks=AIWorkerUnavailableError("down"))
+    service = _build_service(repository, retriever=retriever)
+
+    await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="질문"))
+
+    saved_answer = repository.saved_messages[-1][2]
+    assert "중단되었습니다" in saved_answer
+    assert not saved_answer.startswith("\n")
 
 
 class FakeDurDrugRepository:
@@ -257,99 +443,6 @@ class FakeDurDrugRepository:
     def find_dur_warnings(self, item_name: str, *, pregnant: bool, geriatric: bool) -> list[str]:
         self.received_calls.append((item_name, pregnant, geriatric))
         return self._warnings
-
-
-async def test_dur_warning_injected_for_geriatric_profile():
-    """실제 Profile.age(>=65)로 판별되는 고령자는 복용 약물에 DUR 경고가 있으면 주입된다.
-    (임신 여부는 Profile 스키마에 실제 데이터가 없어 이 경로로 테스트할 수 없다 — #71 참고,
-    게이팅 로직 자체는 test_collect_dur_warnings_gates_on_pregnant_flag가 커버한다.)"""
-    repository = FakeChatRepository()
-    spy_llm = SpyLlmStream()
-    profiles = FakeProfileRepository({2: FakeProfile(id=2, name="어르신", age=75)})
-    medications = FakeMedicationRepository({2: [FakeMedicationSchedule(medication=FakeMedication("아스피린"))]})
-    fake_dur_repo = FakeDurDrugRepository(["[노인주의 경고] 아스피린: 테스트용 경고 문구"])
-
-    service = _build_service(
-        repository,
-        profile_repository=profiles,
-        medication_repository=medications,
-        llm_stream=spy_llm,
-        dur_drug_repository=fake_dur_repo,
-    )
-
-    chunks = await _collect(
-        service.stream_reply(session=None, profile_id=2, session_id=11, message="아스피린 먹어도 괜찮은지 물어봅니다.")
-    )
-
-    assert chunks[-1]["type"] == "done"
-    assert chunks[-1]["disclaimer"] == DISCLAIMER_TEXT
-    assert any("[노인주의 경고]" in c for c in spy_llm.received_chunks)
-    assert fake_dur_repo.received_calls == [("아스피린", False, True)]
-
-
-async def test_paper_agent_answer_used_when_sources_present():
-    """paper-search가 sources를 반환하면(질문이 논문 검색 범위 안이라는 뜻) 그 답변+출처를
-    그대로 반환하고, 일반 DUR RAG 흐름(토큰 스트리밍)은 타지 않는다."""
-    repository = FakeChatRepository()
-    paper_sources = [{"name": "Paper A", "url": "https://pubmed.ncbi.nlm.nih.gov/111/"}]
-    retriever = FakeRetriever(paper_result={"answer": "HbA1c가 감소했습니다.", "sources": paper_sources})
-    service = _build_service(repository, retriever=retriever)
-
-    chunks = await _collect(
-        service.stream_reply(session=None, profile_id=1, session_id=10, message="당뇨 저혈당 관리 논문 알려줘")
-    )
-
-    assert chunks[0] == {"type": "paper_answer", "content": "HbA1c가 감소했습니다.", "sources": paper_sources}
-    assert chunks[-1]["type"] == "done"
-    assert not any(c["type"] == "token" for c in chunks)
-    assert repository.saved_messages == [
-        (10, MessageRole.USER, "당뇨 저혈당 관리 논문 알려줘"),
-        (10, MessageRole.ASSISTANT, "HbA1c가 감소했습니다.\n\n[출처: Paper A]"),
-    ]
-
-
-async def test_paper_agent_falls_back_to_generic_flow_when_no_sources():
-    """paper-search가 sources 없이 응답하면(범위 밖 질문) 기존 일반 DUR RAG 흐름으로 폴백한다."""
-    repository = FakeChatRepository()
-    profiles = FakeProfileRepository({1: FakeProfile(id=1, name="사용자")})
-    retriever = FakeRetriever()  # 기본값: sources=[]
-    service = _build_service(repository, profile_repository=profiles, retriever=retriever)
-
-    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="오늘 날씨 어때?"))
-
-    assert retriever.paper_agent_calls == ["오늘 날씨 어때?"]
-    assert any(c["type"] == "token" for c in chunks)
-    assert not any(c["type"] == "paper_answer" for c in chunks)
-
-
-async def test_paper_agent_unavailable_falls_back_to_generic_flow():
-    """ai_worker 논문 검색이 실패해도 전체 채팅은 막지 않고 일반 흐름으로 계속 진행한다."""
-    repository = FakeChatRepository()
-    profiles = FakeProfileRepository({1: FakeProfile(id=1, name="사용자")})
-    retriever = FakeRetriever(raise_on_paper_agent=AIWorkerUnavailableError("down"))
-    service = _build_service(repository, profile_repository=profiles, retriever=retriever)
-
-    chunks = await _collect(
-        service.stream_reply(session=None, profile_id=1, session_id=10, message="당뇨 저혈당 관리 논문 알려줘")
-    )
-
-    assert any(c["type"] == "token" for c in chunks)
-    assert not any(c["type"] == "paper_answer" for c in chunks)
-
-
-async def test_emergency_short_circuits_even_when_paper_agent_found_sources():
-    """응급이 감지되면 paper-search가 이미 sources를 찾아뒀더라도 노출하지 않고 fallback만 반환한다."""
-    repository = FakeChatRepository()
-    paper_sources = [{"name": "Paper A", "url": "https://pubmed.ncbi.nlm.nih.gov/111/"}]
-    retriever = FakeRetriever(paper_result={"answer": "논문 답변", "sources": paper_sources})
-    service = _build_service(repository, retriever=retriever)
-
-    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="가슴 통증 있어요"))
-
-    assert chunks == [
-        {"type": "emergency_fallback", "content": EMERGENCY_FALLBACK_MESSAGE, "disclaimer": DISCLAIMER_TEXT}
-    ]
-    assert repository.saved_messages == []
 
 
 def test_collect_dur_warnings_gates_on_pregnant_flag():

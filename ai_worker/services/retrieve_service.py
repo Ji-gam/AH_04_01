@@ -64,8 +64,15 @@ def ensure_db() -> Chroma:
 
 
 def search_documents(db: Chroma, query: str, limit: int) -> list[DocumentChunk]:
-    """입력된 쿼리에 대해 ChromaDB에서 가장 유사한 의약 안전 정보 문서(chunk)들을 검색합니다.
-    쿼리 내에 성분명이 식별될 경우 메타데이터 필터링을 우선 적용합니다.
+    """쿼리 내에 식별된 성분명으로 DUR 문서를 검색합니다. 성분명이 하나도 식별되지 않으면
+    검색 자체를 생략하고 빈 목록을 반환합니다.
+
+    DUR 문서는 전부 "의약품 성분 [X]는 Y 약물입니다..." 형태의 짧은 템플릿 문장이라,
+    성분명이 명시되지 않은 일반 건강 질문("당뇨병 진단받았는데 어떡하죠")으로 필터 없이
+    전체 컬렉션을 유사도 검색하면 질문과 무관한 성분이 임계값을 통과해버린다(템플릿
+    문구 자체의 유사성 때문 — 실측: "혈당 관리 운동"이 항고혈압제/항히스타민제와 매칭됨,
+    2026-07-16). DUR은 "이 특정 약이 안전한가"를 위한 자료이지 일반 건강 지식 베이스가
+    아니므로, 성분명이 식별 안 되면 애초에 관련 DUR 문서가 없다고 보는 게 맞다.
     임베딩 호환성 검증(`assert_embedding_compatible`)은 호출자(라우터) 책임이다."""
     logger.info(f"Retrieving documents for query: '{query}' (limit: {limit})")
 
@@ -84,6 +91,10 @@ def search_documents(db: Chroma, query: str, limit: int) -> list[DocumentChunk]:
             filter_dict = {"ingr_name": ingr}
             logger.info(f"Dynamic metadata filter applied: ingr_name='{ingr}'")
             break
+
+    if filter_dict is None:
+        logger.info("쿼리에서 성분명을 식별하지 못해 DUR 검색을 생략합니다.")
+        return []
 
     # 유사도 점수(Score)를 포함한 검색 수행
     docs_with_scores = db.similarity_search_with_score(query, k=limit, filter=filter_dict)

@@ -27,8 +27,18 @@ export default function ChatPage() {
   } = useChatStream({ skipRestoreOnMount: hasAutoMessageRef.current });
   const [input, setInput] = useState("");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  // T-LLM-7-3: 출처 칩을 클릭해 펼친 메시지 인덱스 집합("참고자료" 팝오버 토글).
-  const [expandedSourcesIndex, setExpandedSourcesIndex] = useState<number | null>(null);
+  // 출처 칩을 클릭해 연 메시지 인덱스 — 화면 중앙 모달로 해당 메시지의 출처 목록을 보여준다.
+  const [sourcesModalIndex, setSourcesModalIndex] = useState<number | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // LLM 응답 스트리밍이 끝나면(true -> false) 바로 다음 질문을 이어 칠 수 있도록 입력란에
+  // 포커스를 되돌린다.
+  useEffect(() => {
+    if (!isStreaming) {
+      inputRef.current?.focus();
+    }
+  }, [isStreaming]);
+
   useEffect(() => {
     const autoMessage = (location.state as { autoMessage?: string } | null)?.autoMessage;
     if (autoMessage && !autoSentRef.current) {
@@ -323,44 +333,41 @@ export default function ChatPage() {
                   marginLeft: isUser ? "auto" : "0",
                   marginRight: isUser ? "0" : "auto",
                   maxWidth: "80%",
-                  textAlign: isUser ? "right" : "left",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: isUser ? "flex-end" : "flex-start",
                 }}
               >
+                {/* 말풍선 + 출처 칩을 한 행에 나란히 배치(칩은 말풍선 옆에 위치 고정) */}
                 <div
                   style={{
-                    display: "inline-block",
-                    padding: "10px 14px",
-                    border: isUser ? "none" : `1px solid ${pinkTheme.border}`,
-                    borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
-                    background: isUser ? pinkTheme.primary : pinkTheme.cardBg,
-                    color: isUser ? "#fff" : pinkTheme.text,
-                    fontSize: "13px",
-                    whiteSpace: "pre-wrap",
-                    textAlign: "left",
-                    boxShadow: "0 1px 4px rgba(255, 111, 145, 0.08)",
+                    display: "flex",
+                    flexDirection: isUser ? "row-reverse" : "row",
+                    alignItems: "flex-end",
+                    gap: "6px",
                   }}
                 >
-                  {m.content}
-                </div>
-                {m.disclaimer && (
-                  <span
+                  <div
                     style={{
-                      display: "block",
-                      fontSize: "11px",
-                      color: pinkTheme.danger,
-                      marginTop: "4px",
-                      maxWidth: "100%",
+                      display: "inline-block",
+                      padding: "10px 14px",
+                      border: isUser ? "none" : `1px solid ${pinkTheme.border}`,
+                      borderRadius: isUser ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+                      background: isUser ? pinkTheme.primary : pinkTheme.cardBg,
+                      color: isUser ? "#fff" : pinkTheme.text,
+                      fontSize: "13px",
+                      whiteSpace: "pre-wrap",
                       textAlign: "left",
+                      boxShadow: "0 1px 4px rgba(255, 111, 145, 0.08)",
                     }}
                   >
-                    ⚠ {m.disclaimer}
-                  </span>
-                )}
-                {m.sources && m.sources.length > 0 && (
-                  <div style={{ position: "relative", display: "inline-block", marginTop: "6px" }}>
+                    {m.content}
+                  </div>
+                  {m.sources && m.sources.length > 0 && (
                     <button
-                      onClick={() => setExpandedSourcesIndex(expandedSourcesIndex === i ? null : i)}
+                      onClick={() => setSourcesModalIndex(i)}
                       style={{
+                        flexShrink: 0,
                         fontSize: "11px",
                         padding: "3px 10px",
                         borderRadius: 999,
@@ -369,64 +376,27 @@ export default function ChatPage() {
                         color: pinkTheme.primary,
                         fontWeight: 700,
                         cursor: "pointer",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       📎 출처 {m.sources.length}
                     </button>
-                    {expandedSourcesIndex === i && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: "calc(100% + 6px)",
-                          left: 0,
-                          zIndex: 10,
-                          minWidth: "220px",
-                          maxWidth: "280px",
-                          background: pinkTheme.cardBg,
-                          border: `1px solid ${pinkTheme.border}`,
-                          borderRadius: 10,
-                          padding: "8px 10px",
-                          boxShadow: "0 4px 14px rgba(90, 74, 78, 0.15)",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "6px",
-                        }}
-                      >
-                        {m.sources.map((s, si) => (
-                          <div
-                            key={si}
-                            style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              gap: "8px",
-                            }}
-                          >
-                            <span
-                              style={{ fontSize: "12px", color: pinkTheme.text, lineHeight: 1.3 }}
-                            >
-                              {s.name}
-                            </span>
-                            {s.url && (
-                              <a
-                                href={s.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{
-                                  fontSize: "11px",
-                                  color: pinkTheme.primary,
-                                  fontWeight: 700,
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                바로가기 ↗
-                              </a>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  )}
+                </div>
+                {/* 면책 문구는 항상 말풍선 아래쪽에 고정 */}
+                {m.disclaimer && (
+                  <span
+                    style={{
+                      display: "block",
+                      fontSize: "11px",
+                      color: pinkTheme.danger,
+                      marginTop: "4px",
+                      maxWidth: "100%",
+                      textAlign: isUser ? "right" : "left",
+                    }}
+                  >
+                    ⚠ {m.disclaimer}
+                  </span>
                 )}
               </div>
             );
@@ -478,6 +448,7 @@ export default function ChatPage() {
           }}
         >
           <input
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="궁금한 점을 물어보세요"
@@ -509,6 +480,115 @@ export default function ChatPage() {
           </button>
         </form>
       </div>
+
+      {/* 출처 칩 클릭 시 화면 중앙에 뜨는 반응형 모달. 논문/PDF는 제목만, DUR(csv)은
+          노출명만 각각 한 줄로 보여준다 — 항목당 표시 텍스트는 항상 sources[].name 하나뿐이라
+          별도 분기 없이 단일 렌더링 경로로 두 요구사항을 동시에 만족한다. */}
+      {sourcesModalIndex !== null && messages[sourcesModalIndex]?.sources && (
+        <div
+          onClick={() => setSourcesModalIndex(null)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "rgba(90, 74, 78, 0.45)",
+            zIndex: 2000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(90vw, 360px)",
+              maxHeight: "70vh",
+              overflowY: "auto",
+              background: pinkTheme.cardBg,
+              borderRadius: 14,
+              border: `1px solid ${pinkTheme.border}`,
+              boxShadow: "0 8px 28px rgba(90, 74, 78, 0.25)",
+              padding: "14px 16px",
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "10px",
+              }}
+            >
+              <strong style={{ fontSize: "13px", color: pinkTheme.text }}>참고 출처</strong>
+              <button
+                onClick={() => setSourcesModalIndex(null)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: pinkTheme.textMuted,
+                  fontSize: "16px",
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: "2px 4px",
+                }}
+                aria-label="닫기"
+              >
+                ×
+              </button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {messages[sourcesModalIndex]!.sources!.map((s, si) =>
+                s.url ? (
+                  <a
+                    key={si}
+                    href={s.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={s.name}
+                    style={{
+                      display: "block",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontSize: "12.5px",
+                      color: pinkTheme.primary,
+                      fontWeight: 600,
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      border: `1px solid ${pinkTheme.border}`,
+                    }}
+                  >
+                    {s.name}
+                  </a>
+                ) : (
+                  <span
+                    key={si}
+                    title={s.name}
+                    style={{
+                      display: "block",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontSize: "12.5px",
+                      color: pinkTheme.text,
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      border: `1px solid ${pinkTheme.border}`,
+                    }}
+                  >
+                    {s.name}
+                  </span>
+                ),
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <style>{`
         @media (max-width: 768px) {
