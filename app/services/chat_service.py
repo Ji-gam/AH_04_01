@@ -36,6 +36,7 @@ from app.services.ai_worker_gateway import (
     AIWorkerUnavailableError,
 )
 from app.services.chat_context_service import ChatContextService
+from app.services.dur_service import DurScreeningService
 
 logger = logging.getLogger("app.chat_service")
 
@@ -77,6 +78,7 @@ class ChatService:
         dur_drug_repository: DurDrugRepository | None = None,
         profile_repository: ProfileRepository | None = None,
         medication_repository: MedicationRepository | None = None,
+        dur_screening_service: DurScreeningService | None = None,
     ) -> None:
         self._repository = repository or ChatRepository()
         self._chat_context_service = chat_context_service or ChatContextService()
@@ -84,6 +86,7 @@ class ChatService:
         self._dur_drug_repository = dur_drug_repository or DurDrugRepository()
         self._profile_repository = profile_repository or ProfileRepository()
         self._medication_repository = medication_repository or MedicationRepository()
+        self._dur_screening_service = dur_screening_service or DurScreeningService()
 
     async def create_session(self, session: AsyncSession, profile_id: int):
         return await self._repository.create_session(session, profile_id)
@@ -119,7 +122,10 @@ class ChatService:
         dur_warnings = self._collect_dur_warnings(
             context["medications"], context["is_pregnant"], context["is_geriatric"]
         )
-        injected_context = [f"[DUR 안전 경고 정보] 복용 약물 중 위험 경고 발견: {w}" for w in dur_warnings]
+        interaction_warnings = await self._collect_interaction_warnings(context["medications"])
+        injected_context = [f"[DUR 안전 경고 정보] 복용 약물 중 위험 경고 발견: {w}" for w in dur_warnings] + [
+            f"[병용금기 경고] {w}" for w in interaction_warnings
+        ]
 
         full_response = ""
         sources: list[dict] = []
@@ -184,6 +190,19 @@ class ChatService:
                 self._dur_drug_repository.find_dur_warnings(med_name, pregnant=is_pregnant, geriatric=is_geriatric)
             )
         return list(set(dur_warnings))
+
+    async def _collect_interaction_warnings(self, meds: list[dict]) -> list[str]:
+        # 병용금기/효능군중복은 조합 위험이라 임신/노인 여부와 무관하게 항상 확인한다
+        # (_collect_dur_warnings의 게이팅과 달리 대상이 전체 사용자).
+        if len(meds) < 2:
+            return []
+
+        med_names = [med.get("name", "") for med in meds]
+        response = await self._dur_screening_service.screen_interactions(med_names)
+        return [
+            f"{w.drug_a.item_name} + {w.drug_b.item_name} ({w.rule_type}) — {w.prohbt_content or w.remark or ''}"
+            for w in response.drug_intrc.interactions
+        ]
 
     async def _check_if_medical_related_via_llm(self, message: str, response: str) -> bool:
         try:
