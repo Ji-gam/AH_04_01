@@ -4,6 +4,7 @@ from langchain_chroma import Chroma
 
 from ai_worker.core.config import settings
 from ai_worker.core.logger import setup_logger
+from ai_worker.ingest.embeddings import get_embeddings
 from ai_worker.ingest.pipeline import build_vector_store
 from ai_worker.ingest.sources import STRUCTURED
 from ai_worker.schemas.retrieval_schema import DocumentChunk
@@ -67,15 +68,29 @@ def initialize_rag() -> None:
     그 문서들이 **부팅과 동시에 삭제**됐다. 아래 except가 그걸 로그로만 삼켜서 아무도 몰랐다.
 
     색인은 사건이지 감시 루프가 아니다. 사람이 `python -m ai_worker.ingest`를 치거나
-    관리자 화면에서 누를 때만 돈다."""
+    관리자 화면에서 누를 때만 돈다.
+
+    임베딩 모델은 여기서 미리 올린다(약 10초). 안 그러면 그 10초를 **첫 질문한 사용자가**
+    낸다 — 기동은 아무도 안 보지만 첫 질문은 사람이 기다린다."""
     logger.info("Initializing RAG...")
     try:
         db = build_vector_store(COLLECTION_NAME)
         db_holder["db"] = db
         cache_searchable_names(db)
+        warm_up_embeddings()
         logger.info("RAG Initialization completed.")
     except Exception as e:
         logger.error(f"Failed to initialize RAG on startup: {e}")
+
+
+def warm_up_embeddings() -> None:
+    """임베딩 모델을 미리 메모리에 올린다. 실패해도 기동을 막지 않는다 — 그땐 첫 질의가
+    느릴 뿐이고, 진짜 문제라면 그 질의에서 제대로 된 예외가 난다."""
+    try:
+        get_embeddings().embed_query("워밍업")
+        logger.info("Embedding model warmed up.")
+    except Exception as e:
+        logger.warning(f"임베딩 예열 실패(첫 질의가 느려질 뿐 동작엔 문제없음): {e}")
 
 
 def ensure_db() -> Chroma:

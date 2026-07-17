@@ -49,28 +49,33 @@ def _get_local_model(model_name: str):
     return _LOCAL_MODEL_CACHE[model_name]
 
 
-class _HFHybridEmbeddings(Embeddings):
-    """문서 임베딩(`embed_documents`, 대량 인제스트)은 로컬에 내려받은 HF 모델
-    (sentence-transformers)로 배치 인코딩하고, 질의 임베딩(`embed_query`, 실시간 챗
-    검색)은 HF Inference API(호스팅)로 단건 호출한다.
+class _LocalHFEmbeddings(Embeddings):
+    """문서든 질의든 로컬에 내려받은 HF 모델(sentence-transformers)로 임베딩한다.
+    **네트워크도 API 키도 쓰지 않는다.**
 
-    - 인제스트는 한 번에 수천 건을 처리해야 해서(source/ 7개 DUR 파일 합쳐 5,700여
-      건) 로컬 배치가 압도적으로 빠르다 — HF Inference API로 텍스트당 개별 HTTP
-      요청을 보내면 비현실적으로 느리다(수십 분 이상, 2026-07-17 실측).
-    - 반대로 실시간 챗 질의는 요청당 1건뿐이라 호스팅 API 호출 지연(0.3~1초)이
-      체감되지 않고, 대신 ai_worker 프로세스마다 ~2GB 모델을 상시 메모리에 올려둘
-      필요가 없어진다(워커 프로세스가 여럿이면 그만큼 메모리를 아낌).
-    - 같은 모델 가중치를 두 경로 다 쓰므로(로컬 실행 vs HF 서버 실행) 결과 벡터는
-      동일한 공간에 있다 — 다만 실행 환경이 달라 부동소수점 오차가 아주 미세하게
-      있을 수 있고, 이는 임계값 실측 시 감안했다(config.py 주석 참고).
-    - e5 계열 모델 공식 권장대로 문서엔 'passage: ', 질의엔 'query: ' 프리픽스를
-      붙이고, 두 경로 모두 단위벡터로 정규화한다(OpenAI 임베딩도 단위벡터라
-      `RAG_SIMILARITY_THRESHOLD`/`PAPER_SIMILARITY_THRESHOLD`가 그 스케일 기준)."""
+    한때 질의만 HF Inference API로 보내는 하이브리드였다. 근거는 "질의는 요청당 1건이라
+    API 지연이 체감 안 되고, 대신 워커 프로세스마다 2GB 모델을 상시 올려둘 필요가 없다"
+    였는데, 재보니 셋 다 틀렸다(2026-07-17 실측):
 
-    def __init__(self, model: str, hf_api_key: str, retries: int = 3) -> None:
+      - **메모리를 아끼지 못한다.** 관리자 업로드 색인(`/admin/ingest/csv`)이 서버
+        프로세스 안에서 `embed_documents`를 부르므로 모델이 거기 올라가 눌러앉는다
+        (`_LOCAL_MODEL_CACHE`가 모듈 전역). 업로드 한 번이면 절약이 증발한다.
+        게다가 실측 상주 메모리는 2GB가 아니라 1.1GB였다.
+      - **API가 더 느리다.** 질의 3건 평균 API 555ms vs 로컬 238ms. 네트워크 왕복이
+        로컬 추론보다 비싸다.
+      - **벡터 차이가 없다.** 두 경로의 코사인 유사도가 1.000000이었다. "실행 환경이
+        달라 부동소수점 오차가 있을 수 있다"는 우려는 실측되지 않았다(그래서 이 전환에
+        재색인이 필요 없다).
+
+    대가는 서빙 프로세스가 모델을 물고 있는 것뿐이고(1.1GB), 그건 어차피 그랬다.
+    얻는 건 API 키 불요 + 네트워크·레이트리밋·콜드스타트·모델 가용성 의존 제거다.
+
+    e5 계열 모델 공식 권장대로 문서엔 'passage: ', 질의엔 'query: ' 프리픽스를 붙이고
+    단위벡터로 정규화한다(OpenAI 임베딩도 단위벡터라
+    `RAG_SIMILARITY_THRESHOLD`/`PAPER_SIMILARITY_THRESHOLD`가 그 스케일 기준)."""
+
+    def __init__(self, model: str) -> None:
         self._model_name = model
-        self._hf_api_key = hf_api_key
-        self._retries = retries
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         model = _get_local_model(self._model_name)
@@ -78,36 +83,19 @@ class _HFHybridEmbeddings(Embeddings):
         return np.asarray(vectors).tolist()
 
     def embed_query(self, text: str) -> list[float]:
-        import time
-
-        from huggingface_hub import InferenceClient
-
-        client = InferenceClient(token=self._hf_api_key)
-        last_error: Exception | None = None
-        for attempt in range(self._retries):
-            try:
-                vec = client.feature_extraction(f"query: {text}", model=self._model_name, normalize=True)
-                return np.asarray(vec).reshape(-1).tolist()
-            except Exception as e:
-                last_error = e
-                time.sleep(2 * (attempt + 1))
-        assert last_error is not None
-        raise last_error
+        model = _get_local_model(self._model_name)
+        vector = model.encode(f"query: {text}", normalize_embeddings=True, show_progress_bar=False)
+        return np.asarray(vector).reshape(-1).tolist()
 
 
 def _require_api_key() -> str | None:
-    """OpenAI 프로바이더는 API 키가 반드시 있어야 한다. HF 프로바이더는 인제스트(로컬
-    추론)엔 키가 필요 없지만, 실시간 질의(HF Inference API)엔 필요해 어차피 있어야
-    한다 — 상황별로 필요 여부가 갈리면 헷갈리므로 항상 요구한다(fail-fast 원칙,
-    2026-07-13 결정과 동일한 방향)."""
+    """OpenAI 프로바이더는 API 키가 반드시 있어야 한다. **HF 프로바이더는 키가 필요 없다** —
+    문서든 질의든 로컬 추론이라 네트워크를 안 탄다(`_LocalHFEmbeddings` 참고).
+
+    예전엔 HF도 키를 요구했다. 질의만 HF Inference API로 보냈기 때문인데, 그 하이브리드를
+    걷어내면서 요구할 이유가 없어졌다. 팀원이 clone 후 키 없이 바로 색인·검색할 수 있다."""
     if settings.EMBEDDING_PROVIDER == "huggingface":
-        api_key = settings.HUGGINGFACE_API_KEY
-        if not api_key:
-            raise EmbeddingUnavailableError(
-                "HUGGINGFACE_API_KEY가 설정되지 않아 임베딩을 생성할 수 없습니다"
-                "(실시간 질의는 HF Inference API를 쓰므로 필요합니다)."
-            )
-        return api_key
+        return None
 
     api_key = settings.OPENAI_EMBEDDING_API_KEY or settings.OPENAI_API_KEY
     if not api_key:
@@ -128,14 +116,13 @@ def active_embedding_model() -> str:
 
 
 def get_embeddings():
-    """`settings.EMBEDDING_PROVIDER`에 따라 HF(로컬 인제스트+호스팅 질의 하이브리드)
-    또는 OpenAI로 임베딩을 생성한다. 키가 없으면 즉시 실패한다(로컬 폴백 없음 —
+    """`settings.EMBEDDING_PROVIDER`에 따라 HF(로컬 추론, 키 불요) 또는 OpenAI로 임베딩을
+    생성한다. OpenAI를 골랐는데 키가 없으면 즉시 실패한다(조용한 폴백 없음 —
     `EmbeddingUnavailableError` 참고)."""
     api_key = _require_api_key()
     if settings.EMBEDDING_PROVIDER == "huggingface":
-        logger.info(f"Using HF hybrid embeddings ({settings.HF_EMBEDDING_MODEL}: local ingest + API query)")
-        assert api_key is not None
-        return _HFHybridEmbeddings(model=settings.HF_EMBEDDING_MODEL, hf_api_key=api_key)
+        logger.info(f"Using local HF embeddings ({settings.HF_EMBEDDING_MODEL}) — no network, no API key")
+        return _LocalHFEmbeddings(model=settings.HF_EMBEDDING_MODEL)
     logger.info("Using OpenAIEmbeddings (text-embedding-3-small) for RAG Ingestion")
     return OpenAIEmbeddings(openai_api_key=api_key, model="text-embedding-3-small")
 
