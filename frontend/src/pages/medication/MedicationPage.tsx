@@ -9,6 +9,8 @@ import type {
   DurInteractionWarning,
   DurRecallInfo,
 } from "../../api/types";
+import FamilySwitcher from "../../components/family/FamilySwitcher";
+import FamilyTrackerView from "../../components/family/FamilyTrackerView";
 import { useAuth } from "../../hooks/useAuth";
 import {
   useMedication,
@@ -313,6 +315,12 @@ type ExtractedFields = NonNullable<RecognitionJobResult["extracted_fields"]>;
 
 export default function MedicationPage() {
   const { user } = useAuth();
+
+  // (가족관리) 가족 선택 시 화면 전체를 FamilyTrackerView로 전환한다 - 본인 몫 로직은 안 건드림.
+  const [selectedFamily, setSelectedFamily] = useState<{ profileId: number; name: string } | null>(
+    null,
+  );
+
   const {
     schedules,
     isLoading,
@@ -685,12 +693,65 @@ export default function MedicationPage() {
     }
   };
 
+  // (가족관리) 가족 선택 시 본인 몫의 복잡한 OCR/매칭 로직은 그대로 두고, 화면 전체를
+  // FamilyTrackerView(4탭 전부 가족 대상)로 바꿔치기한다.
+  if (selectedFamily) {
+    return (
+      <div style={{ background: pinkTheme.pageBg, minHeight: "100%", padding: "20px 12px" }}>
+        <div style={{ maxWidth: 480, margin: "0 auto", color: pinkTheme.text }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 16,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedFamily(null)}
+              style={{
+                border: "none",
+                background: "none",
+                color: pinkTheme.primary,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              ← 내 복약 관리로
+            </button>
+            <FamilySwitcher
+              selectedProfileId={selectedFamily.profileId}
+              onSelect={setSelectedFamily}
+            />
+          </div>
+          <FamilyTrackerView
+            targetProfileId={selectedFamily.profileId}
+            targetName={selectedFamily.name}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: pinkTheme.pageBg, minHeight: "100%", padding: "20px 12px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto", color: pinkTheme.text }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 16px" }}>
-          💊 복약 관리
-        </h1>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 16,
+          }}
+        >
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: 0 }}>
+            💊 복약 관리
+          </h1>
+          <FamilySwitcher selectedProfileId={null} onSelect={setSelectedFamily} />
+        </div>
 
         {/* 탭 네비게이션 (시간표, 목록, 상호작용, 음식) */}
         <div style={{ display: "flex", gap: "5px", marginBottom: "15px" }}>

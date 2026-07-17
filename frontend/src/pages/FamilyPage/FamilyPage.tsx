@@ -1,12 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import {
-  familyApi,
-  type FamilyInviteCode,
-  type FamilyLinkItem,
-  type FamilyMembersResult,
-} from "../../api/familyApi";
+import { familyApi, type FamilyLinkItem, type FamilyMembersResult } from "../../api/familyApi";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 const cardStyle: React.CSSProperties = {
@@ -59,14 +54,17 @@ function LinkRow({ item, right }: { item: FamilyLinkItem; right?: React.ReactNod
 }
 
 /** 더보기 > 가족관리. 연로한 부모님 등 가족 구성원을 "내가 보호자"인 관계로 연결한다.
- * [승인 플로우] 이메일만 알면 요청은 보낼 수 있지만, 상대방이 "수락"해야 실제로 연결되고
- * 그때부터 약 등록(더보기 > 약 등록) 시 "나 or 이 가족 구성원" 중 누구 몫으로 등록할지 고를 수
- * 있게 된다. 아직 푸시 알림 인프라가 없어서, 받은 요청은 이 화면(또는 홈 화면)을 열 때(또는
- * 새로고침) 보인다 - 실시간 팝업 알림은 아니다.
+ * [범위] 이번 화면은 "연결(요청/승인/초대코드)"까지만 다룬다 - 약 등록/조회/수정은 여기서
+ * 안 하고 각각 트랙커(사진/수동 등록)와 복약알림(가족 선택해서 알림 보기/토글) 화면으로
+ * 옮겼다(2026-07-16 결정 - 이 화면에 다 몰아두면 두 도메인(MedicationSchedule/
+ * NotificationSchedule)이 뒤섞여 헷갈리고, 이미 있는 화면(트랙커/복약알림)과 중복된
+ * UI가 생기기 때문).
+ * [승인 플로우] 이메일만 알면 요청은 보낼 수 있지만, 상대방이 "수락"해야 실제로 연결된다.
+ * 아직 푸시 알림 인프라가 없어서, 받은 요청은 이 화면(또는 홈 화면)을 열 때(또는 새로고침)
+ * 보인다 - 실시간 팝업 알림은 아니다.
  * [초대코드] 이메일 요청과 별개로, 초대코드 경로도 같이 제공한다(카카오 임시 가입 계정처럼
  * 이메일로 못 찾는 경우의 대안). 코드는 발급 즉시 30분 유효/1회용이고, 입력하는 순간 승인
- * 절차 없이 바로 연결된다(코드를 안다는 것 자체가 이미 상호 동의로 간주).
- * 확인/미루기를 양쪽 화면에서 동기화하는 기능은 다음 PR에서 다룬다. */
+ * 절차 없이 바로 연결된다(코드를 안다는 것 자체가 이미 상호 동의로 간주). */
 export default function FamilyPage() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -75,10 +73,6 @@ export default function FamilyPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // 연결 방식 - 이메일 요청(승인 필요) or 초대코드(즉시 연결). 카카오는 지금 임시로 실이메일이
-  // 아닌 더미 이메일(kakao_xxx@social.local)만 있어서, 그 계정은 이메일 방식으로 못 찾는다 -
-  // 초대코드가 그 대안이다(나중에 카카오 비즈앱 전환해서 실이메일을 받게 되면 이메일 방식도
-  // 그대로 다시 쓸 수 있으니, 두 경로를 계속 같이 제공한다).
   const [linkMethod, setLinkMethod] = useState<"email" | "code">("email");
 
   const [email, setEmail] = useState("");
@@ -86,13 +80,11 @@ export default function FamilyPage() {
   const [linkError, setLinkError] = useState<string | null>(null);
   const [isLinking, setIsLinking] = useState(false);
 
-  // 초대코드 발급(보호자 쪽) - 코드는 승인 절차 없이 즉시 연결되므로 만료시간을 짧게(30분) 둔다.
   const [issueRelationLabel, setIssueRelationLabel] = useState("");
-  const [issuedCode, setIssuedCode] = useState<FamilyInviteCode | null>(null);
+  const [issuedCode, setIssuedCode] = useState<{ code: string } | null>(null);
   const [issueError, setIssueError] = useState<string | null>(null);
   const [isIssuing, setIsIssuing] = useState(false);
 
-  // 초대코드 입력(피보호자 쪽) - 입력하는 순간 바로 연결된다(승인 절차 없음).
   const [redeemCode, setRedeemCode] = useState("");
   const [redeemError, setRedeemError] = useState<string | null>(null);
   const [isRedeeming, setIsRedeeming] = useState(false);
@@ -149,7 +141,12 @@ export default function FamilyPage() {
   }
 
   async function handleUnlink(linkId: number) {
-    if (!window.confirm("이 가족 연결(또는 대기중인 요청)을 해제할까요?")) return;
+    if (
+      !window.confirm(
+        "이 가족 연결(또는 대기중인 요청)을 해제할까요? 이미 등록된 약 정보는 그대로 남고, 앞으로는 확인/등록만 못 하게 돼요.",
+      )
+    )
+      return;
     try {
       await familyApi.unlink(linkId);
       await load();
@@ -226,11 +223,10 @@ export default function FamilyPage() {
           👨‍👩‍👧 가족관리
         </h1>
         <p style={{ margin: 0, fontSize: 13, color: pinkTheme.textMuted, lineHeight: 1.5 }}>
-          부모님 등 가족 구성원을 이메일 또는 초대코드로 연결해요. 연결되면 약 등록할 때 "나 또는 이
-          분" 중 누구 몫으로 등록할지 고를 수 있어요.
+          부모님 등 가족 구성원을 이메일 또는 초대코드로 연결해요. 연결되면 트랙커(사진/수동 등록)와
+          복약알림 화면에서 "나 또는 이 분" 중 누구 몫으로 확인·등록할지 고를 수 있어요.
         </p>
 
-        {/* 연결 방식 탭 */}
         <div style={{ display: "flex", gap: 8 }}>
           <button
             type="button"
@@ -269,7 +265,6 @@ export default function FamilyPage() {
         </div>
 
         {linkMethod === "email" ? (
-          /* 연결 요청 폼 (이메일) - 상대방이 수락해야 연결됨 */
           <form
             onSubmit={handleRequestLink}
             style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10 }}
@@ -307,7 +302,6 @@ export default function FamilyPage() {
           </form>
         ) : (
           <>
-            {/* 초대코드 발급 (보호자 쪽 - 예: 자녀가 부모님께 드릴 코드를 만듦) */}
             <form
               onSubmit={handleIssueCode}
               style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10 }}
@@ -378,7 +372,6 @@ export default function FamilyPage() {
               )}
             </form>
 
-            {/* 초대코드 입력 (피보호자 쪽 - 받은 코드를 입력하면 즉시 연결) */}
             <form
               onSubmit={handleRedeemCode}
               style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10 }}
@@ -412,7 +405,6 @@ export default function FamilyPage() {
 
         {!loading && !loadError && data && (
           <>
-            {/* 내가 받은 요청 - 여기가 "받는 사람 쪽 알림"에 해당하는 자리 (실시간 푸시는 아님) */}
             {data.as_member_pending.length > 0 && (
               <div style={{ ...cardStyle, borderColor: pinkTheme.primary }}>
                 <p
@@ -471,7 +463,6 @@ export default function FamilyPage() {
               </div>
             )}
 
-            {/* 내가 관리하는 가족 (수락됨) */}
             <div style={cardStyle}>
               <p
                 style={{ margin: "0 0 10px", fontWeight: 600, color: pinkTheme.text, fontSize: 14 }}
@@ -506,9 +497,12 @@ export default function FamilyPage() {
                   ))}
                 </div>
               )}
+              <p style={{ margin: "10px 0 0", fontSize: 12, color: pinkTheme.textMuted }}>
+                이 분 몫으로 약을 등록하려면 트랙커 화면에서, 복약알림을 보려면 복약알림 화면에서 이
+                분을 선택하시면 돼요.
+              </p>
             </div>
 
-            {/* 내가 보낸, 아직 응답 대기중인 요청 */}
             {data.as_guardian_pending.length > 0 && (
               <div style={cardStyle}>
                 <p
@@ -548,7 +542,6 @@ export default function FamilyPage() {
               </div>
             )}
 
-            {/* 나를 관리하고 있는 가족 (투명성 확인용) */}
             {data.as_member_accepted.length > 0 && (
               <div style={cardStyle}>
                 <p

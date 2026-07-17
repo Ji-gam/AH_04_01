@@ -25,6 +25,16 @@ class RecognitionConfirmRequest(BaseModel):
     confirmed_fields: dict | None = None
 
 
+class RecognitionConfirmForFamilyRequest(BaseModel):
+    """(가족관리) OCR로 인식한 처방전을 본인이 아니라 가족 구성원 몫으로 등록할 때 쓴다.
+    RecognitionConfirmRequest와 필드가 거의 같지만 target_profile_id가 추가된 별도 DTO -
+    기존 확정등록 흐름(RecognitionConfirmRequest)은 건드리지 않기 위해 분리했다."""
+
+    target_profile_id: int
+    selected_candidate_drug_code: str | None = None
+    confirmed_fields: dict | None = None
+
+
 class FoodItem(BaseModel):
     """(T-DOC-4) 음식 상호작용 안내 카드에서 원문 전체를 줄글로 보여주는 대신, 음식명 칩을 먼저
     보여주고 클릭 시 이 음식에 대한 상세(detail)만 펼쳐볼 수 있게 하기 위한 단위.
@@ -96,6 +106,9 @@ class QuickRegisterRequest(BaseModel):
     drug_name: str
     times: list[str]
     hospital_name: str | None = None
+    # (가족관리) 이 약을 누가 먹을지 - 생략하면 본인. 본인이 아닌 값은 family_links에서
+    # 요청자가 그 프로필의 보호자로 등록되어 있어야만 허용된다(그 외엔 403).
+    target_profile_id: int | None = None
 
 
 class QuickRegisterCandidate(BaseModel):

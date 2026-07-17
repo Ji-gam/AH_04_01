@@ -1245,3 +1245,95 @@ class MedicationService:
             }
             for m in meds
         ]
+
+    async def confirm_recognition_job_for_family(
+        self,
+        session: AsyncSession,
+        job_id: str,
+        requester_profile_id: int,
+        target_profile_id: int,
+        selected_candidate_drug_code: str | None,
+        confirmed_fields: dict | None,
+    ) -> RecognitionConfirmResult:
+        """(가족관리) OCR로 인식한 처방전을 요청자 본인이 아니라, 요청자가 보호자로 등록된
+        가족 구성원(target_profile_id) 몫으로 등록한다.
+
+        [의도적 중복 - TODO] confirm_recognition_job과 로직이 거의 동일하다. 이 시점에 다른
+        조원이 confirm_recognition_job(OCR/수동 등록 마스터 DB 매칭)을 계속 다듬고 있어서,
+        공통 헬퍼로 묶는 리팩터링은 병합 충돌 위험이 있다고 판단해 완전히 분리된 함수로
+        추가했다. 두 함수를 합칠지는 조원과 상의 후 결정 예정 - 상의 전까지는 이 함수를
+        건드리지 않고 confirm_recognition_job 쪽만 개선/수정한다."""
+        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
+        if not is_guardian:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="해당 프로필에 대한 권한이 없습니다. 더보기 > 가족관리에서 먼저 연결해주세요.",
+            )
+
+        job = await self._repository.get_recognition_job(session, job_id)
+        if not job or job.profile_id != requester_profile_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 작업(Job)을 찾을 수 없습니다.")
+
+        med: Medication | None = None
+        if selected_candidate_drug_code:
+            med = await self._repository.get_medication_by_code(session, selected_candidate_drug_code)
+            if not med:
+                try:
+                    med_id = int(selected_candidate_drug_code.replace("CODE_", ""))
+                    med = await self._repository.get_medication_by_id(session, med_id)
+                except ValueError:
+                    pass
+
+            if med:
+                times = ["09:00", "13:00", "19:00"]
+                if confirmed_fields and "times" in confirmed_fields:
+                    times = confirmed_fields["times"]
+                elif job.extracted_fields and job.extracted_fields.get("times"):
+                    times = job.extracted_fields["times"]
+
+                schedule = MedicationSchedule(
+                    profile_id=target_profile_id, medication_id=med.id, times=times, source_job_id=job_id
+                )
+                await self._repository.create_schedule(session, schedule)
+
+        guide_cards = []
+        if med:
+            guide_cards.append(await _build_food_interaction_guide_card(med.medication_name))
+
+        return RecognitionConfirmResult(status="confirmed", guide_cards=guide_cards)
+
+    async def list_schedules_for_family(
+        self, session: AsyncSession, requester_profile_id: int, target_profile_id: int
+    ) -> list[MedicationScheduleResponse]:
+        """(가족관리) 보호자가 가족 구성원의 복약 스케줄 전체를 조회 - 복약알림/트랙커의
+        가족 화면에서 달력·목록에 쓴다."""
+        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
+        if not is_guardian:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        return await self.list_schedules(session, target_profile_id)
+
+    async def check_interactions_for_family(
+        self, session: AsyncSession, requester_profile_id: int, target_profile_id: int
+    ) -> InteractionCheckResult:
+        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
+        if not is_guardian:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        return await self.check_interactions(session, target_profile_id)
+
+    async def check_food_interactions_for_family(
+        self, session: AsyncSession, requester_profile_id: int, target_profile_id: int
+    ) -> FoodInteractionCheckResult:
+        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
+        if not is_guardian:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        return await self.check_food_interactions(session, target_profile_id)
+
+    async def delete_schedule_for_family(self, session: AsyncSession, requester_profile_id: int, schedule_id: int) -> None:
+        """(가족관리) 보호자가 가족 구성원 몫 복약 스케줄을 삭제한다."""
+        schedule = await self._repository.get_schedule_by_id(session, schedule_id)
+        if not schedule:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 복약 스케줄을 찾을 수 없습니다.")
+        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, schedule.profile_id)
+        if not is_guardian:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 복약 스케줄을 삭제할 권한이 없습니다.")
+        await self._repository.delete_schedule(session, schedule)
