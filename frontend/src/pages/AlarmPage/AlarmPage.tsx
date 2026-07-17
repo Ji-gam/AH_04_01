@@ -288,6 +288,20 @@ export default function AlarmPage() {
       .catch((e: Error) => setError(`알림 삭제에 실패했습니다. (${e.message})`));
   };
 
+  // 약 자체(마스터 등록)는 그대로 두고, 그 약의 여러 복용 시각 중 이 시각 하나만 스케줄에서
+  // 뺀다 - handleUpdateMedTime과 같은 PATCH를 재사용하되 새 시각으로 바꾸는 대신 제거한다.
+  const handleDeleteMedTime = (med: MedicationSchedule, time: string) => {
+    if (!window.confirm(`"${med.drug_name}" ${time.slice(0, 5)} 알림을 삭제할까요?`)) return;
+    const hhmm = time.slice(0, 5);
+    const newTimes = med.times.filter((t) => t.slice(0, 5) !== hhmm);
+    apiFetch(`/medications/${med.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ times: newTimes }),
+    })
+      .then(loadSchedules)
+      .catch((e: Error) => setError(`알림 삭제에 실패했습니다. (${e.message})`));
+  };
+
   const doseCounts = buildDoseCounts(schedules);
 
   // 달력 밑에는 직접 등록한 알림 + 복약 관리에서 등록한 약을 같은 시각끼리 묶어 보여준다
@@ -566,6 +580,20 @@ export default function AlarmPage() {
                             }}
                           >
                             ✏️
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`${row.name} 복용 시각 삭제`}
+                            onClick={() => handleDeleteMedTime(row.med!, row.time)}
+                            style={{
+                              border: "none",
+                              background: "none",
+                              color: t.textMuted,
+                              cursor: "pointer",
+                              fontSize: 14,
+                            }}
+                          >
+                            🗑️
                           </button>
                         </>
                       )}
