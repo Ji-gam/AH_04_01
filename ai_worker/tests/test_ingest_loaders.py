@@ -87,6 +87,54 @@ def test_loaders_stamp_source_and_collection_and_labels(tmp_path):
     assert doc.metadata["display_name"] == "임부금기의약품"
 
 
+def test_csv_explodes_one_row_into_one_document_per_field(tmp_path):
+    """필드가 곧 질문 유형인 파일(e약은요)은 행 하나를 필드마다 쪼갠다.
+
+    안 쪼개면 문서 하나가 1,391자가 되고 부작용이 1,054번째 글자에 묻혀, "부작용?"을 물어도
+    효능·용법이 지배하는 덩어리와 매칭된다(실측)."""
+    source = _source(
+        tmp_path,
+        "drugs.csv",
+        "itemName,efcyQesitm,seQesitm\n타이레놀,열을 내린다,쇽 증상\n",
+        explode_columns={"efcyQesitm": "효능", "seQesitm": "부작용"},
+    )
+
+    docs = list(CsvLoader(source).lazy_load())
+
+    assert [d.metadata["field"] for d in docs] == ["효능", "부작용"]
+    assert docs[1].page_content.endswith("부작용: 쇽 증상")
+
+
+def test_csv_explode_keeps_the_drug_name_on_every_piece(tmp_path):
+    """머리말을 따로 선언하지 않는다 — 쪼갠 필드와 제외 컬럼을 빼고 남은 게 곧 머리말이다.
+    조각마다 약 이름이 있어야 "타이레놀 부작용"이 약 이름으로 걸린다."""
+    source = _source(
+        tmp_path,
+        "drugs.csv",
+        "itemSeq,itemName,efcyQesitm\n123,타이레놀,열을 내린다\n",
+        exclude_columns=frozenset({"itemSeq"}),
+        explode_columns={"efcyQesitm": "효능"},
+    )
+
+    doc = next(CsvLoader(source).lazy_load())
+
+    assert "itemName: 타이레놀" in doc.page_content  # 머리말이 남았다
+    assert "itemSeq" not in doc.page_content  # 제외 컬럼은 머리말에도 안 온다
+    assert "효능: 열을 내린다" in doc.page_content
+
+
+def test_csv_explode_skips_fields_that_are_empty(tmp_path):
+    """e약은요는 필드 충전율이 95~99%다. 빈 필드로 문서를 만들면 서로 같은 문서로 뭉친다."""
+    source = _source(
+        tmp_path,
+        "drugs.csv",
+        "itemName,efcyQesitm,seQesitm\n타이레놀,열을 내린다,\n",
+        explode_columns={"efcyQesitm": "효능", "seQesitm": "부작용"},
+    )
+
+    assert [d.metadata["field"] for d in CsvLoader(source).lazy_load()] == ["효능"]
+
+
 def test_json_makes_one_document_per_element(tmp_path):
     """초록을 고정 크기로 자르지 않는다 — 740편 중 729편이 쪼개져 제목 없는 조각이
     컬렉션의 70%가 됐고, 그게 "고혈압 질문에 당뇨 논문"의 원인이었다."""

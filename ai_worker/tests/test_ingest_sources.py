@@ -62,6 +62,18 @@ def test_tuning_applies_globally_not_per_file(tmp_path):
     assert all(s.metadata_columns == {"INGR_NAME": "ingr_name"} for s in sources)
 
 
+def test_explode_columns_apply_only_to_the_named_file(tmp_path):
+    """쪼개기는 파일별이다 — e약은요만 쓰고, DUR CSV는 행이 곧 완결이라 안 쪼갠다."""
+    _drop(tmp_path, "drugs_data.csv")
+    _drop(tmp_path, "dur_pwnm_taboo.csv")
+    tuning = {"explode_columns": {"drugs_data.csv": {"seQesitm": "부작용"}}}
+
+    sources = {s.name: s for s in discover(tmp_path, tuning=tuning)}
+
+    assert sources["drugs_data.csv"].explode_columns == {"seQesitm": "부작용"}
+    assert sources["dur_pwnm_taboo.csv"].explode_columns == {}
+
+
 def test_file_labels_attach_only_to_their_own_file(tmp_path):
     _drop(tmp_path, "a.csv")
     _drop(tmp_path, "b.csv")
