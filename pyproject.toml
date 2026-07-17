@@ -39,6 +39,9 @@ ai = [
     # 전환한다(CPU 전용 — 아래 [tool.uv.sources]의 pytorch-cpu 인덱스 사용).
     "sentence-transformers>=3.0.0",
     "torch>=2.0.0",
+    # PDF 읽기 + 스캔본 OCR. Docling을 쓰지 않는 이유는 ingest/loaders.py 참고
+    # (Apple Silicon MPS에서 레이아웃 모델이 터지고, 한글 OCR이 글자를 깨뜨린다).
+    "pymupdf>=1.28.0",
 ]
 app = [
     "alembic>=1.14.0",
