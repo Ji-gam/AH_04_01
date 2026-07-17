@@ -80,11 +80,11 @@ def test_ensure_paper_db_lazily_builds_and_caches(monkeypatch):
     sentinel = object()
     calls: list[str] = []
 
-    def _fake_build():
-        calls.append("build")
+    def _fake_build(collection):
+        calls.append(collection)
         return sentinel
 
-    monkeypatch.setattr(paper_retrieve_service, "build_paper_vector_store", _fake_build)
+    monkeypatch.setattr(paper_retrieve_service, "build_vector_store", _fake_build)
     original_db = paper_retrieve_service.paper_db_holder["db"]
     paper_retrieve_service.paper_db_holder["db"] = None
     try:
@@ -93,6 +93,7 @@ def test_ensure_paper_db_lazily_builds_and_caches(monkeypatch):
 
         assert db1 is sentinel
         assert db2 is sentinel
-        assert calls == ["build"]  # 두 번째 호출은 캐시된 값 재사용, build 재호출 없음
+        # 두 번째 호출은 캐시된 값 재사용, 팩토리 재호출 없음. 컬렉션 이름은 매니페스트와 일치해야 한다.
+        assert calls == ["unstructured"]
     finally:
         paper_retrieve_service.paper_db_holder["db"] = original_db

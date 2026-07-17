@@ -4,11 +4,18 @@ from langchain_chroma import Chroma
 
 from ai_worker.core.config import settings
 from ai_worker.core.logger import setup_logger
+from ai_worker.ingest.pipeline import build_vector_store
+from ai_worker.ingest.sources import UNSTRUCTURED
 from ai_worker.schemas.retrieval_schema import DocumentChunk
 from ai_worker.services.disease_query_resolver import resolve_diseases
-from ai_worker.tasks.ingest_papers import build_paper_vector_store
 
 logger = setup_logger("ai_worker.paper_retrieve_service")
+
+# 논문은 JSON이라 unstructured 컬렉션에 있다. 이름 문자열을 여기 또 적지 않는다.
+#
+# 같은 컬렉션에 가이드라인 PDF도 들어있지만 논문 검색에 섞이지 않는다 — search_papers()가
+# 항상 disease 필터를 걸고, PDF 문서엔 그 키가 없다.
+PAPER_COLLECTION_NAME = UNSTRUCTURED
 
 # retrieve_service.py의 db_holder와 완전히 별개인 싱글톤. db_holder는 ai_worker/main.py에서
 # 이름으로 재노출되고 테스트가 직접 조작하므로 구조를 공유하면 DUR 쪽이 깨진다.
@@ -17,17 +24,17 @@ paper_db_holder: dict[str, Any] = {"db": None}
 
 def ensure_paper_db() -> Chroma:
     """벡터스토어가 아직 초기화되지 않았으면 lazy하게 연다. PubMed를 호출하지 않고
-    로컬 pubmed_papers 컬렉션만 연다 — 색인 전이면 빈 컬렉션이 열릴 뿐 에러가 아니다."""
+    로컬 unstructured 컬렉션만 연다 — 색인 전이면 빈 컬렉션이 열릴 뿐 에러가 아니다."""
     db = paper_db_holder["db"]
     if db is None:
-        db = build_paper_vector_store()
+        db = build_vector_store(PAPER_COLLECTION_NAME)
         paper_db_holder["db"] = db
     return db
 
 
 def search_papers(db: Chroma, query: str, limit: int, conditions: list[str] | None = None) -> list[DocumentChunk]:
     """질환 사전(`disease_query_resolver`)으로 대상 질환을 판별해 메타데이터 필터를 걸고
-    pubmed_papers를 검색한다.
+    unstructured 컬렉션을 검색한다.
 
     T-LLM-7-3-2는 "임계값만으로 무관한 질문이 걸러진다"는 전제로 질환 필터를 뺐었다.
     그 전제는 인사말류에는 맞았지만(임계값 0.40 위로 안전하게 걸러짐) 질환 간 구분에는

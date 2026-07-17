@@ -5,11 +5,15 @@ from fastapi.responses import StreamingResponse
 
 from ai_worker.core.config import settings
 from ai_worker.core.logger import setup_logger
+from ai_worker.ingest.embeddings import (
+    EmbeddingMismatchError,
+    EmbeddingUnavailableError,
+    assert_embedding_compatible,
+)
 from ai_worker.schemas.retrieval_schema import ChatCompletionRequest
 from ai_worker.services.paper_retrieve_service import ensure_paper_db
 from ai_worker.services.retrieve_service import ensure_db
 from ai_worker.tasks.chat_agent import stream_chat_answer
-from ai_worker.tasks.ingest import EmbeddingMismatchError, EmbeddingUnavailableError, assert_embedding_compatible
 
 logger = setup_logger("ai_worker.chat_agent_router")
 
@@ -20,7 +24,7 @@ chat_agent_router = APIRouter()
     "/agent/chat",
     summary="통합 RAG 스트리밍 채팅 (T-LLM-7-3-2)",
     description=(
-        "DUR(dur_rules)+논문(pubmed_papers) 두 컬렉션을 모두 검색해 청크를 합치고, "
+        "DUR(structured)+논문(unstructured) 두 컬렉션을 모두 검색해 청크를 합치고, "
         "한 번의 LLM 호출로 답변을 스트리밍한다. 각 줄은 "
         "{type: 'sources'|'token'|'error', ...} 형태의 JSON이다. 관련 자료가 없으면 "
         "RAG 없이 일반 답변으로 자연히 폴백한다(별도 분류 없음). 기존 /retrieve, "

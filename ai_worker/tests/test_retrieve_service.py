@@ -1,8 +1,18 @@
-"""서버 기동 없이 retrieve_service의 순수 로직(threshold 필터, 성분명 캐싱)을 검증한다."""
+"""서버 기동 없이 retrieve_service의 순수 로직(threshold 필터, 이름 캐싱·매칭)을 검증한다."""
 
+import pytest
 from langchain_core.documents import Document
 
 from ai_worker.services import retrieve_service
+from ai_worker.services.drug_name_resolver import DrugNameIndex, build_index
+
+
+@pytest.fixture(autouse=True)
+def reset_name_caches():
+    """db_holder는 모듈 전역 싱글톤이라 테스트가 서로 샌다. 매번 되돌린다."""
+    original = dict(retrieve_service.db_holder)
+    yield
+    retrieve_service.db_holder.update(original)
 
 
 class FakeChromaDb:
@@ -18,33 +28,43 @@ class FakeChromaDb:
         self._docs_with_scores = docs_with_scores
         self._metadatas = metadatas or []
 
+    def _matches(self, doc: Document, filter: dict) -> bool:
+        for key, want in filter.items():
+            got = doc.metadata.get(key)
+            # 약 이름은 브랜드 하나에 제품이 여럿이라 $in으로 넘어온다("타이레놀" -> 4제품).
+            if isinstance(want, dict) and "$in" in want:
+                if got not in want["$in"]:
+                    return False
+            elif got != want:
+                return False
+        return True
+
     def similarity_search_with_score(self, query: str, k: int, filter: dict | None = None):
         if filter is None:
             return self._docs_with_scores[:k]
-        return [
-            (doc, score)
-            for doc, score in self._docs_with_scores
-            if doc.metadata.get("ingr_name") == filter.get("ingr_name")
-        ][:k]
+        return [(doc, score) for doc, score in self._docs_with_scores if self._matches(doc, filter)][:k]
 
     def get(self, include: list[str]):
         return {"metadatas": self._metadatas}
 
 
-def test_cache_ingr_names_extracts_unique_names():
+def test_cache_searchable_names_collects_ingredients_and_drug_names():
+    """성분명만 모으던 시절엔 "타이레놀 부작용" 같은 질문이 전부 0건이었다."""
     db = FakeChromaDb(
         [],
         metadatas=[
             {"ingr_name": "졸피뎀타르타르산염"},
             {"ingr_name": " 졸피뎀타르타르산염 "},
             {"ingr_name": "무관성분"},
+            {"item_name": "타이레놀정500밀리그람(아세트아미노펜)"},
             {},
         ],
     )
 
-    retrieve_service.cache_ingr_names(db)
+    retrieve_service.cache_searchable_names(db)
 
     assert retrieve_service.db_holder["ingr_names"] == {"졸피뎀타르타르산염", "무관성분"}
+    assert retrieve_service.db_holder["drug_names"].resolve("타이레놀 부작용") is not None
 
 
 def test_search_documents_filters_by_similarity_threshold(monkeypatch):
@@ -83,13 +103,54 @@ class _RaisingChromaDb:
         raise AssertionError("성분명이 식별 안 됐는데 Chroma 검색이 호출됐다")
 
 
-def test_search_documents_skips_search_when_no_ingredient_identified(monkeypatch):
-    """T-LLM-7-3-2: DUR 문서는 전부 짧은 템플릿 문장이라, 성분명이 식별 안 된 일반
-    건강 질문으로 필터 없이 전체 검색하면 무관한 성분이 임계값을 통과해버린다(실측:
-    "당뇨병 진단받았는데 어떡하죠"가 항암제 임부금기 경고와 매칭됨). 성분명이 아예
+def test_search_documents_skips_search_when_no_drug_identified(monkeypatch):
+    """T-LLM-7-3-2: DUR 문서는 전부 짧은 템플릿 문장이라, 약이 식별 안 된 일반 건강
+    질문으로 필터 없이 전체 검색하면 무관한 성분이 임계값을 통과해버린다(실측:
+    "당뇨병 진단받았는데 어떡하죠"가 항암제 임부금기 경고와 매칭됨). 성분명도 약 이름도
     식별 안 되면 검색 자체를 생략한다."""
     retrieve_service.db_holder["ingr_names"] = {"졸피뎀타르타르산염", "무관성분"}
+    retrieve_service.db_holder["drug_names"] = build_index(["타이레놀정500밀리그람(아세트아미노펜)"])
 
     chunks = retrieve_service.search_documents(_RaisingChromaDb(), "당뇨병 진단받았는데 어떡하죠", limit=3)
 
     assert chunks == []
+
+
+def test_search_documents_finds_drug_by_brand_name(monkeypatch):
+    """**사람은 성분명으로 묻지 않는다.** "타이레놀 부작용"이라고 친다.
+
+    성분명만 보던 시절엔 이런 질문이 전부 0건이었고, e약은요 4,758건이 색인만 되고 한 번도
+    뽑히지 않았다. 조사("타이레놀은")가 붙어도 걸려야 한다 — 한국어 조사는 명사 뒤에 붙으므로
+    부분 문자열 검사로 통과한다."""
+    monkeypatch.setattr(retrieve_service.settings, "RAG_SIMILARITY_THRESHOLD", 10.0)
+    tylenol = Document(
+        page_content="타이레놀 부작용 설명", metadata={"item_name": "타이레놀정500밀리그람(아세트아미노펜)"}
+    )
+    other = Document(page_content="다른 약", metadata={"item_name": "게보린정"})
+    db = FakeChromaDb([(tylenol, 0.1), (other, 0.1)])
+    retrieve_service.db_holder["ingr_names"] = set()
+    retrieve_service.db_holder["drug_names"] = build_index(["타이레놀정500밀리그람(아세트아미노펜)", "게보린정"])
+
+    chunks = retrieve_service.search_documents(db, "타이레놀은 부작용이 뭐야?", limit=3)
+
+    assert len(chunks) == 1
+    assert chunks[0].content == tylenol.page_content
+
+
+def test_search_documents_prefers_ingredient_over_drug_name(monkeypatch):
+    """성분명을 먼저 본다 — DUR 금기/주의 규칙이 성분 단위라 더 구체적인 답이기 때문."""
+    monkeypatch.setattr(retrieve_service.settings, "RAG_SIMILARITY_THRESHOLD", 10.0)
+    rule = Document(page_content="병용금기 규칙", metadata={"ingr_name": "와파린"})
+    db = FakeChromaDb([(rule, 0.1)])
+    retrieve_service.db_holder["ingr_names"] = {"와파린"}
+    retrieve_service.db_holder["drug_names"] = build_index(["와파린정1밀리그람"])
+
+    chunks = retrieve_service.search_documents(db, "와파린 같이 먹어도 돼?", limit=3)
+
+    assert len(chunks) == 1
+    assert chunks[0].content == rule.page_content
+
+
+def test_drug_name_index_is_empty_by_default():
+    """색인 전이거나 캐싱이 실패해도 검색이 터지지 않고 그냥 0건이어야 한다."""
+    assert DrugNameIndex().resolve("타이레놀 부작용") is None

@@ -11,6 +11,10 @@ import HomeEntry from "./components/common/HomeEntry";
 import Layout from "./components/common/Layout";
 import RequireAuth from "./components/common/RequireAuth";
 import AccountSettingsPage from "./pages/AccountSettingsPage/AccountSettingsPage";
+import AdminChatSessionDetailPage from "./pages/AdminChatSessionsPage/AdminChatSessionDetailPage";
+import AdminChatSessionsPage from "./pages/AdminChatSessionsPage/AdminChatSessionsPage";
+import AdminDashboardPage from "./pages/AdminDashboardPage/AdminDashboardPage";
+import AdminRagIngestPage from "./pages/AdminRagIngestPage/AdminRagIngestPage";
 import AlarmPage from "./pages/AlarmPage/AlarmPage";
 import ChatPage from "./pages/ChatPage/ChatPage";
 import ConsentPage from "./pages/ConsentPage/ConsentPage";
@@ -39,6 +43,17 @@ export const router = createBrowserRouter([
     // 계정설정은 로그인은 필요하지만 5탭 네비게이션은 안 필요한 화면이라 Layout 밖에 둔다.
     element: <RequireAuth />,
     children: [{ path: "/account-settings", element: <AccountSettingsPage /> }],
+  },
+  {
+    // T-ADMIN-1: 관리자 화면 - Layout(하단 탭바) 밖 최상위 형제. 로그인만 하면 누구나 접근 가능
+    // (아무도 안 보는 화면이라 role 체크 없이 최대한 단순하게 - 2026-07-16 결정).
+    element: <RequireAuth />,
+    children: [
+      { path: "/admin", element: <AdminDashboardPage /> },
+      { path: "/admin/chat", element: <AdminChatSessionsPage /> },
+      { path: "/admin/chat/:sessionId", element: <AdminChatSessionDetailPage /> },
+      { path: "/admin/rag", element: <AdminRagIngestPage /> },
+    ],
   },
   {
     element: <Layout />,
