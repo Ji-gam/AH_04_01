@@ -14,6 +14,7 @@ from app.dtos.medication_dto import (
     MedicationScheduleUpdateRequest,
     QuickRegisterRequest,
     QuickRegisterResult,
+    RecognitionConfirmForFamilyRequest,
     RecognitionConfirmRequest,
     RecognitionConfirmResult,
     RecognitionJobCreateResult,
@@ -372,3 +373,88 @@ async def search_medications(
 ):
     service = MedicationService()
     return await service.search_medications(session, query)
+
+
+@medication_router.post(
+    "/recognition/jobs/{job_id}/confirm-for-family",
+    response_model=RecognitionConfirmResult,
+    summary="사용자 최종 확인 → 가족 구성원 몫으로 복약 스케줄 등록 (가족관리)",
+    description=(
+        "OCR로 인식한 처방전을 요청자 본인이 아니라, 요청자가 보호자로 등록된 가족 구성원 "
+        "(target_profile_id) 몫으로 등록한다. 기존 /confirm과 별개 엔드포인트로 분리했다 - "
+        "다른 조원이 확정등록 로직(마스터 DB 매칭 등)을 계속 다듬고 있어 병합 충돌을 피하기 "
+        "위함(의도적 중복, 나중에 합칠지는 상의 후 결정)."
+    ),
+)
+async def confirm_recognition_job_for_family(
+    job_id: str,
+    body: RecognitionConfirmForFamilyRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> RecognitionConfirmResult:
+    service = MedicationService()
+    return await service.confirm_recognition_job_for_family(
+        session=session,
+        job_id=job_id,
+        requester_profile_id=profile.id,
+        target_profile_id=body.target_profile_id,
+        selected_candidate_drug_code=body.selected_candidate_drug_code,
+        confirmed_fields=body.confirmed_fields,
+    )
+
+
+@medication_router.get(
+    "/medications/family/{target_profile_id}",
+    response_model=list[MedicationScheduleResponse],
+    summary="가족 구성원의 복약 스케줄 전체 조회 (가족관리)",
+    description="보호자가 자신이 관리하는 가족 구성원의 복약 스케줄 전체를 조회한다.",
+)
+async def list_medication_schedules_for_family(
+    target_profile_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> list[MedicationScheduleResponse]:
+    service = MedicationService()
+    return await service.list_schedules_for_family(session, profile.id, target_profile_id)
+
+
+@medication_router.get(
+    "/medications/interactions/family/{target_profile_id}",
+    response_model=InteractionCheckResult,
+    summary="가족 구성원의 병용금기 확인 (가족관리)",
+)
+async def check_interactions_for_family(
+    target_profile_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> InteractionCheckResult:
+    service = MedicationService()
+    return await service.check_interactions_for_family(session, profile.id, target_profile_id)
+
+
+@medication_router.get(
+    "/medications/food-interactions/family/{target_profile_id}",
+    response_model=FoodInteractionCheckResult,
+    summary="가족 구성원의 음식 상호작용 확인 (가족관리)",
+)
+async def check_food_interactions_for_family(
+    target_profile_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> FoodInteractionCheckResult:
+    service = MedicationService()
+    return await service.check_food_interactions_for_family(session, profile.id, target_profile_id)
+
+
+@medication_router.delete(
+    "/medications/{schedule_id}/for-family",
+    status_code=204,
+    summary="가족 구성원 몫 복약 스케줄 삭제 (가족관리)",
+)
+async def delete_medication_schedule_for_family(
+    schedule_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    service = MedicationService()
+    await service.delete_schedule_for_family(session, profile.id, schedule_id)
