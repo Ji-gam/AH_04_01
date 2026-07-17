@@ -18,5 +18,10 @@
     "owner": "agent-Genie",
     "branch": "feat/T-LLM-7-3-pubmed-integration",
     "started": "2026-07-16"
+  },
+  "T-LLM-2-dur-interaction-warning": {
+    "owner": "agent-Genie",
+    "branch": "feature/T-LLM-2-dur-interaction-warning",
+    "started": "2026-07-17"
   }
 }
