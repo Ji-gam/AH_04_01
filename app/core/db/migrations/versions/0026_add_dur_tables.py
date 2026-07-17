@@ -18,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def _product_rule_columns(with_ingr_code: bool, with_item_name: bool = False) -> list[sa.Column]:
-    cols = [
+    cols: list[sa.Column] = [
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("item_seq", sa.String(length=20), nullable=False),
     ]
