@@ -13,8 +13,10 @@ class Config(BaseSettings):
     OPENAI_EMBEDDING_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
 
-    # HF Inference API 호출용 Access Token(read + Inference Providers 호출 권한,
-    # huggingface.co/settings/tokens).
+    # **RAG엔 필요 없다.** 임베딩은 모델을 로컬에 내려받아 돌리므로 네트워크도 키도 안 쓴다
+    # (ingest/embeddings.py의 _LocalHFEmbeddings). 이 키가 필요한 건 아직 안 받은 후보
+    # 모델을 API로 비교하는 1회성 도구뿐이다(scripts/benchmark_embeddings.py).
+    # 발급: huggingface.co/settings/tokens (Inference Providers 호출 권한 포함)
     HUGGINGFACE_API_KEY: str | None = None
     # Phase 0 임베딩 벤치마크 결과(40문항 골든셋, recall@3: OpenAI 0.85 vs
     # intfloat/multilingual-e5-large 1.0) 채택 — 한국어 도메인 검색 품질이 유의미하게
