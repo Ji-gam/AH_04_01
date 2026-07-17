@@ -72,7 +72,9 @@ class NotificationScheduleService:
         분리 추가한 것과 동일한 패턴 - docs/decision_log/2026-07-16-... 참고)."""
         is_guardian = await self._family_repo.is_guardian_of(session, requester_profile_id, target_profile_id)
         if not is_guardian:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필의 알림을 조회할 권한이 없습니다.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필의 알림을 조회할 권한이 없습니다."
+            )
         return await self.repo.list_schedules_for_profile(session, target_profile_id)
 
     async def create_schedule_for_family(
@@ -112,7 +114,11 @@ class NotificationScheduleService:
         return schedule
 
     async def update_schedule_for_family(
-        self, session: AsyncSession, requester_profile_id: int, schedule_id: int, data: NotificationScheduleUpdateRequest
+        self,
+        session: AsyncSession,
+        requester_profile_id: int,
+        schedule_id: int,
+        data: NotificationScheduleUpdateRequest,
     ) -> NotificationSchedule:
         """(가족관리) 보호자가 가족 구성원 몫 알림을 수정한다. is_active 필드도 여기 포함되므로
         이 메서드 하나로 "수정"과 "on/off 토글"을 둘 다 처리한다(기존 update_schedule과 동일한 설계)."""
@@ -133,7 +139,9 @@ class NotificationScheduleService:
         await session.commit()
         return schedule
 
-    async def delete_schedule_for_family(self, session: AsyncSession, requester_profile_id: int, schedule_id: int) -> None:
+    async def delete_schedule_for_family(
+        self, session: AsyncSession, requester_profile_id: int, schedule_id: int
+    ) -> None:
         schedule = await self._get_guarded_schedule(session, requester_profile_id, schedule_id)
         await self.repo.delete_instance(session, schedule)
         await session.commit()

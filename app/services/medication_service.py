@@ -1328,12 +1328,16 @@ class MedicationService:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
         return await self.check_food_interactions(session, target_profile_id)
 
-    async def delete_schedule_for_family(self, session: AsyncSession, requester_profile_id: int, schedule_id: int) -> None:
+    async def delete_schedule_for_family(
+        self, session: AsyncSession, requester_profile_id: int, schedule_id: int
+    ) -> None:
         """(가족관리) 보호자가 가족 구성원 몫 복약 스케줄을 삭제한다."""
         schedule = await self._repository.get_schedule_by_id(session, schedule_id)
         if not schedule:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 복약 스케줄을 찾을 수 없습니다.")
         is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, schedule.profile_id)
         if not is_guardian:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 복약 스케줄을 삭제할 권한이 없습니다.")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="해당 복약 스케줄을 삭제할 권한이 없습니다."
+            )
         await self._repository.delete_schedule(session, schedule)
