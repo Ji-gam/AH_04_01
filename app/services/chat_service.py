@@ -123,9 +123,9 @@ class ChatService:
             context["medications"], context["is_pregnant"], context["is_geriatric"]
         )
         interaction_warnings = await self._collect_interaction_warnings(context["medications"])
-        injected_context = [
-            f"[DUR 안전 경고 정보] 복용 약물 중 위험 경고 발견: {w}" for w in dur_warnings
-        ] + [f"[병용금기 경고] {w}" for w in interaction_warnings]
+        injected_context = [f"[DUR 안전 경고 정보] 복용 약물 중 위험 경고 발견: {w}" for w in dur_warnings] + [
+            f"[병용금기 경고] {w}" for w in interaction_warnings
+        ]
 
         full_response = ""
         sources: list[dict] = []
