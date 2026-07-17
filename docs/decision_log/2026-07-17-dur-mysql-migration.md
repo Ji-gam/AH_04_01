@@ -17,7 +17,7 @@ DUR 조회가 느리다는 문제 제기가 있었고, 두 경로 모두 요청�
 | 항목 | 결정 | 이유 |
 | --- | --- | --- |
 | 원문 수집 파이프라인 / SQLite 산출물 | `scripts/drug_info_sync/`와 `app/database/drugs_full.db`는 그대로 유지 | 이 프로젝트가 만든 파이프라인이 아니고, 여전히 "빌드 산출물 → MySQL 시딩"의 중간 산출물 역할로 유효하다. |
-| MySQL 스키마 | `app/models/dur.py`에 21개 테이블 정의(22개 원본 API 테이블 중 두 리포지토리가 실제로 조회하는 것만 — `drug_bundle_info`/`drug_max_dosage`/`drug_prdt_prmsn_list`는 제외), Alembic 리비전 `0024_add_dur_tables.py` | 조인/필터 키(`item_seq`, `ingr_code` 등)만 인덱스가 필요한 `String`, 나머지 원문 텍스트는 실제 데이터 최대 길이가 `String(255)`를 넘는 경우가 있어(`chart` 최대 262자, `medicine_recalls.prduct` 최대 819자, `dur_prod_usjnt_taboo`/`dur_prod_master_list`의 item_name류 최대 391/383자) 전부 `Text`로 잡았다 — 실제 시딩(98만 건) 중 "Data too long" 에러로 확인. |
+| MySQL 스키마 | `app/models/dur.py`에 21개 테이블 정의(22개 원본 API 테이블 중 두 리포지토리가 실제로 조회하는 것만 — `drug_bundle_info`/`drug_max_dosage`/`drug_prdt_prmsn_list`는 제외), Alembic 리비전 `0026_add_dur_tables.py` | 조인/필터 키(`item_seq`, `ingr_code` 등)만 인덱스가 필요한 `String`, 나머지 원문 텍스트는 실제 데이터 최대 길이가 `String(255)`를 넘는 경우가 있어(`chart` 최대 262자, `medicine_recalls.prduct` 최대 819자, `dur_prod_usjnt_taboo`/`dur_prod_master_list`의 item_name류 최대 391/383자) 전부 `Text`로 잡았다 — 실제 시딩(98만 건) 중 "Data too long" 에러로 확인. |
 | 품목 마스터 | `dur_prod_master_list`(DUR 품목 마스터, 23,417건)를 `DurDrugRepository`의 이름 검색/조회 기준으로 추가 | 처음엔 두 리포지토리 어디에서도 안 쓰인다고 보고 제외했으나, 실사용 검증 중 `drugs_data`(e약은요 API, 4,758건)만으로 이름 검색을 하면 거기 없는 약(예: 테라싸이클린)이 아예 검색이 안 되는 회귀를 발견 — 예전 `dur_drug_light.db`의 `products` 테이블(27,000여 건)과 같은 역할이 필요했다. |
 | 시딩 | `app/scripts/seed_dur.py` 신설. `drugs_full.db`를 테이블별로 청크(5,000행) 단위로 읽어 MySQL에 전체 삭제 후 재삽입 | 최대 테이블(`dur_prod_usjnt_taboo`)이 80만 행대라 ORM 객체를 하나씩 `session.add`하지 않고 Core `insert()` executemany로 처리. |
 | DurScreeningRepository | `sqlite3.Connection` → `AsyncSession`, 기존 UNION ALL 원시 SQL은 `text()`로 그대로 유지(플레이스홀더만 `?`→named param) | 쿼리 구조(다단계 UNION, 성분코드 역추적 캐스케이드)는 검증된 로직이라 재작성하지 않고 파라미터 바인딩 방식만 MySQL에 맞게 변경. |
@@ -47,6 +47,6 @@ uv run python -m app.scripts.seed_dur                            # drugs_full.db
 ## 참고
 
 - 모델: `app/models/dur.py`
-- 마이그레이션: `app/core/db/migrations/versions/0024_add_dur_tables.py`
+- 마이그레이션: `app/core/db/migrations/versions/0026_add_dur_tables.py`
 - 시드 스크립트: `app/scripts/seed_dur.py`
 - 리포지토리: `app/repositories/dur_repository.py`, `app/repositories/dur_drug_repository.py`
