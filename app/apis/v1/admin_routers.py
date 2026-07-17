@@ -68,7 +68,7 @@ async def get_admin_chat_session_messages(
     "/rag/ingest/csv",
     response_model=IngestCsvResult,
     summary="[관리자] CSV 업로드 후 DUR 인제스트 트리거",
-    description="업로드한 CSV를 ai_worker에 전달해 dur_rules 컬렉션에 그 파일 소스만 "
+    description="업로드한 파일을 ai_worker의 드롭 폴더에 저장하고 그 파일만 색인한다. "
     "upsert한다(재업로드=최신 스냅샷으로 자동 갱신). 컬렉션 전체 리셋은 "
     "POST /admin/rag/ingest/csv/reset을 쓴다.",
 )
@@ -80,7 +80,7 @@ async def upload_rag_csv(file: Annotated[UploadFile, File(...)]) -> IngestCsvRes
 
 @admin_router.post(
     "/rag/ingest/csv/reset",
-    summary="[관리자] dur_rules 컬렉션 삭제(재색인 준비)",
+    summary="[관리자] structured 컬렉션(CSV) 삭제(재색인 준비)",
 )
 async def reset_rag_dur_collection() -> dict:
     return await AIWorkerGateway().reset_dur_collection()
@@ -99,7 +99,7 @@ async def trigger_rag_paper_ingest(body: IngestPapersRequest) -> IngestPapersRes
 
 @admin_router.post(
     "/rag/ingest/papers/reset",
-    summary="[관리자] pubmed_papers 컬렉션 삭제(재색인 준비)",
+    summary="[관리자] unstructured 컬렉션(논문/안내서) 삭제(재색인 준비)",
 )
 async def reset_rag_paper_collection() -> dict:
     return await AIWorkerGateway().reset_paper_collection()
@@ -109,7 +109,7 @@ async def reset_rag_paper_collection() -> dict:
     "/rag/ingest/status",
     response_model=IngestStatusResult,
     summary="[관리자] 인제스트 현황 조회",
-    description="dur_rules/pubmed_papers 컬렉션 문서 수와 질환별 원본 PubMed JSON 파일 건수를 반환한다.",
+    description="structured/unstructured 컬렉션 문서 수와 질환별 원본 PubMed JSON 파일 건수를 반환한다.",
 )
 async def get_rag_ingest_status() -> IngestStatusResult:
     result = await AIWorkerGateway().ingest_status()

@@ -1,110 +1,136 @@
-"""로더가 매니페스트 선언만으로 Document를 만드는지.
+"""로더 회귀 테스트: 확장자 -> Document.
 
-예전엔 파일 하나당 전용 함수 하나(`_pwnm_content` 등 7개)가 문장을 조립했다. 여기서
-지키려는 계약은 **CSV가 몇 개가 되든 로더는 하나**이고, 파일별 차이는 전부 spec에서
-온다는 것이다.
+핵심은 두 가지다.
+  1) **블랙리스트**여야 한다. 예전 화이트리스트는 7개 DUR 파일 전부에서 FORM_NAME(제형명)과
+     REMARK(비고)를 소리 없이 버리고 있었다.
+  2) 검색 층이 쓰는 메타데이터 키(`ingr_name`)가 붙어야 한다. 없으면 DUR 검색이 통째로
+     0건이 된다(search_documents가 항상 그 키로 필터하므로).
 """
 
 import json
+from pathlib import Path
 
-from ai_worker.ingest.loaders import CsvRecordLoader, JsonRecordLoader, build_loader
-from ai_worker.ingest.manifest import SourceSpec
+import pytest
+
+from ai_worker.ingest.loaders import CsvLoader, JsonLoader, MarkdownLoader, build_loader
+from ai_worker.ingest.sources import Source
 
 
-def test_csv_loader_renders_only_declared_content_columns(tmp_path, monkeypatch):
-    import ai_worker.ingest.manifest as manifest_module
+def _source(tmp_path: Path, name: str, body: str, **kwargs) -> Source:
+    path = tmp_path / name
+    path.write_text(body, encoding="utf-8")
+    return Source(path=path, **kwargs)
 
-    monkeypatch.setattr(manifest_module, "SOURCE_DIR", tmp_path)
-    (tmp_path / "a.csv").write_text(
-        "INGR_NAME,PROHBT_CONTENT,NOISE\n프로게스테론,안전성 미확립,버릴값\n", encoding="utf-8"
+
+def test_csv_puts_every_column_in_content_by_default(tmp_path):
+    """기본은 전 컬럼이다. 예전 화이트리스트가 FORM_NAME/REMARK를 버리던 사고의 재발 방지."""
+    source = _source(tmp_path, "a.csv", "INGR_NAME,FORM_NAME,REMARK\n와파린,정제,경구\n")
+
+    doc = next(CsvLoader(source).lazy_load())
+
+    assert "INGR_NAME: 와파린" in doc.page_content
+    assert "FORM_NAME: 정제" in doc.page_content
+    assert "REMARK: 경구" in doc.page_content
+
+
+def test_csv_drops_only_excluded_columns(tmp_path):
+    source = _source(
+        tmp_path,
+        "a.csv",
+        "DUR_SEQ,INGR_NAME,PROHBT_CONTENT\n123,와파린,병용금기\n",
+        exclude_columns=frozenset({"DUR_SEQ"}),
     )
-    spec = SourceSpec(
-        file="a.csv",
-        rag=True,
-        loader="csv",
-        collection="dur_rules",
-        content_columns=("INGR_NAME", "PROHBT_CONTENT"),
-        metadata_columns={"INGR_NAME": "ingr_name"},
-        metadata={"display_name": "임부금기의약품"},
-    )
 
-    (doc,) = list(CsvRecordLoader(spec).lazy_load())
+    doc = next(CsvLoader(source).lazy_load())
 
-    # 선언 안 한 컬럼은 본문에 안 들어간다 — 이 선택이 코드가 아니라 매니페스트에 있다.
-    assert doc.page_content == "INGR_NAME: 프로게스테론\nPROHBT_CONTENT: 안전성 미확립"
-    assert "버릴값" not in doc.page_content
-    # source는 index()의 source_id_key라 cleanup 범위를 정한다.
+    assert "DUR_SEQ" not in doc.page_content
+    assert "INGR_NAME: 와파린" in doc.page_content
+    assert "PROHBT_CONTENT: 병용금기" in doc.page_content
+
+
+def test_csv_skips_empty_values(tmp_path):
+    """빈 값은 검색에 기여하지 않고 노이즈만 된다."""
+    source = _source(tmp_path, "a.csv", "INGR_NAME,REMARK\n와파린,\n")
+
+    doc = next(CsvLoader(source).lazy_load())
+
+    assert "REMARK" not in doc.page_content
+
+
+def test_csv_skips_rows_whose_content_is_entirely_empty(tmp_path):
+    """본문이 통째로 비면 임베딩할 게 없다. index()가 콘텐츠 해시로 중복을 잡으므로 빈
+    문서를 넣으면 서로 같은 문서로 뭉친다."""
+    source = _source(tmp_path, "a.csv", "INGR_NAME,REMARK\n와파린,경구\n,\n")
+
+    assert len(list(CsvLoader(source).lazy_load())) == 1
+
+
+def test_csv_renames_columns_into_metadata_keys_the_search_layer_expects(tmp_path):
+    """대부분 INGR_NAME인데 병용금기만 INGR_KOR_NAME이다. 전역 설정에 둘 다 두면 파일에
+    있는 쪽만 붙는다 — 그 차이를 코드가 아니라 설정이 흡수한다."""
+    tuning = {"INGR_NAME": "ingr_name", "INGR_KOR_NAME": "ingr_name"}
+    usual = _source(tmp_path, "a.csv", "INGR_NAME,X\n와파린,1\n", metadata_columns=tuning)
+    combo = _source(tmp_path, "b.csv", "INGR_KOR_NAME,X\n아스피린,1\n", metadata_columns=tuning)
+
+    assert next(CsvLoader(usual).lazy_load()).metadata["ingr_name"] == "와파린"
+    assert next(CsvLoader(combo).lazy_load()).metadata["ingr_name"] == "아스피린"
+
+
+def test_loaders_stamp_source_and_collection_and_labels(tmp_path):
+    """`source`는 index()의 source_id_key다 — cleanup이 이 키로 파일별 문서를 묶는다."""
+    source = _source(tmp_path, "a.csv", "X\n1\n", metadata={"display_name": "임부금기의약품"})
+
+    doc = next(CsvLoader(source).lazy_load())
+
     assert doc.metadata["source"] == "a.csv"
-    assert doc.metadata["ingr_name"] == "프로게스테론"
+    assert doc.metadata["collection"] == "structured"
     assert doc.metadata["display_name"] == "임부금기의약품"
 
 
-def test_csv_loader_renames_column_to_metadata_key(tmp_path, monkeypatch):
-    """병용금기 파일만 성분 컬럼이 INGR_KOR_NAME이다. 검색 층은 ingr_name으로 필터하므로
-    그 차이를 매니페스트가 흡수해야 한다(코드 분기가 아니라)."""
-    import ai_worker.ingest.manifest as manifest_module
+def test_json_makes_one_document_per_element(tmp_path):
+    """초록을 고정 크기로 자르지 않는다 — 740편 중 729편이 쪼개져 제목 없는 조각이
+    컬렉션의 70%가 됐고, 그게 "고혈압 질문에 당뇨 논문"의 원인이었다."""
+    body = json.dumps([{"title": "A", "abstract": "a"}, {"title": "B", "abstract": "b"}])
+    source = _source(tmp_path, "p.json", body)
 
-    monkeypatch.setattr(manifest_module, "SOURCE_DIR", tmp_path)
-    (tmp_path / "u.csv").write_text("INGR_KOR_NAME,PROHBT_CONTENT\n와파린,병용금기\n", encoding="utf-8")
-    spec = SourceSpec(
-        file="u.csv",
-        rag=True,
-        loader="csv",
-        collection="dur_rules",
-        content_columns=("INGR_KOR_NAME",),
-        metadata_columns={"INGR_KOR_NAME": "ingr_name"},
-    )
+    docs = list(JsonLoader(source).lazy_load())
 
-    (doc,) = list(CsvRecordLoader(spec).lazy_load())
-
-    assert doc.metadata["ingr_name"] == "와파린"
+    assert len(docs) == 2
+    assert "title: A" in docs[0].page_content
 
 
-def test_csv_loader_skips_rows_with_empty_content(tmp_path, monkeypatch):
-    """본문이 비면 임베딩할 게 없다. index()가 콘텐츠 해시로 키를 만들므로 빈 문서를
-    넣으면 서로 같은 문서로 뭉쳐 조용히 사라진다."""
-    import ai_worker.ingest.manifest as manifest_module
+def test_json_keeps_korean_summary_ahead_of_the_english_abstract(tmp_path):
+    """질의는 한국어인데 초록은 영어다. 요약이 뒤에 있으면 긴 초록에 밀려 잘릴 수 있다."""
+    body = json.dumps([{"summary_ko": "한국어 요약", "title": "T", "abstract": "long english"}])
+    source = _source(tmp_path, "p.json", body)
 
-    monkeypatch.setattr(manifest_module, "SOURCE_DIR", tmp_path)
-    (tmp_path / "a.csv").write_text("INGR_NAME,X\n,버림\n프로게스테론,값\n", encoding="utf-8")
-    spec = SourceSpec(file="a.csv", rag=True, loader="csv", collection="c", content_columns=("INGR_NAME",))
-
-    docs = list(CsvRecordLoader(spec).lazy_load())
-
-    assert len(docs) == 1
-    assert docs[0].page_content == "INGR_NAME: 프로게스테론"
+    assert next(JsonLoader(source).lazy_load()).page_content.startswith("summary_ko: 한국어 요약")
 
 
-def test_json_loader_reads_array_records(tmp_path, monkeypatch):
-    import ai_worker.ingest.manifest as manifest_module
+def test_json_rejects_non_array_top_level(tmp_path):
+    source = _source(tmp_path, "p.json", json.dumps({"not": "an array"}))
 
-    monkeypatch.setattr(manifest_module, "SOURCE_DIR", tmp_path)
-    (tmp_path / "당뇨.json").write_text(
-        json.dumps([{"pmid": "1", "title": "T", "abstract": "A"}], ensure_ascii=False), encoding="utf-8"
-    )
-    spec = SourceSpec(
-        file="당뇨.json",
-        rag=True,
-        loader="json",
-        collection="pubmed_papers",
-        content_columns=("title", "abstract"),
-        metadata_columns={"pmid": "pmid"},
-        metadata={"disease": "당뇨"},
-    )
-
-    (doc,) = list(JsonRecordLoader(spec).lazy_load())
-
-    assert doc.page_content == "title: T\nabstract: A"
-    assert doc.metadata["pmid"] == "1"
-    assert doc.metadata["disease"] == "당뇨"
+    with pytest.raises(ValueError, match="JSON 배열이 아닙니다"):
+        list(JsonLoader(source).lazy_load())
 
 
-def test_build_loader_rejects_unknown_loader_name():
-    spec = SourceSpec(file="a.xyz", rag=True, loader="없는로더", collection="c")
+def test_markdown_splits_on_headings_and_keeps_them_as_metadata(tmp_path):
+    """헤더가 곧 금이다. 조각이 어느 절에서 왔는지 메타데이터로 남는다."""
+    source = _source(tmp_path, "d.md", "# 안내서\n\n앞말\n\n## 기관지 확장제\n\n본문입니다\n")
 
-    try:
-        build_loader(spec)
-    except ValueError as e:
-        assert "없는로더" in str(e)
-    else:
-        raise AssertionError("알 수 없는 로더는 즉시 실패해야 한다")
+    docs = list(MarkdownLoader(source).lazy_load())
+
+    assert any(d.metadata.get("subsection") == "기관지 확장제" for d in docs)
+    assert all(d.metadata["source"] == "d.md" for d in docs)
+
+
+def test_build_loader_routes_by_extension(tmp_path):
+    """매니페스트에 `loader: csv`를 적게 하지 않는다 — 파일이 이미 아는 걸 또 묻는 셈이다."""
+    assert isinstance(build_loader(_source(tmp_path, "a.csv", "X\n1\n")), CsvLoader)
+    assert isinstance(build_loader(_source(tmp_path, "a.json", "[]")), JsonLoader)
+    assert isinstance(build_loader(_source(tmp_path, "a.md", "# t")), MarkdownLoader)
+
+
+def test_build_loader_rejects_unknown_extension(tmp_path):
+    with pytest.raises(ValueError, match="지원하지 않는 확장자"):
+        build_loader(_source(tmp_path, "a.xyz", "junk"))

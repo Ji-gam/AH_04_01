@@ -24,7 +24,7 @@ chat_agent_router = APIRouter()
     "/agent/chat",
     summary="통합 RAG 스트리밍 채팅 (T-LLM-7-3-2)",
     description=(
-        "DUR(dur_rules)+논문(pubmed_papers) 두 컬렉션을 모두 검색해 청크를 합치고, "
+        "DUR(structured)+논문(unstructured) 두 컬렉션을 모두 검색해 청크를 합치고, "
         "한 번의 LLM 호출로 답변을 스트리밍한다. 각 줄은 "
         "{type: 'sources'|'token'|'error', ...} 형태의 JSON이다. 관련 자료가 없으면 "
         "RAG 없이 일반 답변으로 자연히 폴백한다(별도 분류 없음). 기존 /retrieve, "

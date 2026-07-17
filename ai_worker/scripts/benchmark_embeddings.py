@@ -25,8 +25,7 @@ from huggingface_hub import InferenceClient
 from ai_worker.core.config import settings
 from ai_worker.ingest.embeddings import get_embeddings
 from ai_worker.ingest.loaders import build_loader
-from ai_worker.ingest.manifest import load_manifest
-from ai_worker.tasks.ingest_papers import build_documents, load_raw_papers, load_summary_cache
+from ai_worker.ingest.sources import discover
 
 GOLDEN_SET_PATH = Path(__file__).parent.parent / "tests" / "fixtures" / "embedding_golden_set.json"
 CORPUS_SAMPLE_SIZE = 250
@@ -39,35 +38,20 @@ random.seed(42)
 
 
 def _load_corpus() -> list[dict]:
-    """매니페스트의 RAG 소스 + 논문을 (text, source|None, pmid|None) 형태로 모은다.
+    """드롭 폴더의 소스를 전부 (text, source, ingr_name, pmid) 형태로 모은다.
 
-    예전엔 DUR 레지스트리를 직접 훑었다. 이제 매니페스트가 무엇이 RAG 재료인지 정하므로,
-    파일이 늘어도 이 함수는 그대로다 — 벤치마크가 실제 색인 대상과 자동으로 같아진다."""
+    `discover()`는 실제로 있는 파일만 주므로 존재 확인이 필요 없고, 로더를 그대로 쓰므로
+    본문도 실제 색인되는 것과 동일하다 — 파일이 늘어도 이 함수는 그대로다."""
     corpus: list[dict] = []
-    for spec in load_manifest():
-        if not spec.rag:
-            continue
-        if not spec.path.exists():
-            print(f"경고: {spec.file}이 source/에 없어 코퍼스에서 제외됨")
-            continue
+    for source in discover():
         corpus.extend(
             {
                 "text": d.page_content,
                 "source": d.metadata.get("source"),
                 "ingr_name": d.metadata.get("ingr_name"),
-                "pmid": None,
+                "pmid": d.metadata.get("pmid"),
             }
-            for d in build_loader(spec).lazy_load()
-        )
-
-    # 한국어 요약 캐시를 함께 넘겨, 실제 색인되는 본문과 같은 형태로 벤치마크한다
-    # (요약 접두 여부가 한국어 질의 매칭에 크게 영향을 준다 — ingest_papers 참고).
-    raw_by_disease = load_raw_papers()
-    summaries = load_summary_cache()
-    for disease, papers in raw_by_disease.items():
-        docs = build_documents(disease, papers, summaries)
-        corpus.extend(
-            {"text": d.page_content, "source": None, "ingr_name": None, "pmid": d.metadata.get("pmid")} for d in docs
+            for d in build_loader(source).lazy_load()
         )
     return corpus
 

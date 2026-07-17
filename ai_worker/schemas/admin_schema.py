@@ -19,20 +19,18 @@ class IngestPapersStartedResponse(BaseModel):
 
 
 class SourceScanResult(BaseModel):
-    """source/(드롭 폴더)와 _manifest.yaml의 대조 결과.
+    """드롭 폴더(source/)에 뭐가 있는지.
 
-    `unregistered`가 이 스키마의 존재 이유다 — 예전엔 매니페스트(당시엔 하드코딩
-    레지스트리)에 없는 파일을 **조용히 무시**해서, 데이터를 넣어도 아무 일도 아무 말도
-    없었다. 드롭 폴더로 쓰려면 "이건 아직 등록 안 됐다"고 말해줘야 한다."""
+    예전엔 `excluded`/`unregistered`/`missing`이 더 있었다. 전부 폴더와 별개로 "선언"이
+    존재해서 생기던 어긋남이었다 — 폴더가 곧 진실이면 어긋날 대상이 없다. 남는 건
+    "이 확장자는 읽을 줄 모른다" 하나뿐이다."""
 
     indexed: list[str]
-    excluded: list[str]
-    unregistered: list[str]
-    missing: list[str]
+    unsupported: list[str]
 
 
 class IngestStatusResponse(BaseModel):
-    dur_rules_count: int
-    pubmed_papers_count: int
+    structured_count: int
+    unstructured_count: int
     papers_raw_counts: dict[str, int]
     sources: SourceScanResult

@@ -81,8 +81,11 @@ export default function AdminRagIngestPage() {
         <h2>현재 상태</h2>
         {status ? (
           <ul>
-            <li>dur_rules 문서 수: {status.dur_rules_count}</li>
-            <li>pubmed_papers 문서 수: {status.pubmed_papers_count}</li>
+            {/* 컬렉션은 도메인이 아니라 다루는 방식으로 갈린다: CSV는 행이 곧 레코드라
+                안 자르고(structured), 논문/안내서는 산문이라 자른다(unstructured).
+                검색은 메타데이터 필터로 원하는 걸 골라내므로 도메인별로 쪼갤 이유가 없다. */}
+            <li>구조화 문서(CSV — DUR 규칙 + e약은요): {status.structured_count}건</li>
+            <li>산문 문서(논문 + 복약안내서): {status.unstructured_count}건</li>
             <li>
               질환별 원본 논문 파일 건수:{" "}
               {Object.entries(status.papers_raw_counts)
@@ -95,32 +98,19 @@ export default function AdminRagIngestPage() {
         )}
       </section>
 
-      {/* source/는 드롭 폴더다. 예전엔 등록 안 된 파일을 조용히 무시해서, 데이터를 넣어도
-          아무 일도 아무 말도 없었다. 여기서 그걸 드러낸다. */}
+      {/* source/는 드롭 폴더다. 넣으면 색인된다 — 등록 절차가 없다. 예전엔 매니페스트에
+          등록해야만 색인돼서, 파일을 넣어도 아무 일도 아무 말도 없었다.
+          이제 어긋날 수 있는 건 "읽을 줄 모르는 확장자" 하나뿐이라 그것만 드러낸다. */}
       <section style={{ marginBottom: 24 }}>
-        <h2>source/ 폴더 상태</h2>
+        <h2>source/ 드롭 폴더 상태</h2>
         {status ? (
           <ul>
             <li>색인 대상: {status.sources.indexed.length}개</li>
-            <li>RAG 제외(의도적): {status.sources.excluded.length}개</li>
-            <li>
-              <strong>미등록: {status.sources.unregistered.length}개</strong>
-              {status.sources.unregistered.length > 0 && (
-                <>
-                  {" — "}
-                  {status.sources.unregistered.join(", ")}
-                  <br />
-                  <small>
-                    source/에 있지만 _manifest.yaml에 없어 색인되지 않습니다. 쓰려면 매니페스트에 등록하세요.
-                  </small>
-                </>
-              )}
-            </li>
-            {status.sources.missing.length > 0 && (
+            {status.sources.unsupported.length > 0 && (
               <li>
-                <strong>파일 없음: {status.sources.missing.join(", ")}</strong>
+                <strong>읽을 수 없음: {status.sources.unsupported.join(", ")}</strong>
                 <br />
-                <small>매니페스트에 선언됐지만 source/에 파일이 없습니다.</small>
+                <small>확장자를 읽을 줄 몰라 건너뜁니다. 지원 형식: .csv / .json / .md / .pdf</small>
               </li>
             )}
           </ul>

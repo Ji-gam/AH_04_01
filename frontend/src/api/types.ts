@@ -41,14 +41,12 @@ export interface AdminChatSessionListItem {
  *  예전엔 등록 안 된 파일을 조용히 무시해서, 데이터를 넣어도 아무 반응이 없었다. */
 export interface SourceScanResult {
   indexed: string[];
-  excluded: string[];
-  unregistered: string[];
-  missing: string[];
+  unsupported: string[];
 }
 
 export interface IngestStatusResult {
-  dur_rules_count: number;
-  pubmed_papers_count: number;
+  structured_count: number;
+  unstructured_count: number;
   papers_raw_counts: Record<string, number>;
   sources: SourceScanResult;
 }

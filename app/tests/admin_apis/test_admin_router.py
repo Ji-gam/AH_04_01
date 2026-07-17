@@ -72,17 +72,16 @@ async def test_get_admin_chat_session_messages_not_found():
 
 
 async def test_rag_ingest_status_proxies_to_gateway(monkeypatch):
-    # sources는 source/(드롭 폴더)와 _manifest.yaml 대조 결과다. unregistered가 프론트까지
-    # 그대로 전달되어야 "넣었는데 아무 반응 없음"이 사라진다.
+    # sources는 드롭 폴더(source/) 현황이다. 폴더가 곧 진실이라 예전의 excluded/unregistered/
+    # missing이 없다 — 전부 폴더와 별개의 "선언"이 있어서 생기던 어긋남이었다.
+    # unsupported는 프론트까지 전달돼야 "넣었는데 아무 반응 없음"이 사라진다.
     payload = {
-        "dur_rules_count": 10,
-        "pubmed_papers_count": 5,
+        "structured_count": 10,
+        "unstructured_count": 5,
         "papers_raw_counts": {"암": 3},
         "sources": {
             "indexed": ["dur_pwnm_taboo.csv"],
-            "excluded": ["item_ingredient_map.csv"],
-            "unregistered": ["방금던져넣은거.csv"],
-            "missing": [],
+            "unsupported": ["방금던져넣은거.hwp"],
         },
     }
 
