@@ -29,6 +29,7 @@ from app.models.dur import (
     DurOdsnAtent,
     DurProdCpctyAtent,
     DurProdEfcyDplct,
+    DurProdMasterList,
     DurProdMdctnPdAtent,
     DurProdOdsnAtent,
     DurProdPwnmTaboo,
@@ -64,6 +65,15 @@ _TABLE_SPECS: list[tuple[str, type, dict[str, str]]] = [
             "seQesitm": "se_qesitm",
             "depositMethodQesitm": "deposit_method_qesitm",
             "itemImage": "item_image",
+        },
+    ),
+    (
+        "dur_prod_master_list",
+        DurProdMasterList,
+        {
+            "ITEM_SEQ": "item_seq",
+            "ITEM_NAME": "item_name",
+            "ENTP_NAME": "entp_name",
         },
     ),
     (

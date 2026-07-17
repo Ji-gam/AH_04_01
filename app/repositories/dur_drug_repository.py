@@ -122,9 +122,12 @@ def _profile_from_api_item(item: dict) -> DrugProfile:
 class DurDrugRepository:
     async def search_item_names(self, session: AsyncSession, item_name: str, limit: int) -> list[tuple[str, str]]:
         """(#108) 이름 부분일치로 (item_seq, item_name)만 가볍게 조회한다. `find_drug_info`는
-        성분/DUR규칙 등 여러 조회를 동반해 이름 매칭용으로 쓰기엔 무겁다."""
+        성분/DUR규칙 등 여러 조회를 동반해 이름 매칭용으로 쓰기엔 무겁다.
+
+        `dur_prod_master_list`(품목 마스터, 23,417건)를 기준으로 검색한다 - `drugs_data`(e약은요
+        API)는 4,758건뿐이라 그것만 쓰면 e약은요에 없는 약이 아예 검색 자체가 안 된다."""
         result = await session.execute(
-            text("SELECT item_seq, item_name FROM drugs_data WHERE item_name LIKE :q LIMIT :limit"),
+            text("SELECT item_seq, item_name FROM dur_prod_master_list WHERE item_name LIKE :q LIMIT :limit"),
             {"q": f"%{item_name}%", "limit": limit},
         )
         return [(row.item_seq, row.item_name) for row in result.all()]
@@ -135,20 +138,24 @@ class DurDrugRepository:
         """(#108) 27,000여 개 전체를 매번 스캔하지 않도록, OCR 텍스트 앞 몇 글자를 접두어로
         후보를 좁힌 뒤(인덱스 활용) 그 안에서만 유사도 비교를 하기 위한 조회."""
         result = await session.execute(
-            text("SELECT item_seq, item_name FROM drugs_data WHERE item_name LIKE :q LIMIT :limit"),
+            text("SELECT item_seq, item_name FROM dur_prod_master_list WHERE item_name LIKE :q LIMIT :limit"),
             {"q": f"{prefix}%", "limit": limit},
         )
         return [(row.item_seq, row.item_name) for row in result.all()]
 
     async def find_drug_info(self, session: AsyncSession, item_name: str) -> list[DrugProfile]:
-        """제품명 부분 일치로 검색해, 매칭된 제품마다 관련 데이터를 모두 모아 반환한다."""
+        """제품명 부분 일치로 검색해, 매칭된 제품마다 관련 데이터를 모두 모아 반환한다.
+        품목 마스터(`dur_prod_master_list`)로 이름을 찾고, 효능/용법 텍스트는 있으면(`drugs_data`,
+        e약은요 API 커버리지 4,758건뿐) LEFT JOIN으로 보완한다."""
         result = await session.execute(
             text(
                 """
-                SELECT item_seq, item_name, entp_name, efcy_qesitm, use_method_qesitm,
-                       atpn_qesitm, atpn_warn_qesitm, intrc_qesitm, se_qesitm
-                FROM drugs_data
-                WHERE item_name LIKE :q
+                SELECT m.item_seq, m.item_name, m.entp_name,
+                       d.efcy_qesitm, d.use_method_qesitm,
+                       d.atpn_qesitm, d.atpn_warn_qesitm, d.intrc_qesitm, d.se_qesitm
+                FROM dur_prod_master_list m
+                LEFT JOIN drugs_data d ON m.item_seq = d.item_seq
+                WHERE m.item_name LIKE :q
                 """
             ),
             {"q": f"%{item_name}%"},
@@ -192,8 +199,11 @@ class DurDrugRepository:
 
         dur_rules: list[dict] = []
         for table, _code, label in SINGLE_DRUG_RULE_TABLES:
+            # dur_prod_seobang_partition은 ingr_name 컬럼이 없다(제형 속성이라 성분 무관,
+            # dur_repository.py의 INGREDIENT_SOURCE_TABLES 주석과 동일 이유).
+            ingr_name_col = "NULL" if table == "dur_prod_seobang_partition" else "ingr_name"
             rule_result = await session.execute(
-                text(f"SELECT ingr_name, prohbt_content FROM {table} WHERE item_seq = :seq"), {"seq": item_seq}
+                text(f"SELECT {ingr_name_col}, prohbt_content FROM {table} WHERE item_seq = :seq"), {"seq": item_seq}
             )
             for ingr_name, prohbt_content in rule_result.all():
                 dur_rules.append(
@@ -243,11 +253,17 @@ class DurDrugRepository:
     async def _collect_rule_warnings(
         self, session: AsyncSession, table: str, item_name: str, label: str
     ) -> list[str]:
+        # {table}(dur_prod_pwnm_taboo/dur_prod_odsn_atent)은 item_seq만 갖고 item_name이
+        # 없어(app/models/dur.py) 품목 마스터(dur_prod_master_list)와 조인해야 이름으로 매칭할
+        # 수 있다. drugs_data(e약은요, 4,758건)는 커버리지가 좁아 여기 쓰면 안 된다 -
+        # find_drug_info/search_item_names와 동일한 이유(모듈 docstring 참고).
         result = await session.execute(
             text(
                 f"""
-                SELECT item_name, prohbt_content FROM {table}
-                WHERE item_name LIKE :like_q OR :q LIKE CONCAT('%', item_name, '%')
+                SELECT m.item_name, r.prohbt_content
+                FROM {table} r
+                JOIN dur_prod_master_list m ON r.item_seq = m.item_seq
+                WHERE m.item_name LIKE :like_q OR :q LIKE CONCAT('%', m.item_name, '%')
                 """
             ),
             {"like_q": f"%{item_name}%", "q": item_name},

@@ -8,8 +8,14 @@ API 22종 전수 수집 산출물, `scripts/drug_info_sync/` 참고)에서 MySQL
 `drugs_full.db`는 24개 테이블 전체를 갖고 있지만, 여기서는 `DurScreeningRepository`
 (`app/repositories/dur_repository.py`)와 `DurDrugRepository`
 (`app/repositories/dur_drug_repository.py`)가 실제로 쓰는 테이블·컬럼만 옮긴다
-(`drug_bundle_info`, `drug_max_dosage`, `drug_prdt_prmsn_list`, `dur_prod_master_list`는
-두 리포지토리 어디에서도 조회되지 않아 제외).
+(`drug_bundle_info`, `drug_max_dosage`, `drug_prdt_prmsn_list`는 두 리포지토리 어디에서도
+조회되지 않아 제외).
+
+`dur_prod_master_list`(23,417건, DUR 품목 마스터)는 실사용 중 발견된 버그로 뒤늦게 추가됐다 —
+`drugs_data`(e약은요 API)는 4,758건뿐이라 이것만으로 이름 검색(`search_item_names`,
+`find_drug_info`)을 하면 e약은요에 없는 약(예: 테라싸이클린)은 아예 안 잡힌다. 예전
+`dur_drug_light.db`의 `products` 테이블(27,000여 건)과 같은 역할이 필요해 이 테이블을
+품목 마스터로 쓰고, 효능/용법 텍스트만 `drugs_data`에서 item_seq로 보완한다.
 
 컬럼 타입: ITEM_SEQ/INGR_CODE류 조인·필터 키만 인덱스가 걸리는 `String`이고, 나머지 원문
 텍스트(PROHBT_CONTENT/REMARK 등)는 SQLite 원본이 전부 TEXT라 길이 제한 없는 `Text`로 옮긴다.
@@ -39,6 +45,19 @@ class DrugMaster(Base):
     se_qesitm: Mapped[str | None] = mapped_column(Text, nullable=True)
     deposit_method_qesitm: Mapped[str | None] = mapped_column(Text, nullable=True)
     item_image: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class DurProdMasterList(Base):
+    """DUR 품목 마스터(API: DURPrdlstInfoService03/getDurPrdlstInfoList03) - `DurDrugRepository`의
+    이름 검색/조회 기준 품목 마스터(`drugs_data`보다 훨씬 넓은 커버리지)."""
+
+    __tablename__ = "dur_prod_master_list"
+    __table_args__ = (Index("ix_dur_prod_master_list_item_name", "item_name", mysql_length=255),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    item_seq: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    item_name: Mapped[str] = mapped_column(Text, nullable=False)
+    entp_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class DrugIdentification(Base):
@@ -240,6 +259,7 @@ class DurUsjntTaboo(Base):
 # seed_dur.py가 SQLite 원본 테이블명 -> (모델, SQLite 컬럼명 -> 모델 속성명) 매핑에 사용.
 ALL_DUR_MODELS: list[type] = [
     DrugMaster,
+    DurProdMasterList,
     DrugIdentification,
     DrugPrdtPrmsnDetail,
     MedicineRecall,

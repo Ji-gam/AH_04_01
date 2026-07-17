@@ -1,10 +1,11 @@
 import time
 
-from fastapi.testclient import TestClient
+import pytest
+from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 
-client = TestClient(app)
+pytestmark = pytest.mark.asyncio
 
 ACTIFED = "액티피드정"  # 197000053, 품목 기준 규칙 0건이지만 item_ingredient_map으로 성분 해결됨
 IBUPROFEN_200 = "부루펜정200밀리그램(이부프로펜)"  # 197700120
@@ -15,11 +16,16 @@ NONEXISTENT = "존재하지않는약품123"
 DUR_SIMPLE_RULE_CODES = ["PWNM", "ODSN", "SPCIFY_AGRDE", "MDCTN", "SEOBANG", "CPCTY"]
 
 
-def test_basic_screening_returns_dur_simple_for_known_drug():
-    response = client.post(
-        "/api/v1/dur/screening/basic",
-        json={"drug_names": [IBUPROFEN_200, NONEXISTENT]},
-    )
+async def _client() -> AsyncClient:
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+
+
+async def test_basic_screening_returns_dur_simple_for_known_drug():
+    async with await _client() as client:
+        response = await client.post(
+            "/api/v1/dur/screening/basic",
+            json={"drug_names": [IBUPROFEN_200, NONEXISTENT]},
+        )
     assert response.status_code == 200
     data = response.json()
 
@@ -38,8 +44,9 @@ def test_basic_screening_returns_dur_simple_for_known_drug():
     assert pwnm["prohbt_content"]
 
 
-def test_basic_screening_all_flags_off_for_clean_drug():
-    response = client.post("/api/v1/dur/screening/basic", json={"drug_names": [ACTIFED]})
+async def test_basic_screening_all_flags_off_for_clean_drug():
+    async with await _client() as client:
+        response = await client.post("/api/v1/dur/screening/basic", json={"drug_names": [ACTIFED]})
     assert response.status_code == 200
     data = response.json()
 
@@ -50,13 +57,15 @@ def test_basic_screening_all_flags_off_for_clean_drug():
     assert data["unmatched_drug_names"] == []
 
 
-def test_basic_screening_rejects_empty_drug_names():
-    response = client.post("/api/v1/dur/screening/basic", json={"drug_names": []})
+async def test_basic_screening_rejects_empty_drug_names():
+    async with await _client() as client:
+        response = await client.post("/api/v1/dur/screening/basic", json={"drug_names": []})
     assert response.status_code == 400
 
 
-def test_basic_screening_all_unmatched_returns_200_with_empty_results():
-    response = client.post("/api/v1/dur/screening/basic", json={"drug_names": [NONEXISTENT]})
+async def test_basic_screening_all_unmatched_returns_200_with_empty_results():
+    async with await _client() as client:
+        response = await client.post("/api/v1/dur/screening/basic", json={"drug_names": [NONEXISTENT]})
     assert response.status_code == 200
     data = response.json()
 
@@ -64,11 +73,12 @@ def test_basic_screening_all_unmatched_returns_200_with_empty_results():
     assert data["unmatched_drug_names"] == [NONEXISTENT]
 
 
-def test_interaction_screening_detects_efficacy_duplication():
-    response = client.post(
-        "/api/v1/dur/screening/interaction",
-        json={"drug_names": [IBUPROFEN_200, IBUPROFEN_400]},
-    )
+async def test_interaction_screening_detects_efficacy_duplication():
+    async with await _client() as client:
+        response = await client.post(
+            "/api/v1/dur/screening/interaction",
+            json={"drug_names": [IBUPROFEN_200, IBUPROFEN_400]},
+        )
     assert response.status_code == 200
     data = response.json()
 
@@ -82,22 +92,24 @@ def test_interaction_screening_detects_efficacy_duplication():
     assert {hit["drug_a"]["item_seq"], hit["drug_b"]["item_seq"]} == {"197700120", "198300343"}
 
 
-def test_interaction_screening_deduplicates_bidirectional_pairs():
-    response = client.post(
-        "/api/v1/dur/screening/interaction",
-        json={"drug_names": [IBUPROFEN_200, IBUPROFEN_400]},
-    )
+async def test_interaction_screening_deduplicates_bidirectional_pairs():
+    async with await _client() as client:
+        response = await client.post(
+            "/api/v1/dur/screening/interaction",
+            json={"drug_names": [IBUPROFEN_200, IBUPROFEN_400]},
+        )
     data = response.json()
 
     pairs = [frozenset({i["drug_a"]["item_seq"], i["drug_b"]["item_seq"]}) for i in data["drug_intrc"]["interactions"]]
     assert len(pairs) == len(set(pairs))
 
 
-def test_interaction_screening_includes_recall_for_single_drug():
-    response = client.post(
-        "/api/v1/dur/screening/interaction",
-        json={"drug_names": [RECALLED_DRUG]},
-    )
+async def test_interaction_screening_includes_recall_for_single_drug():
+    async with await _client() as client:
+        response = await client.post(
+            "/api/v1/dur/screening/interaction",
+            json={"drug_names": [RECALLED_DRUG]},
+        )
     assert response.status_code == 200
     data = response.json()
 
@@ -106,11 +118,12 @@ def test_interaction_screening_includes_recall_for_single_drug():
     assert any(r["item_name"] == RECALLED_DRUG and r["item_seq"] == "202500644" for r in recalls)
 
 
-def test_ingredient_screening_returns_ingredient_detail():
-    response = client.post(
-        "/api/v1/dur/screening/ingredient",
-        json={"drug_names": [IBUPROFEN_200]},
-    )
+async def test_ingredient_screening_returns_ingredient_detail():
+    async with await _client() as client:
+        response = await client.post(
+            "/api/v1/dur/screening/ingredient",
+            json={"drug_names": [IBUPROFEN_200]},
+        )
     assert response.status_code == 200
     data = response.json()
 
@@ -118,12 +131,13 @@ def test_ingredient_screening_returns_ingredient_detail():
     assert "D000363" in ingr_codes
 
 
-def test_ingredient_screening_resolves_ingredients_for_zero_rule_drug():
+async def test_ingredient_screening_resolves_ingredients_for_zero_rule_drug():
     """T-MED-14-1: 품목 기준 규칙이 0건인 약도 item_ingredient_map을 통해 3단계 성분 조회가 된다."""
-    response = client.post(
-        "/api/v1/dur/screening/ingredient",
-        json={"drug_names": [ACTIFED]},
-    )
+    async with await _client() as client:
+        response = await client.post(
+            "/api/v1/dur/screening/ingredient",
+            json={"drug_names": [ACTIFED]},
+        )
     assert response.status_code == 200
     data = response.json()
 
@@ -131,12 +145,13 @@ def test_ingredient_screening_resolves_ingredients_for_zero_rule_drug():
     assert {"D000316", "D001098"}.issubset(ingr_codes)
 
 
-def test_ingredient_screening_includes_source_drug_dosage():
+async def test_ingredient_screening_includes_source_drug_dosage():
     """T-MED-14-1 후속: source_drugs가 item_seq/함량(qnt/unit)까지 포함하는지 확인."""
-    response = client.post(
-        "/api/v1/dur/screening/ingredient",
-        json={"drug_names": [ACTIFED]},
-    )
+    async with await _client() as client:
+        response = await client.post(
+            "/api/v1/dur/screening/ingredient",
+            json={"drug_names": [ACTIFED]},
+        )
     assert response.status_code == 200
     data = response.json()
 
@@ -147,11 +162,12 @@ def test_ingredient_screening_includes_source_drug_dosage():
     assert source["unit"] == "밀리그램"
 
 
-def test_ingredient_screening_all_unmatched_returns_200_with_empty_ingredients():
-    response = client.post(
-        "/api/v1/dur/screening/ingredient",
-        json={"drug_names": [NONEXISTENT]},
-    )
+async def test_ingredient_screening_all_unmatched_returns_200_with_empty_ingredients():
+    async with await _client() as client:
+        response = await client.post(
+            "/api/v1/dur/screening/ingredient",
+            json={"drug_names": [NONEXISTENT]},
+        )
     assert response.status_code == 200
     data = response.json()
 
@@ -159,15 +175,16 @@ def test_ingredient_screening_all_unmatched_returns_200_with_empty_ingredients()
     assert data["unmatched_drug_names"] == [NONEXISTENT]
 
 
-def test_p95_latency_under_3_seconds():
+async def test_p95_latency_under_3_seconds():
     payload = {"drug_names": [IBUPROFEN_200, IBUPROFEN_400, ACTIFED]}
     latencies = []
 
-    for _ in range(20):
-        start = time.perf_counter()
-        response = client.post("/api/v1/dur/screening/interaction", json=payload)
-        latencies.append(time.perf_counter() - start)
-        assert response.status_code == 200
+    async with await _client() as client:
+        for _ in range(20):
+            start = time.perf_counter()
+            response = await client.post("/api/v1/dur/screening/interaction", json=payload)
+            latencies.append(time.perf_counter() - start)
+            assert response.status_code == 200
 
     latencies.sort()
     p95 = latencies[18]

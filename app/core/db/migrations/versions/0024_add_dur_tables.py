@@ -62,6 +62,18 @@ def upgrade() -> None:
     op.create_index("ix_drugs_data_item_name", "drugs_data", ["item_name"])
 
     op.create_table(
+        "dur_prod_master_list",
+        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        sa.Column("item_seq", sa.String(length=20), nullable=False),
+        sa.Column("item_name", sa.Text(), nullable=False),
+        sa.Column("entp_name", sa.String(length=255), nullable=True),
+    )
+    op.create_index("ix_dur_prod_master_list_item_seq", "dur_prod_master_list", ["item_seq"])
+    op.create_index(
+        "ix_dur_prod_master_list_item_name", "dur_prod_master_list", ["item_name"], mysql_length=255
+    )
+
+    op.create_table(
         "drug_identification",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("item_seq", sa.String(length=20), nullable=False),
@@ -201,4 +213,5 @@ def downgrade() -> None:
     op.drop_table("medicine_recalls")
     op.drop_table("drug_prdt_prmsn_detail")
     op.drop_table("drug_identification")
+    op.drop_table("dur_prod_master_list")
     op.drop_table("drugs_data")
