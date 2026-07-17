@@ -116,13 +116,15 @@ async def test_fetch_and_append_category_papers_dedupes_existing_pmids(tmp_path,
     assert report["당뇨"]["LIFESTYLE"] == 0
 
 
-def test_build_documents_keeps_short_abstract_as_single_document():
+def test_build_documents_prefixes_disease_and_title_into_embedded_content():
     papers = [{"pmid": "1", "title": "T", "abstract": "짧은 초록.", "category": "FOOD"}]
 
     docs = build_documents("당뇨", papers)
 
     assert len(docs) == 1
-    assert docs[0].page_content == "T\n\n짧은 초록."
+    # 질환/제목은 metadata에도 있지만 Chroma는 page_content만 임베딩하므로,
+    # 검색에 반영되려면 본문 안에 있어야 한다.
+    assert docs[0].page_content == "[당뇨 / FOOD] T\n\n짧은 초록."
     assert docs[0].metadata == {
         "disease": "당뇨",
         "pmid": "1",
@@ -130,18 +132,89 @@ def test_build_documents_keeps_short_abstract_as_single_document():
         "url": "https://pubmed.ncbi.nlm.nih.gov/1/",
         "source": "PubMed",
         "category": "FOOD",
+        "summary_ko": "",
     }
 
 
-def test_build_documents_splits_long_abstract_and_shares_metadata():
-    long_abstract = "문장입니다. " * 300  # 1000자 훌쩍 넘김
-    papers = [{"pmid": "2", "title": "Long", "abstract": long_abstract, "category": "LIFESTYLE"}]
+def test_build_documents_prefixes_korean_summary_before_english_title():
+    """한국어 요약이 본문 앞에 와야 한국어 질의와의 거리가 좁혀진다(모듈 실측치 참고)."""
+    papers = [{"pmid": "1", "title": "English Title", "abstract": "Abstract text.", "category": "FOOD"}]
+
+    docs = build_documents("당뇨", papers, {"1": "당뇨 환자의 혈당 관리 효과 연구."})
+
+    assert docs[0].page_content == "[당뇨 / FOOD] 당뇨 환자의 혈당 관리 효과 연구.\nEnglish Title\n\nAbstract text."
+    assert docs[0].metadata["summary_ko"] == "당뇨 환자의 혈당 관리 효과 연구."
+
+
+def test_build_documents_indexes_without_summary_when_cache_misses():
+    """요약 생성이 실패했거나 캐시에 없는 논문도 색인은 되어야 한다(검색은 되되 매칭이 약할 뿐)."""
+    papers = [{"pmid": "1", "title": "T", "abstract": "초록.", "category": "FOOD"}]
+
+    docs = build_documents("당뇨", papers, {"other-pmid": "무관한 요약"})
+
+    assert docs[0].page_content == "[당뇨 / FOOD] T\n\n초록."
+    assert docs[0].metadata["summary_ko"] == ""
+
+
+def test_build_documents_omits_category_from_header_when_missing():
+    papers = [{"pmid": "9", "title": "T", "abstract": "초록."}]
 
     docs = build_documents("암", papers)
 
-    assert len(docs) > 1
-    assert all(d.metadata["pmid"] == "2" for d in docs)
-    assert all(d.metadata["disease"] == "암" for d in docs)
+    assert docs[0].page_content == "[암] T\n\n초록."
+
+
+def test_build_documents_keeps_long_abstract_as_single_chunk():
+    """긴 초록도 쪼개지 않는다. 분할하던 시절엔 제목 없는 뒷청크가 맥락을 잃고
+    무관한 질환 질문에 딸려 나왔다(740편 중 729편이 분할 대상이었음)."""
+    long_abstract = "문장입니다. " * 300  # 예전 임계값 1000자를 훌쩍 넘김
+
+    docs = build_documents("암", [{"pmid": "2", "title": "Long", "abstract": long_abstract, "category": "LIFESTYLE"}])
+
+    assert len(docs) == 1
+    assert docs[0].page_content.startswith("[암 / LIFESTYLE] Long\n\n")
+    assert docs[0].page_content.endswith(long_abstract)
+    assert docs[0].metadata["pmid"] == "2"
+
+
+async def test_ensure_paper_summaries_only_generates_for_cache_misses(tmp_path, monkeypatch):
+    """이미 요약된 논문은 다시 LLM에 태우지 않는다 — 리셋 후 전체 재색인을 해도 재과금 없음."""
+    cache_path = tmp_path / "summaries.json"
+    cache_path.write_text(json.dumps({"1": "이미 있는 요약"}), encoding="utf-8")
+    monkeypatch.setattr(ingest_papers_module, "SUMMARY_CACHE_PATH", cache_path)
+    monkeypatch.setattr(ingest_papers_module.settings, "OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(ingest_papers_module, "ChatOpenAI", lambda **kwargs: object())
+    summarized: list[str] = []
+
+    async def _fake_summarize(llm, paper):
+        summarized.append(paper["pmid"])
+        return paper["pmid"], f"{paper['pmid']} 요약"
+
+    monkeypatch.setattr(ingest_papers_module, "_summarize_one", _fake_summarize)
+
+    cache = await ingest_papers_module.ensure_paper_summaries(
+        {"당뇨": [{"pmid": "1", "title": "a", "abstract": "b"}, {"pmid": "2", "title": "c", "abstract": "d"}]}
+    )
+
+    assert summarized == ["2"]  # 캐시에 있는 "1"은 건너뜀
+    assert cache == {"1": "이미 있는 요약", "2": "2 요약"}
+    assert json.loads(cache_path.read_text(encoding="utf-8")) == cache  # 디스크에 저장됨
+
+
+async def test_ensure_paper_summaries_returns_cache_when_no_api_key(tmp_path, monkeypatch):
+    """키가 없으면 요약 없이 색인은 계속 진행한다(요약은 검색 품질 향상이지 필수 조건이 아님)."""
+    monkeypatch.setattr(ingest_papers_module, "SUMMARY_CACHE_PATH", tmp_path / "none.json")
+    monkeypatch.setattr(ingest_papers_module.settings, "OPENAI_API_KEY", None)
+
+    cache = await ingest_papers_module.ensure_paper_summaries({"당뇨": [{"pmid": "1", "title": "a", "abstract": "b"}]})
+
+    assert cache == {}
+
+
+def test_load_summary_cache_returns_empty_when_file_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(ingest_papers_module, "SUMMARY_CACHE_PATH", tmp_path / "missing.json")
+
+    assert ingest_papers_module.load_summary_cache() == {}
 
 
 def test_build_documents_skips_papers_missing_pmid_or_abstract():

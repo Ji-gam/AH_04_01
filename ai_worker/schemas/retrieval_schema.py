@@ -4,6 +4,9 @@ from pydantic import BaseModel
 class DocumentChunk(BaseModel):
     content: str
     metadata: dict
+    # T-ADMIN-1: 검색 시 계산된 유사도 거리(낮을수록 유사). 답변 생성 프롬프트에는 안 쓰이고
+    # SourceRef.score로 그대로 전달되어 관리자 모니터링 화면에서만 노출된다.
+    score: float | None = None
 
 
 class SourceRef(BaseModel):
@@ -13,6 +16,8 @@ class SourceRef(BaseModel):
 
     name: str
     url: str | None = None
+    # T-ADMIN-1: RAG 유사도 거리(낮을수록 유사). 관리자 모니터링 전용 - 환자용 UI는 렌더링 안 함.
+    score: float | None = None
 
 
 class ChatCompletionRequest(BaseModel):

@@ -49,46 +49,29 @@ def _build_llm() -> ChatOpenAI:
 
 
 def _build_dur_sources(chunks: list[DocumentChunk]) -> list[SourceRef]:
-    names: set[str] = {name for c in chunks if isinstance((name := c.metadata.get("source")), str)}
-    return [SourceRef(name=name, url=None) for name in sorted(names)]
+    # T-RAG-SOURCE-MIGRATION: source_id(내부 삭제 필터 키)와 별개로 display_name/publisher를
+    # "자료명/제공처" 형태로 조합해 노출한다(예: "임부금기의약품/식약처"). 같은 출처로 여러
+    # 청크가 매칭될 수 있어, 그중 가장 유사한(거리가 가장 짧은) 점수를 남긴다.
+    best_score_by_name: dict[str, float | None] = {}
+    for c in chunks:
+        display_name = c.metadata.get("display_name")
+        if not isinstance(display_name, str):
+            continue
+        publisher = c.metadata.get("publisher")
+        name = f"{display_name}/{publisher}" if isinstance(publisher, str) and publisher else display_name
+        current = best_score_by_name.get(name)
+        if current is None or (c.score is not None and c.score < current):
+            best_score_by_name[name] = c.score
+    return [SourceRef(name=name, url=None, score=best_score_by_name[name]) for name in sorted(best_score_by_name)]
 
 
-# 논문 컬렉션은 DUR과 달리 성분명 같은 필터 대상이 없어 임계값(PAPER_SIMILARITY_THRESHOLD)
-# 하나로만 걸러야 하는데, 실측 결과 인사말류 표현의 점수가 요동쳐 임계값 바로 아래로
-# 통과하는 경우가 나왔다(예: "좋은 아침이야" 1.4995 < 1.5, 무관한 임신성 당뇨 논문과
-# 매칭됨, 2026-07-16). 임계값만 낮추면 진짜 관련 질문 범위(1.06~1.44)와 겹쳐 함께
-# 걸러질 위험이 있으므로, 짧고 물음표 없는 인사말/감탄사는 검색 자체를 생략하는 명시적
-# 가드를 추가한다(DUR의 성분명 미식별 시 검색 생략과 같은 원칙).
-_GREETING_KEYWORDS = (
-    "안녕",
-    "좋은아침",
-    "좋은하루",
-    "좋은저녁",
-    "굿모닝",
-    "굿나잇",
-    "하이",
-    "헬로",
-    "고마워",
-    "감사",
-    "수고",
-    "화이팅",
-    "잘가",
-    "반가워",
-    "잘자",
-)
-
-
-def _is_trivial_greeting(message: str) -> bool:
-    """물음표 없이 10자 이내이면서 인사말/감탄사 키워드를 포함하면 논문 검색을 생략할
-    후보로 본다. 길이만으로 자르면 "당뇨병 혈당관리"처럼 짧은 진짜 질문까지 걸러지므로
-    반드시 인사말 키워드 포함 여부와 함께 판단한다."""
-    normalized = message.strip()
-    if "?" in normalized or "？" in normalized:
-        return False
-    compact = normalized.replace(" ", "")
-    if len(compact) > 10:
-        return False
-    return any(keyword in compact for keyword in _GREETING_KEYWORDS)
+# 인사말 전용 가드(`_is_trivial_greeting`)가 여기 있었다. 인사말이 임계값 바로 아래로
+# 새어 들어오던 실측("좋은 아침이야" 1.4995 < 1.5, 2026-07-16)에 대응한 땜질이었는데,
+# 그 근본 원인이던 고아 청크(제목 없이 잘려나간 초록 조각, 컬렉션의 70%)를 없애자
+# 불필요해졌다 — 재적재 후 실측하니 "좋은 아침이야" 0.4706, "안녕" 0.4694,
+# "고마워" 0.4830으로 전부 임계값 0.40을 여유 있게 못 넘는다. 게다가 이제 질환 사전이
+# 대상 질환을 못 정하면 논문 검색 자체를 생략하므로(paper_retrieve_service) 인사말은
+# 두 겹으로 걸러진다. 근본 원인이 해결돼 제거함(2026-07-17).
 
 
 def _build_paper_sources(chunks: list[DocumentChunk]) -> list[SourceRef]:
@@ -100,20 +83,20 @@ def _build_paper_sources(chunks: list[DocumentChunk]) -> list[SourceRef]:
             continue
         seen_pmids.add(pmid)
         title = chunk.metadata.get("title") or f"PMID {pmid}"
-        sources.append(SourceRef(name=title, url=chunk.metadata.get("url")))
+        sources.append(SourceRef(name=title, url=chunk.metadata.get("url"), score=chunk.score))
     return sources
 
 
-def _search_all(message: str) -> tuple[list[DocumentChunk], list[SourceRef]]:
-    """DUR + 논문 두 컬렉션을 모두 검색해 청크와 통합 출처 목록을 만든다."""
+def _search_all(message: str, context: dict) -> tuple[list[DocumentChunk], list[SourceRef]]:
+    """DUR + 논문 두 컬렉션을 모두 검색해 청크와 통합 출처 목록을 만든다.
+    논문 검색은 사용자 본인 진단 질환(`context["conditions"]`)을 폴백 필터로 쓴다 —
+    "운동 뭐가 좋아?"처럼 질환이 안 드러난 질문도 당뇨 환자가 물으면 당뇨 논문이 나온다."""
     dur_db = ensure_db()
     dur_chunks = search_documents(dur_db, message, settings.RAG_RETRIEVAL_LIMIT)
 
-    if _is_trivial_greeting(message):
-        return dur_chunks, _build_dur_sources(dur_chunks)
-
+    conditions = context.get("conditions") or []
     paper_db = ensure_paper_db()
-    paper_chunks = search_papers(paper_db, message, settings.PAPER_RETRIEVAL_LIMIT)
+    paper_chunks = search_papers(paper_db, message, settings.PAPER_RETRIEVAL_LIMIT, conditions=conditions)
 
     sources = _build_dur_sources(dur_chunks) + _build_paper_sources(paper_chunks)
     return dur_chunks + paper_chunks, sources
@@ -125,7 +108,7 @@ async def stream_chat_answer(
     """DUR+논문 통합 검색 -> 프롬프트 조립 -> LLM 스트리밍.
     `{"type": "sources", "sources": [...]}` 1건 다음 `{"type": "token", "content": ...}`
     여러 건을 순서대로 내보낸다."""
-    rag_chunks, sources = _search_all(message)
+    rag_chunks, sources = _search_all(message, context)
     yield {"type": "sources", "sources": [s.model_dump() for s in sources]}
 
     reference_text = "\n".join(injected_context + [c.content for c in rag_chunks]) or "없음"
