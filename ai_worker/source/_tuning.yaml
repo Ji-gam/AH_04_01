@@ -47,6 +47,7 @@ metadata_columns:
   itemSeq: item_seq
   itemName: item_name
   pmid: pmid
+  title: title
 
 # ── 행 하나를 필드마다 쪼개기 ─────────────────────────────────────────────────
 # {파일명: {컬럼: 사람이 읽을 이름}}. 선언 안 하면 행 1개 = 문서 1개(기본).

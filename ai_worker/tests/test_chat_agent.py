@@ -71,9 +71,7 @@ async def test_stream_chat_answer_merges_dur_and_paper_chunks_and_streams_tokens
     monkeypatch.setattr(
         chat_agent_module,
         "search_papers",
-        lambda db, msg, limit, conditions=None: [
-            DocumentChunk(content=paper_doc.page_content, metadata=paper_doc.metadata, score=0.34)
-        ],
+        lambda db, msg, limit: [DocumentChunk(content=paper_doc.page_content, metadata=paper_doc.metadata, score=0.34)],
     )
 
     fake_llm = FakeStreamingLLM(["안", "녕"])
@@ -106,7 +104,7 @@ async def test_stream_chat_answer_uses_no_reference_text_when_no_chunks_found(mo
     monkeypatch.setattr(chat_agent_module, "ensure_db", lambda: "dur-db-sentinel")
     monkeypatch.setattr(chat_agent_module, "search_documents", lambda db, msg, limit: [])
     monkeypatch.setattr(chat_agent_module, "ensure_paper_db", lambda: "paper-db-sentinel")
-    monkeypatch.setattr(chat_agent_module, "search_papers", lambda db, msg, limit, conditions=None: [])
+    monkeypatch.setattr(chat_agent_module, "search_papers", lambda db, msg, limit: [])
 
     fake_llm = FakeStreamingLLM(["답변"])
     monkeypatch.setattr(chat_agent_module, "_build_llm", lambda: fake_llm)
@@ -120,32 +118,15 @@ async def test_stream_chat_answer_uses_no_reference_text_when_no_chunks_found(mo
     assert "참고 문서:\n없음" in system_prompt
 
 
-def test_search_all_passes_user_conditions_to_paper_search(monkeypatch):
-    """질환이 안 드러난 질문도 사용자 본인 진단 질환으로 논문을 찾을 수 있어야 한다."""
+def test_search_all_skips_paper_search_when_query_has_no_disease(monkeypatch):
+    """질환이 안 드러난 질문은 진단 이력과 무관하게 논문 검색을 생략한다 — 개인화는
+    시스템 프롬프트의 "사용자 건강 컨텍스트"가 담당한다(disease_query_resolver 참고)."""
     monkeypatch.setattr(chat_agent_module, "ensure_db", lambda: "dur-db-sentinel")
     monkeypatch.setattr(chat_agent_module, "search_documents", lambda db, msg, limit: [])
     monkeypatch.setattr(chat_agent_module, "ensure_paper_db", lambda: "paper-db-sentinel")
-    received: dict = {}
+    monkeypatch.setattr(chat_agent_module, "search_papers", lambda db, msg, limit: [])
 
-    def _capture(db, msg, limit, conditions=None):
-        received["conditions"] = conditions
-        return []
-
-    monkeypatch.setattr(chat_agent_module, "search_papers", _capture)
-
-    chat_agent_module._search_all("운동 뭐가 좋아?", {"conditions": ["당뇨"]})
-
-    assert received["conditions"] == ["당뇨"]
-
-
-def test_search_all_tolerates_context_without_conditions(monkeypatch):
-    """비로그인/프로필 미입력이면 context에 conditions 키가 없을 수 있다."""
-    monkeypatch.setattr(chat_agent_module, "ensure_db", lambda: "dur-db-sentinel")
-    monkeypatch.setattr(chat_agent_module, "search_documents", lambda db, msg, limit: [])
-    monkeypatch.setattr(chat_agent_module, "ensure_paper_db", lambda: "paper-db-sentinel")
-    monkeypatch.setattr(chat_agent_module, "search_papers", lambda db, msg, limit, conditions=None: [])
-
-    chunks, sources = chat_agent_module._search_all("좋은 아침이야", {})
+    chunks, sources = chat_agent_module._search_all("좋은 아침이야")
 
     assert chunks == []
     assert sources == []

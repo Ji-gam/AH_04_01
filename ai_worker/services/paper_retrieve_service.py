@@ -32,7 +32,7 @@ def ensure_paper_db() -> Chroma:
     return db
 
 
-def search_papers(db: Chroma, query: str, limit: int, conditions: list[str] | None = None) -> list[DocumentChunk]:
+def search_papers(db: Chroma, query: str, limit: int) -> list[DocumentChunk]:
     """질환 사전(`disease_query_resolver`)으로 대상 질환을 판별해 메타데이터 필터를 걸고
     unstructured 컬렉션을 검색한다.
 
@@ -43,12 +43,15 @@ def search_papers(db: Chroma, query: str, limit: int, conditions: list[str] | No
     분리할 수 없다. LLM 분류기를 다시 들이지 않고 사전으로 해결한 이유는
     `disease_query_resolver` 모듈 docstring 참고.
 
-    대상 질환을 못 정하면(질의에도 없고 사용자 진단 이력에도 없음) 빈 목록을 반환한다 —
-    성분명이 없으면 DUR 검색을 생략하는 `retrieve_service.search_documents()`와 같은 판단.
+    대상 질환을 못 정하면(질의에 질환 키워드가 없음) 빈 목록을 반환한다 — 성분명이 없으면
+    DUR 검색을 생략하는 `retrieve_service.search_documents()`와 같은 판단. 사용자 진단
+    이력으로의 폴백은 두지 않는다(`disease_query_resolver.resolve_diseases` docstring 참고
+    — "오늘 저녁 맛있었어" 같은 잡담까지 disease 필터가 걸려 threshold를 새어 통과하던
+    문제, 2026-07-17 실측).
     """
-    diseases = resolve_diseases(query, conditions)
+    diseases = resolve_diseases(query)
     if not diseases:
-        logger.info("질의/사용자 진단 이력에서 대상 질환을 정하지 못해 논문 검색을 생략합니다.")
+        logger.info("질의에서 대상 질환을 정하지 못해 논문 검색을 생략합니다.")
         return []
 
     logger.info(f"Retrieving paper chunks for query: '{query}' (diseases: {diseases}, limit: {limit})")
