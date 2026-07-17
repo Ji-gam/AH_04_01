@@ -41,10 +41,13 @@ def cache_ingr_names(db: Chroma) -> None:
 
 def initialize_rag() -> None:
     """서비스 기동 시 데이터 인덱싱(Ingestion)을 자동 수행하고,
-    크로마 DB 연결 객체와 성분명 인덱스를 캐싱합니다."""
+    크로마 DB 연결 객체와 성분명 인덱스를 캐싱합니다.
+    `ingest_csv_data()`는 파일별 결과 목록(list[dict])을 반환하므로, db 핸들은
+    별도로 `build_vector_store()`를 다시 호출해 얻는다(적재 후 최신 상태)."""
     logger.info("Initializing RAG Ingestion on startup...")
     try:
-        db = ingest_csv_data()
+        ingest_csv_data()
+        db = build_vector_store()
         db_holder["db"] = db
         cache_ingr_names(db)
         logger.info("RAG Initialization completed.")
@@ -102,15 +105,19 @@ def search_documents(db: Chroma, query: str, limit: int) -> list[DocumentChunk]:
     # 디버깅 로그 출력 (유사도 거리 분석용)
     for doc, score in docs_with_scores:
         logger.info(
-            f"DEBUG_SCORE: INGR={doc.metadata.get('ingr_name')}, score={score}, source={doc.metadata.get('source')}"
+            f"DEBUG_SCORE: INGR={doc.metadata.get('ingr_name')}, score={score}, "
+            f"source_id={doc.metadata.get('source_id')}"
         )
 
     # 임계값(score < threshold)을 만족하는 유효한 문서만 반환합니다. 값은 config에서
     # 가져와 임베딩 백엔드별로 튜닝할 수 있게 한다(거리 스케일이 백엔드마다 다름).
     threshold = settings.RAG_SIMILARITY_THRESHOLD
-    valid_docs = [doc for doc, score in docs_with_scores if score < threshold]
+    valid_docs_with_scores = [(doc, score) for doc, score in docs_with_scores if score < threshold]
 
     # 문서의 내용과 메타데이터를 함께 추출
-    chunks = [DocumentChunk(content=doc.page_content, metadata=doc.metadata) for doc in valid_docs]
+    chunks = [
+        DocumentChunk(content=doc.page_content, metadata=doc.metadata, score=score)
+        for doc, score in valid_docs_with_scores
+    ]
     logger.info(f"Found {len(chunks)} relevant chunks after filter and threshold (candidates: {len(docs_with_scores)})")
     return chunks

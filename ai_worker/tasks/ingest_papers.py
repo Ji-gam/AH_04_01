@@ -3,18 +3,24 @@ T-LLM-7-3(개정): PubMed 논문 RAG 인제스천. 오프라인/배치로 실행
 
 1단계(fetch_and_append_category_papers): PubMed에서 질환×카테고리
 (`app/services/content_service.py`의 CATEGORIES: LIFESTYLE/FOOD/MEDICAL_NEWS) 조합별로
-원본 논문(제목+초록+PMID)을 수집해 ai_worker/mock_data_for_papers_raw/{질환}.json에
-그대로 저장한다. 가공(청킹/임베딩) 없이 원문만 남겨, 사람이 직접 열어 품질/건수를
-검토할 수 있게 한다.
+원본 논문(제목+초록+PMID)을 수집해 ai_worker/source/{질환}.json에 그대로 저장한다
+(T-RAG-SOURCE-MIGRATION: 예전 mock_data_for_papers_raw/에서 이전). 가공(청킹/임베딩)
+없이 원문만 남겨, 사람이 직접 열어 품질/건수를 검토할 수 있게 한다.
 
 카테고리 구분 없이 질환만으로 넓게 수집하는 방식은 초기에 시도했다가 폐기했다 —
 "약물/치료" 위주로 쏠려서 라이프스타일/식단/최신동향 같은 실제 사용자 질문 각도를
 반영하지 못했기 때문. 항상 카테고리 단위로 수집한다.
 
-2단계(ingest_papers): 1단계 원본 JSON을 읽어(PubMed 재호출 없음) 청킹+임베딩 후
-Chroma 컬렉션(pubmed_papers)에 저장한다. 제목+초록 결합이 1000자 이하면 그대로 문서
-1개로, 넘으면 RecursiveCharacterTextSplitter로 분할한다. PMID 기준 증분 인제스천이라
-이미 색인된 논문은 다시 임베딩하지 않는다(원본이 계속 늘어나도 신규분만 과금됨).
+2단계(ensure_paper_summaries): 논문마다 한국어 요약을 LLM으로 1회 생성해
+source/paper_summaries_ko.json에 캐시한다. 사용자 질의는 한국어인데 논문은 영어라,
+이 요약이 없으면 정답 논문과 무관 논문의 거리 차가 노이즈 수준으로 좁아진다
+(_paper_page_content의 실측치 참고). 비용은 인제스트 시점 1회뿐이라 채팅 응답은 안 느려진다.
+
+3단계(ingest_papers): 원본 JSON+요약 캐시를 읽어(PubMed 재호출 없음) 임베딩 후 Chroma
+컬렉션(pubmed_papers)에 저장한다. 초록 1편 = 청크 1개이며, 임베딩되는 본문 앞에
+"[질환 / 카테고리] 한국어요약 / 원문제목"을 접두한다(build_documents 참고 — 고정 크기
+분할을 쓰던 과거 방식이 컬렉션의 70%를 맥락 없는 조각으로 만들었다). PMID 기준 증분
+인제스천이라 이미 색인된 논문은 다시 임베딩하지 않는다(원본이 늘어나도 신규분만 과금됨).
 DUR 인제스천(ingest.py)의 임베딩/Chroma 인프라를 그대로 재사용.
 
 run_daily_pipeline: 1단계+2단계를 순서대로 잇는 완결된 배치. 매일 이 함수(또는
@@ -28,8 +34,10 @@ run_daily_pipeline: 1단계+2단계를 순서대로 잇는 완결된 배치. 매
 
 실행(개별 단계 디버깅용):
     uv run python -m ai_worker.tasks.ingest_papers                        # 1단계만(원본 수집)
-    uv run python -m ai_worker.tasks.ingest_papers --index-only           # 2단계만(색인)
+    uv run python -m ai_worker.tasks.ingest_papers --summarize-only       # 2단계만(한국어 요약 캐시)
+    uv run python -m ai_worker.tasks.ingest_papers --index-only           # 2+3단계(요약 미스분+색인)
     uv run python -m ai_worker.tasks.ingest_papers --index-only --force   # 컬렉션 삭제 후 전체 재색인
+                                                                          # (요약 캐시는 재사용 = 재과금 없음)
 """
 
 import argparse
@@ -42,7 +50,8 @@ from pathlib import Path
 import httpx
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 
 from ai_worker.core.config import settings
 from ai_worker.tasks.ingest import CHROMA_DIR, active_embedding_model, get_embeddings
@@ -53,14 +62,12 @@ logging.basicConfig(level=logging.INFO)
 _EUTILS_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
 _EFETCH_BATCH_SIZE = 50
 
-RAW_DATA_DIR = Path(__file__).parent.parent / "mock_data_for_papers_raw"
+# T-RAG-SOURCE-MIGRATION: mock_data_for_papers_raw/(실험용 스냅샷, 폐기)에서
+# ai_worker/source/(RAG+구조화 데이터가 함께 모이는 단일 원천)로 이전.
+RAW_DATA_DIR = Path(__file__).parent.parent / "source"
 
 # DUR과 도메인이 섞이지 않도록 별도 컬렉션(같은 CHROMA_DIR 아래).
 PAPER_COLLECTION_NAME = "pubmed_papers"
-# 제목+초록 결합이 이 길이를 넘을 때만 분할한다(대부분의 초록은 안 넘음).
-_MAX_CHARS_BEFORE_SPLIT = 1000
-_CHUNK_SIZE = 1000
-_CHUNK_OVERLAP = 100
 
 # 원래 실시간 검색 도구(ai_worker/tools/paper_search.py)에 있던 값을 그대로 이식.
 # 답변 프롬프트가 "구체적 수치 인용"을 요구하므로, Review(종합 논문) 대신 원 연구
@@ -195,7 +202,7 @@ async def fetch_and_append_category_papers(
 
 
 def load_raw_papers() -> dict[str, list[dict]]:
-    """mock_data_for_papers_raw/*.json을 읽는다(PubMed 재호출 없음). 질환 파일이 없거나
+    """source/*.json을 읽는다(PubMed 재호출 없음). 질환 파일이 없거나
     비어 있으면 에러 로그만 남기고 건너뛴다 — 다른 질환 인제스천은 계속 진행한다."""
     result: dict[str, list[dict]] = {}
     for disease in SUPPORTED_DISEASES:
@@ -211,11 +218,115 @@ def load_raw_papers() -> dict[str, list[dict]]:
     return result
 
 
-def build_documents(disease: str, papers: list[dict]) -> list[Document]:
-    """질환 하나의 원본 논문 목록을 Document로 변환한다. 제목+초록 결합이
-    _MAX_CHARS_BEFORE_SPLIT 이하면 문서 1개, 넘으면 RecursiveCharacterTextSplitter로
-    분할한다(분할된 청크는 모두 같은 pmid/title 메타데이터를 공유)."""
-    splitter = RecursiveCharacterTextSplitter(chunk_size=_CHUNK_SIZE, chunk_overlap=_CHUNK_OVERLAP)
+def _paper_page_content(disease: str, title: str, category: str, abstract: str, summary_ko: str = "") -> str:
+    """임베딩될 본문. 질환/카테고리 헤더 + 한국어 요약 + 원문 제목 + 초록 순으로 조립한다.
+
+    이 정보는 metadata에도 담기지만, Chroma는 page_content만 임베딩하고 metadata는
+    벡터에 반영하지 않는다 — 검색 결과에 영향을 주려면 본문 안에 있어야 한다.
+
+    한국어 요약이 핵심이다. 사용자 질의는 한국어인데 논문 제목·초록은 영어라, 한국어
+    토큰 몇 개를 헤더에 접두하는 것만으로는 1,500자 영어 문서의 평균 풀링에서 희석돼
+    버린다. 실측(2026-07-17, 골든셋 paper-09): 같은 질의에 대해 정답 논문까지의 거리가
+    영어 제목만일 때 0.1583, 한국어 요약을 붙이면 0.0801로 절반이 된다. 더 중요한 건
+    무관 논문(0.1749)과의 마진이 0.0166 -> 0.0948로 약 6배 벌어진다는 점이다 — 마진이
+    노이즈 수준이라 정답 논문이 4위로 밀려나던 문제가 여기서 온다.
+
+    요약 생성 비용(논문당 LLM 1회)은 인제스트 시점에 1회만 내고 캐시하므로, 질의마다
+    번역/확장 LLM을 태우는 방식과 달리 채팅 응답 지연이 0이다."""
+    header = f"[{disease} / {category}]" if category else f"[{disease}]"
+    lead = f"{header} {summary_ko}\n{title}" if summary_ko else f"{header} {title}"
+    return f"{lead}\n\n{abstract}"
+
+
+# 한국어 요약 캐시(pmid -> 요약). 원본 JSON은 "가공 없이 원문만" 원칙이라 건드리지 않고,
+# 파생물인 요약은 이 파일에 따로 모은다. 캐시가 있으면 리셋 후 전체 재색인을 해도 LLM
+# 비용을 다시 내지 않는다(임베딩만 다시 함).
+SUMMARY_CACHE_PATH = RAW_DATA_DIR / "paper_summaries_ko.json"
+# LLM 동시 호출 수. 논문 740건을 순차로 돌리면 오래 걸리고, 너무 올리면 레이트리밋에 걸린다.
+_SUMMARY_CONCURRENCY = 8
+_SUMMARY_PROMPT = (
+    "당신은 의학 논문을 한국어로 요약하는 전문가입니다. 주어진 논문 제목과 초록을 읽고, "
+    "한국어 한두 문장으로 요약하세요. 반드시 포함할 것: 어떤 질환/대상자인지, 무엇을 했는지(중재/방법), "
+    "무엇을 알아냈는지(결과). 이 요약은 한국어 검색 질의와 매칭되는 데 쓰이므로, 한국인이 실제로 "
+    "검색할 법한 일상적인 의학 용어를 쓰세요. 요약문만 출력하고 다른 말은 하지 마세요."
+)
+
+
+def load_summary_cache() -> dict[str, str]:
+    """pmid -> 한국어 요약 캐시를 읽는다. 파일이 없으면 빈 dict(요약 없이 색인은 계속 진행)."""
+    if not SUMMARY_CACHE_PATH.exists():
+        return {}
+    try:
+        return json.loads(SUMMARY_CACHE_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.error(f"요약 캐시 읽기 실패, 요약 없이 진행: {e}")
+        return {}
+
+
+async def _summarize_one(llm, paper: dict) -> tuple[str, str] | None:
+    pmid = paper.get("pmid")
+    abstract = paper.get("abstract")
+    if not pmid or not abstract:
+        return None
+    user_input = f"제목: {paper.get('title') or ''}\n\n초록: {abstract}"
+    try:
+        response = await llm.ainvoke(
+            [{"role": "system", "content": _SUMMARY_PROMPT}, {"role": "user", "content": user_input}]
+        )
+    except Exception as e:
+        # 한 건 실패가 전체 배치를 죽이면 안 된다 — 요약 없는 논문은 헤더+영어 원문으로
+        # 색인되고(검색은 되지만 한국어 매칭이 약함), 다음 실행 때 캐시 미스로 재시도된다.
+        logger.error(f"요약 생성 실패(pmid={pmid}), 건너뜀: {e}")
+        return None
+    return pmid, str(response.content).strip()
+
+
+async def ensure_paper_summaries(papers_by_disease: dict[str, list[dict]]) -> dict[str, str]:
+    """캐시에 없는 논문만 골라 한국어 요약을 생성하고 캐시에 병합·저장한다.
+    이미 요약된 논문은 건너뛰므로 원본이 늘어나도 신규분만 과금된다."""
+    cache = load_summary_cache()
+    todo = [p for papers in papers_by_disease.values() for p in papers if p.get("pmid") not in cache]
+    if not todo:
+        logger.info(f"한국어 요약 캐시 최신({len(cache)}건). 신규 생성 없음.")
+        return cache
+
+    if settings.OPENAI_API_KEY is None:
+        logger.error("OPENAI_API_KEY가 없어 한국어 요약을 생성하지 못합니다. 요약 없이 색인을 진행합니다.")
+        return cache
+
+    llm = ChatOpenAI(
+        model=settings.OPENAI_MODEL,
+        api_key=SecretStr(settings.OPENAI_API_KEY),
+        temperature=settings.OPENAI_TEMPERATURE,
+    )
+    logger.info(f"한국어 요약 생성 시작: {len(todo)}건 (동시 {_SUMMARY_CONCURRENCY})")
+    semaphore = asyncio.Semaphore(_SUMMARY_CONCURRENCY)
+
+    async def _bounded(paper: dict):
+        async with semaphore:
+            return await _summarize_one(llm, paper)
+
+    results = await asyncio.gather(*(_bounded(p) for p in todo))
+    new = {pmid: summary for r in results if r for pmid, summary in [r] if summary}
+    cache.update(new)
+    SUMMARY_CACHE_PATH.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+    logger.info(f"한국어 요약 {len(new)}건 생성 완료(실패 {len(todo) - len(new)}건). 캐시 총 {len(cache)}건.")
+    return cache
+
+
+def build_documents(disease: str, papers: list[dict], summaries: dict[str, str] | None = None) -> list[Document]:
+    """질환 하나의 원본 논문 목록을 Document로 변환한다. 초록 1편 = 청크 1개.
+
+    예전엔 제목+초록이 1000자를 넘으면 RecursiveCharacterTextSplitter로 쪼갰고, 주석엔
+    "대부분의 초록은 안 넘음"이라 적혀 있었다. 실측 결과는 정반대였다 — 740편 중 729편
+    (99%)이 분할돼 논문당 평균 3.45청크가 나왔고, 제목 없이 잘려나간 뒷청크가 컬렉션의
+    약 70%를 차지했다. 그 조각들은 어느 논문의 무슨 맥락인지 알 수 없어 무관한 질환
+    질문에 딸려 나왔다. PubMed 초록은 그 자체가 완결된 의미 단위라 쪼갤 이득이 없으므로
+    분할하지 않는다(2026-07-17).
+
+    `summaries`(pmid -> 한국어 요약)가 주어지면 본문에 접두한다 — 없으면 요약 없이
+    색인한다(검색은 되지만 한국어 질의 매칭이 약해진다. `_paper_page_content` 참고)."""
+    summaries = summaries or {}
     documents: list[Document] = []
     for paper in papers:
         pmid = paper.get("pmid")
@@ -224,21 +335,22 @@ def build_documents(disease: str, papers: list[dict]) -> list[Document]:
             logger.error(f"pmid/abstract 누락, 건너뜀: disease={disease}, paper={paper}")
             continue
         title = paper.get("title") or ""
-        page_content = f"{title}\n\n{abstract}"
+        category = paper.get("category") or ""
+        summary_ko = summaries.get(pmid, "")
         metadata = {
             "disease": disease,
             "pmid": pmid,
             "title": title,
             "url": f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
             "source": "PubMed",
-            "category": paper.get("category") or "",
+            "category": category,
+            "summary_ko": summary_ko,
         }
-        if len(page_content) <= _MAX_CHARS_BEFORE_SPLIT:
-            documents.append(Document(page_content=page_content, metadata=metadata))
-        else:
-            documents.extend(
-                Document(page_content=chunk, metadata=metadata) for chunk in splitter.split_text(page_content)
+        documents.append(
+            Document(
+                page_content=_paper_page_content(disease, title, category, abstract, summary_ko), metadata=metadata
             )
+        )
     return documents
 
 
@@ -275,10 +387,11 @@ def ingest_papers() -> Chroma:
     already_indexed = _indexed_pmids(db)
 
     raw_by_disease = load_raw_papers()
+    summaries = load_summary_cache()
     all_docs: list[Document] = []
     for disease, papers in raw_by_disease.items():
         new_papers = [p for p in papers if p.get("pmid") not in already_indexed]
-        docs = build_documents(disease, new_papers)
+        docs = build_documents(disease, new_papers, summaries)
         all_docs.extend(docs)
         logger.info(
             f"{disease}: 원본 {len(papers)}건 중 신규 {len(new_papers)}건 "
@@ -308,11 +421,12 @@ def reset_paper_collection() -> None:
 async def run_daily_pipeline(
     retmax_per_category: int = _CATEGORY_RETMAX, categories: list[str] | None = None
 ) -> Chroma:
-    """1단계(신규 논문 수집)+2단계(청킹+임베딩+색인)를 순서대로 잇는 완결된 배치.
-    사람은 이 함수(또는 CLI `--pipeline`)를 실행 버튼처럼 누르기만 하면 되고, 그 안에서
-    수집→중복 제거→색인까지 전부 자동으로 끝난다. "매일 자동으로 이 명령 자체를 실행시키는"
+    """1단계(신규 논문 수집)+2단계(한국어 요약)+3단계(임베딩+색인)를 순서대로 잇는 완결된
+    배치. 사람은 이 함수(또는 CLI `--pipeline`)를 실행 버튼처럼 누르기만 하면 되고, 그 안에서
+    수집→중복 제거→요약→색인까지 전부 자동으로 끝난다. "매일 자동으로 이 명령 자체를 실행시키는"
     스케줄러(cron/Celery beat)는 아직 붙이지 않았다 — 그건 별도 단계다(모듈 docstring 참고)."""
     await fetch_and_append_category_papers(retmax_per_category=retmax_per_category, categories=categories)
+    await ensure_paper_summaries(load_raw_papers())
     return ingest_papers()
 
 
@@ -322,9 +436,14 @@ async def _main(args: argparse.Namespace) -> None:
         count = len(db.get(include=[])["ids"])
         print(f"{PAPER_COLLECTION_NAME} 컬렉션 문서 수: {count}")
         return
+    if args.summarize_only:
+        cache = await ensure_paper_summaries(load_raw_papers())
+        print(f"한국어 요약 캐시: 총 {len(cache)}건 ({SUMMARY_CACHE_PATH})")
+        return
     if args.index_only:
         if args.force:
             reset_paper_collection()
+        await ensure_paper_summaries(load_raw_papers())
         db = ingest_papers()
         count = len(db.get(include=[])["ids"])
         print(f"{PAPER_COLLECTION_NAME} 컬렉션 문서 수: {count}")
@@ -350,7 +469,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--index-only",
         action="store_true",
-        help="2단계(청킹+임베딩+Chroma 저장)만 실행. PubMed를 호출하지 않고 원본 JSON만 읽는다.",
+        help="요약(캐시 미스분)+임베딩+Chroma 저장만 실행. PubMed를 호출하지 않고 원본 JSON만 읽는다.",
+    )
+    parser.add_argument(
+        "--summarize-only",
+        action="store_true",
+        help="한국어 요약 캐시만 채우고 끝낸다(색인 없음). 요약 결과를 먼저 눈으로 검토할 때.",
     )
     parser.add_argument(
         "--pipeline",

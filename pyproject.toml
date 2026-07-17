@@ -26,6 +26,12 @@ ai = [
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
     "langchain-text-splitters>=1.1.2",
+    # Phase 0 임베딩 벤치마크(2026-07-17) 결과로 기본 임베딩 프로바이더를 HF로 전환.
+    # HF Inference API(호스팅, 텍스트당 개별 HTTP 요청)는 대량 재인제스트(5,700여 건)에
+    # 비현실적으로 느려, 모델을 로컬로 내려받아 배치 인코딩하는 sentence-transformers로
+    # 전환한다(CPU 전용 — 아래 [tool.uv.sources]의 pytorch-cpu 인덱스 사용).
+    "sentence-transformers>=3.0.0",
+    "torch>=2.0.0",
 ]
 app = [
     "alembic>=1.14.0",

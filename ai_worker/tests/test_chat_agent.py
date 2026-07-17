@@ -15,15 +15,15 @@ from ai_worker.tasks import chat_agent as chat_agent_module
 
 def test_build_dur_sources_dedupes_and_sorts():
     chunks = [
-        DocumentChunk(content="a", metadata={"source": "식약처 DUR 노인주의 정보"}),
-        DocumentChunk(content="b", metadata={"source": "식약처 DUR 임부금기 정보"}),
-        DocumentChunk(content="c", metadata={"source": "식약처 DUR 노인주의 정보"}),
+        DocumentChunk(content="a", metadata={"display_name": "노인주의의약품", "publisher": "식약처"}),
+        DocumentChunk(content="b", metadata={"display_name": "임부금기의약품", "publisher": "식약처"}),
+        DocumentChunk(content="c", metadata={"display_name": "노인주의의약품", "publisher": "식약처"}),
         DocumentChunk(content="d", metadata={}),
     ]
 
     sources = chat_agent_module._build_dur_sources(chunks)
 
-    assert [s.name for s in sources] == ["식약처 DUR 노인주의 정보", "식약처 DUR 임부금기 정보"]
+    assert [s.name for s in sources] == ["노인주의의약품/식약처", "임부금기의약품/식약처"]
     assert all(s.url is None for s in sources)
 
 
@@ -56,7 +56,7 @@ class FakeStreamingLLM:
 
 
 async def test_stream_chat_answer_merges_dur_and_paper_chunks_and_streams_tokens(monkeypatch):
-    dur_doc = Document(page_content="DUR 청크 내용", metadata={"source": "식약처 DUR 노인주의 정보"})
+    dur_doc = Document(page_content="DUR 청크 내용", metadata={"display_name": "노인주의의약품", "publisher": "식약처"})
     paper_doc = Document(
         page_content="논문 청크 내용", metadata={"pmid": "1", "title": "Paper A", "url": "https://x/1/"}
     )
@@ -65,13 +65,15 @@ async def test_stream_chat_answer_merges_dur_and_paper_chunks_and_streams_tokens
     monkeypatch.setattr(
         chat_agent_module,
         "search_documents",
-        lambda db, msg, limit: [DocumentChunk(content=dur_doc.page_content, metadata=dur_doc.metadata)],
+        lambda db, msg, limit: [DocumentChunk(content=dur_doc.page_content, metadata=dur_doc.metadata, score=0.12)],
     )
     monkeypatch.setattr(chat_agent_module, "ensure_paper_db", lambda: "paper-db-sentinel")
     monkeypatch.setattr(
         chat_agent_module,
         "search_papers",
-        lambda db, msg, limit: [DocumentChunk(content=paper_doc.page_content, metadata=paper_doc.metadata)],
+        lambda db, msg, limit, conditions=None: [
+            DocumentChunk(content=paper_doc.page_content, metadata=paper_doc.metadata, score=0.34)
+        ],
     )
 
     fake_llm = FakeStreamingLLM(["안", "녕"])
@@ -87,8 +89,8 @@ async def test_stream_chat_answer_merges_dur_and_paper_chunks_and_streams_tokens
     assert chunks[0] == {
         "type": "sources",
         "sources": [
-            {"name": "식약처 DUR 노인주의 정보", "url": None},
-            {"name": "Paper A", "url": "https://x/1/"},
+            {"name": "노인주의의약품/식약처", "url": None, "score": 0.12},
+            {"name": "Paper A", "url": "https://x/1/", "score": 0.34},
         ],
     }
     assert chunks[1:] == [{"type": "token", "content": "안"}, {"type": "token", "content": "녕"}]
@@ -104,7 +106,7 @@ async def test_stream_chat_answer_uses_no_reference_text_when_no_chunks_found(mo
     monkeypatch.setattr(chat_agent_module, "ensure_db", lambda: "dur-db-sentinel")
     monkeypatch.setattr(chat_agent_module, "search_documents", lambda db, msg, limit: [])
     monkeypatch.setattr(chat_agent_module, "ensure_paper_db", lambda: "paper-db-sentinel")
-    monkeypatch.setattr(chat_agent_module, "search_papers", lambda db, msg, limit: [])
+    monkeypatch.setattr(chat_agent_module, "search_papers", lambda db, msg, limit, conditions=None: [])
 
     fake_llm = FakeStreamingLLM(["답변"])
     monkeypatch.setattr(chat_agent_module, "_build_llm", lambda: fake_llm)
@@ -118,32 +120,32 @@ async def test_stream_chat_answer_uses_no_reference_text_when_no_chunks_found(mo
     assert "참고 문서:\n없음" in system_prompt
 
 
-def test_is_trivial_greeting_skips_short_greetings_without_question_mark():
-    assert chat_agent_module._is_trivial_greeting("좋은 아침이야") is True
-    assert chat_agent_module._is_trivial_greeting("안녕") is True
-    assert chat_agent_module._is_trivial_greeting("고마워") is True
-
-
-def test_is_trivial_greeting_keeps_real_questions():
-    # 인사말 키워드가 없는 짧은 질문은 걸러지면 안 된다.
-    assert chat_agent_module._is_trivial_greeting("당뇨병 혈당관리") is False
-    # 물음표가 있으면 인사말 키워드가 있어도 걸러지지 않는다.
-    assert chat_agent_module._is_trivial_greeting("안녕하세요, 타이레놀 먹어도 되나요?") is False
-    # 인사말 키워드를 포함해도 10자를 넘으면(잡담 이상의 실제 내용일 가능성) 걸러지지 않는다.
-    assert chat_agent_module._is_trivial_greeting("좋은 아침인데 두통이 심해요") is False
-
-
-def test_search_all_skips_paper_search_for_trivial_greeting(monkeypatch):
+def test_search_all_passes_user_conditions_to_paper_search(monkeypatch):
+    """질환이 안 드러난 질문도 사용자 본인 진단 질환으로 논문을 찾을 수 있어야 한다."""
     monkeypatch.setattr(chat_agent_module, "ensure_db", lambda: "dur-db-sentinel")
     monkeypatch.setattr(chat_agent_module, "search_documents", lambda db, msg, limit: [])
-
-    def _fail_if_called(db, msg, limit):
-        raise AssertionError("인사말에는 논문 검색이 호출되면 안 된다")
-
     monkeypatch.setattr(chat_agent_module, "ensure_paper_db", lambda: "paper-db-sentinel")
-    monkeypatch.setattr(chat_agent_module, "search_papers", _fail_if_called)
+    received: dict = {}
 
-    chunks, sources = chat_agent_module._search_all("좋은 아침이야")
+    def _capture(db, msg, limit, conditions=None):
+        received["conditions"] = conditions
+        return []
+
+    monkeypatch.setattr(chat_agent_module, "search_papers", _capture)
+
+    chat_agent_module._search_all("운동 뭐가 좋아?", {"conditions": ["당뇨"]})
+
+    assert received["conditions"] == ["당뇨"]
+
+
+def test_search_all_tolerates_context_without_conditions(monkeypatch):
+    """비로그인/프로필 미입력이면 context에 conditions 키가 없을 수 있다."""
+    monkeypatch.setattr(chat_agent_module, "ensure_db", lambda: "dur-db-sentinel")
+    monkeypatch.setattr(chat_agent_module, "search_documents", lambda db, msg, limit: [])
+    monkeypatch.setattr(chat_agent_module, "ensure_paper_db", lambda: "paper-db-sentinel")
+    monkeypatch.setattr(chat_agent_module, "search_papers", lambda db, msg, limit, conditions=None: [])
+
+    chunks, sources = chat_agent_module._search_all("좋은 아침이야", {})
 
     assert chunks == []
     assert sources == []
