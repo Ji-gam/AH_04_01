@@ -20,9 +20,9 @@ from langchain_chroma import Chroma
 from langchain_classic.indexes import SQLRecordManager
 from langchain_core.indexing import index
 
+from ai_worker.ingest.embeddings import CHROMA_DIR, active_embedding_model, get_embeddings
 from ai_worker.ingest.loaders import build_loader
 from ai_worker.ingest.manifest import SourceSpec, load_manifest
-from ai_worker.tasks.ingest import CHROMA_DIR, get_embeddings
 
 logger = logging.getLogger("ai_worker.ingest.pipeline")
 
@@ -34,11 +34,15 @@ RECORD_DB_PATH = CHROMA_DIR / "record_manager.sqlite"
 
 def build_vector_store(collection: str) -> Chroma:
     """컬렉션 이름만 다른 같은 스토어. 예전엔 컬렉션마다 별도 팩토리 함수가 있었다
-    (`ingest.build_vector_store`, `ingest_papers.build_paper_vector_store`)."""
+    (`ingest.build_vector_store`, `ingest_papers.build_paper_vector_store`).
+
+    컬렉션 메타데이터에 임베딩 모델명을 남겨, 나중에 프로바이더가 바뀌면
+    `assert_embedding_compatible`이 불일치를 잡아낸다(벡터공간이 달라 검색이 무의미해짐)."""
     return Chroma(
         collection_name=collection,
         embedding_function=get_embeddings(),
         persist_directory=str(CHROMA_DIR),
+        collection_metadata={"embedding_model": active_embedding_model()},
     )
 
 
@@ -76,6 +80,20 @@ def ingest_source(spec: SourceSpec, force: bool = False) -> dict:
     )
     logger.info(f"{spec.file} -> {spec.collection}: {result}")
     return {"file": spec.file, "collection": spec.collection, **dict(result)}
+
+
+def reset_collection(collection: str) -> None:
+    """컬렉션과 그 장부를 **함께** 비운다(제로 그라운드 재색인 준비).
+
+    둘 중 하나만 지우면 안 된다: 벡터만 지우면 장부는 "이미 넣었다"고 기억해 재색인이
+    조용히 스킵되고, 장부만 지우면 유령 벡터가 남아 중복된다. 예전 `reset_dur_collection()`은
+    장부라는 개념 자체가 없어 벡터만 지웠다."""
+    manager = _record_manager(collection)
+    keys = manager.list_keys()
+    if keys:
+        manager.delete_keys(keys)
+    build_vector_store(collection).delete_collection()
+    logger.info(f"{collection}: 컬렉션과 장부({len(keys)}건) 삭제 완료.")
 
 
 def ingest_all(force: bool = False) -> list[dict]:

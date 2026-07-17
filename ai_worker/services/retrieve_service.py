@@ -4,10 +4,13 @@ from langchain_chroma import Chroma
 
 from ai_worker.core.config import settings
 from ai_worker.core.logger import setup_logger
+from ai_worker.ingest.pipeline import build_vector_store, ingest_all
 from ai_worker.schemas.retrieval_schema import DocumentChunk
-from ai_worker.tasks.ingest import build_vector_store, ingest_csv_data
 
 logger = setup_logger("ai_worker.retrieve_service")
+
+# DUR 컬렉션 이름. source/_manifest.yaml의 `collection:` 값과 일치해야 한다.
+COLLECTION_NAME = "dur_rules"
 
 # 싱글톤 데이터베이스 인스턴스 및 성분명 캐시 홀더.
 # 값 타입을 Any로 둔 이유: 테스트에서 이 딕셔너리에 실제 Chroma 대신 duck-typed
@@ -42,12 +45,14 @@ def cache_ingr_names(db: Chroma) -> None:
 def initialize_rag() -> None:
     """서비스 기동 시 데이터 인덱싱(Ingestion)을 자동 수행하고,
     크로마 DB 연결 객체와 성분명 인덱스를 캐싱합니다.
-    `ingest_csv_data()`는 파일별 결과 목록(list[dict])을 반환하므로, db 핸들은
-    별도로 `build_vector_store()`를 다시 호출해 얻는다(적재 후 최신 상태)."""
+    `ingest_all()`은 매니페스트의 rag=true 소스를 전부 색인하고 파일별 결과를 반환하므로,
+    db 핸들은 별도로 `build_vector_store()`를 호출해 얻는다(적재 후 최신 상태).
+    내용이 안 바뀐 소스는 SQLRecordManager가 해시로 걸러 재임베딩하지 않으므로,
+    기동할 때마다 전체를 다시 임베딩하지 않는다."""
     logger.info("Initializing RAG Ingestion on startup...")
     try:
-        ingest_csv_data()
-        db = build_vector_store()
+        ingest_all()
+        db = build_vector_store(COLLECTION_NAME)
         db_holder["db"] = db
         cache_ingr_names(db)
         logger.info("RAG Initialization completed.")
@@ -60,7 +65,7 @@ def ensure_db() -> Chroma:
     실패 시(`EmbeddingUnavailableError` 등) 도메인 예외를 그대로 전파한다 — HTTP 매핑은 라우터 몫."""
     db = db_holder["db"]
     if db is None:
-        db = build_vector_store()
+        db = build_vector_store(COLLECTION_NAME)
         db_holder["db"] = db
         cache_ingr_names(db)
     return db

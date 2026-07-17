@@ -54,7 +54,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
 from ai_worker.core.config import settings
-from ai_worker.tasks.ingest import CHROMA_DIR, active_embedding_model, get_embeddings
+from ai_worker.ingest.embeddings import CHROMA_DIR, active_embedding_model, get_embeddings
 
 logger = logging.getLogger("ai_worker.ingest_papers")
 logging.basicConfig(level=logging.INFO)

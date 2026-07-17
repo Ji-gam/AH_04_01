@@ -5,11 +5,15 @@ from fastapi.responses import StreamingResponse
 
 from ai_worker.core.config import settings
 from ai_worker.core.logger import setup_logger
+from ai_worker.ingest.embeddings import (
+    EmbeddingMismatchError,
+    EmbeddingUnavailableError,
+    assert_embedding_compatible,
+)
 from ai_worker.schemas.retrieval_schema import ChatCompletionRequest
 from ai_worker.services.paper_retrieve_service import ensure_paper_db
 from ai_worker.services.retrieve_service import ensure_db
 from ai_worker.tasks.chat_agent import stream_chat_answer
-from ai_worker.tasks.ingest import EmbeddingMismatchError, EmbeddingUnavailableError, assert_embedding_compatible
 
 logger = setup_logger("ai_worker.chat_agent_router")
 

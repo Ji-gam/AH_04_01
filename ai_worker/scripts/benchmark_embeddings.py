@@ -23,8 +23,9 @@ import numpy as np
 from huggingface_hub import InferenceClient
 
 from ai_worker.core.config import settings
-from ai_worker.tasks.ingest import _DUR_RAG_REGISTRY, _load_docs_from_csv, get_embeddings
-from ai_worker.tasks.ingest import DATA_DIR as DUR_DATA_DIR
+from ai_worker.ingest.embeddings import get_embeddings
+from ai_worker.ingest.loaders import build_loader
+from ai_worker.ingest.manifest import load_manifest
 from ai_worker.tasks.ingest_papers import build_documents, load_raw_papers, load_summary_cache
 
 GOLDEN_SET_PATH = Path(__file__).parent.parent / "tests" / "fixtures" / "embedding_golden_set.json"
@@ -38,15 +39,26 @@ random.seed(42)
 
 
 def _load_corpus() -> list[dict]:
-    """DUR 7개 파일 + 논문 5개 질환의 전체 문서를 (text, doc_id|None, pmid|None) 형태로 모은다."""
+    """매니페스트의 RAG 소스 + 논문을 (text, source|None, pmid|None) 형태로 모은다.
+
+    예전엔 DUR 레지스트리를 직접 훑었다. 이제 매니페스트가 무엇이 RAG 재료인지 정하므로,
+    파일이 늘어도 이 함수는 그대로다 — 벤치마크가 실제 색인 대상과 자동으로 같아진다."""
     corpus: list[dict] = []
-    for file_name, spec in _DUR_RAG_REGISTRY.items():
-        csv_file = DUR_DATA_DIR / file_name
-        if not csv_file.exists():
-            print(f"경고: {file_name}이 source/에 없어 코퍼스에서 제외됨")
+    for spec in load_manifest():
+        if not spec.rag:
             continue
-        docs, _ = _load_docs_from_csv(csv_file, spec)
-        corpus.extend({"text": d.page_content, "doc_id": d.id, "pmid": None} for d in docs)
+        if not spec.path.exists():
+            print(f"경고: {spec.file}이 source/에 없어 코퍼스에서 제외됨")
+            continue
+        corpus.extend(
+            {
+                "text": d.page_content,
+                "source": d.metadata.get("source"),
+                "ingr_name": d.metadata.get("ingr_name"),
+                "pmid": None,
+            }
+            for d in build_loader(spec).lazy_load()
+        )
 
     # 한국어 요약 캐시를 함께 넘겨, 실제 색인되는 본문과 같은 형태로 벤치마크한다
     # (요약 접두 여부가 한국어 질의 매칭에 크게 영향을 준다 — ingest_papers 참고).
@@ -54,23 +66,25 @@ def _load_corpus() -> list[dict]:
     summaries = load_summary_cache()
     for disease, papers in raw_by_disease.items():
         docs = build_documents(disease, papers, summaries)
-        corpus.extend({"text": d.page_content, "doc_id": None, "pmid": d.metadata.get("pmid")} for d in docs)
+        corpus.extend(
+            {"text": d.page_content, "source": None, "ingr_name": None, "pmid": d.metadata.get("pmid")} for d in docs
+        )
     return corpus
 
 
 def _sample_corpus(corpus: list[dict], golden_set: list[dict]) -> list[dict]:
     """골든셋 정답 문서는 반드시 포함하고, 나머지는 무작위 표본으로 CORPUS_SAMPLE_SIZE까지 채운다."""
-    required_doc_ids = {g["expected_doc_id"] for g in golden_set if "expected_doc_id" in g}
+    required_keys = {(g["expected_source"], g["expected_ingr_name"]) for g in golden_set if "expected_source" in g}
     required_pmids = {g["expected_pmid"] for g in golden_set if "expected_pmid" in g}
 
     required, rest = [], []
     for c in corpus:
-        if c["doc_id"] in required_doc_ids or c["pmid"] in required_pmids:
+        if (c["source"], c["ingr_name"]) in required_keys or c["pmid"] in required_pmids:
             required.append(c)
         else:
             rest.append(c)
 
-    missing = required_doc_ids - {c["doc_id"] for c in required}
+    missing = {f"{s}:{i}" for s, i in required_keys - {(c["source"], c["ingr_name"]) for c in required}}
     missing |= required_pmids - {c["pmid"] for c in required}
     if missing:
         print(f"경고: 골든셋 정답 문서를 코퍼스에서 못 찾음(무시하고 진행): {missing}")
@@ -118,10 +132,13 @@ def _recall_at_k(golden_set: list[dict], corpus: list[dict], corpus_vecs, query_
             key=lambda x: x[0],
             reverse=True,
         )[:k]
-        expected_doc_id = g.get("expected_doc_id")
+        # 골든셋은 내부 doc id가 아니라 의미(출처 파일 + 성분명 / pmid)로 정답을 적는다 —
+        # 인제스트 구조가 바뀌어도 골든셋이 안 깨지게 하기 위함.
+        expected_source = g.get("expected_source")
+        expected_ingr = g.get("expected_ingr_name")
         expected_pmid = g.get("expected_pmid")
         found = any(
-            (expected_doc_id is not None and c["doc_id"] == expected_doc_id)
+            (expected_source is not None and c["source"] == expected_source and c["ingr_name"] == expected_ingr)
             or (expected_pmid is not None and c["pmid"] == expected_pmid)
             for _, c in sims
         )
