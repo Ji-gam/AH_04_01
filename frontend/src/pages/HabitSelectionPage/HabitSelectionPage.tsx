@@ -5,7 +5,12 @@ import { habitApi } from "../../api/habitApi";
 import type { HabitRecommendationItemResult, HabitsTodayResult } from "../../api/types";
 import SelectedHabitsModal from "../../components/habit/SelectedHabitsModal";
 import { useAuth } from "../../hooks/useAuth";
-import { pinkTheme as t } from "../../theme/pinkTheme";
+import {
+  pinkTheme as t,
+  backButtonStyle,
+  pageTitleStyle,
+  primaryButtonStyle,
+} from "../../theme/pinkTheme";
 
 const MAX_SELECTIONS = 5;
 
@@ -71,14 +76,7 @@ export default function HabitSelectionPage() {
         <button
           type="button"
           onClick={() => navigate("/more")}
-          style={{
-            background: "none",
-            border: "none",
-            color: t.textMuted,
-            padding: 0,
-            marginBottom: 12,
-            cursor: "pointer",
-          }}
+          style={{ ...backButtonStyle, marginBottom: 12 }}
         >
           ← 뒤로가기
         </button>
@@ -103,7 +101,7 @@ export default function HabitSelectionPage() {
             👤
           </span>
           <div>
-            <h1 style={{ fontSize: 16, fontWeight: 700, color: t.text, margin: 0 }}>
+            <h1 style={{ ...pageTitleStyle, margin: 0 }}>
               {user ? `${user.name}님, 안녕하세요` : "안녕하세요"}
             </h1>
             <p style={{ fontSize: 13, color: t.textMuted, margin: "4px 0 0" }}>
@@ -225,14 +223,8 @@ export default function HabitSelectionPage() {
           onClick={handleSave}
           disabled={loading}
           style={{
+            ...primaryButtonStyle,
             width: "100%",
-            padding: "14px 0",
-            borderRadius: 12,
-            border: "none",
-            background: t.primary,
-            color: "#fff",
-            fontSize: 15,
-            fontWeight: 700,
             cursor: loading ? "default" : "pointer",
           }}
         >

@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 
 import DisclaimerBanner from "../../components/common/DisclaimerBanner";
 import { useNearbyRegionLabel } from "../../hooks/useNearbyRegionLabel";
-import { pinkTheme as t } from "../../theme/pinkTheme";
+import { pinkTheme as t, backButtonStyle, pageTitleStyle } from "../../theme/pinkTheme";
 import { DEFAULT_REGION_LABEL, openNearbySearch } from "../../utils/kakaoMapSearch";
 
 const cardStyle: React.CSSProperties = {
@@ -87,20 +87,11 @@ export default function EmergencyGuidePage() {
         <button
           type="button"
           onClick={() => navigate("/more")}
-          style={{
-            background: "none",
-            border: "none",
-            color: t.textMuted,
-            padding: 0,
-            marginBottom: 12,
-            cursor: "pointer",
-          }}
+          style={{ ...backButtonStyle, marginBottom: 12 }}
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 16px" }}>
-          🚨 응급 안내
-        </h1>
+        <h1 style={{ ...pageTitleStyle, margin: "0 0 16px" }}>🚨 응급 안내</h1>
 
         <p style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 700, color: t.danger }}>
           응급 상황 시 119로 즉시 연락하세요

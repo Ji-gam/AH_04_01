@@ -3,7 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { contentApi } from "../../api/contentApi";
 import type { HealthContentResult } from "../../api/types";
-import { pinkTheme } from "../../theme/pinkTheme";
+import {
+  backButtonStyle,
+  captionTextStyle,
+  pageTitleStyle,
+  pinkTheme,
+  primaryButtonStyle,
+} from "../../theme/pinkTheme";
 
 const cardStyle: React.CSSProperties = {
   background: pinkTheme.cardBg,
@@ -56,19 +62,12 @@ export default function ContentGenerationPage() {
         <button
           type="button"
           onClick={() => navigate("/more")}
-          style={{
-            background: "none",
-            border: "none",
-            color: pinkTheme.textMuted,
-            padding: 0,
-            marginBottom: 12,
-            cursor: "pointer",
-          }}
+          style={{ ...backButtonStyle, marginBottom: 12 }}
         >
           ← 뒤로가기
         </button>
 
-        <h1 style={{ color: pinkTheme.text, fontSize: 20 }}>관리자 컨텐츠생성</h1>
+        <h1 style={pageTitleStyle}>관리자 컨텐츠생성</h1>
         <p style={{ color: pinkTheme.textMuted, fontSize: 13, marginTop: 4 }}>
           버튼을 누르면 실제 LLM으로 건강 콘텐츠 카드를 생성해 저장합니다. "정보" 탭에 바로
           반영돼요.
@@ -79,14 +78,10 @@ export default function ContentGenerationPage() {
           onClick={handleGenerate}
           disabled={isGenerating}
           style={{
+            ...primaryButtonStyle,
             width: "100%",
             marginTop: 16,
-            padding: "14px 16px",
-            border: "none",
-            borderRadius: "8px",
             background: isGenerating ? pinkTheme.primarySoft : pinkTheme.primary,
-            color: "#fff",
-            fontWeight: 600,
             cursor: isGenerating ? "not-allowed" : "pointer",
           }}
         >
@@ -130,7 +125,7 @@ export default function ContentGenerationPage() {
               <div
                 style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
               >
-                <span style={{ fontSize: 12, color: pinkTheme.textMuted }}>
+                <span style={captionTextStyle}>
                   {item.disease_code} · {item.category}
                 </span>
                 <span aria-hidden style={{ color: pinkTheme.textMuted }}>

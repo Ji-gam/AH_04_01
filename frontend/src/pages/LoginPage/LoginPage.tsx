@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { authApi, socialLoginUrl } from "../../api/authApi";
 import { useAuth } from "../../hooks/useAuth";
-import { pinkTheme } from "../../theme/pinkTheme";
+import { captionTextStyle, pinkTheme, primaryButtonStyle } from "../../theme/pinkTheme";
 
 /** 카톡/메모앱 등에서 비밀번호를 복사해 붙여넣을 때, 화면엔 안 보이지만 같이 딸려오는
  * 줄바꿈/앞뒤 공백/zero-width 문자를 제거한다. 가입 때 타이핑으로 넣고 로그인 때 복붙으로
@@ -21,16 +21,6 @@ const inputStyle: React.CSSProperties = {
   borderRadius: "10px",
   fontSize: "14px",
   outline: "none",
-};
-
-const primaryButtonStyle: React.CSSProperties = {
-  padding: "12px",
-  border: "none",
-  borderRadius: "10px",
-  background: pinkTheme.primary,
-  color: "#fff",
-  fontWeight: 600,
-  cursor: "pointer",
 };
 
 /** 시작화면(홈)의 "로그인" 버튼으로 들어오는 화면. 로그인/가입을 탭으로 전환한다(별도 페이지 이동 없이).
@@ -185,7 +175,7 @@ export default function LoginPage() {
             onSubmit={handleSignup}
             style={{ display: "flex", flexDirection: "column", gap: "10px" }}
           >
-            <p style={{ color: pinkTheme.textMuted, fontSize: 12, margin: 0 }}>
+            <p style={{ ...captionTextStyle, margin: 0 }}>
               닉네임, 이메일, 비밀번호만 있으면 바로 시작할 수 있어요. 건강정보는 나중에 입력해요.
             </p>
             <input
@@ -225,16 +215,7 @@ export default function LoginPage() {
           </form>
         )}
 
-        <p
-          style={{
-            textAlign: "center",
-            color: pinkTheme.textMuted,
-            fontSize: 12,
-            margin: "16px 0 8px",
-          }}
-        >
-          또는
-        </p>
+        <p style={{ ...captionTextStyle, textAlign: "center", margin: "16px 0 8px" }}>또는</p>
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {/* 구글은 카카오/네이버처럼 브랜드컬러로 꽉 채운 공식 버튼이 없다(로고 자체가 다색이라
              단일색 배경 버튼을 공식으로 안 만듦) - 그래서 구글이 제공하는 3가지 공식 테마

@@ -3,7 +3,13 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { authApi } from "../../api/authApi";
 import { useAuth } from "../../hooks/useAuth";
-import { pinkTheme } from "../../theme/pinkTheme";
+import {
+  dangerButtonStyle,
+  backButtonStyle,
+  pageTitleStyle,
+  pinkTheme,
+  primaryButtonStyle,
+} from "../../theme/pinkTheme";
 
 const inputStyle: React.CSSProperties = {
   padding: "11px 13px",
@@ -78,22 +84,12 @@ export default function AccountSettingsPage() {
         <button
           type="button"
           onClick={() => navigate(cameFromMore ? "/more" : "/")}
-          style={{
-            background: "none",
-            border: "none",
-            color: pinkTheme.textMuted,
-            padding: 0,
-            marginBottom: 10,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
+          style={{ ...backButtonStyle, marginBottom: 10 }}
         >
           ← 뒤로가기
         </button>
 
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 16px" }}>
-          ⚙️ 개인정보수정
-        </h1>
+        <h1 style={{ ...pageTitleStyle, margin: "0 0 16px" }}>⚙️ 개인정보수정</h1>
 
         <form
           onSubmit={handleSave}
@@ -151,19 +147,7 @@ export default function AccountSettingsPage() {
             <p style={{ color: pinkTheme.danger, fontSize: 13, margin: 0 }}>{saveError}</p>
           )}
 
-          <button
-            type="submit"
-            disabled={isSaving}
-            style={{
-              padding: "12px 0",
-              border: "none",
-              borderRadius: 10,
-              background: pinkTheme.primary,
-              color: "#fff",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
+          <button type="submit" disabled={isSaving} style={primaryButtonStyle}>
             {isSaving ? "저장 중..." : "저장하기"}
           </button>
         </form>
@@ -228,16 +212,7 @@ export default function AccountSettingsPage() {
                 <button
                   type="submit"
                   disabled={isWithdrawing}
-                  style={{
-                    flex: 1,
-                    padding: "11px 0",
-                    border: "none",
-                    borderRadius: 10,
-                    background: pinkTheme.danger,
-                    color: "#fff",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
+                  style={{ ...dangerButtonStyle, flex: 1 }}
                 >
                   {isWithdrawing ? "처리 중..." : "정말 탈퇴합니다"}
                 </button>

@@ -7,7 +7,12 @@ import {
   type FamilyLinkItem,
   type FamilyMembersResult,
 } from "../../api/familyApi";
-import { pinkTheme } from "../../theme/pinkTheme";
+import {
+  pinkTheme,
+  backButtonStyle,
+  pageTitleStyle,
+  primaryButtonStyle,
+} from "../../theme/pinkTheme";
 
 const cardStyle: React.CSSProperties = {
   background: pinkTheme.cardBg,
@@ -23,16 +28,6 @@ const inputStyle: React.CSSProperties = {
   borderRadius: "10px",
   fontSize: "14px",
   outline: "none",
-};
-
-const primaryButtonStyle: React.CSSProperties = {
-  padding: "12px",
-  border: "none",
-  borderRadius: "10px",
-  background: pinkTheme.primary,
-  color: "#fff",
-  fontWeight: 600,
-  cursor: "pointer",
 };
 
 const emptyRowStyle: React.CSSProperties = { margin: 0, fontSize: 13, color: pinkTheme.textMuted };
@@ -210,21 +205,11 @@ export default function FamilyPage() {
         <button
           type="button"
           onClick={() => navigate(cameFromMore ? "/more" : "/")}
-          style={{
-            background: "none",
-            border: "none",
-            color: pinkTheme.textMuted,
-            padding: 0,
-            alignSelf: "flex-start",
-            cursor: "pointer",
-            fontSize: 13,
-          }}
+          style={{ ...backButtonStyle, alignSelf: "flex-start" }}
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: 0 }}>
-          👨‍👩‍👧 가족관리
-        </h1>
+        <h1 style={{ ...pageTitleStyle, margin: 0 }}>👨‍👩‍👧 가족관리</h1>
         <p style={{ margin: 0, fontSize: 13, color: pinkTheme.textMuted, lineHeight: 1.5 }}>
           부모님 등 가족 구성원을 이메일 또는 초대코드로 연결해요. 연결되면 약 등록할 때 "나 또는 이
           분" 중 누구 몫으로 등록할지 고를 수 있어요.

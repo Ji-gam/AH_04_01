@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { pinkTheme } from "../../theme/pinkTheme";
+import { pinkTheme, primaryButtonStyle, backButtonStyle } from "../../theme/pinkTheme";
 
 interface Props {
   onFinish: () => void;
@@ -14,18 +14,6 @@ const overlayStyle: React.CSSProperties = {
   display: "flex",
   flexDirection: "column",
   padding: "24px 28px 40px",
-};
-
-const primaryButtonStyle: React.CSSProperties = {
-  width: "100%",
-  padding: "16px 0",
-  border: "none",
-  borderRadius: 14,
-  background: pinkTheme.primary,
-  color: "#fff",
-  fontWeight: 700,
-  fontSize: 16,
-  cursor: "pointer",
 };
 
 const centerColumnStyle: React.CSSProperties = {
@@ -78,7 +66,11 @@ export default function OnboardingPage({ onFinish }: Props) {
             <br />한 곳에서
           </p>
         </div>
-        <button type="button" style={primaryButtonStyle} onClick={() => setStep(2)}>
+        <button
+          type="button"
+          style={{ ...primaryButtonStyle, width: "100%" }}
+          onClick={() => setStep(2)}
+        >
           시작하기
         </button>
       </div>
@@ -88,18 +80,7 @@ export default function OnboardingPage({ onFinish }: Props) {
   return (
     <div style={overlayStyle}>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button
-          type="button"
-          onClick={onFinish}
-          style={{
-            background: "none",
-            border: "none",
-            color: pinkTheme.textMuted,
-            fontSize: 13,
-            cursor: "pointer",
-            padding: 4,
-          }}
-        >
+        <button type="button" onClick={onFinish} style={{ ...backButtonStyle, padding: 4 }}>
           건너뛰기
         </button>
       </div>
@@ -138,7 +119,7 @@ export default function OnboardingPage({ onFinish }: Props) {
           맞춤 알림을 보내드려요
         </p>
       </div>
-      <button type="button" style={primaryButtonStyle} onClick={onFinish}>
+      <button type="button" style={{ ...primaryButtonStyle, width: "100%" }} onClick={onFinish}>
         다음
       </button>
     </div>

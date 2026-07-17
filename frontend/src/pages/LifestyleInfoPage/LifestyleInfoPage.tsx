@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { pinkTheme as t } from "../../theme/pinkTheme";
+import {
+  backButtonStyle,
+  pageTitleStyle,
+  pinkTheme as t,
+  primaryButtonStyle,
+} from "../../theme/pinkTheme";
 
 import TimeSelectSection from "./TimeSelectSection";
 
@@ -97,20 +102,11 @@ export default function LifestyleInfoPage() {
         <button
           type="button"
           onClick={() => navigate("/more")}
-          style={{
-            background: "none",
-            border: "none",
-            color: t.textMuted,
-            padding: 0,
-            marginBottom: 12,
-            cursor: "pointer",
-          }}
+          style={{ ...backButtonStyle, marginBottom: 12 }}
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 6px" }}>
-          🌙 생활습관 정보
-        </h1>
+        <h1 style={{ ...pageTitleStyle, margin: "0 0 6px" }}>🌙 생활습관 정보</h1>
 
         <p style={{ margin: "0 0 20px", fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>
           복약 효과를 높이기 위한 생활습관을 설정해주세요.
@@ -131,18 +127,7 @@ export default function LifestyleInfoPage() {
         <button
           type="button"
           onClick={handleSave}
-          style={{
-            width: "100%",
-            padding: "14px 0",
-            marginTop: 8,
-            borderRadius: 12,
-            border: "none",
-            background: t.primary,
-            color: "#fff",
-            fontSize: 15,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
+          style={{ ...primaryButtonStyle, width: "100%", marginTop: 8 }}
         >
           저장
         </button>

@@ -1,7 +1,12 @@
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { HealthContentResult } from "../../api/types";
-import { pinkTheme } from "../../theme/pinkTheme";
+import {
+  backButtonStyle,
+  captionTextStyle,
+  pageTitleStyle,
+  pinkTheme,
+} from "../../theme/pinkTheme";
 
 const cardStyle: React.CSSProperties = {
   background: pinkTheme.cardBg,
@@ -26,14 +31,7 @@ export default function ContentDetailPage() {
           <button
             type="button"
             onClick={() => navigate("/content-generation")}
-            style={{
-              background: "none",
-              border: "none",
-              color: pinkTheme.textMuted,
-              padding: 0,
-              marginBottom: 12,
-              cursor: "pointer",
-            }}
+            style={{ ...backButtonStyle, marginBottom: 12 }}
           >
             ← 뒤로가기
           </button>
@@ -51,22 +49,15 @@ export default function ContentDetailPage() {
         <button
           type="button"
           onClick={() => navigate("/content-generation")}
-          style={{
-            background: "none",
-            border: "none",
-            color: pinkTheme.textMuted,
-            padding: 0,
-            marginBottom: 12,
-            cursor: "pointer",
-          }}
+          style={{ ...backButtonStyle, marginBottom: 12 }}
         >
           ← 뒤로가기
         </button>
 
-        <p style={{ fontSize: 12, color: pinkTheme.textMuted }}>
+        <p style={captionTextStyle}>
           {item.disease_code} · {item.category} · {item.content_date}
         </p>
-        <h1 style={{ color: pinkTheme.text, fontSize: 20, marginTop: 4 }}>{item.title}</h1>
+        <h1 style={{ ...pageTitleStyle, marginTop: 4 }}>{item.title}</h1>
 
         <div style={{ ...cardStyle, marginTop: 16 }}>
           <p style={{ color: pinkTheme.textMuted, fontWeight: 600, marginBottom: 6 }}>요약</p>
@@ -87,7 +78,7 @@ export default function ContentDetailPage() {
           </div>
         )}
 
-        <p style={{ color: pinkTheme.textMuted, fontSize: 12, marginTop: 16 }}>{item.disclaimer}</p>
+        <p style={{ ...captionTextStyle, marginTop: 16 }}>{item.disclaimer}</p>
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ import { apiFetch } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
 import type { MedicationSchedule } from "../../hooks/useMedication";
-import { pinkTheme } from "../../theme/pinkTheme";
+import { pinkTheme, backButtonStyle, pageTitleStyle } from "../../theme/pinkTheme";
 import { toDateString } from "../AlarmPage/dateUtils";
 
 import { buildGroups, loadChecked, saveChecked, type TimeGroup } from "./scheduleData";
@@ -163,14 +163,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
           <button
             type="button"
             onClick={() => navigate("/more")}
-            style={{
-              background: "none",
-              border: "none",
-              color: c.textMuted,
-              padding: 0,
-              marginBottom: 12,
-              cursor: "pointer",
-            }}
+            style={{ ...backButtonStyle, marginBottom: 12 }}
           >
             ← 뒤로가기
           </button>
@@ -183,7 +176,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
             marginBottom: 18,
           }}
         >
-          <h1 style={{ fontSize: 19, fontWeight: 700, color: c.text, margin: 0 }}>⏰ {title}</h1>
+          <h1 style={{ ...pageTitleStyle, margin: 0 }}>⏰ {title}</h1>
           {totalCount > 0 && (
             <span
               style={{

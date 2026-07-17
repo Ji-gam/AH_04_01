@@ -17,7 +17,7 @@ import {
   type RecognitionCandidate,
   type RecognitionJobResult,
 } from "../../hooks/useMedication";
-import { pinkTheme } from "../../theme/pinkTheme";
+import { pinkTheme, primaryButtonStyle, pageTitleStyle } from "../../theme/pinkTheme";
 import Modal from "../AlarmPage/components/Modal";
 
 /** (T-DOC-4, 2026-07-15) 음식 칩/모달을 `FoodItem.polarity`별로 다르게 보여주기 위한 스타일
@@ -688,9 +688,7 @@ export default function MedicationPage() {
   return (
     <div style={{ background: pinkTheme.pageBg, minHeight: "100%", padding: "20px 12px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto", color: pinkTheme.text }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 16px" }}>
-          💊 복약 관리
-        </h1>
+        <h1 style={{ ...pageTitleStyle, margin: "0 0 16px" }}>💊 복약 관리</h1>
 
         {/* 탭 네비게이션 (시간표, 목록, 상호작용, 음식) */}
         <div style={{ display: "flex", gap: "5px", marginBottom: "15px" }}>
@@ -749,14 +747,7 @@ export default function MedicationPage() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  style={{
-                    background: "#fff",
-                    border: `1px solid ${pinkTheme.border}`,
-                    borderRadius: 8,
-                    padding: "8px 12px",
-                    color: pinkTheme.text,
-                    cursor: isLoading ? "not-allowed" : "pointer",
-                  }}
+                  style={{ ...primaryButtonStyle, cursor: isLoading ? "not-allowed" : "pointer" }}
                 >
                   {isLoading ? "업로드 중..." : "처방전/알약 분석하기"}
                 </button>
@@ -1038,13 +1029,7 @@ export default function MedicationPage() {
                 <button
                   onClick={handleConfirmSubmit}
                   disabled={selectedDrugCodes.length === 0}
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    backgroundColor: "#4caf50",
-                    color: "#fff",
-                    border: "none",
-                  }}
+                  style={{ ...primaryButtonStyle, width: "100%" }}
                 >
                   선택한 {selectedDrugCodes.length}개 약품 복약 스케줄 등록 확정
                 </button>
@@ -1100,7 +1085,11 @@ export default function MedicationPage() {
                   placeholder="약품명 검색 (예: 타이레놀)"
                   style={{ flex: 1 }}
                 />
-                <button type="submit" disabled={searchLoading || !quickDrugName.trim()}>
+                <button
+                  type="submit"
+                  disabled={searchLoading || !quickDrugName.trim()}
+                  style={primaryButtonStyle}
+                >
                   {searchLoading ? "검색 중..." : "검색"}
                 </button>
               </form>
@@ -1159,11 +1148,8 @@ export default function MedicationPage() {
                     onClick={handleConfirmManualSelection}
                     disabled={!selectedManualCode}
                     style={{
+                      ...primaryButtonStyle,
                       width: "100%",
-                      padding: "10px",
-                      backgroundColor: "#4caf50",
-                      color: "#fff",
-                      border: "none",
                       cursor: selectedManualCode ? "pointer" : "not-allowed",
                     }}
                   >

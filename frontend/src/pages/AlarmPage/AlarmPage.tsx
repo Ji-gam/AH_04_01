@@ -5,7 +5,12 @@ import { apiFetch } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
 import type { MedicationSchedule } from "../../hooks/useMedication";
-import { pinkTheme as t } from "../../theme/pinkTheme";
+import {
+  bodyTextStyle,
+  captionTextStyle,
+  iconButtonStyle,
+  pinkTheme as t,
+} from "../../theme/pinkTheme";
 import SchedulePage from "../SchedulePage/SchedulePage";
 
 import AlarmCalendar from "./components/AlarmCalendar";
@@ -518,10 +523,8 @@ export default function AlarmPage() {
                     }}
                   >
                     <div>
-                      <span style={{ fontSize: 14, color: t.text }}>{row.name}</span>
-                      <p style={{ fontSize: 12, color: t.textMuted, margin: "2px 0 0" }}>
-                        {row.subLabel}
-                      </p>
+                      <span style={bodyTextStyle}>{row.name}</span>
+                      <p style={{ ...captionTextStyle, margin: "2px 0 0" }}>{row.subLabel}</p>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       {row.alarm ? (
@@ -535,13 +538,7 @@ export default function AlarmPage() {
                             type="button"
                             aria-label="알림 수정"
                             onClick={() => startEdit(row.alarm!)}
-                            style={{
-                              border: "none",
-                              background: "none",
-                              color: t.textMuted,
-                              cursor: "pointer",
-                              fontSize: 14,
-                            }}
+                            style={iconButtonStyle}
                           >
                             ✏️
                           </button>
@@ -549,13 +546,7 @@ export default function AlarmPage() {
                             type="button"
                             aria-label="알림 삭제"
                             onClick={() => handleDelete(row.alarm!)}
-                            style={{
-                              border: "none",
-                              background: "none",
-                              color: t.textMuted,
-                              cursor: "pointer",
-                              fontSize: 14,
-                            }}
+                            style={iconButtonStyle}
                           >
                             🗑️
                           </button>
@@ -571,13 +562,7 @@ export default function AlarmPage() {
                             type="button"
                             aria-label={`${row.name} 복용 시각 수정`}
                             onClick={() => startEditMed(row.med!, row.time)}
-                            style={{
-                              border: "none",
-                              background: "none",
-                              color: t.textMuted,
-                              cursor: "pointer",
-                              fontSize: 14,
-                            }}
+                            style={iconButtonStyle}
                           >
                             ✏️
                           </button>
@@ -585,13 +570,7 @@ export default function AlarmPage() {
                             type="button"
                             aria-label={`${row.name} 복용 시각 삭제`}
                             onClick={() => handleDeleteMedTime(row.med!, row.time)}
-                            style={{
-                              border: "none",
-                              background: "none",
-                              color: t.textMuted,
-                              cursor: "pointer",
-                              fontSize: 14,
-                            }}
+                            style={iconButtonStyle}
                           >
                             🗑️
                           </button>

@@ -1,6 +1,11 @@
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { pinkTheme } from "../../theme/pinkTheme";
+import {
+  pinkTheme,
+  backButtonStyle,
+  pageTitleStyle,
+  primaryButtonStyle,
+} from "../../theme/pinkTheme";
 
 /** 더보기 > 처방전 등록에서 열었을 때만 뒤로가기가 더보기로 돌아간다(2026-07-16) - 상단
  * 네비게이션의 "트랙커" 탭으로 들어왔을 때는 홈으로 나간다. */
@@ -15,21 +20,11 @@ export default function TrackPage() {
         <button
           type="button"
           onClick={() => navigate(cameFromMore ? "/more" : "/")}
-          style={{
-            background: "none",
-            border: "none",
-            color: pinkTheme.textMuted,
-            padding: 0,
-            marginBottom: 10,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
+          style={{ ...backButtonStyle, marginBottom: 10 }}
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 20px" }}>
-          📊 트랙커
-        </h1>
+        <h1 style={{ ...pageTitleStyle, margin: "0 0 20px" }}>📊 트랙커</h1>
 
         <div
           style={{
@@ -57,16 +52,7 @@ export default function TrackPage() {
           <button
             type="button"
             onClick={() => navigate("/medication")}
-            style={{
-              width: "100%",
-              padding: "12px 0",
-              border: "none",
-              borderRadius: 10,
-              background: pinkTheme.primary,
-              color: "#fff",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+            style={{ ...primaryButtonStyle, width: "100%" }}
           >
             복약 스케줄 & 처방전 OCR 관리 바로가기
           </button>

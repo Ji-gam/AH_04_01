@@ -11,7 +11,12 @@ import type {
   HealthInfoResult,
 } from "../../api/types";
 import { useAuth } from "../../hooks/useAuth";
-import { pinkTheme } from "../../theme/pinkTheme";
+import {
+  pinkTheme,
+  backButtonStyle,
+  pageTitleStyle,
+  primaryButtonStyle,
+} from "../../theme/pinkTheme";
 import { hasConsented } from "../../utils/healthInfoConsent";
 
 import BirthDateInput from "./BirthDateInput";
@@ -674,19 +679,12 @@ export default function HealthInfoPage() {
         <button
           type="button"
           onClick={handleTopBack}
-          style={{
-            background: "none",
-            border: "none",
-            color: pinkTheme.textMuted,
-            padding: 0,
-            marginBottom: 12,
-            cursor: "pointer",
-          }}
+          style={{ ...backButtonStyle, marginBottom: 12 }}
         >
           ← 뒤로가기
         </button>
 
-        <h1 style={{ color: pinkTheme.text, fontSize: 20 }}>개인건강정보</h1>
+        <h1 style={pageTitleStyle}>개인건강정보</h1>
 
         {savedMessage && <p style={{ color: pinkTheme.success }}>{savedMessage}</p>}
         {error && <p style={{ color: pinkTheme.danger }}>{error}</p>}
@@ -784,19 +782,7 @@ export default function HealthInfoPage() {
               </p>
             </div>
 
-            <button
-              type="button"
-              onClick={handleStartEdit}
-              style={{
-                padding: "12px",
-                border: "none",
-                borderRadius: "10px",
-                background: pinkTheme.primary,
-                color: "#fff",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
+            <button type="button" onClick={handleStartEdit} style={primaryButtonStyle}>
               수정
             </button>
           </div>
@@ -938,31 +924,10 @@ export default function HealthInfoPage() {
               />
             </label>
 
-            <button
-              type="submit"
-              disabled={isSaving}
-              style={{
-                padding: "12px",
-                border: "none",
-                borderRadius: "10px",
-                background: pinkTheme.primary,
-                color: "#fff",
-                fontWeight: 600,
-                cursor: "pointer",
-              }}
-            >
+            <button type="submit" disabled={isSaving} style={primaryButtonStyle}>
               {isSaving ? "저장 중..." : "저장하기"}
             </button>
-            <button
-              type="button"
-              onClick={handleCancelEdit}
-              style={{
-                background: "none",
-                border: "none",
-                color: pinkTheme.textMuted,
-                cursor: "pointer",
-              }}
-            >
+            <button type="button" onClick={handleCancelEdit} style={backButtonStyle}>
               취소하고 보기로 돌아가기
             </button>
           </form>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { pinkTheme as t } from "../../theme/pinkTheme";
+import { pinkTheme as t, backButtonStyle, pageTitleStyle } from "../../theme/pinkTheme";
 import ToggleSwitch from "../AlarmPage/components/ToggleSwitch";
 
 /** localStorage에 이 형태 그대로 저장한다 — 백엔드 알림설정 도메인이 생기면 연동 예정. */
@@ -166,20 +166,11 @@ export default function NotificationSettingsPage() {
         <button
           type="button"
           onClick={() => navigate("/more")}
-          style={{
-            background: "none",
-            border: "none",
-            color: t.textMuted,
-            padding: 0,
-            marginBottom: 12,
-            cursor: "pointer",
-          }}
+          style={{ ...backButtonStyle, marginBottom: 12 }}
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 6px" }}>
-          🔔 알림설정
-        </h1>
+        <h1 style={{ ...pageTitleStyle, margin: "0 0 6px" }}>🔔 알림설정</h1>
 
         <p style={{ margin: "0 0 12px", fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>
           받고 싶은 알림과 무음 시간대를 설정해주세요.

@@ -1,7 +1,12 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { pinkTheme } from "../../theme/pinkTheme";
+import {
+  backButtonStyle,
+  captionTextStyle,
+  pageTitleStyle,
+  pinkTheme,
+} from "../../theme/pinkTheme";
 
 interface Notice {
   id: string;
@@ -46,22 +51,12 @@ export default function NoticePage() {
         <button
           type="button"
           onClick={() => navigate(cameFromMore ? "/more" : "/")}
-          style={{
-            background: "none",
-            border: "none",
-            color: pinkTheme.textMuted,
-            padding: 0,
-            marginBottom: 10,
-            cursor: "pointer",
-            fontSize: 13,
-          }}
+          style={{ ...backButtonStyle, marginBottom: 10 }}
         >
           ← 뒤로가기
         </button>
 
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 20px" }}>
-          📢 공지사항
-        </h1>
+        <h1 style={{ ...pageTitleStyle, margin: "0 0 20px" }}>📢 공지사항</h1>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {NOTICES.map((notice) => {
@@ -114,9 +109,7 @@ export default function NoticePage() {
                         </span>
                       )}
                     </div>
-                    <p style={{ margin: "4px 0 0", fontSize: 12, color: pinkTheme.textMuted }}>
-                      {notice.date}
-                    </p>
+                    <p style={{ ...captionTextStyle, margin: "4px 0 0" }}>{notice.date}</p>
                   </div>
                   <span
                     aria-hidden

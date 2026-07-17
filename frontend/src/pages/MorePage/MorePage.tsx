@@ -3,7 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
 import { useAuth } from "../../hooks/useAuth";
-import { pinkTheme } from "../../theme/pinkTheme";
+import {
+  captionTextStyle,
+  pageTitleStyle,
+  pinkTheme,
+  primaryButtonStyle,
+} from "../../theme/pinkTheme";
 import Modal from "../AlarmPage/components/Modal";
 
 interface SearchResultItem {
@@ -152,9 +157,7 @@ export default function MorePage() {
             marginBottom: 20,
           }}
         >
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: pinkTheme.text, margin: 0 }}>
-            더보기
-          </h1>
+          <h1 style={{ ...pageTitleStyle, margin: 0 }}>더보기</h1>
           <Link
             to="/account-settings"
             state={{ from: "more" }}
@@ -314,14 +317,7 @@ export default function MorePage() {
           <Link to="/content-generation" style={menuCardStyle}>
             <span>
               🛠️ 관리자 컨텐츠생성
-              <span
-                style={{
-                  display: "block",
-                  fontSize: 12,
-                  color: pinkTheme.textMuted,
-                  marginTop: 2,
-                }}
-              >
+              <span style={{ ...captionTextStyle, display: "block", marginTop: 2 }}>
                 실제 LLM으로 건강 콘텐츠 카드를 즉시 생성해 "정보" 탭에 반영해요
               </span>
             </span>
@@ -362,14 +358,7 @@ export default function MorePage() {
                 >
                   <span>
                     🩺 개인건강정보
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: 12,
-                        color: pinkTheme.textMuted,
-                        marginTop: 2,
-                      }}
-                    >
+                    <span style={{ ...captionTextStyle, display: "block", marginTop: 2 }}>
                       키/체중/BMI, 진단병력·가족력, 특이사항을 관리해요
                     </span>
                   </span>
@@ -384,14 +373,7 @@ export default function MorePage() {
                 >
                   <span>
                     🌙 생활습관 정보
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: 12,
-                        color: pinkTheme.textMuted,
-                        marginTop: 2,
-                      }}
-                    >
+                    <span style={{ ...captionTextStyle, display: "block", marginTop: 2 }}>
                       기상·식사·취침 시간을 설정해 복약 리듬을 맞춰요
                     </span>
                   </span>
@@ -406,14 +388,7 @@ export default function MorePage() {
                 >
                   <span>
                     ⏰ 복약 스케줄
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: 12,
-                        color: pinkTheme.textMuted,
-                        marginTop: 2,
-                      }}
-                    >
+                    <span style={{ ...captionTextStyle, display: "block", marginTop: 2 }}>
                       오늘 먹을 약을 시간순으로 확인하고 복용 체크해요
                     </span>
                   </span>
@@ -494,18 +469,7 @@ export default function MorePage() {
                     outline: "none",
                   }}
                 />
-                <button
-                  type="submit"
-                  style={{
-                    padding: "10px 16px",
-                    border: "none",
-                    borderRadius: 10,
-                    background: pinkTheme.primary,
-                    color: "#fff",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
-                >
+                <button type="submit" style={{ ...primaryButtonStyle, padding: "10px 16px" }}>
                   검색
                 </button>
               </form>

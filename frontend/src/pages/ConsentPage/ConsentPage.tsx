@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../hooks/useAuth";
-import { pinkTheme } from "../../theme/pinkTheme";
+import {
+  backButtonStyle,
+  pageTitleStyle,
+  pinkTheme,
+  primaryButtonStyle,
+} from "../../theme/pinkTheme";
 import { hasConsented, markConsented } from "../../utils/healthInfoConsent";
 
 /** 개인건강정보로 들어가는 모든 경로(홈 배너 "확인", 더보기 > 개인건강정보 링크 등)가 공통으로
@@ -49,21 +54,12 @@ export default function ConsentPage() {
         <button
           type="button"
           onClick={() => navigate("/")}
-          style={{
-            background: "none",
-            border: "none",
-            color: pinkTheme.textMuted,
-            padding: 0,
-            marginBottom: 12,
-            cursor: "pointer",
-          }}
+          style={{ ...backButtonStyle, marginBottom: 12 }}
         >
           ← 뒤로가기
         </button>
 
-        <h1 style={{ fontSize: 18, color: pinkTheme.text, marginTop: 0 }}>
-          개인정보(건강정보) 제공동의
-        </h1>
+        <h1 style={{ ...pageTitleStyle, marginTop: 0 }}>개인정보(건강정보) 제공동의</h1>
         <div
           style={{
             background: pinkTheme.pageBg,
@@ -111,13 +107,9 @@ export default function ConsentPage() {
             onClick={handleAgreeAndContinue}
             disabled={!agreed}
             style={{
+              ...primaryButtonStyle,
               flex: 1,
-              padding: "12px",
-              border: "none",
-              borderRadius: "10px",
               background: agreed ? pinkTheme.primary : pinkTheme.border,
-              color: "#fff",
-              fontWeight: 600,
               cursor: agreed ? "pointer" : "not-allowed",
             }}
           >

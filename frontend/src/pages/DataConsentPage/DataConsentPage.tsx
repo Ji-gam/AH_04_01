@@ -2,7 +2,12 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAuth } from "../../hooks/useAuth";
-import { pinkTheme as t } from "../../theme/pinkTheme";
+import {
+  pinkTheme as t,
+  backButtonStyle,
+  pageTitleStyle,
+  primaryButtonStyle,
+} from "../../theme/pinkTheme";
 import {
   DEFAULT_CONSENT,
   loadConsent,
@@ -335,20 +340,11 @@ export default function DataConsentPage() {
         <button
           type="button"
           onClick={() => navigate("/more")}
-          style={{
-            background: "none",
-            border: "none",
-            color: t.textMuted,
-            padding: 0,
-            marginBottom: 12,
-            cursor: "pointer",
-          }}
+          style={{ ...backButtonStyle, marginBottom: 12 }}
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 16px" }}>
-          데이터 활용 동의
-        </h1>
+        <h1 style={{ ...pageTitleStyle, margin: "0 0 16px" }}>데이터 활용 동의</h1>
 
         <label
           style={{
@@ -444,21 +440,7 @@ export default function DataConsentPage() {
           동의를 철회하면 관련 기능(맞춤 알림·상담 추천)이 제한될 수 있어요.
         </p>
 
-        <button
-          type="button"
-          onClick={handleSave}
-          style={{
-            width: "100%",
-            padding: "14px 0",
-            borderRadius: 12,
-            border: "none",
-            background: t.primary,
-            color: "#fff",
-            fontSize: 15,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
+        <button type="button" onClick={handleSave} style={{ ...primaryButtonStyle, width: "100%" }}>
           저장
         </button>
 
