@@ -29,14 +29,17 @@ def test_build_dur_sources_dedupes_and_sorts():
 
 def test_build_paper_sources_dedupes_by_pmid():
     chunks = [
-        DocumentChunk(content="a", metadata={"pmid": "1", "title": "Paper A", "url": "https://x/1/"}),
-        DocumentChunk(content="b", metadata={"pmid": "1", "title": "Paper A", "url": "https://x/1/"}),
-        DocumentChunk(content="c", metadata={"pmid": "2", "title": "Paper B", "url": "https://x/2/"}),
+        DocumentChunk(content="a", metadata={"pmid": "1", "title": "Paper A"}),
+        DocumentChunk(content="b", metadata={"pmid": "1", "title": "Paper A"}),
+        DocumentChunk(content="c", metadata={"pmid": "2", "title": "Paper B"}),
     ]
 
     sources = chat_agent_module._build_paper_sources(chunks)
 
-    assert [(s.name, s.url) for s in sources] == [("Paper A", "https://x/1/"), ("Paper B", "https://x/2/")]
+    assert [(s.name, s.url) for s in sources] == [
+        ("Paper A", "https://pubmed.ncbi.nlm.nih.gov/1/"),
+        ("Paper B", "https://pubmed.ncbi.nlm.nih.gov/2/"),
+    ]
 
 
 class _FakeChunk:
@@ -57,9 +60,7 @@ class FakeStreamingLLM:
 
 async def test_stream_chat_answer_merges_dur_and_paper_chunks_and_streams_tokens(monkeypatch):
     dur_doc = Document(page_content="DUR 청크 내용", metadata={"display_name": "노인주의의약품", "publisher": "식약처"})
-    paper_doc = Document(
-        page_content="논문 청크 내용", metadata={"pmid": "1", "title": "Paper A", "url": "https://x/1/"}
-    )
+    paper_doc = Document(page_content="논문 청크 내용", metadata={"pmid": "1", "title": "Paper A"})
 
     monkeypatch.setattr(chat_agent_module, "ensure_db", lambda: "dur-db-sentinel")
     monkeypatch.setattr(
@@ -88,7 +89,7 @@ async def test_stream_chat_answer_merges_dur_and_paper_chunks_and_streams_tokens
         "type": "sources",
         "sources": [
             {"name": "노인주의의약품/식약처", "url": None, "score": 0.12},
-            {"name": "Paper A", "url": "https://x/1/", "score": 0.34},
+            {"name": "Paper A", "url": "https://pubmed.ncbi.nlm.nih.gov/1/", "score": 0.34},
         ],
     }
     assert chunks[1:] == [{"type": "token", "content": "안"}, {"type": "token", "content": "녕"}]

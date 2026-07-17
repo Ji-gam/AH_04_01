@@ -75,6 +75,9 @@ def _build_dur_sources(chunks: list[DocumentChunk]) -> list[SourceRef]:
 
 
 def _build_paper_sources(chunks: list[DocumentChunk]) -> list[SourceRef]:
+    # 원본 JSON(ingest_papers._parse_articles)이 pmid/title/abstract만 수집하고 url은
+    # 애초에 저장하지 않는다 — PMID만 있으면 PubMed 표준 URL을 그대로 조립할 수 있어
+    # 별도 필드로 챙길 이유가 없다.
     seen_pmids: set[str] = set()
     sources: list[SourceRef] = []
     for chunk in chunks:
@@ -83,7 +86,7 @@ def _build_paper_sources(chunks: list[DocumentChunk]) -> list[SourceRef]:
             continue
         seen_pmids.add(pmid)
         title = chunk.metadata.get("title") or f"PMID {pmid}"
-        sources.append(SourceRef(name=title, url=chunk.metadata.get("url"), score=chunk.score))
+        sources.append(SourceRef(name=title, url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/", score=chunk.score))
     return sources
 
 
