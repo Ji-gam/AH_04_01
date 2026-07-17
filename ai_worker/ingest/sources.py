@@ -62,6 +62,11 @@ class Source:
     # 본문과 별개로 챙길 메타데이터. {원본 컬럼: 메타데이터 키} — 검색 층이 기대하는 이름과
     # 원본 컬럼명의 차이를 코드 없이 흡수한다(대부분 INGR_NAME인데 병용금기만 INGR_KOR_NAME).
     metadata_columns: dict[str, str] = field(default_factory=dict)
+    # 레코드 하나를 필드마다 별개 문서로 쪼갠다. {컬럼: 사람이 읽을 이름}. 비우면 행 1개 = 문서 1개.
+    # e약은요처럼 한 행에 효능/용법/부작용이 다 들어있는 파일용 — 필드가 곧 질문 유형이라
+    # 쪼개야 "이 약 부작용?"이 부작용 문서에 걸린다(실측: 안 쪼개면 부작용이 1,391자짜리
+    # 문서의 1,054번째 글자에 묻혀, 효능·용법이 지배하는 덩어리와 매칭된다).
+    explode_columns: dict[str, str] = field(default_factory=dict)
     # 이 파일의 모든 문서에 붙는 이름표(display_name, disease 등).
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -97,6 +102,8 @@ def discover(source_dir: Path | None = None, tuning: dict[str, Any] | None = Non
     # 그래서 이 둘은 전역 하나로 14개 파일을 전부 커버한다 — 파일마다 반복할 이유가 없다.
     exclude = frozenset(tuning.get("exclude_columns") or ())
     metadata_columns = dict(tuning.get("metadata_columns") or {})
+    # 이 둘은 파일별이다. 쪼개는 건 e약은요 하나뿐이고, 이름표는 파일마다 다르다.
+    explode = {nfc(k): dict(v or {}) for k, v in (tuning.get("explode_columns") or {}).items()}
     labels = {nfc(k): v for k, v in (tuning.get("metadata") or {}).items()}
 
     return sorted(
@@ -105,6 +112,7 @@ def discover(source_dir: Path | None = None, tuning: dict[str, Any] | None = Non
                 path=p,
                 exclude_columns=exclude,
                 metadata_columns=metadata_columns,
+                explode_columns=explode.get(nfc(p.name), {}),
                 metadata=dict(labels.get(nfc(p.name)) or {}),
             )
             for p in source_dir.iterdir()

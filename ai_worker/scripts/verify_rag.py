@@ -58,6 +58,28 @@ def _run(label: str, cases: tuple[Case, ...], search) -> int:
     return failed
 
 
+def _check_field_routing(db) -> int:
+    """질문 유형이 정확한 필드로 라우팅되는지. `explode_columns`의 존재 이유다.
+
+    e약은요는 약 하나가 한 행이고 그 안에 효능·용법·부작용이 다 있다. 안 쪼개면 문서 하나가
+    1,391자가 되고 부작용은 1,054번째 글자에 묻혀, "부작용?"을 물어도 효능·용법이 지배하는
+    덩어리가 나온다. 쪼개면 필드마다 100~400자짜리 문서가 되어 질문 유형이 그대로 맞는다."""
+    print("\n질문 유형 -> 필드 라우팅 (explode_columns가 살아있는지)")
+    print("-" * 72)
+    failed = 0
+    for query, want in (
+        ("타이레놀 부작용 알려줘", "부작용"),
+        ("타이레놀 효능이 뭐야", "효능"),
+        ("타이레놀 보관법", "보관법"),
+    ):
+        chunks = dur.search_documents(db, query, limit=1)
+        got = chunks[0].metadata.get("field") if chunks else None
+        ok = got == want
+        failed += not ok
+        print(f"  {'OK ' if ok else '실패'} {query:22} -> field={got!r:8} (기대: {want!r})")
+    return failed
+
+
 def main() -> int:
     print("RAG 씨딩 검증 — 색인된 벡터에 실제 질문을 던진다(모킹 없음)")
 
@@ -71,6 +93,7 @@ def main() -> int:
         return 1
 
     failed = _run("DUR + e약은요 (structured 컬렉션)", _DRUG_CASES, lambda q: dur.search_documents(db, q, limit=3))
+    failed += _check_field_routing(db)
     pdb = papers.ensure_paper_db()
     failed += _run("논문 (unstructured 컬렉션)", _PAPER_CASES, lambda q: papers.search_papers(pdb, q, limit=3))
 

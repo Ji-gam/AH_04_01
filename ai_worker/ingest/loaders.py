@@ -69,21 +69,42 @@ def _record_metadata(record: dict[str, Any], columns: dict[str, str]) -> dict[st
 
 
 class CsvLoader(BaseLoader):
-    """CSV 한 파일 = 문서 여러 개. 행이 곧 완결된 레코드라 자르지 않는다."""
+    """CSV 한 파일 = 문서 여러 개. 행이 곧 완결된 레코드라 자르지 않는다.
+
+    단 `explode_columns`가 선언되면 행 1개를 필드마다 문서 1개로 쪼갠다."""
 
     def __init__(self, source: Source) -> None:
         self.source = source
 
+    def _explode(self, row: dict[str, Any], metadata: dict[str, Any]) -> Iterator[Document]:
+        """행 하나를 필드마다 별개 문서로 쪼갠다. 필드가 곧 질문 유형인 파일용(e약은요).
+
+        머리말을 따로 선언하지 않는다 — **쪼갠 필드와 제외 컬럼을 빼고 남은 게 곧 머리말**이다
+        (e약은요면 itemName·entpName). 조각마다 "어느 약인지"가 있어야 "타이레놀 부작용"이
+        약 이름으로도 걸리고, 뽑혔을 때 무슨 약 얘긴지 알 수 있다."""
+        header = _render(row, self.source.exclude_columns | frozenset(self.source.explode_columns))
+        for column, label in self.source.explode_columns.items():
+            text = str(row.get(column) or "").strip()
+            if not text:
+                continue
+            content = f"{header}\n{label}: {text}" if header else f"{label}: {text}"
+            yield Document(page_content=content, metadata={**metadata, "field": label})
+
     def lazy_load(self) -> Iterator[Document]:
         with self.source.path.open(encoding="utf-8", newline="") as f:
             for row in csv.DictReader(f):
+                metadata = _base_metadata(self.source)
+                metadata.update(_record_metadata(row, self.source.metadata_columns))
+
+                if self.source.explode_columns:
+                    yield from self._explode(row, metadata)
+                    continue
+
                 content = _render(row, self.source.exclude_columns)
                 if not content:
                     # 본문이 통째로 비면 임베딩할 게 없다. index()가 콘텐츠 해시로 중복을
                     # 잡으므로 빈 문서를 넣으면 서로 같은 문서로 뭉친다.
                     continue
-                metadata = _base_metadata(self.source)
-                metadata.update(_record_metadata(row, self.source.metadata_columns))
                 yield Document(page_content=content, metadata=metadata)
 
 
