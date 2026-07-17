@@ -39,12 +39,12 @@ def test_discover_works_without_any_tuning(tmp_path):
 
 
 def test_discover_ignores_underscore_and_dot_prefixed_entries(tmp_path):
-    """`_`로 시작하는 건 설정이나 파생물이지 원천 데이터가 아니다. `_not_rag/`도 이 규칙으로 빠진다."""
+    """`_`로 시작하는 건 설정이나 파생물이지 원천 데이터가 아니다. 디렉터리도 마찬가지."""
     _drop(tmp_path, "real.csv")
     _drop(tmp_path, "_tuning.yaml", "sources: []")
     _drop(tmp_path, ".DS_Store", "junk")
-    (tmp_path / "_not_rag").mkdir()
-    _drop(tmp_path / "_not_rag", "sql_table.csv")
+    (tmp_path / "_derived").mkdir()
+    _drop(tmp_path / "_derived", "cache.csv")
 
     assert [s.name for s in discover(tmp_path, tuning={})] == ["real.csv"]
 

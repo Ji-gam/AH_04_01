@@ -150,7 +150,7 @@ uv run python -m ai_worker.scripts.verify_rag
 
 **데이터를 추가하려면** `ai_worker/source/`에 파일을 넣고 3번을 다시 돌리면 됩니다. 등록 절차는
 없습니다 — 폴더에 있으면 색인됩니다(`.csv` / `.json` / `.md` / `.pdf`). RAG 재료가 아닌 것
-(SQL 조회용 표 등)은 `ai_worker/source/_not_rag/`에 둡니다. 자세한 규칙은
+(SQL 조회용 표 등)은 여기 두지 않습니다. 자세한 규칙은
 `ai_worker/ingest/__init__.py`와 `ai_worker/source/_tuning.yaml` 참고.
 
 재색인은 안 바뀐 문서를 콘텐츠 해시로 걸러 건너뛰므로(`SQLRecordManager`) 몇 번을 돌려도

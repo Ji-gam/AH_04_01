@@ -1,7 +1,7 @@
 # 드롭 폴더 튜닝 — **선택적이다.**
 #
 # 이 파일이 없어도 `source/`의 파일은 전부 색인된다. 여기엔 기계가 알 수 없는 것만 적는다.
-# 기계가 아는 건 안 적는다:  로더=확장자,  컬렉션=확장자,  RAG 여부=폴더(_not_rag/)
+# 기계가 아는 건 안 적는다:  로더=확장자,  컬렉션=확장자,  RAG 여부=이 폴더에 있냐
 #
 # **새 파일 추가 = 폴더에 넣기.** 아래는 손 안 대도 된다.
 
@@ -70,6 +70,7 @@ metadata:
   당뇨.json: { display_name: PubMed 논문, disease: 당뇨, source_name: PubMed }
   간질환.json: { display_name: PubMed 논문, disease: 간질환, source_name: PubMed }
 
-  # 스캔본 PDF를 OCR+LLM으로 정리한 마크다운(ai_worker/scripts/ocr_pdf.py).
-  # 원본 PDF는 "다 된 문서"가 아니라 _not_rag/에 있다 — 사서는 요리를 안 한다.
+  # 스캔본 PDF를 OCR+LLM으로 정리한 마크다운(ai_worker/scripts/ocr_pdf.py로 만들었다).
+  # 사서는 요리를 안 하므로 원본 스캔 PDF는 드롭 폴더에 두지 않는다 — 글자 레이어가 없어
+  # 그대로 넣으면 0건이 나온다. 이 .md가 곧 원본 취급이다(PDF는 레포에 없다).
   약과음식_복약안내서.md: { display_name: 약과 음식 상호작용을 피하는 복약안내서, publisher: 식약처, ocr: true }

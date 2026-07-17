@@ -6,7 +6,7 @@ PDF는 글자 레이어가 없어 그대로 넣으면 0건이 나오므로, 이 
 평범한 마크다운으로 읽는다.
 
 한 번만 돌리고 결과 `.md`를 git에 커밋한다 — 그 뒤로는 몇 번을 재색인하든 LLM 비용이 0이다.
-원본 스캔 PDF는 "다 된 문서"가 아니므로 `source/_not_rag/`에 둔다.
+원본 스캔 PDF는 "다 된 문서"가 아니므로 드롭 폴더에 두지 않는다.
 
 왜 두 단계인가(전부 실측, 2026-07-17):
 
@@ -23,7 +23,8 @@ PDF는 글자 레이어가 없어 그대로 넣으면 0건이 나오므로, 이 
 실행:
     uv run python -m ai_worker.scripts.ocr_pdf <PDF경로> [-o 출력.md]
 
-기본 출력은 `source/<PDF이름>.md`다. 만들고 나면 원본 PDF를 `source/_not_rag/`로 내린다.
+기본 출력은 `source/<PDF이름>.md`다. 만들고 나면 그 .md를 커밋하고, 원본 PDF는 드롭 폴더
+밖에 둔다(레포에 넣지 않는다 — 스캔본은 수 MB이고 재색인에 쓰이지 않는다).
 """
 
 import argparse
@@ -135,13 +136,10 @@ async def prepare(pdf_path: Path, out_path: Path | None = None) -> Path:
     rewritten = await asyncio.gather(*(_bounded(t) for t in pages))
     body = "\n\n".join(t for t in rewritten if t.strip())
     header = (
-        f"# {pdf_path.stem}\n\n"
-        f"> 원본은 스캔본이라 pymupdf OCR + LLM 정리를 거친 텍스트다. 원본 PDF는 `_not_rag/`에 있다.\n\n"
+        f"# {pdf_path.stem}\n\n> 원본 스캔 PDF를 pymupdf OCR + LLM 정리한 텍스트다(ai_worker/scripts/ocr_pdf.py).\n\n"
     )
     out_path.write_text(header + body + "\n", encoding="utf-8")
-    logger.info(
-        f"{pdf_path.name}: {len(pages)}페이지 -> {out_path.name} 저장. git에 커밋하고 PDF는 _not_rag/로 내릴 것."
-    )
+    logger.info(f"{pdf_path.name}: {len(pages)}페이지 -> {out_path.name} 저장. 이 .md를 git에 커밋할 것.")
     return out_path
 
 
