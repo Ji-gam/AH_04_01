@@ -18,14 +18,21 @@ dependencies = [
 [dependency-groups]
 ai = [
     "langchain>=0.3.0",
-    "langchain-community>=0.3.0",
+    # langchain-community는 넣지 않는다: 2026-05-22 sunset, 06-19 아카이브(읽기 전용).
+    # 거기 있던 CSVLoader/JSONLoader는 전용 패키지로 이관되지 않았고, LangChain의 공식
+    # 안내가 "앱 코드에 직접 구현하라"이므로 core의 BaseLoader를 구현해 쓴다
+    # (ai_worker/ingest/loaders.py). 죽은 패키지 위에 파이프라인을 세우지 않는다.
+    # SQLRecordManager(인제스트 증분 판단용 장부)가 여기 있다. 예전엔
+    # langchain-community를 통해 전이적으로 딸려왔는데, 그걸 걷어내며 끊겨서 명시한다.
+    "langchain-classic>=1.0.0",
     "langchain-chroma>=0.1.0",
     "langchain-openai>=0.2.0",
     "fastapi[standard]>=0.128.0",
     "uvicorn>=0.40.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
-    "langchain-text-splitters>=1.1.2",
+    # source/_manifest.yaml 파싱.
+    "pyyaml>=6.0",
     # Phase 0 임베딩 벤치마크(2026-07-17) 결과로 기본 임베딩 프로바이더를 HF로 전환.
     # HF Inference API(호스팅, 텍스트당 개별 HTTP 요청)는 대량 재인제스트(5,700여 건)에
     # 비현실적으로 느려, 모델을 로컬로 내려받아 배치 인코딩하는 sentence-transformers로
@@ -56,6 +63,7 @@ dev = [
     "ruff>=0.14.14",
     "types-passlib>=1.7.7.20250602",
     "types-python-dateutil>=2.9.0.20260124",
+    "types-PyYAML>=6.0",
 ]
 
 [tool.uv.sources]
