@@ -23,7 +23,7 @@ def _product_rule_columns(with_ingr_code: bool, with_item_name: bool = False) ->
         sa.Column("item_seq", sa.String(length=20), nullable=False),
     ]
     if with_item_name:
-        cols.append(sa.Column("item_name", sa.String(length=255), nullable=True))
+        cols.append(sa.Column("item_name", sa.Text(), nullable=True))
     if with_ingr_code:
         cols.append(sa.Column("ingr_code", sa.String(length=20), nullable=True))
         cols.append(sa.Column("ingr_name", sa.String(length=255), nullable=True))
@@ -65,7 +65,7 @@ def upgrade() -> None:
         "drug_identification",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("item_seq", sa.String(length=20), nullable=False),
-        sa.Column("chart", sa.String(length=255), nullable=True),
+        sa.Column("chart", sa.Text(), nullable=True),
         sa.Column("drug_shape", sa.String(length=100), nullable=True),
         sa.Column("color_class1", sa.String(length=100), nullable=True),
         sa.Column("color_class2", sa.String(length=100), nullable=True),
@@ -90,7 +90,7 @@ def upgrade() -> None:
         "medicine_recalls",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("item_seq", sa.String(length=20), nullable=True),
-        sa.Column("prduct", sa.String(length=255), nullable=True),
+        sa.Column("prduct", sa.Text(), nullable=True),
         sa.Column("entrps", sa.String(length=255), nullable=True),
         sa.Column("rtrvl_resn", sa.Text(), nullable=True),
         sa.Column("recall_command_date", sa.String(length=20), nullable=True),
@@ -134,9 +134,9 @@ def upgrade() -> None:
         "dur_prod_usjnt_taboo",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column("item_seq", sa.String(length=20), nullable=False),
-        sa.Column("item_name", sa.String(length=255), nullable=True),
+        sa.Column("item_name", sa.Text(), nullable=True),
         sa.Column("mixture_item_seq", sa.String(length=20), nullable=False),
-        sa.Column("mixture_item_name", sa.String(length=255), nullable=True),
+        sa.Column("mixture_item_name", sa.Text(), nullable=True),
         sa.Column("ingr_code", sa.String(length=20), nullable=True),
         sa.Column("ingr_kor_name", sa.String(length=255), nullable=True),
         sa.Column("mixture_ingr_code", sa.String(length=20), nullable=True),

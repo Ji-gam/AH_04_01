@@ -48,7 +48,7 @@ class DrugIdentification(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     item_seq: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    chart: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    chart: Mapped[str | None] = mapped_column(Text, nullable=True)
     drug_shape: Mapped[str | None] = mapped_column(String(100), nullable=True)
     color_class1: Mapped[str | None] = mapped_column(String(100), nullable=True)
     color_class2: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -77,7 +77,7 @@ class MedicineRecall(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     item_seq: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
-    prduct: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    prduct: Mapped[str | None] = mapped_column(Text, nullable=True)
     entrps: Mapped[str | None] = mapped_column(String(255), nullable=True)
     rtrvl_resn: Mapped[str | None] = mapped_column(Text, nullable=True)
     recall_command_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -117,7 +117,7 @@ def _product_rule_table(name: str, *, with_ingr_code: bool, with_item_name: bool
         },
     }
     if with_item_name:
-        attrs["item_name"] = mapped_column(String(255), nullable=True)
+        attrs["item_name"] = mapped_column(Text, nullable=True)
         attrs["__annotations__"]["item_name"] = Mapped[str | None]
     if with_ingr_code:
         attrs["ingr_code"] = mapped_column(String(20), nullable=True, index=True)
@@ -170,9 +170,9 @@ class DurProdUsjntTaboo(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     item_seq: Mapped[str] = mapped_column(String(20), nullable=False)
-    item_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    item_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     mixture_item_seq: Mapped[str] = mapped_column(String(20), nullable=False)
-    mixture_item_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mixture_item_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     ingr_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ingr_kor_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     mixture_ingr_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
