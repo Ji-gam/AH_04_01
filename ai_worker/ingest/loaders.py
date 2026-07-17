@@ -158,8 +158,11 @@ class PdfLoader(BaseLoader):
         splitter = RecursiveCharacterTextSplitter(chunk_size=_CHUNK_SIZE, chunk_overlap=_CHUNK_OVERLAP)
         doc = pymupdf.open(self.source.path)
         try:
-            for page_no, page in enumerate(doc, 1):
-                text = page.get_text().strip()
+            # pymupdf Document는 런타임엔 iterable이지만 타입 스텁이 그렇게 선언하지 않아
+            # `enumerate(doc)`가 mypy에서 걸린다. 인덱스로 도는 게 스텁과 맞는다.
+            for index in range(doc.page_count):
+                page_no = index + 1
+                text = doc[index].get_text().strip()
                 if not text:
                     continue
                 for chunk in splitter.split_text(text):

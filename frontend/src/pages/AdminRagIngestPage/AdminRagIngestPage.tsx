@@ -110,7 +110,9 @@ export default function AdminRagIngestPage() {
               <li>
                 <strong>읽을 수 없음: {status.sources.unsupported.join(", ")}</strong>
                 <br />
-                <small>확장자를 읽을 줄 몰라 건너뜁니다. 지원 형식: .csv / .json / .md / .pdf</small>
+                <small>
+                  확장자를 읽을 줄 몰라 건너뜁니다. 지원 형식: .csv / .json / .md / .pdf
+                </small>
               </li>
             )}
           </ul>
