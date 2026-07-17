@@ -57,16 +57,8 @@ def test_search_papers_maps_hypertension_to_cardio_and_cerebro():
     assert db.calls[0]["filter"] == {"disease": {"$in": ["심장질환", "뇌혈관질환"]}}
 
 
-def test_search_papers_falls_back_to_user_conditions_when_query_has_no_disease():
-    db = FakePaperChromaDb([])
-
-    paper_retrieve_service.search_papers(db, "운동 뭐가 좋아?", limit=3, conditions=["당뇨"])
-
-    assert db.calls[0]["filter"] == {"disease": "당뇨"}
-
-
 def test_search_papers_skips_search_when_no_disease_resolved():
-    """질의에도 진단 이력에도 질환이 없으면 검색 자체를 생략한다 —
+    """질의에 질환 키워드가 없으면 검색 자체를 생략한다(진단 이력 폴백 없음) —
     5대 질환 논문만 있는 컬렉션에서 억지로 답을 꺼내면 무관한 논문이 인용된다."""
     db = FakePaperChromaDb([(Document(page_content="아무거나", metadata={"pmid": "1"}), 0.1)])
 

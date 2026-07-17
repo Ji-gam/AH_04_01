@@ -33,24 +33,15 @@ def test_resolve_does_not_false_positive_on_common_syllables():
     assert resolve_diseases("인간관계가 힘들어요") == []
 
 
-def test_resolve_falls_back_to_user_conditions():
-    assert resolve_diseases("운동 뭐가 좋아?", ["당뇨"]) == ["당뇨"]
-
-
-def test_resolve_prefers_query_over_user_conditions():
-    """질의에 질환이 명시되면 본인 진단 이력보다 질의를 따른다 —
-    당뇨 환자도 가족의 암에 대해 물을 수 있다."""
-    assert resolve_diseases("항암치료 부작용이 궁금해요", ["당뇨"]) == ["암"]
-
-
-def test_resolve_drops_conditions_without_papers():
-    """'기타'처럼 논문이 없는 진단 코드는 필터에 쓰면 안 된다(결과 0건 확정)."""
-    assert resolve_diseases("운동 뭐가 좋아?", ["기타"]) == []
+def test_resolve_does_not_fall_back_to_user_conditions():
+    """사용자 진단 질환 폴백은 없다 — "운동 뭐가 좋아?"처럼 질환이 안 드러난 질문은
+    본인이 당뇨 환자여도 논문 검색을 생략한다(개인화는 시스템 프롬프트가 담당)."""
+    assert resolve_diseases("운동 뭐가 좋아?") == []
 
 
 def test_resolve_returns_empty_when_nothing_matches():
     assert resolve_diseases("좋은 아침이야") == []
-    assert resolve_diseases("고마워요", []) == []
+    assert resolve_diseases("고마워요") == []
 
 
 def test_resolve_returns_empty_when_nothing_matches_and_no_conditions():

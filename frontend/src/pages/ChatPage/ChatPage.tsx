@@ -30,6 +30,7 @@ export default function ChatPage() {
   // 출처 칩을 클릭해 연 메시지 인덱스 — 화면 중앙 모달로 해당 메시지의 출처 목록을 보여준다.
   const [sourcesModalIndex, setSourcesModalIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // LLM 응답 스트리밍이 끝나면(true -> false) 바로 다음 질문을 이어 칠 수 있도록 입력란에
   // 포커스를 되돌린다.
@@ -38,6 +39,12 @@ export default function ChatPage() {
       inputRef.current?.focus();
     }
   }, [isStreaming]);
+
+  // 새 메시지가 추가되거나(질문 전송/답변 시작) 스트리밍 토큰이 이어 붙을 때마다, 지금
+  // 입력 중이거나 답변 중인 말풍선이 항상 화면에 보이도록 맨 아래로 따라간다.
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: "end" });
+  }, [messages, isStreaming]);
 
   useEffect(() => {
     const autoMessage = (location.state as { autoMessage?: string } | null)?.autoMessage;
@@ -430,6 +437,7 @@ export default function ChatPage() {
               </p>
             </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
 
         {/* 하단 입력 폼 */}

@@ -20,14 +20,10 @@ LLM 분류기 대신 사전을 쓰는 이유: 스트리밍 채팅 앞단에 LLM 
 `retrieve_service.search_documents()`의 기존 패턴과 같은 구조다.
 
 질환명 문자열은 `ingest_papers.SUPPORTED_DISEASES` 및 app/의
-`disease_code_mapper.DISEASE_CODE_MAP` 값과 일치해야 한다(사용자 진단 질환 폴백이
-그대로 필터로 쓰이므로).
+`disease_code_mapper.DISEASE_CODE_MAP` 값과 일치해야 한다.
 """
 
 from dataclasses import dataclass
-
-# 논문 컬렉션에 실제로 존재하는 질환명. 폴백으로 들어온 값(예: "기타")을 걸러내는 데 쓴다.
-PAPER_DISEASES = ("암", "심장질환", "뇌혈관질환", "당뇨", "간질환")
 
 
 @dataclass(frozen=True)
@@ -105,16 +101,20 @@ _RULES: tuple[_DiseaseRule, ...] = (
 )
 
 
-def resolve_diseases(query: str, conditions: list[str] | None = None) -> list[str]:
-    """질의에서 대상 질환을 판별한다. 못 찾으면 사용자 본인 진단 질환(`conditions`)으로
-    폴백한다 — 당뇨 환자가 "운동 뭐가 좋아?"라고 물으면 당뇨 논문이 나오는 게 맞다.
-    둘 다 없으면 빈 목록을 반환하고, 호출자는 논문 검색을 생략한다(5대 질환 논문만 있는
-    컬렉션에서 질환 맥락 없는 질문에 억지로 답을 꺼내면 무관한 논문이 인용된다)."""
+def resolve_diseases(query: str) -> list[str]:
+    """질의에서 대상 질환을 판별한다. 못 찾으면 빈 목록을 반환하고, 호출자는 논문 검색을
+    생략한다(5대 질환 논문만 있는 컬렉션에서 질환 맥락 없는 질문에 억지로 답을 꺼내면
+    무관한 논문이 인용된다).
+
+    사용자 본인 진단 질환으로의 폴백은 두지 않는다 — "오늘 저녁 맛있었어" 같은 질환과
+    무관한 발화도 질의에 disease 필터가 안 걸릴 뿐 similarity_search는 여전히 top-k를
+    반환하고, threshold(0.40)만으로는 "식사/운동" 같은 주제어가 겹치는 잡담을 걸러내지
+    못했다(실측 2026-07-17). 사용자가 이미 진단받은 질환은 어차피 LLM 시스템 프롬프트의
+    "사용자 건강 컨텍스트"에 항상 실려가므로(`chat_agent._SYSTEM_PROMPT_TEMPLATE`), 답변
+    개인화는 이 폴백 없이도 보장된다 — 이 함수가 잃는 건 "질환이 안 드러난 질문에도
+    논문을 억지로 찾아 인용하는" 기능뿐이다."""
     matched: list[str] = []
     for rule in _RULES:
         if any(keyword in query for keyword in rule.keywords):
             matched.extend(d for d in rule.diseases if d not in matched)
-    if matched:
-        return matched
-    # 폴백: 본인 진단 질환 중 논문이 실제로 존재하는 것만("기타" 등은 제외).
-    return [c for c in (conditions or []) if c in PAPER_DISEASES]
+    return matched
