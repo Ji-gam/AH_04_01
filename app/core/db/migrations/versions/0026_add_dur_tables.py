@@ -69,9 +69,7 @@ def upgrade() -> None:
         sa.Column("entp_name", sa.String(length=255), nullable=True),
     )
     op.create_index("ix_dur_prod_master_list_item_seq", "dur_prod_master_list", ["item_seq"])
-    op.create_index(
-        "ix_dur_prod_master_list_item_name", "dur_prod_master_list", ["item_name"], mysql_length=255
-    )
+    op.create_index("ix_dur_prod_master_list_item_name", "dur_prod_master_list", ["item_name"], mysql_length=255)
 
     op.create_table(
         "drug_identification",

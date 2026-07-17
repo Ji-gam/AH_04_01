@@ -55,7 +55,7 @@ INGREDIENT_RULE_TABLES: list[tuple[str, str]] = [
 
 
 def _in_placeholders(prefix: str, count: int) -> str:
-    """":p0, :p1, ..." 형태의 named placeholder 목록 문자열을 만든다."""
+    """ ":p0, :p1, ..." 형태의 named placeholder 목록 문자열을 만든다."""
     return ", ".join(f":{prefix}{i}" for i in range(count))
 
 

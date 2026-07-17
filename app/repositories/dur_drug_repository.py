@@ -250,9 +250,7 @@ class DurDrugRepository:
             warnings.extend(await self._collect_rule_warnings(session, "dur_prod_odsn_atent", item_name, "노인주의"))
         return list(set(warnings))
 
-    async def _collect_rule_warnings(
-        self, session: AsyncSession, table: str, item_name: str, label: str
-    ) -> list[str]:
+    async def _collect_rule_warnings(self, session: AsyncSession, table: str, item_name: str, label: str) -> list[str]:
         # {table}(dur_prod_pwnm_taboo/dur_prod_odsn_atent)은 item_seq만 갖고 item_name이
         # 없어(app/models/dur.py) 품목 마스터(dur_prod_master_list)와 조인해야 이름으로 매칭할
         # 수 있다. drugs_data(e약은요, 4,758건)는 커버리지가 좁아 여기 쓰면 안 된다 -
