@@ -394,6 +394,21 @@ export default function AlarmPage() {
   return (
     <div style={{ background: t.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          style={{
+            background: "none",
+            border: "none",
+            color: t.textMuted,
+            padding: 0,
+            marginBottom: 12,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          ← 뒤로가기
+        </button>
         <div
           style={{
             display: "flex",
