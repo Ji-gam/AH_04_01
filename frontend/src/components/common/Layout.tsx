@@ -16,12 +16,29 @@ export default function Layout() {
       <nav
         style={{
           display: "flex",
+          justifyContent: "space-between",
           padding: "8px 12px",
           borderBottom: `1px solid ${pinkTheme.border}`,
           background: pinkTheme.cardBg,
           alignItems: "center",
         }}
       >
+        <button
+          type="button"
+          aria-label="홈으로"
+          onClick={() => navigate("/")}
+          style={{
+            border: "none",
+            background: "none",
+            color: pinkTheme.text,
+            fontSize: 14,
+            lineHeight: 1,
+            padding: 4,
+            cursor: "pointer",
+          }}
+        >
+          ← 뒤로가기
+        </button>
         <button
           type="button"
           aria-label="더보기 메뉴 열기"
