@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { durApi } from "../../api/durApi";
 import type {
@@ -314,6 +315,7 @@ function MedicationSelectCard({
 type ExtractedFields = NonNullable<RecognitionJobResult["extracted_fields"]>;
 
 export default function MedicationPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
 
   // (가족관리) 가족 선택 시 화면 전체를 FamilyTrackerView로 전환한다 - 본인 몫 로직은 안 건드림.
@@ -739,6 +741,21 @@ export default function MedicationPage() {
   return (
     <div style={{ background: pinkTheme.pageBg, minHeight: "100%", padding: "20px 12px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto", color: pinkTheme.text }}>
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          style={{
+            background: "none",
+            border: "none",
+            color: pinkTheme.textMuted,
+            padding: 0,
+            marginBottom: 12,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          ← 뒤로가기
+        </button>
         <div
           style={{
             display: "flex",
