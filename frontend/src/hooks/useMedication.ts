@@ -216,6 +216,9 @@ export function useMedication() {
     return await apiFetch<RecognitionJobResult>(`/recognition/jobs/${jobId}`);
   };
 
+  // 약을 여러 개 확정등록할 때(처방전 한 장에 여러 약) 호출부가 Promise.all로 병렬 호출하므로,
+  // 여기서 매번 fetchSchedules까지 불러버리면 confirm N번 + 목록 재조회 N번(최대 2N회 왕복)이
+  // 되어 버린다. 목록 재조회는 호출부가 전체 확정이 끝난 뒤 한 번만 하도록 여기서는 하지 않는다.
   const confirmJob = async (
     jobId: string,
     selectedDrugCode: string | null,
@@ -234,7 +237,6 @@ export function useMedication() {
           confirmed_fields: confirmedFields,
         }),
       });
-      await fetchSchedules();
       return res;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "확정 등록에 실패했습니다.");

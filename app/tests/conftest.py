@@ -93,3 +93,14 @@ def _no_real_external_api_keys_in_tests(monkeypatch):
     모르는 테스트가 실제 네트워크를 호출해 타임아웃/비결정적 결과를 내지 않도록 기본값을 None으로
     강제한다. 실제 호출을 검증하는 테스트는 각자 monkeypatch로 필요한 키만 다시 설정한다(T-MED-4)."""
     monkeypatch.setattr(config, "PUBLIC_DATA_API_KEY", None)
+
+
+@pytest.fixture(autouse=True)
+def _reset_food_guide_card_cache():
+    """(#195) `_build_food_interaction_guide_card`에 붙인 프로세스 메모리 캐시는 약품명 기준이라,
+    같은 약품명을 서로 다른 mock 응답으로 재사용하는 테스트들 사이에서 결과가 새어 나가면 안 된다."""
+    from app.services import medication_service
+
+    medication_service._food_guide_card_cache.clear()
+    yield
+    medication_service._food_guide_card_cache.clear()

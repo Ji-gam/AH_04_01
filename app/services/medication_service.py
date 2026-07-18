@@ -857,12 +857,27 @@ async def _fetch_drug_summary_with_fallback(medication_name: str) -> list[dict]:
     return summaries
 
 
+# (#195) e약은요 조회 결과는 약품명이 같으면 항상 같은 카드가 나온다(정적 공공 데이터) — 확정
+# 등록 1건마다, 그리고 "음식(13번)" 탭을 열 때마다 등록약 전부에 대해 매번 실시간 API를 다시
+# 부르는 게 느린 원인 중 하나였다. 프로세스 메모리에 약품명 기준으로 캐싱해 반복 조회를 없앤다.
+_food_guide_card_cache: dict[str, GuideCard] = {}
+
+
 async def _build_food_interaction_guide_card(medication_name: str) -> GuideCard:
     """(T-DOC-2) e약은요 API의 `intrcQesitm`(상호작용 문항)에서 음식/음주 관련 주의사항을 가져와
     GuideCard로 변환한다. 항상 카드를 반환한다(등록약 여러 개 중 일부만 카드가 사라지면 "그
     약은 검사 안 했다"처럼 보이므로) — "확인된 주의사항 없음"과 "정보를 못 찾아 확인 불가"를
     서로 다른 문구로 명시해 구분한다. (T-DOC-3) e약은요 호출 전에 식약처 복약안내서 참조 테이블에서
     성분명 매칭을 먼저 시도한다 — 매칭되면 그쪽이 더 정확하므로 e약은요 호출 자체를 생략한다."""
+    cached = _food_guide_card_cache.get(medication_name)
+    if cached is not None:
+        return cached
+    card = await _build_food_interaction_guide_card_uncached(medication_name)
+    _food_guide_card_cache[medication_name] = card
+    return card
+
+
+async def _build_food_interaction_guide_card_uncached(medication_name: str) -> GuideCard:
     title = f"{medication_name} · {_FOOD_GUIDE_CARD_TITLE}"
 
     reference_entry = _match_food_drug_reference(medication_name)
