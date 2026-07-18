@@ -94,6 +94,10 @@ services:
     volumes:
       - ./ai_worker:/app/ai_worker
       - /app/.venv
+      # 임베딩 모델(e5-large, 2.2GB) 캐시. **이름있는 볼륨이어야 한다** — 위 /app/.venv처럼
+      # 익명으로 두면 컨테이너 재생성 때 같이 버려져 매번 2GB를 다시 받는다(기동 3~4분).
+      # 이름을 주면 컨테이너와 수명이 분리돼 재생성·리빌드를 견딘다(down -v면 날아감).
+      - hf_cache:/root/.cache/huggingface
     networks:
       - ws
     command: |
@@ -121,6 +125,7 @@ services:
 volumes:
   mysql_data:
   static_volume:
+  hf_cache:
 
 networks:
   ws:

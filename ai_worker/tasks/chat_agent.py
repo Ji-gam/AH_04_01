@@ -4,7 +4,7 @@ T-LLM-7-3-2: 통합 RAG 스트리밍 채팅 에이전트.
 기존에 분리돼 있던 두 파이프라인 — DUR 전용 `/retrieve`(청크만 반환, 답변 생성은
 app/가 자체 LLM으로 처리)와 논문 전용 `/agent/paper-search`(질환 분류→검색→자체
 LLM 답변까지 완결)를 하나로 통합한다. 질문 하나에 DUR도 관련되고 논문도 관련될 수
-있는 실제 상황을 반영해, 매 질문마다 DUR(dur_rules)+논문(pubmed_papers) 두 컬렉션을
+있는 실제 상황을 반영해, 매 질문마다 DUR(structured)+논문(unstructured) 두 컬렉션을
 모두 검색해 청크를 합치고, 단 한 번의 LLM 호출로 스트리밍 답변을 만든다.
 
 "RAG가 필요한 질문인지"는 별도 분류 LLM 호출 없이, 두 컬렉션에서 임계값을 통과하는
@@ -75,6 +75,9 @@ def _build_dur_sources(chunks: list[DocumentChunk]) -> list[SourceRef]:
 
 
 def _build_paper_sources(chunks: list[DocumentChunk]) -> list[SourceRef]:
+    # 원본 JSON(ingest_papers._parse_articles)이 pmid/title/abstract만 수집하고 url은
+    # 애초에 저장하지 않는다 — PMID만 있으면 PubMed 표준 URL을 그대로 조립할 수 있어
+    # 별도 필드로 챙길 이유가 없다.
     seen_pmids: set[str] = set()
     sources: list[SourceRef] = []
     for chunk in chunks:
@@ -83,20 +86,20 @@ def _build_paper_sources(chunks: list[DocumentChunk]) -> list[SourceRef]:
             continue
         seen_pmids.add(pmid)
         title = chunk.metadata.get("title") or f"PMID {pmid}"
-        sources.append(SourceRef(name=title, url=chunk.metadata.get("url"), score=chunk.score))
+        sources.append(SourceRef(name=title, url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/", score=chunk.score))
     return sources
 
 
-def _search_all(message: str, context: dict) -> tuple[list[DocumentChunk], list[SourceRef]]:
+def _search_all(message: str) -> tuple[list[DocumentChunk], list[SourceRef]]:
     """DUR + 논문 두 컬렉션을 모두 검색해 청크와 통합 출처 목록을 만든다.
-    논문 검색은 사용자 본인 진단 질환(`context["conditions"]`)을 폴백 필터로 쓴다 —
-    "운동 뭐가 좋아?"처럼 질환이 안 드러난 질문도 당뇨 환자가 물으면 당뇨 논문이 나온다."""
+    사용자 본인 진단 질환은 논문 검색 필터로는 쓰지 않는다 — 답변 개인화는 시스템
+    프롬프트의 "사용자 건강 컨텍스트"로 이미 보장되므로, 질의 자체에 질환이 안 드러나면
+    논문 검색을 생략한다(`disease_query_resolver.resolve_diseases` docstring 참고)."""
     dur_db = ensure_db()
     dur_chunks = search_documents(dur_db, message, settings.RAG_RETRIEVAL_LIMIT)
 
-    conditions = context.get("conditions") or []
     paper_db = ensure_paper_db()
-    paper_chunks = search_papers(paper_db, message, settings.PAPER_RETRIEVAL_LIMIT, conditions=conditions)
+    paper_chunks = search_papers(paper_db, message, settings.PAPER_RETRIEVAL_LIMIT)
 
     sources = _build_dur_sources(dur_chunks) + _build_paper_sources(paper_chunks)
     return dur_chunks + paper_chunks, sources
@@ -108,7 +111,7 @@ async def stream_chat_answer(
     """DUR+논문 통합 검색 -> 프롬프트 조립 -> LLM 스트리밍.
     `{"type": "sources", "sources": [...]}` 1건 다음 `{"type": "token", "content": ...}`
     여러 건을 순서대로 내보낸다."""
-    rag_chunks, sources = _search_all(message, context)
+    rag_chunks, sources = _search_all(message)
     yield {"type": "sources", "sources": [s.model_dump() for s in sources]}
 
     reference_text = "\n".join(injected_context + [c.content for c in rag_chunks]) or "없음"

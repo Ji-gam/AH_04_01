@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { apiFetch } from "../../api/client";
+import { apiFetch, apiFetchRaw } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
+import FamilyNotificationView from "../../components/family/FamilyNotificationView";
+import FamilySwitcher from "../../components/family/FamilySwitcher";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import SchedulePage from "../SchedulePage/SchedulePage";
@@ -69,6 +71,13 @@ function saveMedAlarmDisabled(disabled: Set<string>) {
 export default function AlarmPage() {
   const location = useLocation();
   const navigate = useNavigate();
+
+  // (가족관리) 가족 선택 시 아래 이 화면 전체를 FamilyNotificationView로 전환한다.
+  // 기존 본인 몫 로직(달력/약 시간 병합 등)은 전혀 안 건드리고, 완전히 별도 분기로 처리한다.
+  const [selectedFamily, setSelectedFamily] = useState<{ profileId: number; name: string } | null>(
+    null,
+  );
+
   const [schedules, setSchedules] = useState<NotificationScheduleResult[]>([]);
   const [medSchedules, setMedSchedules] = useState<MedicationSchedule[]>([]);
   const [loading, setLoading] = useState(true);
@@ -302,6 +311,17 @@ export default function AlarmPage() {
       .catch((e: Error) => setError(`알림 삭제에 실패했습니다. (${e.message})`));
   };
 
+  // 트랙커(복약 관리)에서 등록한 약은 원래 여기서 지울 방법이 없었다(토글/시간수정만 있고
+  // 삭제가 아예 빠져있었음 - 본인이 직접 등록했든 가족이 등록해줬든 동일). 알림(row.alarm)에
+  // 이미 있는 것과 같은 패턴으로 추가한다. 위 handleDeleteMedTime(이 시각만)과 달리 약 등록
+  // 자체(모든 시각)를 지운다 - 두 동작을 ✂️(이 시각만)/🗑️(전체) 아이콘으로 구분해서 같이 제공.
+  const handleDeleteMed = (med: MedicationSchedule) => {
+    if (!window.confirm(`"${med.drug_name}" 등록을 삭제할까요?`)) return;
+    apiFetchRaw(`/medications/${med.id}`, { method: "DELETE" })
+      .then(loadSchedules)
+      .catch((e: Error) => setError(`약 삭제에 실패했습니다. (${e.message})`));
+  };
+
   const doseCounts = buildDoseCounts(schedules);
 
   // 달력 밑에는 직접 등록한 알림 + 복약 관리에서 등록한 약을 같은 시각끼리 묶어 보여준다
@@ -343,6 +363,49 @@ export default function AlarmPage() {
     else timeGroups.push({ time: row.time, items: [row] });
   }
 
+  // (가족관리) 가족 구성원을 선택한 상태면, 본인 몫의 복잡한 달력/병합 로직은 그대로 두고
+  // 화면 자체를 완전히 별도의 단순 화면(FamilyNotificationView)으로 바꿔치기한다.
+  if (selectedFamily) {
+    return (
+      <div style={{ background: t.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
+        <div style={{ maxWidth: 480, margin: "0 auto" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 16,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedFamily(null)}
+              style={{
+                border: "none",
+                background: "none",
+                color: t.primary,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              ← 내 복약알림으로
+            </button>
+            <FamilySwitcher
+              selectedProfileId={selectedFamily.profileId}
+              onSelect={(target) => setSelectedFamily(target)}
+            />
+          </div>
+          <FamilyNotificationView
+            targetProfileId={selectedFamily.profileId}
+            targetName={selectedFamily.name}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: t.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
@@ -357,26 +420,32 @@ export default function AlarmPage() {
           <h1 style={{ fontSize: 22, fontWeight: 700, color: t.primary, margin: 0 }}>
             💗 복약 알림
           </h1>
-          <button
-            type="button"
-            onClick={() => {
-              requestNotificationPermission();
-              setShowAddForm((v) => !v);
-              setEditingSchedule(null);
-              setFormError(undefined);
-            }}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 999,
-              border: "none",
-              background: t.primary,
-              color: "white",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            + 알림 추가
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <FamilySwitcher
+              selectedProfileId={null}
+              onSelect={(target) => setSelectedFamily(target)}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                requestNotificationPermission();
+                setShowAddForm((v) => !v);
+                setEditingSchedule(null);
+                setFormError(undefined);
+              }}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 999,
+                border: "none",
+                background: t.primary,
+                color: "white",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              + 알림 추가
+            </button>
+          </div>
         </div>
 
         {showAddForm && (
@@ -583,8 +652,24 @@ export default function AlarmPage() {
                           </button>
                           <button
                             type="button"
-                            aria-label={`${row.name} 복용 시각 삭제`}
+                            aria-label={`${row.name} 이 시각만 삭제`}
+                            title="이 시각만 삭제"
                             onClick={() => handleDeleteMedTime(row.med!, row.time)}
+                            style={{
+                              border: "none",
+                              background: "none",
+                              color: t.textMuted,
+                              cursor: "pointer",
+                              fontSize: 14,
+                            }}
+                          >
+                            ✂️
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`${row.name} 등록 전체 삭제`}
+                            title="약 등록 전체 삭제"
+                            onClick={() => handleDeleteMed(row.med!)}
                             style={{
                               border: "none",
                               background: "none",

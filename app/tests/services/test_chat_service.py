@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from app.dtos.dur_dto import DrugIntrc, DrugRef, DurInteractionWarning, InteractionScreeningResponse
 from app.models.chat import MessageRole
 from app.models.profiles import Disease
 from app.repositories.chat_repository import ChatRepository
@@ -10,6 +11,7 @@ from app.repositories.medication_repository import MedicationRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.services.ai_worker_gateway import AIWorkerGateway, AIWorkerUnavailableError
 from app.services.chat_service import ChatService, MedicalRelatednessClassification
+from app.services.dur_service import DurScreeningService
 from app.services.safety_service import DISCLAIMER_TEXT, EMERGENCY_FALLBACK_MESSAGE
 
 
@@ -133,6 +135,7 @@ def _build_service(
     profile_repository: FakeProfileRepository | None = None,
     medication_repository: FakeMedicationRepository | None = None,
     dur_drug_repository=None,
+    dur_screening_service=None,
     retriever: FakeRetriever | None = None,
 ) -> ChatService:
     # Fake들은 실제 클래스와 시그니처만 맞춘 덕타이핑 객체라 mypy 통과용으로 cast한다.
@@ -144,6 +147,8 @@ def _build_service(
     )
     if dur_drug_repository is not None:
         kwargs["dur_drug_repository"] = cast(DurDrugRepository, dur_drug_repository)
+    if dur_screening_service is not None:
+        kwargs["dur_screening_service"] = cast(DurScreeningService, dur_screening_service)
     return ChatService(**kwargs)
 
 
@@ -440,17 +445,102 @@ class FakeDurDrugRepository:
         self._warnings = warnings
         self.received_calls: list[tuple[str, bool, bool]] = []
 
-    def find_dur_warnings(self, item_name: str, *, pregnant: bool, geriatric: bool) -> list[str]:
+    async def find_dur_warnings(self, session, item_name: str, *, pregnant: bool, geriatric: bool) -> list[str]:
         self.received_calls.append((item_name, pregnant, geriatric))
         return self._warnings
 
 
-def test_collect_dur_warnings_gates_on_pregnant_flag():
+async def test_collect_dur_warnings_gates_on_pregnant_flag():
     """임부금기 게이팅 로직 자체(진짜 프로필로는 재현 불가)를 직접 검증한다."""
     fake_dur_repo = FakeDurDrugRepository(["[임부금기 경고] 콘서타: 테스트용 경고 문구"])
     service = ChatService(dur_drug_repository=cast(DurDrugRepository, fake_dur_repo))
 
-    warnings = service._collect_dur_warnings([{"name": "콘서타"}], is_pregnant=True, is_geriatric=False)
+    warnings = await service._collect_dur_warnings(None, [{"name": "콘서타"}], is_pregnant=True, is_geriatric=False)
 
     assert warnings == ["[임부금기 경고] 콘서타: 테스트용 경고 문구"]
     assert fake_dur_repo.received_calls == [("콘서타", True, False)]
+
+
+class FakeDurScreeningService:
+    def __init__(self, response: InteractionScreeningResponse | None = None) -> None:
+        self._response = response or InteractionScreeningResponse(drug_intrc=DrugIntrc())
+        self.received_calls: list[list[str]] = []
+
+    async def screen_interactions(self, session, drug_names: list[str]) -> InteractionScreeningResponse:
+        self.received_calls.append(drug_names)
+        return self._response
+
+
+async def test_collect_interaction_warnings_skips_when_fewer_than_two_meds():
+    """상호작용은 최소 2개 약물이 있어야 의미가 있으므로, 1개 이하면 스크리닝 자체를 호출하지 않는다."""
+    fake_screening_service = FakeDurScreeningService()
+    service = ChatService(dur_screening_service=cast(DurScreeningService, fake_screening_service))
+
+    warnings = await service._collect_interaction_warnings(None, [{"name": "아스피린"}])
+
+    assert warnings == []
+    assert fake_screening_service.received_calls == []
+
+
+async def test_collect_interaction_warnings_formats_screening_result():
+    """screen_interactions()가 반환한 병용금기 결과를 injected_context용 문자열로 변환한다."""
+    response = InteractionScreeningResponse(
+        drug_intrc=DrugIntrc(
+            interactions=[
+                DurInteractionWarning(
+                    rule_type="병용금기",
+                    drug_a=DrugRef(item_seq="1", item_name="와파린"),
+                    drug_b=DrugRef(item_seq="2", item_name="아스피린"),
+                    prohbt_content="출혈 위험 증가",
+                )
+            ]
+        )
+    )
+    fake_screening_service = FakeDurScreeningService(response)
+    service = ChatService(dur_screening_service=cast(DurScreeningService, fake_screening_service))
+
+    warnings = await service._collect_interaction_warnings(None, [{"name": "와파린"}, {"name": "아스피린"}])
+
+    assert warnings == ["와파린 + 아스피린 (병용금기) — 출혈 위험 증가"]
+    assert fake_screening_service.received_calls == [["와파린", "아스피린"]]
+
+
+async def test_stream_reply_injects_interaction_warnings_for_two_or_more_medications():
+    repository = FakeChatRepository()
+    profiles = FakeProfileRepository({3: FakeProfile(id=3, name="사용자")})
+    medications = FakeMedicationRepository(
+        {
+            3: [
+                FakeMedicationSchedule(medication=FakeMedication("와파린")),
+                FakeMedicationSchedule(medication=FakeMedication("아스피린")),
+            ]
+        }
+    )
+    response = InteractionScreeningResponse(
+        drug_intrc=DrugIntrc(
+            interactions=[
+                DurInteractionWarning(
+                    rule_type="병용금기",
+                    drug_a=DrugRef(item_seq="1", item_name="와파린"),
+                    drug_b=DrugRef(item_seq="2", item_name="아스피린"),
+                    prohbt_content="출혈 위험 증가",
+                )
+            ]
+        )
+    )
+    fake_screening_service = FakeDurScreeningService(response)
+    retriever = FakeRetriever()
+    service = _build_service(
+        repository,
+        profile_repository=profiles,
+        medication_repository=medications,
+        dur_screening_service=fake_screening_service,
+        retriever=retriever,
+    )
+
+    await _collect(
+        service.stream_reply(session=None, profile_id=3, session_id=12, message="와파린이랑 아스피린 같이 먹어도 돼?")
+    )
+
+    _, _, _, injected_context = retriever.stream_chat_calls[0]
+    assert any("[병용금기 경고] 와파린 + 아스피린 (병용금기) — 출혈 위험 증가" in c for c in injected_context)
