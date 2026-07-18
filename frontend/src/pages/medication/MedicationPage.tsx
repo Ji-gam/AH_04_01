@@ -599,7 +599,9 @@ export default function MedicationPage() {
       // 그대로 배로 늘어난다 — 서로 독립된 확정 요청이라 병렬로 보내고, 목록 재조회도
       // confirmJob마다가 아니라 전체가 끝난 뒤 한 번만 한다.
       await Promise.all(
-        selectedDrugCodes.map((drugCode) => confirmJob(currentJobId, drugCode, { times: timesArray })),
+        selectedDrugCodes.map((drugCode) =>
+          confirmJob(currentJobId, drugCode, { times: timesArray }),
+        ),
       );
       await fetchSchedules();
       alert(`${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`);
