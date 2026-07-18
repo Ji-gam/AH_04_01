@@ -513,7 +513,7 @@ async def _resolve_manual_registration_medication(
     "더보기 > 약품 검색"이 참조하는 것과 같은 DB) → Tier3 공공 API → AUTO_ 더미 순으로
     확인한다. 반환값: (매칭/생성된 Medication, AUTO_ 더미 생성 여부)."""
     dur_repo = DurDrugRepository()
-    tier1_results = await asyncio.to_thread(dur_repo.search_item_names, name, 5)
+    tier1_results = await dur_repo.search_item_names(db_session, name, 5)
     tier1_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
     if tier1_item_seq:
         med = await _get_or_create_medication_from_tier1(db_session, repo, tier1_item_seq, name)
@@ -576,7 +576,7 @@ async def _resolve_or_create_drug_like_names(
 
         # (#108) MySQL(Tier2)에 없어도 AUTO_ 더미를 만들기 전에, 로컬에 이미 있는 Tier1
         # SQLite 마스터 DB(27,000여 개)에 정확히 같은 이름이 있는지 먼저 확인한다.
-        tier1_results = await asyncio.to_thread(dur_repo.search_item_names, name, 5)
+        tier1_results = await dur_repo.search_item_names(db_session, name, 5)
         tier1_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
         if tier1_item_seq:
             tier1_med = await _get_or_create_medication_from_tier1(db_session, repo, tier1_item_seq, name)
@@ -657,8 +657,8 @@ async def _fuzzy_match_one_field(
     if best_mysql_key is not None:
         return await repo.get_medication_by_id(db_session, int(best_mysql_key))
 
-    tier1_candidates = await asyncio.to_thread(
-        dur_repo.search_item_names_by_prefix, query[:_FUZZY_TIER1_PREFIX_LEN], _FUZZY_TIER1_CANDIDATE_LIMIT
+    tier1_candidates = await dur_repo.search_item_names_by_prefix(
+        db_session, query[:_FUZZY_TIER1_PREFIX_LEN], _FUZZY_TIER1_CANDIDATE_LIMIT
     )
     best_item_seq = _best_fuzzy_candidate(query, tier1_candidates, _FUZZY_MATCH_THRESHOLD)
     if best_item_seq is None:
@@ -1229,7 +1229,7 @@ class MedicationService:
         seen_ids = {m.id for m in meds}
 
         dur_repo = DurDrugRepository()
-        tier1_results = await asyncio.to_thread(dur_repo.search_item_names, query, _SEARCH_TIER1_CANDIDATE_LIMIT)
+        tier1_results = await dur_repo.search_item_names(session, query, _SEARCH_TIER1_CANDIDATE_LIMIT)
         for item_seq, item_name in tier1_results:
             med = await _get_or_create_medication_from_tier1(session, self._repository, item_seq, item_name)
             if med.id not in seen_ids:

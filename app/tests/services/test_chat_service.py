@@ -445,17 +445,17 @@ class FakeDurDrugRepository:
         self._warnings = warnings
         self.received_calls: list[tuple[str, bool, bool]] = []
 
-    def find_dur_warnings(self, item_name: str, *, pregnant: bool, geriatric: bool) -> list[str]:
+    async def find_dur_warnings(self, session, item_name: str, *, pregnant: bool, geriatric: bool) -> list[str]:
         self.received_calls.append((item_name, pregnant, geriatric))
         return self._warnings
 
 
-def test_collect_dur_warnings_gates_on_pregnant_flag():
+async def test_collect_dur_warnings_gates_on_pregnant_flag():
     """임부금기 게이팅 로직 자체(진짜 프로필로는 재현 불가)를 직접 검증한다."""
     fake_dur_repo = FakeDurDrugRepository(["[임부금기 경고] 콘서타: 테스트용 경고 문구"])
     service = ChatService(dur_drug_repository=cast(DurDrugRepository, fake_dur_repo))
 
-    warnings = service._collect_dur_warnings([{"name": "콘서타"}], is_pregnant=True, is_geriatric=False)
+    warnings = await service._collect_dur_warnings(None, [{"name": "콘서타"}], is_pregnant=True, is_geriatric=False)
 
     assert warnings == ["[임부금기 경고] 콘서타: 테스트용 경고 문구"]
     assert fake_dur_repo.received_calls == [("콘서타", True, False)]
@@ -466,7 +466,7 @@ class FakeDurScreeningService:
         self._response = response or InteractionScreeningResponse(drug_intrc=DrugIntrc())
         self.received_calls: list[list[str]] = []
 
-    async def screen_interactions(self, drug_names: list[str]) -> InteractionScreeningResponse:
+    async def screen_interactions(self, session, drug_names: list[str]) -> InteractionScreeningResponse:
         self.received_calls.append(drug_names)
         return self._response
 
@@ -476,7 +476,7 @@ async def test_collect_interaction_warnings_skips_when_fewer_than_two_meds():
     fake_screening_service = FakeDurScreeningService()
     service = ChatService(dur_screening_service=cast(DurScreeningService, fake_screening_service))
 
-    warnings = await service._collect_interaction_warnings([{"name": "아스피린"}])
+    warnings = await service._collect_interaction_warnings(None, [{"name": "아스피린"}])
 
     assert warnings == []
     assert fake_screening_service.received_calls == []
@@ -499,7 +499,7 @@ async def test_collect_interaction_warnings_formats_screening_result():
     fake_screening_service = FakeDurScreeningService(response)
     service = ChatService(dur_screening_service=cast(DurScreeningService, fake_screening_service))
 
-    warnings = await service._collect_interaction_warnings([{"name": "와파린"}, {"name": "아스피린"}])
+    warnings = await service._collect_interaction_warnings(None, [{"name": "와파린"}, {"name": "아스피린"}])
 
     assert warnings == ["와파린 + 아스피린 (병용금기) — 출혈 위험 증가"]
     assert fake_screening_service.received_calls == [["와파린", "아스피린"]]
