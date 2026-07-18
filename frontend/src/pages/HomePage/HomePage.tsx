@@ -11,6 +11,7 @@ import type {
   HealthInfoResult,
   NotificationScheduleResult,
 } from "../../api/types";
+import HabitSelectionContent from "../../components/habit/HabitSelectionContent";
 import SelectedHabitsModal from "../../components/habit/SelectedHabitsModal";
 import { useAuth } from "../../hooks/useAuth";
 import type { MedicationSchedule } from "../../hooks/useMedication";
@@ -59,6 +60,8 @@ export default function HomePage() {
   const [habitsToday, setHabitsToday] = useState<HabitsTodayResult | null>(null);
   const [showCongrats, setShowCongrats] = useState(false);
   const [showLifestyleModal, setShowLifestyleModal] = useState(false);
+  // 아직 하나도 선택 안 했을 때 누르면(예전엔 /habit-selection으로 이동) 모달로 바로 고를 수 있게 한다.
+  const [showHabitSelectionModal, setShowHabitSelectionModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   const [chatInput, setChatInput] = useState("");
@@ -472,7 +475,7 @@ export default function HomePage() {
               if (habitsToday.habits.length > 0) {
                 setShowLifestyleModal(true);
               } else {
-                navigate("/habit-selection");
+                setShowHabitSelectionModal(true);
               }
             }}
             style={{
@@ -514,6 +517,25 @@ export default function HomePage() {
             onCheck={handleCheckHabit}
             onClose={() => setShowLifestyleModal(false)}
           />
+        )}
+
+        {/* 아직 습관을 하나도 안 골랐을 때 — 예전엔 /habit-selection으로 페이지 이동했는데,
+            홈에서 바로 고르고 저장까지 할 수 있게 모달로 띄운다. 저장되면 이 카드의
+            habitsToday도 같이 갱신되어 모달을 닫으면 바로 "n/n개 완료"로 보인다. */}
+        {showHabitSelectionModal && (
+          <Modal onClose={() => setShowHabitSelectionModal(false)}>
+            <div
+              style={{
+                background: pinkTheme.cardBg,
+                border: `1px solid ${pinkTheme.border}`,
+                borderRadius: 16,
+                padding: 18,
+                boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+              }}
+            >
+              <HabitSelectionContent onSaved={setHabitsToday} />
+            </div>
+          </Modal>
         )}
 
         {/* 빠른 메뉴 2x2 + AI 건강 상담 질문창 + 건강 정보 미리보기 */}
