@@ -144,6 +144,21 @@ export default function MorePage() {
   return (
     <div style={{ background: pinkTheme.pageBg, minHeight: "100%", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          style={{
+            background: "none",
+            border: "none",
+            color: pinkTheme.textMuted,
+            padding: 0,
+            marginBottom: 12,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          ← 뒤로가기
+        </button>
         <div
           style={{
             display: "flex",
