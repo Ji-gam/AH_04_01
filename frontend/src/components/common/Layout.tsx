@@ -1,4 +1,4 @@
-import { useNavigate, Outlet } from "react-router-dom";
+import { useNavigate, useLocation, Outlet } from "react-router-dom";
 
 import { pinkTheme } from "../../theme/pinkTheme";
 
@@ -10,6 +10,8 @@ import BottomNav from "./BottomNav";
  * 더보기/하단바에서 여전히 갈 수 있어 끊기는 화면이 없다. */
 export default function Layout() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isHome = location.pathname === "/";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>
@@ -23,22 +25,26 @@ export default function Layout() {
           alignItems: "center",
         }}
       >
-        <button
-          type="button"
-          aria-label="홈으로"
-          onClick={() => navigate("/")}
-          style={{
-            border: "none",
-            background: "none",
-            color: pinkTheme.text,
-            fontSize: 14,
-            lineHeight: 1,
-            padding: 4,
-            cursor: "pointer",
-          }}
-        >
-          ← 뒤로가기
-        </button>
+        {isHome ? (
+          <span />
+        ) : (
+          <button
+            type="button"
+            aria-label="홈으로"
+            onClick={() => navigate("/")}
+            style={{
+              border: "none",
+              background: "none",
+              color: pinkTheme.text,
+              fontSize: 14,
+              lineHeight: 1,
+              padding: 4,
+              cursor: "pointer",
+            }}
+          >
+            ← 뒤로가기
+          </button>
+        )}
         <button
           type="button"
           aria-label="더보기 메뉴 열기"
