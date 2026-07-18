@@ -466,7 +466,7 @@ class FakeDurScreeningService:
         self._response = response or InteractionScreeningResponse(drug_intrc=DrugIntrc())
         self.received_calls: list[list[str]] = []
 
-    async def screen_interactions(self, drug_names: list[str]) -> InteractionScreeningResponse:
+    async def screen_interactions(self, session, drug_names: list[str]) -> InteractionScreeningResponse:
         self.received_calls.append(drug_names)
         return self._response
 
@@ -476,7 +476,7 @@ async def test_collect_interaction_warnings_skips_when_fewer_than_two_meds():
     fake_screening_service = FakeDurScreeningService()
     service = ChatService(dur_screening_service=cast(DurScreeningService, fake_screening_service))
 
-    warnings = await service._collect_interaction_warnings([{"name": "아스피린"}])
+    warnings = await service._collect_interaction_warnings(None, [{"name": "아스피린"}])
 
     assert warnings == []
     assert fake_screening_service.received_calls == []
@@ -499,7 +499,7 @@ async def test_collect_interaction_warnings_formats_screening_result():
     fake_screening_service = FakeDurScreeningService(response)
     service = ChatService(dur_screening_service=cast(DurScreeningService, fake_screening_service))
 
-    warnings = await service._collect_interaction_warnings([{"name": "와파린"}, {"name": "아스피린"}])
+    warnings = await service._collect_interaction_warnings(None, [{"name": "와파린"}, {"name": "아스피린"}])
 
     assert warnings == ["와파린 + 아스피린 (병용금기) — 출혈 위험 증가"]
     assert fake_screening_service.received_calls == [["와파린", "아스피린"]]

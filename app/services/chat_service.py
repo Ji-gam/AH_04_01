@@ -122,7 +122,7 @@ class ChatService:
         dur_warnings = await self._collect_dur_warnings(
             session, context["medications"], context["is_pregnant"], context["is_geriatric"]
         )
-        interaction_warnings = await self._collect_interaction_warnings(context["medications"])
+        interaction_warnings = await self._collect_interaction_warnings(session, context["medications"])
         injected_context = [f"[DUR 안전 경고 정보] 복용 약물 중 위험 경고 발견: {w}" for w in dur_warnings] + [
             f"[병용금기 경고] {w}" for w in interaction_warnings
         ]
@@ -195,14 +195,14 @@ class ChatService:
             )
         return list(set(dur_warnings))
 
-    async def _collect_interaction_warnings(self, meds: list[dict]) -> list[str]:
+    async def _collect_interaction_warnings(self, session: AsyncSession, meds: list[dict]) -> list[str]:
         # 병용금기/효능군중복은 조합 위험이라 임신/노인 여부와 무관하게 항상 확인한다
         # (_collect_dur_warnings의 게이팅과 달리 대상이 전체 사용자).
         if len(meds) < 2:
             return []
 
         med_names = [med.get("name", "") for med in meds]
-        response = await self._dur_screening_service.screen_interactions(med_names)
+        response = await self._dur_screening_service.screen_interactions(session, med_names)
         return [
             f"{w.drug_a.item_name} + {w.drug_b.item_name} ({w.rule_type}) — {w.prohbt_content or w.remark or ''}"
             for w in response.drug_intrc.interactions

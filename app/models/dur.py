@@ -257,7 +257,7 @@ class DurUsjntTaboo(Base):
 
 
 # seed_dur.py가 SQLite 원본 테이블명 -> (모델, SQLite 컬럼명 -> 모델 속성명) 매핑에 사용.
-ALL_DUR_MODELS: list[type] = [
+ALL_DUR_MODELS: list[type[Base]] = [
     DrugMaster,
     DurProdMasterList,
     DrugIdentification,
