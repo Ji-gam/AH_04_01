@@ -4,7 +4,7 @@
  * 단, 질환 등록 기능 자체가 아직 없어(2026-07-08 기준) 지금은 시각적 안내만 한다.
  */
 import { Fragment, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { contentApi } from "../../api/contentApi";
 import type { ContentCategory, HealthContentResult } from "../../api/types";
@@ -63,6 +63,7 @@ const CATEGORY_TABS: { label: string; value: ContentCategory | undefined }[] = [
 ];
 
 export default function InfoPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [category, setCategory] = useState<ContentCategory | undefined>(undefined);
   const [items, setItems] = useState<HealthContentResult[]>([]);
@@ -108,6 +109,13 @@ export default function InfoPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-2">
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          className="mb-2 border-none bg-transparent p-0 text-sm text-muted-foreground"
+        >
+          ← 뒤로가기
+        </button>
         <h1 className="text-lg font-semibold">정보</h1>
       </div>
 

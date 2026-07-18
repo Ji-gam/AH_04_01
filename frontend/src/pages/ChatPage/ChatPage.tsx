@@ -298,6 +298,20 @@ export default function ChatPage() {
           }}
         >
           <button
+            type="button"
+            onClick={() => navigate("/")}
+            style={{
+              background: "none",
+              border: "none",
+              color: pinkTheme.textMuted,
+              padding: 0,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            ← 뒤로가기
+          </button>
+          <button
             className="menu-toggle-btn"
             onClick={() => setIsMobileMenuOpen(true)}
             style={{
