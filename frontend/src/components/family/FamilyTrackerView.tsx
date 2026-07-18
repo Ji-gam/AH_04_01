@@ -243,14 +243,18 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
     setIsBusy(true);
     const toRegister = candidates.filter((c) => selectedCodes.has(c.standard_code));
     try {
-      for (const candidate of toRegister) {
-        await familyMedicationApi.confirmForFamily(
-          jobId,
-          targetProfileId,
-          candidate.standard_code,
-          timeSlots,
-        );
-      }
+      // (#195) 본인 몫 등록(MedicationPage.handleConfirmSubmit)과 같은 이유로, 약품 개수만큼
+      // confirm 요청을 순차 대기하지 않고 병렬로 보낸다.
+      await Promise.all(
+        toRegister.map((candidate) =>
+          familyMedicationApi.confirmForFamily(
+            jobId,
+            targetProfileId,
+            candidate.standard_code,
+            timeSlots,
+          ),
+        ),
+      );
       setMessage(`선택한 ${toRegister.length}개 약품 등록 완료`);
       setFile(null);
       setJobId(null);

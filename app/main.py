@@ -9,6 +9,7 @@ from app.core import config
 from app.core.config import Env
 from app.core.db.databases import AsyncSessionLocal
 from app.scripts.seed_health_content import seed_health_content
+from app.services import medication_open_api_client
 from app.services.medication_service import refresh_food_drug_interaction_cache
 
 OPENAPI_TAGS = [
@@ -41,6 +42,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     async with AsyncSessionLocal() as session:
         await refresh_food_drug_interaction_cache(session)
     yield
+    await medication_open_api_client.close_http_client()
 
 
 app = FastAPI(

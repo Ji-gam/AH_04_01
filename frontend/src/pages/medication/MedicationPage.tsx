@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { durApi } from "../../api/durApi";
@@ -365,6 +365,10 @@ export default function MedicationPage() {
   // 사용자 확정 폼 입력 값 (처방전 한 장에 여러 약이 인식될 수 있어 다중 선택 지원)
   const [selectedDrugCodes, setSelectedDrugCodes] = useState<string[]>([]);
   const [confirmedTimes, setConfirmedTimes] = useState<string>("09:00, 13:00, 19:00");
+  // OCR 확정등록 버튼 중복 클릭 방지용 (state는 재렌더 전까지 반영이 늦어 클릭 사이 gap이
+  // 생길 수 있어, 클릭 즉시 동기적으로 막아야 하는 이 용도로는 ref를 함께 쓴다).
+  const [isConfirmingJob, setIsConfirmingJob] = useState(false);
+  const isConfirmingJobRef = useRef(false);
 
   // 수동 등록용 상태 — "더보기 > 약품 검색"과 동일하게 먼저 검색해서 목록에서 고르는 방식으로
   // 바꿨다(마스터 DB 통일 이후 검색 결과가 실제 등록 가능한 약과 일치하므로). 검색 결과에
@@ -592,19 +596,31 @@ export default function MedicationPage() {
   // 최종 등록 핸들러 (5~8번 및 9~10번 흐름) — 선택된 약을 각각 스케줄로 등록한다.
   const handleConfirmSubmit = async () => {
     if (!currentJobId || selectedDrugCodes.length === 0) return;
+    if (isConfirmingJobRef.current) return;
+    isConfirmingJobRef.current = true;
+    setIsConfirmingJob(true);
     try {
       const timesArray = confirmedTimes
         .split(",")
         .map((t) => t.trim())
         .filter(Boolean);
-      for (const drugCode of selectedDrugCodes) {
-        await confirmJob(currentJobId, drugCode, { times: timesArray });
-      }
+      // (T-MED, #195) 약품 개수만큼 confirm을 순차 대기하면, 약이 여러 개일수록 등록 시간이
+      // 그대로 배로 늘어난다 — 서로 독립된 확정 요청이라 병렬로 보내고, 목록 재조회도
+      // confirmJob마다가 아니라 전체가 끝난 뒤 한 번만 한다.
+      await Promise.all(
+        selectedDrugCodes.map((drugCode) =>
+          confirmJob(currentJobId, drugCode, { times: timesArray }),
+        ),
+      );
+      await fetchSchedules();
       alert(`${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`);
       setCurrentJobId(null);
       setJobStatus(null);
     } catch (err) {
       console.error(err);
+    } finally {
+      isConfirmingJobRef.current = false;
+      setIsConfirmingJob(false);
     }
   };
 
@@ -1115,16 +1131,19 @@ export default function MedicationPage() {
 
                 <button
                   onClick={handleConfirmSubmit}
-                  disabled={selectedDrugCodes.length === 0}
+                  disabled={selectedDrugCodes.length === 0 || isConfirmingJob}
                   style={{
                     width: "100%",
                     padding: "10px",
                     backgroundColor: "#4caf50",
                     color: "#fff",
                     border: "none",
+                    cursor: isConfirmingJob ? "not-allowed" : "pointer",
                   }}
                 >
-                  선택한 {selectedDrugCodes.length}개 약품 복약 스케줄 등록 확정
+                  {isConfirmingJob
+                    ? "등록 중..."
+                    : `선택한 ${selectedDrugCodes.length}개 약품 복약 스케줄 등록 확정`}
                 </button>
               </div>
             )}

@@ -22,6 +22,26 @@ DUR_ITEM_INFO_URL = "https://apis.data.go.kr/1471000/DURPrdlstInfoService03/getU
 _TIMEOUT = 10.0
 _DEFAULT_NUM_OF_ROWS = 100
 
+# (#195) 확정등록/음식탭 조회가 약품 개수만큼 이 클라이언트를 호출하는데, 매번 새
+# httpx.AsyncClient()를 만들면 매 호출마다 커넥션을 새로 맺어 그만큼 느려진다. 프로세스
+# 수명 동안 하나만 만들어 재사용한다(연결 풀 유지) — 앱 종료 시 close_http_client()로 정리.
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    global _http_client
+    if _http_client is None:
+        _http_client = httpx.AsyncClient()
+    return _http_client
+
+
+async def close_http_client() -> None:
+    """앱 종료(lifespan) 시 호출 — 재사용 중인 커넥션 풀을 정리한다."""
+    global _http_client
+    if _http_client is not None:
+        await _http_client.aclose()
+        _http_client = None
+
 
 class PublicDataApiError(Exception):
     """공공데이터포털 API가 정상 응답(HTTP 200 & resultCode 00)하지 않았을 때 발생."""
@@ -43,8 +63,8 @@ async def _fetch_items(url: str, params: dict) -> list[dict]:
 
     request_params = {"serviceKey": config.PUBLIC_DATA_API_KEY, "type": "json", **params}
 
-    async with httpx.AsyncClient() as http_client:
-        response = await http_client.get(url, params=request_params, timeout=_TIMEOUT)
+    http_client = _get_http_client()
+    response = await http_client.get(url, params=request_params, timeout=_TIMEOUT)
 
     if response.status_code != 200:
         raise PublicDataApiError(f"공공데이터포털 API 호출 실패: status={response.status_code}, url={url}")
