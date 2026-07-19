@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class RecognitionJobCreateResult(BaseModel):
@@ -96,10 +96,22 @@ class MedicationScheduleCreateRequest(BaseModel):
 
 
 class MedicationScheduleUpdateRequest(BaseModel):
-    """전달한 필드만 부분 수정한다 (T-NTFY-2 알림 화면 인라인 시간 수정용)."""
+    """전달한 필드만 부분 수정한다 (T-NTFY-2 알림 화면 인라인 시간 수정용).
+
+    times는 생략(None)이면 그대로 두지만 빈 리스트([])는 거부한다 - 마지막 시각 하나를
+    지우는 걸 이 API로 하면, 약 등록(스케줄)은 그대로 남고 복용 시각만 하나도 없는
+    좀비 상태가 된다(복약 알림 화면에는 아예 표시되지 않아 사용자가 되돌릴 방법도 없음).
+    등록 자체를 지우고 싶으면 DELETE /medications/{id}를 쓴다."""
 
     times: list[str] | None = None
     hospital_name: str | None = None
+
+    @field_validator("times")
+    @classmethod
+    def _times_not_empty(cls, v: list[str] | None) -> list[str] | None:
+        if v is not None and len(v) == 0:
+            raise ValueError("복용 시각은 최소 1개 이상이어야 합니다. 등록 전체 삭제는 DELETE API를 이용하세요.")
+        return v
 
 
 class QuickRegisterRequest(BaseModel):

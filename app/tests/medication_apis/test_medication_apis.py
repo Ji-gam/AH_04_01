@@ -372,6 +372,34 @@ async def test_update_schedule_times_success():
         assert res.json()["times"] == ["09:30", "20:00"]
 
 
+async def test_update_schedule_rejects_empty_times():
+    """times를 빈 리스트로 PATCH하면 거부해야 한다 - 등록은 남고 복용 시각만 없는
+    좀비 상태를 막기 위함(#192 리뷰: 마지막 알림 삭제 시 재현됨). 등록 자체를 지우려면
+    DELETE를 써야 한다."""
+    await _seed_dummy_medications()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "schedule_patch_empty_times@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        created = await client.post(
+            "/api/v1/medications/quick-register",
+            headers=headers,
+            json={"drug_name": "아스피린정 100mg", "times": ["08:00"]},
+        )
+        schedule_id = created.json()["schedule"]["id"]
+
+        res = await client.patch(
+            f"/api/v1/medications/{schedule_id}",
+            headers=headers,
+            json={"times": []},
+        )
+        assert res.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+
+        list_res = await client.get("/api/v1/medications", headers=headers)
+        mine = [s for s in list_res.json() if s["id"] == schedule_id]
+        assert mine and mine[0]["times"] == ["08:00"]
+
+
 async def test_update_schedule_not_owned_returns_404():
     """다른 프로필의 복약 스케줄은 수정할 수 없어야 한다."""
     await _seed_dummy_medications()
