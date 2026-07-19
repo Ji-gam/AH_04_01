@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 
+import { pinkTheme as t } from "../../../theme/pinkTheme";
+
 /** 하루 복용 횟수 선택지 — 임상 표기(qd/bid/tid)를 같이 보여준다. AlarmForm과 동일한 패턴. */
 const DOSE_OPTIONS = [
   { count: 1, label: "1회 (qd)" },
@@ -63,7 +65,7 @@ export default function DoseTimesInput({ value, onChange }: Props) {
 
   return (
     <div>
-      <label style={{ display: "block", fontSize: "13px", color: "#666", marginBottom: "6px" }}>
+      <label style={{ display: "block", fontSize: "13px", color: t.textMuted, marginBottom: "6px" }}>
         하루 복용 횟수
       </label>
       <div style={{ display: "flex", gap: "8px", marginBottom: "10px" }}>
@@ -73,11 +75,11 @@ export default function DoseTimesInput({ value, onChange }: Props) {
             type="button"
             onClick={() => handleDoseCountChange(opt.count)}
             style={{
-              padding: "6px 12px",
+              padding: "8px 14px",
               borderRadius: "999px",
-              border: "1px solid #ccc",
-              background: doseCount === opt.count ? "#4caf50" : "white",
-              color: doseCount === opt.count ? "white" : "#333",
+              border: `1px solid ${t.border}`,
+              background: doseCount === opt.count ? t.primary : "white",
+              color: doseCount === opt.count ? "white" : t.text,
               fontSize: "13px",
               cursor: "pointer",
             }}
@@ -87,13 +89,13 @@ export default function DoseTimesInput({ value, onChange }: Props) {
         ))}
       </div>
 
-      <label style={{ display: "block", fontSize: "13px", color: "#666", marginBottom: "4px" }}>
+      <label style={{ display: "block", fontSize: "13px", color: t.textMuted, marginBottom: "4px" }}>
         복용 시각
       </label>
       {times.map((tp, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
           {times.length > 1 && (
-            <span style={{ fontSize: "12px", color: "#666", width: "34px", flexShrink: 0 }}>
+            <span style={{ fontSize: "12px", color: t.textMuted, width: "34px", flexShrink: 0 }}>
               {i + 1}회차
             </span>
           )}
@@ -103,11 +105,11 @@ export default function DoseTimesInput({ value, onChange }: Props) {
               type="button"
               onClick={() => updateTime(i, { period: p })}
               style={{
-                padding: "6px 12px",
+                padding: "8px 14px",
                 borderRadius: "999px",
-                border: "1px solid #ccc",
-                background: tp.period === p ? "#4caf50" : "white",
-                color: tp.period === p ? "white" : "#333",
+                border: `1px solid ${t.border}`,
+                background: tp.period === p ? t.primary : "white",
+                color: tp.period === p ? "white" : t.text,
                 fontSize: "13px",
                 cursor: "pointer",
               }}
@@ -125,15 +127,16 @@ export default function DoseTimesInput({ value, onChange }: Props) {
             }
             aria-label={`${i + 1}회차 시`}
             style={{
-              width: "52px",
-              padding: "8px",
-              borderRadius: "6px",
-              border: "1px solid #ccc",
+              width: "56px",
+              padding: "10px 8px",
+              borderRadius: "10px",
+              border: `1px solid ${t.border}`,
+              outline: "none",
               textAlign: "center",
               fontSize: "14px",
             }}
           />
-          <span style={{ color: "#666" }}>:</span>
+          <span style={{ color: t.textMuted }}>:</span>
           <input
             type="number"
             min={0}
@@ -144,10 +147,11 @@ export default function DoseTimesInput({ value, onChange }: Props) {
             }
             aria-label={`${i + 1}회차 분`}
             style={{
-              width: "52px",
-              padding: "8px",
-              borderRadius: "6px",
-              border: "1px solid #ccc",
+              width: "56px",
+              padding: "10px 8px",
+              borderRadius: "10px",
+              border: `1px solid ${t.border}`,
+              outline: "none",
               textAlign: "center",
               fontSize: "14px",
             }}
