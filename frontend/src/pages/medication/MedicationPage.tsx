@@ -1142,9 +1142,7 @@ export default function MedicationPage() {
                 약이 없으면, 입력한 이름 그대로 새로 등록할 수도 있습니다(마스터 DB에 없는 약도 등록
                 자체는 막히지 않습니다).
               </p>
-              <div
-                style={{ margin: "10px 0" }}
-              >
+              <div style={{ margin: "10px 0" }}>
                 <DoseTimesInput value={manualTimes} onChange={setManualTimes} />
               </div>
               <div

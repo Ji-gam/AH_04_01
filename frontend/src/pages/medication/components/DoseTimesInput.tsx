@@ -65,7 +65,9 @@ export default function DoseTimesInput({ value, onChange }: Props) {
 
   return (
     <div>
-      <label style={{ display: "block", fontSize: "13px", color: t.textMuted, marginBottom: "6px" }}>
+      <label
+        style={{ display: "block", fontSize: "13px", color: t.textMuted, marginBottom: "6px" }}
+      >
         하루 복용 횟수
       </label>
       <div style={{ display: "flex", gap: "8px", marginBottom: "10px" }}>
@@ -89,11 +91,16 @@ export default function DoseTimesInput({ value, onChange }: Props) {
         ))}
       </div>
 
-      <label style={{ display: "block", fontSize: "13px", color: t.textMuted, marginBottom: "4px" }}>
+      <label
+        style={{ display: "block", fontSize: "13px", color: t.textMuted, marginBottom: "4px" }}
+      >
         복용 시각
       </label>
       {times.map((tp, i) => (
-        <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}>
+        <div
+          key={i}
+          style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "10px" }}
+        >
           {times.length > 1 && (
             <span style={{ fontSize: "12px", color: t.textMuted, width: "34px", flexShrink: 0 }}>
               {i + 1}회차
