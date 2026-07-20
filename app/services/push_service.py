@@ -1,3 +1,4 @@
+import json
 import logging
 
 from fastapi import HTTPException, status
@@ -65,7 +66,7 @@ class PushService:
                         "endpoint": sub.endpoint,
                         "keys": {"p256dh": sub.p256dh_key, "auth": sub.auth_key},
                     },
-                    data=f'{{"title": "{title}", "body": "{body}"}}',
+                    data=json.dumps({"title": title, "body": body}),
                     vapid_private_key=config.VAPID_PRIVATE_KEY,
                     vapid_claims={"sub": config.VAPID_CLAIM_EMAIL},
                     # WNS(Windows, notify.windows.com 엔드포인트 - Edge가 이걸 씀)는 이 헤더가
