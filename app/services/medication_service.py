@@ -776,7 +776,14 @@ async def _match_or_create_medications(
     seen_ids: set[int] = set()
     match_confidence: dict[int, float] = {}
 
+    # (#OCR-LLM) LLM 보완 경로(ai_worker 네트워크 호출)는 seen_ids에 의존하지 않고 OCR 원문만
+    # 있으면 되므로, 아래 DB 매칭 패스들과 동시에 시작해 지연시간을 겹치게 한다 — LLM 호출을
+    # 매번 순차적으로 맨 마지막에 기다리면 등록 전체 시간에 그대로 더해져 느려진다.
+    llm_task: asyncio.Task[list[str]] | None = None
     if ocr_fields:
+        ocr_raw_text = " ".join(f.text for f in ocr_fields)
+        llm_task = asyncio.create_task(_llm_extract_drug_names(ocr_raw_text))
+
         existing_matched, existing_confidence = await _match_existing_by_word(db_session, repo, ocr_fields, seen_ids)
         matched_meds.extend(existing_matched)
         match_confidence.update(existing_confidence)
@@ -791,12 +798,10 @@ async def _match_or_create_medications(
         matched_meds.extend(fuzzy_matched)
         match_confidence.update(fuzzy_confidence)
 
-    # (#OCR-LLM) 정규식/퍼지 매칭 결과가 있어도, 그 규칙들이 놓쳤을 수 있는 약을 추가로 구제하기
-    # 위해 매번 LLM으로 한 번 더 보완한다. `seen_ids`로 이미 매칭된 약은 걸러지므로 중복 추가되지
-    # 않는다.
-    if ocr_fields:
-        ocr_raw_text = " ".join(f.text for f in ocr_fields)
-        llm_names = await _llm_extract_drug_names(ocr_raw_text)
+    # 정규식/퍼지 매칭 결과가 있어도, 그 규칙들이 놓쳤을 수 있는 약을 추가로 구제하기 위해 매번
+    # LLM으로 한 번 더 보완한다. `seen_ids`로 이미 매칭된 약은 걸러지므로 중복 추가되지 않는다.
+    if llm_task is not None:
+        llm_names = await llm_task
         if llm_names:
             llm_matched, llm_auto_created_ids = await _resolve_llm_suggested_names(
                 db_session, repo, llm_names, seen_ids
