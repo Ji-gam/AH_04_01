@@ -334,9 +334,7 @@ for _table, _model in [
     ("dur_prod_mdctn_pd_atent", DurProdMdctnPdAtent),
     ("dur_prod_cpcty_atent", DurProdCpctyAtent),
 ]:
-    _TABLE_SPECS.append(
-        (_table, _model, {**_PRODUCT_RULE_COLS, **_INGR_CODE_COLS, **_PRODUCT_RULE_EXTRA_COLS})
-    )
+    _TABLE_SPECS.append((_table, _model, {**_PRODUCT_RULE_COLS, **_INGR_CODE_COLS, **_PRODUCT_RULE_EXTRA_COLS}))
 
 _TABLE_SPECS.append(
     (

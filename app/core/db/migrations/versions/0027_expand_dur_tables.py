@@ -406,9 +406,7 @@ def downgrade() -> None:
     _drop_columns("dur_mdctn_pd_atent", [*_INGREDIENT_RULE_EXTRA_COLUMNS, "class_name", "form_name", "max_dosage_term"])
     _drop_columns("dur_efcy_dplct", [*_INGREDIENT_RULE_EXTRA_COLUMNS, "class_name", "effect_code", "sers_name"])
     _drop_columns("dur_cpcty_atent", [*_INGREDIENT_RULE_EXTRA_COLUMNS, "class_name", "form_name", "max_qty"])
-    _drop_columns(
-        "dur_spcify_agrde_taboo", [*_INGREDIENT_RULE_EXTRA_COLUMNS, "class_name", "form_name", "age_base"]
-    )
+    _drop_columns("dur_spcify_agrde_taboo", [*_INGREDIENT_RULE_EXTRA_COLUMNS, "class_name", "form_name", "age_base"])
     _drop_columns("dur_odsn_atent", [*_INGREDIENT_RULE_EXTRA_COLUMNS, "form_name"])
     _drop_columns("dur_pwnm_taboo", [*_INGREDIENT_RULE_EXTRA_COLUMNS, "class_name", "form_name", "grade"])
 
