@@ -175,6 +175,22 @@ async def test_get_ingredient_level_rules_uses_one_query(counting_repo):
     assert session.execute_count == 1
 
 
+async def test_get_ingredient_level_rules_includes_rule_detail_for_grade_and_max_qty(repo):
+    """D000363(이부프로펜)은 임부금기(등급)/용량주의(최대 1일 용량)/노인주의(부가값 없음)를 모두
+    보유 - rule_detail이 규칙별로 다른 컬럼(grade/max_qty)에서 채워지고, 해당 컬럼이 없는 규칙은
+    null인지 확인."""
+    repository, _ = repo
+    rules = await repository.get_ingredient_level_rules(["D000363"])
+
+    detail_by_type: dict[str, list[str | None]] = {}
+    for r in rules:
+        detail_by_type.setdefault(r["rule_type"], []).append(r["rule_detail"])
+
+    assert any(d is not None for d in detail_by_type["임부금기"])
+    assert any(d is not None for d in detail_by_type["용량주의"])
+    assert all(d is None for d in detail_by_type["노인주의"])
+
+
 async def test_get_drug_identification_uses_one_query(counting_repo):
     repository, session = counting_repo
 
