@@ -341,13 +341,38 @@ def _extract_item_seq(standard_code: str | None) -> str | None:
     return item_seq or None
 
 
-_TRAILING_DOSAGE_PATTERN = re.compile(r"\s*\d+(\.\d+)?\s*(mg|g|ml)\s*$", re.IGNORECASE)
+_TRAILING_DOSAGE_PATTERN = re.compile(r"(?P<lead>\s*)(?P<amount>\d+(?:\.\d+)?)\s*(?P<unit>mg|g|ml)\s*$", re.IGNORECASE)
+
+# 공공데이터 API/MySQL의 정식 품목명은 'mg'가 아니라 '밀리그램'/'밀리그람' 등 한글 단위 표기를
+# 쓰는 경우가 많다 - 같은 단어인데도 소스 테이블마다 표기가 다르다(예: item_ingredient_map은
+# '밀리그램', dur_prod_master_list/drugs_data 품목명은 '밀리그람'을 쓴다 - 둘 다 실제 값으로
+# 확인됨). 접미사를 그냥 떼는 것보다, 두 표기를 모두 후보로 만들어 순서대로 재시도하면 용량
+# 정보를 잃지 않고 그 함량의 품목만 정확히 찾을 수 있다(예: "아스피린정100mg" ->
+# ["아스피린정100밀리그램", "아스피린정100밀리그람"]).
+_ENGLISH_UNIT_TO_KOREAN_VARIANTS: dict[str, list[str]] = {
+    "mg": ["밀리그램", "밀리그람"],
+    "g": ["그램", "그람"],
+    "ml": ["밀리리터"],
+}
+
+
+def _translate_trailing_dosage_to_korean(name: str) -> list[str]:
+    """이름 끝의 'NNmg' 형태 접미사를 DB 표기와 같은 한글 단위('NN밀리그램'/'NN밀리그람')로
+    바꾼 재시도용 이름 후보들을 반환한다. 접미사가 없으면 빈 리스트."""
+    match = _TRAILING_DOSAGE_PATTERN.search(name)
+    if not match:
+        return []
+    variants = _ENGLISH_UNIT_TO_KOREAN_VARIANTS[match["unit"].lower()]
+    candidates = [
+        _TRAILING_DOSAGE_PATTERN.sub(f"{match['lead']}{match['amount']}{korean_unit}", name) for korean_unit in variants
+    ]
+    return [candidate for candidate in candidates if candidate != name]
 
 
 def _strip_trailing_dosage(name: str) -> str | None:
-    """공공데이터 API의 정식 품목명은 'mg'가 아니라 '밀리그램' 등 한글 단위 표기를 쓰는 경우가
-    많아, OCR/사용자 입력이 'NNmg' 형태 접미사로 끝나면 그 부분을 뗀 이름으로도 재시도할 수 있게
-    한다. 접미사가 없으면 None."""
+    """한글 단위로 바꿔도(`_translate_trailing_dosage_to_korean`) 띄어쓰기/표기 차이로 여전히
+    매칭이 안 될 수 있어, 최후 수단으로 'NNmg' 접미사 자체를 뗀 이름도 시도할 수 있게 한다.
+    접미사가 없으면 None."""
     stripped = _TRAILING_DOSAGE_PATTERN.sub("", name).strip()
     return stripped if stripped and stripped != name else None
 
@@ -805,10 +830,15 @@ async def _fetch_drug_summary_with_fallback(medication_name: str) -> list[dict]:
     """e약은요 `itemName` 파라미터는 정확/부분 일치라, OCR/사용자 입력의 'NNmg' 접미사가 실제
     품목명(대개 '밀리그램' 등 한글 단위 표기)과 안 맞으면 빈 결과가 흔하다(실 API로 확인 —
     "아스피린정 100mg"는 0건, "아스피린정"은 1건). `_fetch_master_data_with_fallback`과 동일한
-    패턴으로 접미사를 뗀 이름으로 한 번 더 시도한다."""
+    패턴으로 먼저 한글 단위로 바꾼 이름을, 그래도 안 되면 접미사를 뗀 이름으로 한 번 더 시도한다."""
     summaries = await medication_open_api_client.fetch_drug_summary(item_name=medication_name)
     if summaries:
         return summaries
+
+    for translated_name in _translate_trailing_dosage_to_korean(medication_name):
+        summaries = await medication_open_api_client.fetch_drug_summary(item_name=translated_name)
+        if summaries:
+            return summaries
 
     stripped_name = _strip_trailing_dosage(medication_name)
     if stripped_name:
@@ -826,11 +856,17 @@ _food_guide_card_cache: dict[str, GuideCard] = {}
 async def _fetch_food_intrc_from_local_db(session: AsyncSession, medication_name: str) -> str | None:
     """(T-DOC-5) 2단계: `drugs_data`(MySQL, e약은요 API를 미리 수집해둔 스냅샷, 4,758건)에서
     `intrc_qesitm`을 조회한다. 실시간 API 호출 없이 이미 저장된 범위 안이면 즉시 응답 가능하다.
-    실API와 마찬가지로 'NNmg' 접미사가 실제 품목명과 안 맞는 경우가 있어 접미사를 뗀 이름으로도
-    재시도한다. 반환값이 None이면 이 약이 스냅샷에 아예 없다는 뜻 — 그 경우에만 3단계(느린
-    실시간 API, `_build_food_interaction_guide_card_slow`) 호출이 필요하다."""
+    실API와 마찬가지로 'NNmg' 접미사가 실제 품목명과 안 맞는 경우가 있어 먼저 한글 단위로 바꾼
+    이름을, 그래도 안 되면 접미사를 뗀 이름으로도 재시도한다. 반환값이 None이면 이 약이 스냅샷에
+    아예 없다는 뜻 — 그 경우에만 3단계(느린 실시간 API, `_build_food_interaction_guide_card_slow`)
+    호출이 필요하다."""
     dur_repo = DurDrugRepository()
     text_value = await dur_repo.find_food_intrc_text(session, medication_name)
+    if text_value is None:
+        for translated_name in _translate_trailing_dosage_to_korean(medication_name):
+            text_value = await dur_repo.find_food_intrc_text(session, translated_name)
+            if text_value is not None:
+                break
     if text_value is None:
         stripped_name = _strip_trailing_dosage(medication_name)
         if stripped_name:

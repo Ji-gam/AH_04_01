@@ -159,7 +159,7 @@ async def test_ingredient_screening_includes_source_drug_dosage():
     source = next(d for d in pseudoephedrine["source_drugs"] if d["item_seq"] == "197000053")
     assert source["item_name"] == ACTIFED
     assert source["qnt"] == "60"
-    assert source["unit"] == "밀리그램"
+    assert source["unit"] == "mg"
 
 
 async def test_ingredient_screening_includes_rule_detail_for_grade_and_max_qty():
