@@ -30,13 +30,19 @@ from ai_worker.services.retrieve_service import ensure_db, search_documents
 from ai_worker.tasks.generate_structured import GenerationUnavailableError
 
 _SYSTEM_PROMPT_TEMPLATE = (
-    "당신은 ReMedi의 건강 상담 챗봇입니다. 아래 사용자 건강 컨텍스트(진단병력·가족력·"
-    "복약정보)와 참고 문서를 활용해 개인화되고 안전한 답변을 간결하게 제공하세요.\n"
+    "당신은 ReMedi의 건강 상담 챗봇입니다. 아래 참고 문서와 '질문자 본인 정보'를 활용해 "
+    "안전한 답변을 간결하게 제공하세요.\n"
+    "'질문자 본인 정보'는 지금 대화 중인 사용자 자신의 진단병력·가족력·복약정보입니다. "
+    "질문이 질문자 자신에 대한 것(예: '이 약 먹어도 될까요?', '내 약이랑 같이 먹어도 돼?')일 "
+    "때만 이 정보로 답을 개인화하세요. 질문이 노인·임산부·어린이 등 질문자가 아닌 다른 "
+    "대상 전반에 대한 일반적인 질문(예: '이 약 노인이 먹어도 되나요?')이면, 질문자 본인 "
+    "정보와는 무관하게 질문이 실제로 묻는 대상 기준으로만 답하세요 — 질문자 본인의 나이나 "
+    "임신 여부를 질문 속 대상과 혼동하지 마세요.\n"
     "이 시스템은 답변 하단 UI 영역에 면책 조항을 별도로 노출하므로, 답변 본문에 "
     "'의사와 상담하세요' 같은 자가 경고/면책 문구는 적지 마세요.\n"
     "참고 문서가 있다면 그 안의 구체적 내용을 우선 활용하고, 없다면 일반적인 지식으로 답하세요.\n"
     "참고 문서:\n{reference_text}\n"
-    "사용자 건강 컨텍스트: {context}"
+    "질문자 본인 정보: {context}"
 )
 
 
@@ -93,7 +99,7 @@ def _build_paper_sources(chunks: list[DocumentChunk]) -> list[SourceRef]:
 def _search_all(message: str) -> tuple[list[DocumentChunk], list[SourceRef]]:
     """DUR + 논문 두 컬렉션을 모두 검색해 청크와 통합 출처 목록을 만든다.
     사용자 본인 진단 질환은 논문 검색 필터로는 쓰지 않는다 — 답변 개인화는 시스템
-    프롬프트의 "사용자 건강 컨텍스트"로 이미 보장되므로, 질의 자체에 질환이 안 드러나면
+    프롬프트의 "질문자 본인 정보"로 이미 보장되므로, 질의 자체에 질환이 안 드러나면
     논문 검색을 생략한다(`disease_query_resolver.resolve_diseases` docstring 참고)."""
     dur_db = ensure_db()
     dur_chunks = search_documents(dur_db, message, settings.RAG_RETRIEVAL_LIMIT)

@@ -8,7 +8,7 @@ from ai_worker.ingest.embeddings import get_embeddings
 from ai_worker.ingest.pipeline import build_vector_store
 from ai_worker.ingest.sources import STRUCTURED
 from ai_worker.schemas.retrieval_schema import DocumentChunk
-from ai_worker.services.drug_name_resolver import DrugNameIndex, build_index
+from ai_worker.services.drug_name_resolver import DrugNameIndex, build_index, build_ingredient_index
 
 logger = setup_logger("ai_worker.retrieve_service")
 
@@ -27,7 +27,7 @@ COLLECTION_NAME = STRUCTURED
 # 좁히면 오히려 모킹이 막힌다.
 db_holder: dict[str, Any] = {
     "db": None,
-    "ingr_names": set(),
+    "ingr_names": DrugNameIndex(),
     "drug_names": DrugNameIndex(),
 }
 
@@ -53,7 +53,7 @@ def cache_searchable_names(db: Chroma) -> None:
             item_name = meta.get("item_name")
             if isinstance(item_name, str) and item_name.strip():
                 item_names.add(item_name.strip())
-        db_holder["ingr_names"] = ingr_names
+        db_holder["ingr_names"] = build_ingredient_index(ingr_names)
         db_holder["drug_names"] = build_index(item_names)
         logger.info(f"Cached {len(ingr_names)} ingredients and {len(item_names)} drug names")
     except Exception as e:
@@ -108,25 +108,22 @@ def _build_filter(query: str) -> dict[str, Any] | None:
     """질의에서 성분명이나 약 이름을 찾아 메타데이터 필터를 만든다. 못 찾으면 None.
 
     성분명을 먼저 본다 — DUR 금기/주의 규칙이 성분 단위라 더 구체적인 답이기 때문이다.
-    성분명이 없으면 약 이름으로 e약은요(효능/용법/부작용 산문)를 찾는다.
+    성분명이 없으면 약 이름으로 e약은요(효능/용법/부작용 산문)를 찾는다. 둘 다 같은 접두사
+    인덱스(`drug_name_resolver.DrugNameIndex`)로 찾는다 — 사용자는 "졸피뎀타르타르산염"이
+    아니라 "졸피뎀"까지만 치기 때문이다.
 
     둘은 서로 배타적이다: DUR 문서엔 ingr_name만, e약은요 문서엔 item_name만 있다.
     그래서 "타이레놀 같이 먹어도 돼?"는 아직 DUR 병용금기를 못 뽑는다 — 그 규칙은
     성분(아세트아미노펜)으로 키가 걸려 있고, 제품 -> 성분 변환은 별도 작업이다."""
-    query_text = query.replace(" ", "")
+    matched_ingr = db_holder["ingr_names"].resolve(query)
+    if matched_ingr is not None:
+        key, ingredients = matched_ingr
+        logger.info(f"Dynamic metadata filter applied: ingr '{key}' -> {len(ingredients)}개 성분")
+        return {"ingr_name": ingredients[0] if len(ingredients) == 1 else {"$in": ingredients}}
 
-    # 가장 긴 성분명부터 매칭을 시도하여 정확도를 높입니다.
-    for ingr in sorted(db_holder["ingr_names"], key=len, reverse=True):
-        # 양방향 부분 매칭 검사:
-        # 1. 쿼리 텍스트가 성분명의 일부인 경우 (예: "졸피뎀" -> "졸피뎀타르타르산염")
-        # 2. 성분명이 쿼리 텍스트의 일부인 경우 (예: "졸피뎀타르타르산염에 대해" -> "졸피뎀타르타르산염")
-        if (ingr in query_text) or (len(query_text) >= 2 and query_text in ingr):
-            logger.info(f"Dynamic metadata filter applied: ingr_name='{ingr}'")
-            return {"ingr_name": ingr}
-
-    matched = db_holder["drug_names"].resolve(query)
-    if matched is not None:
-        key, products = matched
+    matched_drug = db_holder["drug_names"].resolve(query)
+    if matched_drug is not None:
+        key, products = matched_drug
         logger.info(f"Dynamic metadata filter applied: drug '{key}' -> {len(products)}개 제품")
         # 브랜드 하나에 제품이 여럿이다("타이레놀" -> 정/서방정/현탁액...). 하나만 고르면
         # 엉뚱한 제형이 잡히므로 전부 넘기고 유사도가 고르게 한다.

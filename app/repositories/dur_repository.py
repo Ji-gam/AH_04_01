@@ -5,7 +5,7 @@ SQLite에서 이전) 조회 전용 리포지토리.
 폴백 게이트웨이)와는 목적이 다르다 — 이 리포지토리는 여러 약품명을 한 번에(SQL IN) 처리하는
 DUR 스크리닝 3단계 API 전용이며, 그 파일은 건드리지 않는다.
 
-DUR 규칙 테이블은 22개 원본 API 테이블 중 "품목 기준(prod, ITEM_SEQ 보유)" 8개와 "성분 기준
+DUR 규칙 테이블은 24개 원본 API 테이블 중 "품목 기준(prod, ITEM_SEQ 보유)" 8개와 "성분 기준
 (ITEM_SEQ 없이 INGR_CODE만 보유, prod보다 완성도 높음)" 7개로 나뉜다. 1~2단계는 품목 기준
 테이블을, 3단계는 성분 기준 테이블을 조회한다 — 품목 기준 데이터가 비어 있어도 성분 기준에는
 DUR 이슈가 남아있을 수 있기 때문이다.
@@ -43,14 +43,17 @@ INGREDIENT_SOURCE_TABLES: list[str] = [
     "dur_prod_efcy_dplct",
 ]
 
-# 3단계: 성분(INGR_CODE) 기준 DUR 규칙 테이블. (테이블명, 한글 라벨)
-INGREDIENT_RULE_TABLES: list[tuple[str, str]] = [
-    ("dur_pwnm_taboo", "임부금기"),
-    ("dur_odsn_atent", "노인주의"),
-    ("dur_spcify_agrde_taboo", "특정연령대금기"),
-    ("dur_cpcty_atent", "용량주의"),
-    ("dur_efcy_dplct", "효능군중복주의"),
-    ("dur_mdctn_pd_atent", "투여기간주의"),
+# 3단계: 성분(INGR_CODE) 기준 DUR 규칙 테이블. (테이블명, 한글 라벨, 규칙별 부가 수치/등급 컬럼명)
+# detail_column은 0027 마이그레이션에서 성분기준 테이블에만 추가된 CSV/API 원본 컬럼 -
+# 임부금기는 등급(GRADE), 특정연령대금기는 연령 기준(AGE_BASE), 용량주의는 최대 1일 용량
+# (MAX_QTY), 투여기간주의는 최대 투여기간(MAX_DOSAGE_TERM). 나머지 규칙엔 해당 컬럼이 없다.
+INGREDIENT_RULE_TABLES: list[tuple[str, str, str | None]] = [
+    ("dur_pwnm_taboo", "임부금기", "grade"),
+    ("dur_odsn_atent", "노인주의", None),
+    ("dur_spcify_agrde_taboo", "특정연령대금기", "age_base"),
+    ("dur_cpcty_atent", "용량주의", "max_qty"),
+    ("dur_efcy_dplct", "효능군중복주의", None),
+    ("dur_mdctn_pd_atent", "투여기간주의", "max_dosage_term"),
 ]
 
 
@@ -323,15 +326,17 @@ class DurScreeningRepository:
         params = _bind(ingr_codes, "c")
         branches = [
             f"""
-            SELECT ingr_code, ingr_name, '{label}' AS rule_type, prohbt_content, remark
+            SELECT ingr_code, ingr_name, '{label}' AS rule_type, prohbt_content, remark,
+                   {detail_column if detail_column else "NULL"} AS rule_detail
             FROM {table}
             WHERE ingr_code IN ({placeholders})
             """
-            for table, label in INGREDIENT_RULE_TABLES
+            for table, label, detail_column in INGREDIENT_RULE_TABLES
         ]
         branches.append(
             f"""
-            SELECT ingr_code, ingr_kor_name AS ingr_name, '병용금기' AS rule_type, prohbt_content, remark
+            SELECT ingr_code, ingr_kor_name AS ingr_name, '병용금기' AS rule_type, prohbt_content, remark,
+                   NULL AS rule_detail
             FROM dur_usjnt_taboo
             WHERE ingr_code IN ({placeholders})
             """
@@ -339,7 +344,7 @@ class DurScreeningRepository:
         branches.append(
             f"""
             SELECT mixture_ingr_code AS ingr_code, mixture_ingr_kor_name AS ingr_name,
-                   '병용금기' AS rule_type, prohbt_content, remark
+                   '병용금기' AS rule_type, prohbt_content, remark, NULL AS rule_detail
             FROM dur_usjnt_taboo
             WHERE mixture_ingr_code IN ({placeholders})
             """

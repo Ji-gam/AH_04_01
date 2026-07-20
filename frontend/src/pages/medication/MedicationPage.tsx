@@ -23,6 +23,8 @@ import {
 import { pinkTheme } from "../../theme/pinkTheme";
 import Modal from "../AlarmPage/components/Modal";
 
+import DoseTimesInput from "./components/DoseTimesInput";
+
 /** (T-DOC-4, 2026-07-15) 음식 칩/모달을 `FoodItem.polarity`별로 다르게 보여주기 위한 스타일
  * 묶음 — "avoid"(기본값)는 기존 핑크 주의색, "recommend"는 초록(같이 먹으면 좋음), "timing_caution"은
  * 호박색(동시 섭취는 피하되 시간차를 두면 괜찮음)으로 구분한다. */
@@ -364,7 +366,7 @@ export default function MedicationPage() {
 
   // 사용자 확정 폼 입력 값 (처방전 한 장에 여러 약이 인식될 수 있어 다중 선택 지원)
   const [selectedDrugCodes, setSelectedDrugCodes] = useState<string[]>([]);
-  const [confirmedTimes, setConfirmedTimes] = useState<string>("09:00, 13:00, 19:00");
+  const [confirmedTimes, setConfirmedTimes] = useState<string[]>(["09:00", "13:00", "19:00"]);
   // OCR 확정등록 버튼 중복 클릭 방지용 (state는 재렌더 전까지 반영이 늦어 클릭 사이 gap이
   // 생길 수 있어, 클릭 즉시 동기적으로 막아야 하는 이 용도로는 ref를 함께 쓴다).
   const [isConfirmingJob, setIsConfirmingJob] = useState(false);
@@ -375,7 +377,7 @@ export default function MedicationPage() {
   // 원하는 약이 없을 때만, 입력한 이름 그대로 새로 등록하는 기존 빠른 등록(T-MED-3, 자동 생성
   // 정책)을 보조 수단으로 남겨둔다.
   const [quickDrugName, setQuickDrugName] = useState("");
-  const [manualTimes, setManualTimes] = useState("09:00, 13:00, 19:00");
+  const [manualTimes, setManualTimes] = useState<string[]>(["09:00", "13:00", "19:00"]);
   const [hospitalName, setHospitalName] = useState(""); // 처방 병원명(선택) — 복약 시간표에 표시 (T-NTFY-2)
   const [searchLoading, setSearchLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -398,6 +400,10 @@ export default function MedicationPage() {
   const [activeTab, setActiveTab] = useState<"schedule" | "list" | "interaction" | "food">(
     "schedule",
   );
+
+  // 11번 단계: 등록약 목록 복수 선택 삭제용 — 개별 삭제 버튼과 별개로, 여러 개를 한 번에
+  // 지울 수 있도록 체크박스 선택 상태를 둔다.
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<number[]>([]);
 
   // 약물 상호작용(12번) — DurScreeningPage.tsx 화면4와 동일하게 durApi.screenInteraction/
   // screenIngredient를 등록약 이름으로 호출해서 상호작용/리콜/공유성분 3종을 함께 보여준다
@@ -437,6 +443,11 @@ export default function MedicationPage() {
     setRegDurIngredients(null);
     setFoodInteractionResult(null);
   }, [schedules.length]);
+
+  // 목록이 갱신되면(삭제/재조회) 이미 사라진 스케줄 id는 선택 상태에서도 걷어낸다.
+  useEffect(() => {
+    setSelectedScheduleIds((prev) => prev.filter((id) => schedules.some((s) => s.id === id)));
+  }, [schedules]);
 
   useEffect(() => {
     if (activeTab !== "interaction" || regDurInteractions || regDurLoading) return;
@@ -492,7 +503,7 @@ export default function MedicationPage() {
             // 인식된 약이 여러 개일 수 있으므로 기본으로 전부 선택해두고, 사용자가 해제할 수 있게 한다.
             setSelectedDrugCodes(res.candidates.map((c) => c.drug_code));
             if (res.extracted_fields?.times) {
-              setConfirmedTimes(res.extracted_fields.times.join(", "));
+              setConfirmedTimes(res.extracted_fields.times);
             }
             clearInterval(intervalId);
           } else if (res.status === "failed") {
@@ -600,10 +611,7 @@ export default function MedicationPage() {
     isConfirmingJobRef.current = true;
     setIsConfirmingJob(true);
     try {
-      const timesArray = confirmedTimes
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
+      const timesArray = confirmedTimes;
       // (T-MED, #195) 약품 개수만큼 confirm을 순차 대기하면, 약이 여러 개일수록 등록 시간이
       // 그대로 배로 늘어난다 — 서로 독립된 확정 요청이라 병렬로 보내고, 목록 재조회도
       // confirmJob마다가 아니라 전체가 끝난 뒤 한 번만 한다.
@@ -614,8 +622,10 @@ export default function MedicationPage() {
       );
       await fetchSchedules();
       alert(`${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`);
-      setCurrentJobId(null);
-      setJobStatus(null);
+      // currentJobId/candidates는 그대로 둔다 — 후보별 등록 여부는 등록약 목록(schedules)에서
+      // 파생되므로(아래 isRegistered), 등록 목록에서 삭제하면 같은 후보를 재업로드 없이 다시
+      // 선택해 등록할 수 있어야 한다. 방금 제출한 선택 상태만 비운다.
+      setSelectedDrugCodes([]);
     } catch (err) {
       console.error(err);
     } finally {
@@ -654,10 +664,7 @@ export default function MedicationPage() {
   const handleQuickRegister = async () => {
     if (!quickDrugName.trim()) return;
     try {
-      const timesArray = manualTimes
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
+      const timesArray = manualTimes;
       const res = await quickRegister(quickDrugName, timesArray, hospitalName.trim() || null);
       if (res.status === "registered") {
         alert(
@@ -685,10 +692,7 @@ export default function MedicationPage() {
   const handleConfirmManualSelection = async () => {
     if (!selectedManualCode) return;
     try {
-      const timesArray = manualTimes
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean);
+      const timesArray = manualTimes;
       await createManualSchedule(selectedManualCode, timesArray, hospitalName.trim() || null);
       alert("복약 일정이 성공적으로 등록되었습니다!");
       setQuickDrugName("");
@@ -706,6 +710,33 @@ export default function MedicationPage() {
     if (!window.confirm("이 복약 스케줄을 삭제하시겠습니까?")) return;
     try {
       await deleteSchedule(scheduleId);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const toggleScheduleSelection = (scheduleId: number) => {
+    setSelectedScheduleIds((prev) =>
+      prev.includes(scheduleId) ? prev.filter((id) => id !== scheduleId) : [...prev, scheduleId],
+    );
+  };
+
+  const toggleSelectAllSchedules = () => {
+    setSelectedScheduleIds((prev) =>
+      prev.length === schedules.length ? [] : schedules.map((s) => s.id),
+    );
+  };
+
+  // 복수 선택 삭제 — deleteSchedule이 건마다 목록을 재조회하므로, 경합을 피하려고 순차 처리한다.
+  const handleBulkDeleteSchedules = async () => {
+    if (selectedScheduleIds.length === 0) return;
+    if (!window.confirm(`선택한 ${selectedScheduleIds.length}개의 복약 스케줄을 삭제하시겠습니까?`))
+      return;
+    try {
+      for (const scheduleId of selectedScheduleIds) {
+        await deleteSchedule(scheduleId);
+      }
+      setSelectedScheduleIds([]);
     } catch (err) {
       console.error(err);
     }
@@ -926,7 +957,10 @@ export default function MedicationPage() {
                   {candidates.map((c) => {
                     const durInfo = durWarningsByName[c.drug_name];
                     const activeFlags = durInfo?.dur_simple.filter((f) => f.present) ?? [];
-                    const checked = selectedDrugCodes.includes(c.drug_code);
+                    // 등록 여부는 등록약 목록(schedules)에서 이름으로 파생한다 — 등록약이 목록에서
+                    // 삭제되면 자동으로 다시 선택 가능해지고, 이미지를 다시 올릴 필요가 없다.
+                    const isRegistered = schedules.some((s) => s.drug_name === c.drug_name);
+                    const checked = !isRegistered && selectedDrugCodes.includes(c.drug_code);
                     return (
                       <label
                         key={c.drug_code}
@@ -937,8 +971,9 @@ export default function MedicationPage() {
                           border: `1px solid ${checked ? pinkTheme.primary : pinkTheme.border}`,
                           borderRadius: 12,
                           padding: 10,
-                          cursor: "pointer",
-                          background: pinkTheme.cardBg,
+                          cursor: isRegistered ? "not-allowed" : "pointer",
+                          background: isRegistered ? pinkTheme.border : pinkTheme.cardBg,
+                          opacity: isRegistered ? 0.6 : 1,
                           boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
                         }}
                       >
@@ -946,6 +981,7 @@ export default function MedicationPage() {
                           type="checkbox"
                           value={c.drug_code}
                           checked={checked}
+                          disabled={isRegistered}
                           style={{ marginTop: 3 }}
                           onChange={(e) =>
                             setSelectedDrugCodes((prev) =>
@@ -971,7 +1007,24 @@ export default function MedicationPage() {
                           💊
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>{c.drug_name}</div>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>
+                            {c.drug_name}
+                            {isRegistered && (
+                              <span
+                                style={{
+                                  marginLeft: 8,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  color: pinkTheme.textMuted,
+                                  border: `1px solid ${pinkTheme.textMuted}`,
+                                  borderRadius: 999,
+                                  padding: "1px 8px",
+                                }}
+                              >
+                                등록됨
+                              </span>
+                            )}
+                          </div>
                           <div style={{ fontSize: 11.5, color: pinkTheme.textMuted }}>
                             매칭률 {(c.match_rate * 100).toFixed(0)}%
                             {c.match_rate < 0.6 && " · 마스터 DB 미등록, 신규 인식"}
@@ -1115,23 +1168,13 @@ export default function MedicationPage() {
                   )}
 
                 {/* 9~10 단계: 복약 시간표 설정 */}
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: "5px", margin: "10px 0" }}
-                >
-                  <label>
-                    <strong>복용 시간대 설정 (쉼표 구분):</strong>
-                  </label>
-                  <input
-                    type="text"
-                    value={confirmedTimes}
-                    onChange={(e) => setConfirmedTimes(e.target.value)}
-                    placeholder="예: 09:00, 13:00, 19:00"
-                  />
+                <div style={{ margin: "10px 0" }}>
+                  <DoseTimesInput value={confirmedTimes} onChange={setConfirmedTimes} />
                 </div>
 
                 <button
                   onClick={handleConfirmSubmit}
-                  disabled={selectedDrugCodes.length === 0 || isConfirmingJob}
+                  disabled={!currentJobId || selectedDrugCodes.length === 0 || isConfirmingJob}
                   style={{
                     width: "100%",
                     padding: "10px",
@@ -1159,15 +1202,8 @@ export default function MedicationPage() {
                 약이 없으면, 입력한 이름 그대로 새로 등록할 수도 있습니다(마스터 DB에 없는 약도 등록
                 자체는 막히지 않습니다).
               </p>
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: "5px", margin: "10px 0" }}
-              >
-                <label>복용 시간대 (쉼표 구분):</label>
-                <input
-                  type="text"
-                  value={manualTimes}
-                  onChange={(e) => setManualTimes(e.target.value)}
-                />
+              <div style={{ margin: "10px 0" }}>
+                <DoseTimesInput value={manualTimes} onChange={setManualTimes} />
               </div>
               <div
                 style={{ display: "flex", flexDirection: "column", gap: "5px", margin: "10px 0" }}
@@ -1280,29 +1316,88 @@ export default function MedicationPage() {
               <p>등록된 복약 스케줄이 없습니다.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "5px",
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedScheduleIds.length === schedules.length}
+                      onChange={toggleSelectAllSchedules}
+                    />
+                    전체 선택 ({selectedScheduleIds.length}/{schedules.length})
+                  </label>
+                  <button
+                    onClick={handleBulkDeleteSchedules}
+                    disabled={isLoading || selectedScheduleIds.length === 0}
+                    style={{
+                      backgroundColor: pinkTheme.danger,
+                      color: "#fff",
+                      border: "none",
+                      padding: "5px 12px",
+                      borderRadius: "4px",
+                      cursor:
+                        isLoading || selectedScheduleIds.length === 0 ? "not-allowed" : "pointer",
+                      opacity: selectedScheduleIds.length === 0 ? 0.5 : 1,
+                    }}
+                  >
+                    선택 삭제 ({selectedScheduleIds.length})
+                  </button>
+                </div>
                 {schedules.map((s) => (
                   <div
                     key={s.id}
                     style={{
-                      border: `1px solid ${pinkTheme.border}`,
+                      border: `1px solid ${
+                        selectedScheduleIds.includes(s.id) ? pinkTheme.primary : pinkTheme.border
+                      }`,
                       padding: "10px",
                       borderRadius: "4px",
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "flex-start",
+                      gap: 10,
                     }}
                   >
-                    <div>
-                      <strong>{s.drug_name}</strong>
-                      <p style={{ margin: "5px 0 0 0", fontSize: "14px" }}>
-                        복용 시간: {s.times.join(", ")}
-                      </p>
-                      {s.source_job_id && (
-                        <span style={{ fontSize: "11px", color: pinkTheme.success }}>
-                          ✓ OCR 인식을 통해 자동 등록됨
-                        </span>
-                      )}
-                    </div>
+                    <label
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-start",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedScheduleIds.includes(s.id)}
+                        onChange={() => toggleScheduleSelection(s.id)}
+                        style={{ marginTop: 4 }}
+                      />
+                      <div>
+                        <strong>{s.drug_name}</strong>
+                        <p style={{ margin: "5px 0 0 0", fontSize: "14px" }}>
+                          복용 시간: {s.times.join(", ")}
+                        </p>
+                        {s.source_job_id && (
+                          <span style={{ fontSize: "11px", color: pinkTheme.success }}>
+                            ✓ OCR 인식을 통해 자동 등록됨
+                          </span>
+                        )}
+                      </div>
+                    </label>
                     <button
                       onClick={() => handleDeleteSchedule(s.id)}
                       disabled={isLoading}

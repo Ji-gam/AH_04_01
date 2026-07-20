@@ -49,7 +49,11 @@ class MedicationRepository:
         return schedule
 
     async def list_schedules_by_profile(self, session: AsyncSession, profile_id: int) -> list[MedicationSchedule]:
-        result = await session.execute(select(MedicationSchedule).where(MedicationSchedule.profile_id == profile_id))
+        result = await session.execute(
+            select(MedicationSchedule)
+            .where(MedicationSchedule.profile_id == profile_id)
+            .order_by(MedicationSchedule.id.asc())
+        )
         return list(result.scalars().all())
 
     async def get_schedule_by_id(self, session: AsyncSession, schedule_id: int) -> MedicationSchedule | None:
