@@ -557,6 +557,8 @@ async def _match_existing_by_word(
             continue
         stripped = field.text.lstrip("*").strip()
         for med in await repo.search_medication_by_name(db_session, stripped):
+            if med.medication_name != stripped:
+                continue
             if med.id not in seen_ids:
                 seen_ids.add(med.id)
                 matched.append(med)
