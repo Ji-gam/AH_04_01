@@ -977,27 +977,33 @@ async def _fetch_drug_summary_with_fallback(medication_name: str) -> list[dict]:
     return summaries
 
 
-# (#195) e약은요 조회 결과는 약품명이 같으면 항상 같은 카드가 나온다(정적 공공 데이터) — 확정
-# 등록 1건마다, 그리고 "음식(13번)" 탭을 열 때마다 등록약 전부에 대해 매번 실시간 API를 다시
-# 부르는 게 느린 원인 중 하나였다. 프로세스 메모리에 약품명 기준으로 캐싱해 반복 조회를 없앤다.
+# (#195) 조회 결과는 약품명이 같으면 항상 같은 카드가 나온다(정적 공공 데이터) — 확정 등록
+# 1건마다, 그리고 "음식(13번)" 탭을 열 때마다 등록약 전부에 대해 매번 다시 부르는 게 느린 원인
+# 중 하나였다. 프로세스 메모리에 약품명 기준으로 캐싱해 반복 조회를 없앤다. 3단계(느린 실시간
+# e약은요 API) 결과만 캐싱한다 — 1,2단계는 MySQL 조회라 이미 충분히 빠르다.
 _food_guide_card_cache: dict[str, GuideCard] = {}
 
 
-async def _build_food_interaction_guide_card(medication_name: str) -> GuideCard:
-    """(T-DOC-2) e약은요 API의 `intrcQesitm`(상호작용 문항)에서 음식/음주 관련 주의사항을 가져와
-    GuideCard로 변환한다. 항상 카드를 반환한다(등록약 여러 개 중 일부만 카드가 사라지면 "그
-    약은 검사 안 했다"처럼 보이므로) — "확인된 주의사항 없음"과 "정보를 못 찾아 확인 불가"를
-    서로 다른 문구로 명시해 구분한다. (T-DOC-3) e약은요 호출 전에 식약처 복약안내서 참조 테이블에서
-    성분명 매칭을 먼저 시도한다 — 매칭되면 그쪽이 더 정확하므로 e약은요 호출 자체를 생략한다."""
-    cached = _food_guide_card_cache.get(medication_name)
-    if cached is not None:
-        return cached
-    card = await _build_food_interaction_guide_card_uncached(medication_name)
-    _food_guide_card_cache[medication_name] = card
-    return card
+async def _fetch_food_intrc_from_local_db(session: AsyncSession, medication_name: str) -> str | None:
+    """(T-DOC-5) 2단계: `drugs_data`(MySQL, e약은요 API를 미리 수집해둔 스냅샷, 4,758건)에서
+    `intrc_qesitm`을 조회한다. 실시간 API 호출 없이 이미 저장된 범위 안이면 즉시 응답 가능하다.
+    실API와 마찬가지로 'NNmg' 접미사가 실제 품목명과 안 맞는 경우가 있어 접미사를 뗀 이름으로도
+    재시도한다. 반환값이 None이면 이 약이 스냅샷에 아예 없다는 뜻 — 그 경우에만 3단계(느린
+    실시간 API, `_build_food_interaction_guide_card_slow`) 호출이 필요하다."""
+    dur_repo = DurDrugRepository()
+    text_value = await dur_repo.find_food_intrc_text(session, medication_name)
+    if text_value is None:
+        stripped_name = _strip_trailing_dosage(medication_name)
+        if stripped_name:
+            text_value = await dur_repo.find_food_intrc_text(session, stripped_name)
+    return text_value
 
 
-async def _build_food_interaction_guide_card_uncached(medication_name: str) -> GuideCard:
+async def _build_food_interaction_guide_card_fast(session: AsyncSession, medication_name: str) -> GuideCard | None:
+    """(T-DOC-5) 1,2단계(식약처 참조 테이블 → MySQL `drugs_data` 스냅샷)만으로 확인한다 —
+    실시간 API를 전혀 호출하지 않으므로 항상 빠르다. 둘 다 매칭되지 않으면(주로 상표명이면서
+    e약은요 스냅샷에도 없는 약) None을 반환해, 호출부가 느린 3단계(`_build_food_interaction_guide_card_slow`)로
+    넘어가야 함을 알린다."""
     title = f"{medication_name} · {_FOOD_GUIDE_CARD_TITLE}"
 
     reference_entry = _match_food_drug_reference(medication_name)
@@ -1008,6 +1014,24 @@ async def _build_food_interaction_guide_card_uncached(medication_name: str) -> G
             severity="caution",
             food_items=_food_items_from_reference(reference_entry) or None,
         )
+
+    raw_interaction_text = await _fetch_food_intrc_from_local_db(session, medication_name)
+    if raw_interaction_text is None:
+        return None
+
+    food_text = _extract_food_related_sentences(raw_interaction_text) if raw_interaction_text.strip() else None
+    if not food_text:
+        return GuideCard(title=title, content=_NO_FOOD_INTERACTION_MESSAGE, severity="info")
+
+    return GuideCard(
+        title=title, content=food_text, severity="caution", food_items=_extract_food_items(food_text) or None
+    )
+
+
+async def _build_food_interaction_guide_card_slow(medication_name: str) -> GuideCard:
+    """(T-DOC-5) 3단계: 실시간 e약은요 API 호출(느림). `_build_food_interaction_guide_card_fast`가
+    None을 반환해 1,2단계로는 확인이 안 된 약에 대해서만 호출해야 한다."""
+    title = f"{medication_name} · {_FOOD_GUIDE_CARD_TITLE}"
 
     try:
         summaries = await _fetch_drug_summary_with_fallback(medication_name)
@@ -1025,6 +1049,27 @@ async def _build_food_interaction_guide_card_uncached(medication_name: str) -> G
     return GuideCard(
         title=title, content=food_text, severity="caution", food_items=_extract_food_items(food_text) or None
     )
+
+
+async def _build_food_interaction_guide_card_slow_cached(medication_name: str) -> GuideCard:
+    cached = _food_guide_card_cache.get(medication_name)
+    if cached is not None:
+        return cached
+    card = await _build_food_interaction_guide_card_slow(medication_name)
+    _food_guide_card_cache[medication_name] = card
+    return card
+
+
+async def _build_food_interaction_guide_card(session: AsyncSession, medication_name: str) -> GuideCard:
+    """(T-DOC-2) 1,2단계(참조 테이블/MySQL 스냅샷)로 확인되면 그 결과를 바로 반환하고,
+    안 되면 3단계(느린 실시간 e약은요 API)까지 이어서 확인한다 — 등록 확정 시점의 1회성
+    안내처럼 한 번에 완전한 결과가 필요한 호출부용이다. 등록약이 많아 반복 조회되는
+    "음식(13번)" 탭은 이 함수 대신 `_build_food_interaction_guide_card_fast`로 즉시 응답하고
+    미확인분만 별도 엔드포인트에서 `_build_food_interaction_guide_card_slow_cached`로 채운다."""
+    fast_card = await _build_food_interaction_guide_card_fast(session, medication_name)
+    if fast_card is not None:
+        return fast_card
+    return await _build_food_interaction_guide_card_slow_cached(medication_name)
 
 
 async def _execute_ocr_logic(
@@ -1187,7 +1232,7 @@ class MedicationService:
         # 13번: 음식(T-DOC-2) — 등록된 약의 e약은요 상호작용 문항에서 음식/음주 주의사항을 안내한다.
         guide_cards = []
         if med:
-            guide_cards.append(await _build_food_interaction_guide_card(med.medication_name))
+            guide_cards.append(await _build_food_interaction_guide_card(session, med.medication_name))
 
         return RecognitionConfirmResult(status="confirmed", guide_cards=guide_cards)
 
@@ -1341,20 +1386,55 @@ class MedicationService:
         return InteractionCheckResult(warnings=warnings, checked_count=len(meds_with_seq))
 
     async def check_food_interactions(self, session: AsyncSession, profile_id: int) -> FoodInteractionCheckResult:
-        """(T-DOC-2) 등록약 전체를 대상으로 e약은요 상호작용 문항에서 음식/음주 주의사항을 모은다.
+        """(T-DOC-2/T-DOC-5) 등록약 전체를 대상으로 음식/음주 주의사항을 모은다. 1,2단계(식약처
+        참조 테이블 → MySQL `drugs_data` 스냅샷)만으로 즉시 응답한다 — 느린 3단계(실시간 e약은요
+        API)는 여기서 호출하지 않고, 확인 안 된 약 이름만 `pending_medication_names`에 담아
+        돌려준다. 나머지는 `check_food_interactions_pending`을 별도로 호출해 채운다.
         confirm_recognition_job의 1회성 안내와 달리, OCR로 등록했든 수동으로 등록했든 상관없이
         "음식(13번)" 탭을 열 때마다 현재 등록약 전체 기준으로 조회한다."""
         schedules = await self._repository.list_schedules_by_profile(session, profile_id)
         medications = list({s.medication_id: s.medication for s in schedules}.values())
 
-        guide_cards = [await _build_food_interaction_guide_card(med.medication_name) for med in medications]
+        guide_cards: list[GuideCard] = []
+        pending_medication_names: list[str] = []
+        for med in medications:
+            card = await _build_food_interaction_guide_card_fast(session, med.medication_name)
+            if card is None:
+                pending_medication_names.append(med.medication_name)
+                continue
+            guide_cards.append(card)
 
         # (T-DOC-3) 실제 주의사항이 있는 카드(severity="caution")를 "확인 안 됨"/"주의사항 없음"
         # 카드(severity="info")보다 위로 올린다 — 등록약이 많을수록 실제로 봐야 할 카드가 뒤로
         # 밀려 놓치기 쉽다. 그룹 내 상대 순서(등록약 순서)는 그대로 유지한다(stable sort).
         guide_cards.sort(key=lambda card: card.severity != "caution")
 
-        return FoodInteractionCheckResult(guide_cards=guide_cards, checked_count=len(medications))
+        return FoodInteractionCheckResult(
+            guide_cards=guide_cards,
+            checked_count=len(medications),
+            pending_medication_names=pending_medication_names,
+        )
+
+    async def check_food_interactions_pending(
+        self, session: AsyncSession, profile_id: int
+    ) -> FoodInteractionCheckResult:
+        """(T-DOC-5) `check_food_interactions`가 1,2단계로 확인하지 못해 넘긴(주로 상표명이면서
+        `drugs_data` 스냅샷에도 없는) 약만 골라 느린 3단계(실시간 e약은요 API)로 확인한다.
+        결과는 약품명 기준 프로세스 메모리 캐시에 저장되어(`_build_food_interaction_guide_card_slow_cached`)
+        같은 약을 반복 호출해도 API를 다시 부르지 않는다."""
+        schedules = await self._repository.list_schedules_by_profile(session, profile_id)
+        medications = list({s.medication_id: s.medication for s in schedules}.values())
+
+        guide_cards: list[GuideCard] = []
+        for med in medications:
+            fast_card = await _build_food_interaction_guide_card_fast(session, med.medication_name)
+            if fast_card is not None:
+                continue
+            guide_cards.append(await _build_food_interaction_guide_card_slow_cached(med.medication_name))
+
+        guide_cards.sort(key=lambda card: card.severity != "caution")
+
+        return FoodInteractionCheckResult(guide_cards=guide_cards, checked_count=len(guide_cards))
 
     async def search_medications(self, session: AsyncSession, query: str) -> list[dict]:
         """수동 등록 검색창의 자동완성. MySQL(Tier2) 후보에 더해, "더보기 > 약품 검색"이 참조하는
@@ -1433,7 +1513,7 @@ class MedicationService:
 
         guide_cards = []
         if med:
-            guide_cards.append(await _build_food_interaction_guide_card(med.medication_name))
+            guide_cards.append(await _build_food_interaction_guide_card(session, med.medication_name))
 
         return RecognitionConfirmResult(status="confirmed", guide_cards=guide_cards)
 
@@ -1462,6 +1542,14 @@ class MedicationService:
         if not is_guardian:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
         return await self.check_food_interactions(session, target_profile_id)
+
+    async def check_food_interactions_pending_for_family(
+        self, session: AsyncSession, requester_profile_id: int, target_profile_id: int
+    ) -> FoodInteractionCheckResult:
+        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
+        if not is_guardian:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        return await self.check_food_interactions_pending(session, target_profile_id)
 
     async def delete_schedule_for_family(
         self, session: AsyncSession, requester_profile_id: int, schedule_id: int

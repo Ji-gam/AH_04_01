@@ -140,11 +140,13 @@ async def check_medication_interactions(
 @medication_router.get(
     "/medications/food-interactions",
     response_model=FoodInteractionCheckResult,
-    summary="등록약 기준 음식/음주 주의사항 체크",
+    summary="등록약 기준 음식/음주 주의사항 체크 (빠른 응답)",
     description=(
-        "현재 프로필에 등록된 약 전체를 대상으로 식약처 e약은요 상호작용 문항(intrcQesitm)에서 "
-        "음식/음주 관련 주의사항을 모아 반환합니다. OCR로 등록했든 수동으로 등록했든 상관없이 "
-        "등록된 모든 약이 대상입니다(T-DOC-2)."
+        "현재 프로필에 등록된 약 전체를 대상으로, 식약처 참조 테이블과 MySQL에 이미 적재된 "
+        "e약은요 스냅샷(drugs_data)만으로 음식/음주 관련 주의사항을 모아 반환합니다. 실시간 "
+        "외부 API를 호출하지 않으므로 항상 빠릅니다(T-DOC-5). 이 두 단계로 확인되지 않은 약은 "
+        "`pending_medication_names`에 담겨 오며, 그 약들은 `/medications/food-interactions/pending`을 "
+        "별도로 호출해 확인해야 합니다."
     ),
 )
 async def check_medication_food_interactions(
@@ -153,6 +155,25 @@ async def check_medication_food_interactions(
 ) -> FoodInteractionCheckResult:
     service = MedicationService()
     return await service.check_food_interactions(session, profile.id)
+
+
+@medication_router.get(
+    "/medications/food-interactions/pending",
+    response_model=FoodInteractionCheckResult,
+    summary="빠른 응답에서 확인되지 않은 약의 음식/음주 주의사항 체크 (느린 실시간 API)",
+    description=(
+        "`/medications/food-interactions`가 참조 테이블과 MySQL 스냅샷만으로 확인하지 못한 "
+        "(주로 상표명이면서 e약은요 스냅샷에도 없는) 약만 골라 식약처 e약은요 실시간 API를 "
+        "호출해 확인합니다. 외부 API 호출이 포함되어 느릴 수 있어(T-DOC-5), 빠른 응답을 먼저 "
+        "보여준 뒤 별도로 호출하는 용도입니다."
+    ),
+)
+async def check_medication_food_interactions_pending(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> FoodInteractionCheckResult:
+    service = MedicationService()
+    return await service.check_food_interactions_pending(session, profile.id)
 
 
 async def _query_mysql_dur_profiles(
@@ -420,7 +441,7 @@ async def check_interactions_for_family(
 @medication_router.get(
     "/medications/food-interactions/family/{target_profile_id}",
     response_model=FoodInteractionCheckResult,
-    summary="가족 구성원의 음식 상호작용 확인 (가족관리)",
+    summary="가족 구성원의 음식 상호작용 확인 (가족관리, 빠른 응답)",
 )
 async def check_food_interactions_for_family(
     target_profile_id: int,
@@ -429,6 +450,20 @@ async def check_food_interactions_for_family(
 ) -> FoodInteractionCheckResult:
     service = MedicationService()
     return await service.check_food_interactions_for_family(session, profile.id, target_profile_id)
+
+
+@medication_router.get(
+    "/medications/food-interactions/pending/family/{target_profile_id}",
+    response_model=FoodInteractionCheckResult,
+    summary="가족 구성원의 음식 상호작용 확인 (가족관리, 느린 실시간 API)",
+)
+async def check_food_interactions_pending_for_family(
+    target_profile_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> FoodInteractionCheckResult:
+    service = MedicationService()
+    return await service.check_food_interactions_pending_for_family(session, profile.id, target_profile_id)
 
 
 @medication_router.delete(
