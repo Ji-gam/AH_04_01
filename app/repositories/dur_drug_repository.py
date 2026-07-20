@@ -236,6 +236,20 @@ class DurDrugRepository:
             dur_rules=dur_rules,
         )
 
+    async def find_food_intrc_text(self, session: AsyncSession, item_name: str) -> str | None:
+        """(T-DOC-5) `drugs_data`(e약은요 스냅샷, 4,758건)에서 `intrc_qesitm`만 가볍게 조회한다.
+        `find_drug_info`는 성분/DUR규칙 등을 동반 조회해 음식 상호작용 카드 용도로는 무겁다.
+        반환값이 None이면 이 약이 `drugs_data`에 아예 없다는 뜻(실시간 e약은요 API 폴백 필요) —
+        행은 있는데 텍스트가 비어있는 경우와 구분해야 하므로 빈 문자열("")과 None을 구분해서 돌려준다."""
+        result = await session.execute(
+            text("SELECT intrc_qesitm FROM drugs_data WHERE item_name LIKE :q LIMIT 1"),
+            {"q": f"%{item_name}%"},
+        )
+        row = result.first()
+        if row is None:
+            return None
+        return row[0] or ""
+
     async def find_dur_warnings(
         self, session: AsyncSession, item_name: str, *, pregnant: bool, geriatric: bool
     ) -> list[str]:
