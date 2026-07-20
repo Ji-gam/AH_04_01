@@ -68,13 +68,9 @@ class FakeProfileRepository:
 
 
 @dataclass
-class FakeMedication:
-    medication_name: str
-
-
-@dataclass
 class FakeMedicationSchedule:
-    medication: FakeMedication
+    item_seq: str
+    display_name: str | None = None
     times: list[str] = field(default_factory=lambda: ["08:00"])
 
 
@@ -268,7 +264,7 @@ async def test_stream_reply_lowercases_history_roles_for_openai_compatibility():
 async def test_stream_reply_passes_history_context_and_injected_dur_warnings():
     repository = FakeChatRepository()
     profiles = FakeProfileRepository({2: FakeProfile(id=2, name="어르신", age=75)})
-    medications = FakeMedicationRepository({2: [FakeMedicationSchedule(medication=FakeMedication("아스피린"))]})
+    medications = FakeMedicationRepository({2: [FakeMedicationSchedule(item_seq="1", display_name="아스피린")]})
     fake_dur_repo = FakeDurDrugRepository(["[노인주의 경고] 아스피린: 테스트용 경고 문구"])
     retriever = FakeRetriever()
     service = _build_service(
@@ -366,7 +362,7 @@ async def test_medical_relatedness_uses_llm_when_injected_dur_warning_present_ev
     (개인 경고 자체가 이미 의료 관련 콘텐츠라는 신호이기 때문)."""
     repository = FakeChatRepository()
     profiles = FakeProfileRepository({2: FakeProfile(id=2, name="어르신", age=75)})
-    medications = FakeMedicationRepository({2: [FakeMedicationSchedule(medication=FakeMedication("아스피린"))]})
+    medications = FakeMedicationRepository({2: [FakeMedicationSchedule(item_seq="1", display_name="아스피린")]})
     fake_dur_repo = FakeDurDrugRepository(["[노인주의 경고] 아스피린: 테스트용 경고 문구"])
     stream_chunks = [{"type": "sources", "sources": []}, {"type": "token", "content": "답변"}]
     retriever = FakeRetriever(stream_chunks=stream_chunks, is_medical_related=True)
@@ -449,6 +445,11 @@ class FakeDurDrugRepository:
         self.received_calls.append((item_name, pregnant, geriatric))
         return self._warnings
 
+    async def get_names_by_item_seqs(self, session, item_seqs: set[str]) -> dict[str, str]:
+        """(T-MED-16) 이 테스트들은 모두 `FakeMedicationSchedule.display_name`을 채워서
+        이름 해석이 필요 없으므로, 실제 DB 조회 없이 빈 결과만 돌려준다."""
+        return {}
+
 
 async def test_collect_dur_warnings_gates_on_pregnant_flag():
     """임부금기 게이팅 로직 자체(진짜 프로필로는 재현 불가)를 직접 검증한다."""
@@ -511,8 +512,8 @@ async def test_stream_reply_injects_interaction_warnings_for_two_or_more_medicat
     medications = FakeMedicationRepository(
         {
             3: [
-                FakeMedicationSchedule(medication=FakeMedication("와파린")),
-                FakeMedicationSchedule(medication=FakeMedication("아스피린")),
+                FakeMedicationSchedule(item_seq="1", display_name="와파린"),
+                FakeMedicationSchedule(item_seq="2", display_name="아스피린"),
             ]
         }
     )
@@ -534,6 +535,7 @@ async def test_stream_reply_injects_interaction_warnings_for_two_or_more_medicat
         repository,
         profile_repository=profiles,
         medication_repository=medications,
+        dur_drug_repository=FakeDurDrugRepository([]),
         dur_screening_service=fake_screening_service,
         retriever=retriever,
     )

@@ -23,13 +23,9 @@ class FakeProfile:
 
 
 @dataclass
-class FakeMedication:
-    medication_name: str
-
-
-@dataclass
 class FakeMedicationSchedule:
-    medication: FakeMedication
+    item_seq: str
+    display_name: str | None = None
     times: list[str] = field(default_factory=lambda: ["08:00"])
 
 
@@ -95,8 +91,19 @@ def test_is_pregnant_defaults_to_false_when_unanswered():
 
 def test_medications_maps_name_and_times_per_day():
     profile = FakeProfile(id=1)
-    medications = [FakeMedicationSchedule(medication=FakeMedication("메트포르민"), times=["08:00", "20:00"])]
+    medications = [FakeMedicationSchedule(item_seq="111", display_name="메트포르민", times=["08:00", "20:00"])]
 
     context = ChatContextService().build(profile, medications)
 
     assert context["medications"] == [{"name": "메트포르민", "times_per_day": 2}]
+
+
+def test_medications_falls_back_to_resolved_drug_names_when_no_display_name():
+    """(T-MED-16) 마스터 데이터에서 찾은 약은 display_name이 비어 있으므로, 호출자가 미리
+    조회해 넘긴 `drug_names`에서 이름을 가져와야 한다."""
+    profile = FakeProfile(id=1)
+    medications = [FakeMedicationSchedule(item_seq="111", times=["08:00"])]
+
+    context = ChatContextService().build(profile, medications, {"111": "메트포르민"})
+
+    assert context["medications"] == [{"name": "메트포르민", "times_per_day": 1}]

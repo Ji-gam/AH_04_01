@@ -346,9 +346,9 @@ async def delete_medication_schedule(
     "/medications/search",
     summary="의약품 마스터 수동 검색",
     description=(
-        "약품명 또는 외형 검색 fallback을 위한 검색창의 자동완성 API입니다. MySQL 캐시(Tier2)에"
-        "더해 '더보기 > 약품 검색'(search-dur)이 참조하는 것과 같은 MySQL 품목 마스터"
-        "(dur_prod_master_list)도 함께 조회해, 두 화면에서 같은 약이 서로 다르게 보이지 않도록 한다."
+        "약품명 검색창의 자동완성 API입니다. '더보기 > 약품 검색'(search-dur)이 참조하는 것과 같은 "
+        "MySQL 품목 마스터(dur_prod_master_list)를 조회해, 두 화면에서 같은 약이 서로 다르게 보이지 "
+        "않도록 한다(T-MED-16). 각 결과의 `item_seq`를 `POST /medications`의 drug_code로 넘기면 등록된다."
     ),
 )
 async def search_medications(

@@ -32,7 +32,7 @@ from app.dtos.medication_dto import (
     RecognitionJobCreateResult,
     RecognitionResult,
 )
-from app.models.medication_model import Medication, MedicationRecognitionJob, MedicationSchedule
+from app.models.medication_model import MedicationRecognitionJob, MedicationSchedule
 from app.repositories.dur_drug_repository import DurDrugRepository
 from app.repositories.family_repository import FamilyRepository
 from app.repositories.food_drug_interaction_repository import FoodDrugInteractionRepository
@@ -98,21 +98,15 @@ _TRAILING_PARTICLE_PATTERN = re.compile(r"(?:에서|부터|까지|으로|처럼|
 # 편집거리 기반 유사도를 비교한다. 임계값은 실제 오탈자 케이스("노스판매취" vs "노스판패취" ≈
 # 0.8)와 노이즈 텍스트(처방전 설명 문구 등, 대부분 0.3 미만)를 실측해 분리되는 지점으로 정했다.
 _FUZZY_MATCH_THRESHOLD = 0.8
-_FUZZY_MATCH_CANDIDATE_LIMIT = 2000
 _FUZZY_MATCH_MIN_KOREAN_LEN = 3
 
-# (#108) MySQL(Tier2) 캐시는 실제 조회된 약만 그때그때 쌓이는 지연 적재 구조라 아직 작다.
-# 로컬에 이미 있는 Tier1 SQLite 마스터 DB(27,000여 개, app/database/dur_drug_light.db)를
-# 매칭/퍼지 후보에도 같이 써서, MySQL에 없는 약도 정확/유사 매칭될 수 있게 한다. 27,000개
-# 전체를 매번 편집거리로 비교하면 느리므로, 한글 쿼리의 앞 몇 글자를 접두어로 SQLite에서
-# 먼저 후보를 좁힌다(대부분의 OCR 오인식은 뒷글자에서 발생하고 앞글자는 맞는 경우가 많다).
+# (#108) 마스터 DB(dur_prod_master_list, 27,000여 개)를 매칭/퍼지 후보로 쓴다. 전체를 매번
+# 편집거리로 비교하면 느리므로, 한글 쿼리의 앞 몇 글자를 접두어로 먼저 후보를 좁힌다(대부분의
+# OCR 오인식은 뒷글자에서 발생하고 앞글자는 맞는 경우가 많다).
 _FUZZY_TIER1_PREFIX_LEN = 2
 _FUZZY_TIER1_CANDIDATE_LIMIT = 300
 
-# ("더보기 > 약품 검색"과 마스터 DB 불일치 수정) 수동 등록(자동완성 검색/빠른 등록)은 그동안
-# MySQL(Tier2) 캐시만 봐서, "더보기 > 약품 검색"이 참조하는 Tier1 SQLite(dur_drug_light.db,
-# 최근 갱신으로 더 커짐)에는 있는 약도 "마스터 DB에 없음"으로 떨어졌다. OCR 등록 경로와
-# 동일하게 Tier1을 함께 조회하도록 맞춘다.
+# ("더보기 > 약품 검색"과 마스터 DB 불일치 수정) 수동 등록(자동완성 검색/빠른 등록) 후보 조회 상한.
 _SEARCH_TIER1_CANDIDATE_LIMIT = 10
 
 
@@ -121,9 +115,8 @@ def _korean_only(text: str) -> str:
 
 
 def _best_fuzzy_candidate(query: str, candidates: list[tuple[str, str]], threshold: float) -> str | None:
-    """`candidates`((key, 이름)) 중 `query`(한글만 남긴 OCR 텍스트)와 가장 유사하면서 임계값
-    이상인 것의 key를 반환한다. key는 호출부에 따라 MySQL Medication.id(문자열화) 또는 Tier1
-    item_seq일 수 있다 — 이 함수는 키의 의미를 모른 채 순수 문자열 유사도만 비교한다.
+    """`candidates`((item_seq, 이름)) 중 `query`(한글만 남긴 OCR 텍스트)와 가장 유사하면서
+    임계값 이상인 것의 item_seq를 반환한다.
 
     (#120) 후보와 길이가 같은 것만 비교한다 — 이 함수의 목적은 "글자 하나가 비슷한 다른 글자로
     잘못 읽힌" 같은-길이 치환 오류 구제(T-MED-9)이지, "성분명만 언급되고 제형 접미사가 없는"
@@ -142,17 +135,13 @@ def _best_fuzzy_candidate(query: str, candidates: list[tuple[str, str]], thresho
     return best_key if best_ratio >= threshold else None
 
 
-async def _get_or_create_medication_from_tier1(
-    db_session: AsyncSession, repo: MedicationRepository, item_seq: str, item_name: str
-) -> Medication:
-    """(#108) Tier1 SQLite에서 찾은 약을 MySQL(Tier2)에 캐싱한다. 이미 이 item_seq로 캐싱된
-    적이 있으면(다른 처방전에서 이미 조회됐던 약이면) 재사용하고, 없으면 새로 만든다 — 같은
-    약이 조회될 때마다 중복 레코드가 쌓이지 않게 한다."""
-    standard_code = f"PDP_{item_seq}"
-    existing = await repo.get_medication_by_code(db_session, standard_code)
-    if existing:
-        return existing
-    return await repo.create_medication(db_session, Medication(medication_name=item_name, standard_code=standard_code))
+class MatchedDrug(NamedTuple):
+    """(T-MED-16) 매칭 파이프라인이 다루는 최소 단위 — 마스터 DB(`dur_prod_master_list`)를
+    직접 조회하므로 더 이상 MySQL에 캐싱할 필요가 없어, `Medication` ORM 대신 이 튜플로
+    item_seq/item_name만 주고받는다."""
+
+    item_seq: str
+    item_name: str
 
 
 # T-MED-3: OCR이 실패했거나(키 미설정/호출 예외/빈 응답) QA가 dummy_mode를 명시적으로 요청했을 때
@@ -344,8 +333,8 @@ def _dummy_dosage_fields() -> dict[str, str | list[str] | None]:
 
 
 def _extract_item_seq(standard_code: str | None) -> str | None:
-    """`Medication.standard_code`가 품목기준코드 유래(`PDP_{item_seq}`)일 때만 item_seq를 뽑아낸다.
-    로컬 라이트 DB 등 다른 경로로 채워진 코드(예: `KD_...`)는 병용금기 DUR 조회에 쓸 수 없어 None."""
+    """공공데이터 API(`medication_open_api_client.fetch_medication_master_data`)가 돌려주는
+    `standard_code`(`PDP_{item_seq}` 형식)에서 item_seq만 뽑아낸다."""
     if not standard_code or not standard_code.startswith("PDP_"):
         return None
     item_seq = standard_code.removeprefix("PDP_")
@@ -363,69 +352,13 @@ def _strip_trailing_dosage(name: str) -> str | None:
     return stripped if stripped and stripped != name else None
 
 
-async def _fetch_master_data_safely(name: str) -> dict | None:
-    """공공데이터 API가 타임아웃/오류로 응답하지 않아도 등록약 백필 전체가 500으로 죽지 않게
-    한다 — 그 약만 이번 조회에서 건너뛴다."""
-    try:
-        return await medication_open_api_client.fetch_medication_master_data(name)
-    except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
-        return None
-
-
-async def _fetch_master_data_with_fallback(name: str) -> dict | None:
-    master_data = await _fetch_master_data_safely(name)
-    if master_data and master_data.get("standard_code"):
-        return master_data
-
-    stripped_name = _strip_trailing_dosage(name)
-    if stripped_name:
-        return await _fetch_master_data_safely(stripped_name)
-    return master_data
-
-
-async def _resolve_medications_with_item_seq(
-    session: AsyncSession, medications: list[Medication]
-) -> list[tuple[str, Medication]]:
-    """등록약을 item_seq 유무로 나누고, 없는 약은 공공데이터 API로 한 번 더 보완을 시도한다.
-    수동/OCR 빠른 등록(T-MED-3)은 공공데이터 조회 없이 AUTO_ 더미 코드로 등록하는 경우가 많다 —
-    조회 시점에 실제 품목기준코드를 찾으면 DB에도 반영해 다음 조회부터는 재조회가 필요 없게 한다."""
-    meds_with_seq: list[tuple[str, Medication]] = []
-    meds_without_seq: list[Medication] = []
-    for med in medications:
-        item_seq = _extract_item_seq(med.standard_code)
-        if item_seq:
-            meds_with_seq.append((item_seq, med))
-        else:
-            meds_without_seq.append(med)
-
-    if not meds_without_seq:
-        return meds_with_seq
-
-    master_data_results = await asyncio.gather(
-        *[_fetch_master_data_with_fallback(med.medication_name) for med in meds_without_seq]
-    )
-    resolved_any = False
-    for med, master_data in zip(meds_without_seq, master_data_results, strict=True):
-        new_code = master_data.get("standard_code") if master_data else None
-        item_seq = _extract_item_seq(new_code)
-        if item_seq:
-            med.standard_code = new_code
-            meds_with_seq.append((item_seq, med))
-            resolved_any = True
-    if resolved_any:
-        await session.commit()
-
-    return meds_with_seq
-
-
-async def _find_interaction_warnings(meds_with_seq: list[tuple[str, Medication]]) -> list[InteractionWarning]:
-    seq_to_med = {item_seq: med for item_seq, med in meds_with_seq}
-    name_to_med = {med.medication_name: med for _, med in meds_with_seq}
-
+async def _find_interaction_warnings(item_seqs: set[str], names: dict[str, str]) -> list[InteractionWarning]:
+    """(T-MED-16) 스케줄이 이제 item_seq를 직접 들고 있어(`_extract_item_seq`로 뽑아내던 과거의
+    간접 경로가 불필요해짐), item_seq끼리 바로 병용금기를 대조한다."""
     warnings: list[InteractionWarning] = []
-    seen_pairs: set[frozenset[int]] = set()
+    seen_pairs: set[frozenset[str]] = set()
 
-    for item_seq, med in meds_with_seq:
+    for item_seq in item_seqs:
         try:
             dur_items = await medication_open_api_client.fetch_dur_item_info(item_seq=item_seq)
         except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
@@ -433,22 +366,18 @@ async def _find_interaction_warnings(meds_with_seq: list[tuple[str, Medication]]
             continue
         for dur in dur_items:
             mixture_seq = dur.get("MIXTURE_ITEM_SEQ")
-            mixture_name = dur.get("MIXTURE_ITEM_NAME")
-            other_med = seq_to_med.get(mixture_seq) if mixture_seq else None
-            if other_med is None and mixture_name:
-                other_med = name_to_med.get(mixture_name)
-            if other_med is None or other_med.id == med.id:
+            if not mixture_seq or mixture_seq not in item_seqs or mixture_seq == item_seq:
                 continue
 
-            pair_key = frozenset({med.id, other_med.id})
+            pair_key = frozenset({item_seq, mixture_seq})
             if pair_key in seen_pairs:
                 continue
             seen_pairs.add(pair_key)
 
             warnings.append(
                 InteractionWarning(
-                    drug_a_name=med.medication_name,
-                    drug_b_name=other_med.medication_name,
+                    drug_a_name=names.get(item_seq, item_seq),
+                    drug_b_name=names.get(mixture_seq, mixture_seq),
                     description=dur.get("PROHBT_CONTENT") or "병용금기 성분 조합으로 확인되었습니다.",
                 )
             )
@@ -496,86 +425,44 @@ def _dedupe_drug_names(names: set[str]) -> list[str]:
     return kept
 
 
-async def _fetch_medication_from_public_api(name: str) -> Medication | None:
-    """Tier 3: 로컬 DB(Tier 1/2)에 없는 약품을 공공데이터포털 API로 실시간 조회한다(T-MED-4).
-    `PUBLIC_DATA_API_KEY` 미설정/호출 실패/빈 응답이면 None을 반환해 기존 `AUTO_` 더미 생성
-    폴백으로 넘어가게 한다 — 등록 자체가 막히지 않는다는 T-MED-1 원칙을 그대로 유지."""
+async def _resolve_unmatched_name(name: str) -> tuple[str, bool]:
+    """마스터 DB(`dur_prod_master_list`)에 없는 약품명에 대해 Tier 3(공공 API)로 품목기준코드를
+    조회 → 실패 시 AUTO_ 더미 코드 생성 순으로 item_seq를 확보한다(T-MED-4/T-MED-1: 등록 자체가
+    막히지 않아야 한다). 반환값: (item_seq 또는 AUTO_ 더미 코드, 더미 생성 여부)."""
     try:
         fields = await medication_open_api_client.fetch_medication_master_data(name)
     except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
-        return None
-    if fields is None:
-        return None
+        fields = None
 
-    standard_code = fields.pop("standard_code") or f"AUTO_{uuid.uuid4().hex[:10].upper()}"
-    return Medication(medication_name=name, standard_code=standard_code, **fields)
-
-
-async def _create_medication_for_unmatched_name(
-    db_session: AsyncSession, repo: MedicationRepository, name: str
-) -> tuple[Medication, bool]:
-    """DB(Tier 2)에 없는 약품명에 대해 Tier 3(공공 API) 조회 → 실패 시 AUTO_ 더미 생성 순으로
-    레코드를 만든다. 반환값: (생성된 Medication, 더미 생성 여부)."""
-    new_med = await _fetch_medication_from_public_api(name)
-    is_auto_dummy = new_med is None
-    if new_med is None:
-        new_med = Medication(medication_name=name, standard_code=f"AUTO_{uuid.uuid4().hex[:10].upper()}")
-    new_med = await repo.create_medication(db_session, new_med)
-    return new_med, is_auto_dummy
+    item_seq = _extract_item_seq(fields.get("standard_code")) if fields else None
+    if item_seq:
+        return item_seq, False
+    return f"AUTO_{uuid.uuid4().hex[:10].upper()}", True
 
 
-async def _resolve_manual_registration_medication(
-    db_session: AsyncSession, repo: MedicationRepository, name: str
-) -> tuple[Medication, bool]:
-    """수동/빠른 등록에서 MySQL(Tier2)에 정확히 일치하는 약이 없을 때, OCR 등록 경로
-    (`_resolve_or_create_drug_like_names`)와 동일하게 Tier1 SQLite(dur_drug_light.db,
-    "더보기 > 약품 검색"이 참조하는 것과 같은 DB) → Tier3 공공 API → AUTO_ 더미 순으로
-    확인한다. 반환값: (매칭/생성된 Medication, AUTO_ 더미 생성 여부)."""
+async def _resolve_manual_registration_medication(db_session: AsyncSession, name: str) -> tuple[MatchedDrug, bool]:
+    """수동/빠른 등록에서 마스터 DB에 정확히 일치하는 약이 없을 때, OCR 등록 경로
+    (`_resolve_or_create_drug_like_names`)와 동일하게 마스터 DB → Tier3 공공 API → AUTO_ 더미
+    순으로 확인한다. 반환값: (매칭/생성된 약, AUTO_ 더미 생성 여부)."""
     dur_repo = DurDrugRepository()
     tier1_results = await dur_repo.search_item_names(db_session, name, 5)
     tier1_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
     if tier1_item_seq:
-        med = await _get_or_create_medication_from_tier1(db_session, repo, tier1_item_seq, name)
-        return med, False
+        return MatchedDrug(item_seq=tier1_item_seq, item_name=name), False
 
-    return await _create_medication_for_unmatched_name(db_session, repo, name)
-
-
-async def _match_existing_by_word(
-    db_session: AsyncSession, repo: MedicationRepository, ocr_fields: list[OcrField], seen_ids: set[int]
-) -> tuple[list[Medication], dict[int, float]]:
-    """짧은 숫자/용량 조각("100mg" 등)까지 LIKE 검색에 넣으면 우연히 다른 약의 용량과 겹쳐
-    엉뚱한 약이 매칭되므로(예: "100mg"이 "아스피린정 100mg"에 우연히 포함), 약품명처럼
-    보이는 온전한 단어에 대해서만 실제 DB 매칭을 시도한다.
-
-    반환값의 두 번째 요소는 (T-MED-6) 각 매칭 약품에 연결된 OCR 필드의 confidence —
-    같은 약이 여러 단어로 매칭되면 그중 가장 높은 confidence를 취한다."""
-    matched: list[Medication] = []
-    confidences: dict[int, float] = {}
-    for field in ocr_fields:
-        if not _looks_like_drug_name(field.text):
-            continue
-        stripped = field.text.lstrip("*").strip()
-        for med in await repo.search_medication_by_name(db_session, stripped):
-            if med.medication_name != stripped:
-                continue
-            if med.id not in seen_ids:
-                seen_ids.add(med.id)
-                matched.append(med)
-            confidences[med.id] = max(confidences.get(med.id, 0.0), field.confidence)
-    return matched, confidences
+    item_seq, is_auto_dummy = await _resolve_unmatched_name(name)
+    return MatchedDrug(item_seq=item_seq, item_name=name), is_auto_dummy
 
 
 async def _resolve_or_create_drug_like_names(
-    db_session: AsyncSession, repo: MedicationRepository, ocr_fields: list[OcrField], seen_ids: set[int]
-) -> tuple[list[Medication], set[int], dict[int, float]]:
+    db_session: AsyncSession, dur_repo: DurDrugRepository, ocr_fields: list[OcrField], seen_ids: set[str]
+) -> tuple[list[MatchedDrug], set[str], dict[str, float]]:
     """마스터 DB에 없는 약이어도, OCR 텍스트가 약품명 형태(용량단위 또는 "*" 불릿 표시)로
-    보이면 등록이 막히지 않도록 새 마스터 레코드를 즉석에서 생성해 후보로 포함시킨다.
+    보이면 등록이 막히지 않도록 AUTO_ 더미 코드를 즉석에서 만들어 후보로 포함시킨다.
     "*"는 정규화 과정에서 제거하고, 잘려서 중복된 짧은 조각은 dedupe로 걸러낸다."""
-    resolved: list[Medication] = []
-    auto_created_ids: set[int] = set()
-    confidences: dict[int, float] = {}
-    dur_repo = DurDrugRepository()
+    resolved: list[MatchedDrug] = []
+    auto_created_ids: set[str] = set()
+    confidences: dict[str, float] = {}
 
     name_confidence: dict[str, float] = {}
     for field in ocr_fields:
@@ -586,59 +473,35 @@ async def _resolve_or_create_drug_like_names(
 
     for name in _dedupe_drug_names(set(name_confidence)):
         confidence = name_confidence[name]
-        existing = await repo.search_medication_by_name(db_session, name)
-        exact = next((m for m in existing if m.medication_name == name), None)
-        if exact:
-            confidences[exact.id] = max(confidences.get(exact.id, 0.0), confidence)
-            if exact.id not in seen_ids:
-                seen_ids.add(exact.id)
-                resolved.append(exact)
-            continue
-
-        # (#108) MySQL(Tier2)에 없어도 AUTO_ 더미를 만들기 전에, 로컬에 이미 있는 Tier1
-        # SQLite 마스터 DB(27,000여 개)에 정확히 같은 이름이 있는지 먼저 확인한다.
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
-        tier1_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
-        if tier1_item_seq:
-            tier1_med = await _get_or_create_medication_from_tier1(db_session, repo, tier1_item_seq, name)
-            confidences[tier1_med.id] = max(confidences.get(tier1_med.id, 0.0), confidence)
-            if tier1_med.id not in seen_ids:
-                seen_ids.add(tier1_med.id)
-                resolved.append(tier1_med)
+        exact_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
+        if exact_item_seq:
+            confidences[exact_item_seq] = max(confidences.get(exact_item_seq, 0.0), confidence)
+            if exact_item_seq not in seen_ids:
+                seen_ids.add(exact_item_seq)
+                resolved.append(MatchedDrug(item_seq=exact_item_seq, item_name=name))
             continue
 
-        new_med, is_auto_dummy = await _create_medication_for_unmatched_name(db_session, repo, name)
-        seen_ids.add(new_med.id)
+        item_seq, is_auto_dummy = await _resolve_unmatched_name(name)
+        seen_ids.add(item_seq)
         if is_auto_dummy:
-            auto_created_ids.add(new_med.id)
-        resolved.append(new_med)
-        confidences[new_med.id] = confidence
+            auto_created_ids.add(item_seq)
+        resolved.append(MatchedDrug(item_seq=item_seq, item_name=name))
+        confidences[item_seq] = confidence
 
     return resolved, auto_created_ids, confidences
 
 
 async def _fuzzy_match_unrecognized_fields(
-    db_session: AsyncSession, repo: MedicationRepository, ocr_fields: list[OcrField], seen_ids: set[int]
-) -> tuple[list[Medication], dict[int, float]]:
+    db_session: AsyncSession, dur_repo: DurDrugRepository, ocr_fields: list[OcrField], seen_ids: set[str]
+) -> tuple[list[MatchedDrug], dict[str, float]]:
     """(#106) `_looks_like_drug_name`이 걸러낸(=용량/불릿/제형 접미사 조건을 하나도 못 만족한)
     텍스트 중, 한글 부분만 떼어 마스터 DB 약품명(마찬가지로 한글만 남긴 것)과 편집거리
     유사도를 비교한다. CLOVA가 글자 하나를 잘못 읽은 경우(예: "패취"→"매취")를 구제하는
     용도라, 기존 마스터 DB에 있는 것과 확실히 비슷할 때만(임계값 이상) 인정하고 새 레코드를
-    만들지는 않는다 — 애매한 텍스트로 엉뚱한 약을 만들어내는 위험을 피하기 위함이다.
-
-    (#108) MySQL(Tier2)에서 못 찾으면, 로컬 Tier1 SQLite 마스터 DB(27,000여 개)에서도
-    같은 방식으로 시도한다 — 이번엔 찾으면 MySQL에 새로 캐싱한다(다음엔 정확일치로 바로
-    잡히도록)."""
-    mysql_candidates = await repo.list_medication_names(db_session, limit=_FUZZY_MATCH_CANDIDATE_LIMIT)
-    if len(mysql_candidates) >= _FUZZY_MATCH_CANDIDATE_LIMIT:
-        logger.warning(
-            "퍼지 매칭 비교 대상을 %d개로 제한합니다 — 마스터 DB가 더 많으면 일부만 비교됩니다.",
-            _FUZZY_MATCH_CANDIDATE_LIMIT,
-        )
-    dur_repo = DurDrugRepository()
-
-    matched: list[Medication] = []
-    confidences: dict[int, float] = {}
+    만들지는 않는다 — 애매한 텍스트로 엉뚱한 약을 만들어내는 위험을 피하기 위함이다."""
+    matched: list[MatchedDrug] = []
+    confidences: dict[str, float] = {}
     for field in ocr_fields:
         if _looks_like_drug_name(field.text):
             continue  # 이미 기존 경로에서 처리 대상이 됨
@@ -655,40 +518,28 @@ async def _fuzzy_match_unrecognized_fields(
         if len(query) < _FUZZY_MATCH_MIN_KOREAN_LEN:
             continue
 
-        med = await _fuzzy_match_one_field(db_session, repo, dur_repo, query, mysql_candidates, seen_ids)
-        if med is None:
+        matched_drug = await _fuzzy_match_one_field(db_session, dur_repo, query, seen_ids)
+        if matched_drug is None:
             continue
-        seen_ids.add(med.id)
-        matched.append(med)
-        confidences[med.id] = max(confidences.get(med.id, 0.0), field.confidence)
+        seen_ids.add(matched_drug.item_seq)
+        matched.append(matched_drug)
+        confidences[matched_drug.item_seq] = max(confidences.get(matched_drug.item_seq, 0.0), field.confidence)
 
     return matched, confidences
 
 
 async def _fuzzy_match_one_field(
-    db_session: AsyncSession,
-    repo: MedicationRepository,
-    dur_repo: DurDrugRepository,
-    query: str,
-    mysql_candidates: list[tuple[int, str]],
-    seen_ids: set[int],
-) -> Medication | None:
-    """OCR 텍스트(한글만 남긴 것) 하나에 대해 MySQL(Tier2) 후보를 먼저 시도하고, 없으면
-    Tier1 SQLite 후보를 시도한다."""
-    mysql_pool = [(str(med_id), name) for med_id, name in mysql_candidates if med_id not in seen_ids]
-    best_mysql_key = _best_fuzzy_candidate(query, mysql_pool, _FUZZY_MATCH_THRESHOLD)
-    if best_mysql_key is not None:
-        return await repo.get_medication_by_id(db_session, int(best_mysql_key))
-
+    db_session: AsyncSession, dur_repo: DurDrugRepository, query: str, seen_ids: set[str]
+) -> MatchedDrug | None:
+    """OCR 텍스트(한글만 남긴 것) 하나에 대해 마스터 DB 접두어 후보 안에서 가장 비슷한 것을 찾는다."""
     tier1_candidates = await dur_repo.search_item_names_by_prefix(
         db_session, query[:_FUZZY_TIER1_PREFIX_LEN], _FUZZY_TIER1_CANDIDATE_LIMIT
     )
     best_item_seq = _best_fuzzy_candidate(query, tier1_candidates, _FUZZY_MATCH_THRESHOLD)
-    if best_item_seq is None:
+    if best_item_seq is None or best_item_seq in seen_ids:
         return None
     item_name = next(name for seq, name in tier1_candidates if seq == best_item_seq)
-    med = await _get_or_create_medication_from_tier1(db_session, repo, best_item_seq, item_name)
-    return med if med.id not in seen_ids else None
+    return MatchedDrug(item_seq=best_item_seq, item_name=item_name)
 
 
 _LLM_DRUG_NAME_SYSTEM_PROMPT = (
@@ -732,51 +583,41 @@ async def _llm_extract_drug_names(ocr_raw_text: str) -> list[str]:
 
 
 async def _resolve_llm_suggested_names(
-    db_session: AsyncSession, repo: MedicationRepository, names: list[str], seen_ids: set[int]
-) -> tuple[list[Medication], set[int]]:
-    """LLM이 제안한 약품명 후보를 Tier2(마스터 DB) 정확일치 → Tier1 SQLite 정확일치 →
-    Tier3(공공 API)/AUTO_ 더미 순으로 해석한다. OCR confidence 근거가 없는 경로라 호출부가
-    낮은 match_rate(`_NO_OCR_EVIDENCE_MATCH_RATE`)를 매기도록 confidence는 채우지 않는다."""
-    resolved: list[Medication] = []
-    auto_created_ids: set[int] = set()
-    dur_repo = DurDrugRepository()
+    db_session: AsyncSession, dur_repo: DurDrugRepository, names: list[str], seen_ids: set[str]
+) -> tuple[list[MatchedDrug], set[str]]:
+    """LLM이 제안한 약품명 후보를 마스터 DB 정확일치 → Tier3(공공 API)/AUTO_ 더미 순으로 해석한다.
+    OCR confidence 근거가 없는 경로라 호출부가 낮은 match_rate(`_NO_OCR_EVIDENCE_MATCH_RATE`)를
+    매기도록 confidence는 채우지 않는다."""
+    resolved: list[MatchedDrug] = []
+    auto_created_ids: set[str] = set()
 
     for name in _dedupe_drug_names(set(names)):
-        existing = await repo.search_medication_by_name(db_session, name)
-        exact = next((m for m in existing if m.medication_name == name), None)
-        if exact:
-            if exact.id not in seen_ids:
-                seen_ids.add(exact.id)
-                resolved.append(exact)
-            continue
-
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
-        tier1_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
-        if tier1_item_seq:
-            tier1_med = await _get_or_create_medication_from_tier1(db_session, repo, tier1_item_seq, name)
-            if tier1_med.id not in seen_ids:
-                seen_ids.add(tier1_med.id)
-                resolved.append(tier1_med)
+        exact_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
+        if exact_item_seq:
+            if exact_item_seq not in seen_ids:
+                seen_ids.add(exact_item_seq)
+                resolved.append(MatchedDrug(item_seq=exact_item_seq, item_name=name))
             continue
 
-        new_med, is_auto_dummy = await _create_medication_for_unmatched_name(db_session, repo, name)
-        seen_ids.add(new_med.id)
+        item_seq, is_auto_dummy = await _resolve_unmatched_name(name)
+        seen_ids.add(item_seq)
         if is_auto_dummy:
-            auto_created_ids.add(new_med.id)
-        resolved.append(new_med)
+            auto_created_ids.add(item_seq)
+        resolved.append(MatchedDrug(item_seq=item_seq, item_name=name))
 
     return resolved, auto_created_ids
 
 
 async def _match_or_create_medications(
-    db_session: AsyncSession, repo: MedicationRepository, ocr_fields: list[OcrField]
-) -> tuple[list[Medication], set[int], dict[int, float]]:
+    db_session: AsyncSession, dur_repo: DurDrugRepository, ocr_fields: list[OcrField]
+) -> tuple[list[MatchedDrug], set[str], dict[str, float]]:
     """OCR 텍스트에서 약품명으로 보이는 조각을 마스터 DB와 매칭하고, 없으면 새로 생성한다.
-    반환값: (매칭/생성된 약품 목록, 이번에 새로 생성된 약품의 id 집합, 약품별 OCR confidence)"""
-    matched_meds: list[Medication] = []
-    auto_created_ids: set[int] = set()
-    seen_ids: set[int] = set()
-    match_confidence: dict[int, float] = {}
+    반환값: (매칭/생성된 약 목록, 이번에 새로 생성된 약의 item_seq 집합, item_seq별 OCR confidence)"""
+    matched_drugs: list[MatchedDrug] = []
+    auto_created_ids: set[str] = set()
+    seen_ids: set[str] = set()
+    match_confidence: dict[str, float] = {}
 
     # (#OCR-LLM) LLM 보완 경로(ai_worker 네트워크 호출)는 seen_ids에 의존하지 않고 OCR 원문만
     # 있으면 되므로, 아래 DB 매칭 패스들과 동시에 시작해 지연시간을 겹치게 한다 — LLM 호출을
@@ -786,18 +627,16 @@ async def _match_or_create_medications(
         ocr_raw_text = " ".join(f.text for f in ocr_fields)
         llm_task = asyncio.create_task(_llm_extract_drug_names(ocr_raw_text))
 
-        existing_matched, existing_confidence = await _match_existing_by_word(db_session, repo, ocr_fields, seen_ids)
-        matched_meds.extend(existing_matched)
-        match_confidence.update(existing_confidence)
-
         resolved, auto_created_ids, resolved_confidence = await _resolve_or_create_drug_like_names(
-            db_session, repo, ocr_fields, seen_ids
+            db_session, dur_repo, ocr_fields, seen_ids
         )
-        matched_meds.extend(resolved)
+        matched_drugs.extend(resolved)
         match_confidence.update(resolved_confidence)
 
-        fuzzy_matched, fuzzy_confidence = await _fuzzy_match_unrecognized_fields(db_session, repo, ocr_fields, seen_ids)
-        matched_meds.extend(fuzzy_matched)
+        fuzzy_matched, fuzzy_confidence = await _fuzzy_match_unrecognized_fields(
+            db_session, dur_repo, ocr_fields, seen_ids
+        )
+        matched_drugs.extend(fuzzy_matched)
         match_confidence.update(fuzzy_confidence)
 
     # 정규식/퍼지 매칭 결과가 있어도, 그 규칙들이 놓쳤을 수 있는 약을 추가로 구제하기 위해 매번
@@ -806,20 +645,20 @@ async def _match_or_create_medications(
         llm_names = await llm_task
         if llm_names:
             llm_matched, llm_auto_created_ids = await _resolve_llm_suggested_names(
-                db_session, repo, llm_names, seen_ids
+                db_session, dur_repo, llm_names, seen_ids
             )
-            matched_meds.extend(llm_matched)
+            matched_drugs.extend(llm_matched)
             auto_created_ids |= llm_auto_created_ids
-            for med in llm_matched:
-                match_confidence[med.id] = _NO_OCR_EVIDENCE_MATCH_RATE
+            for drug in llm_matched:
+                match_confidence[drug.item_seq] = _NO_OCR_EVIDENCE_MATCH_RATE
 
     # 그래도 후보가 하나도 없으면(약품명으로 보이는 텍스트조차 없었던 경우)
     # 마스터 DB 상위 몇 개를 참고용으로 보여준다 — 이 경우엔 수동 검색으로의 전환을 기대한다.
-    if not matched_meds:
-        all_meds = await repo.search_medication_by_name(db_session, "")
-        matched_meds = all_meds[:3]
+    if not matched_drugs:
+        top_results = await dur_repo.search_item_names(db_session, "", 3)
+        matched_drugs = [MatchedDrug(item_seq=seq, item_name=name) for seq, name in top_results]
 
-    return matched_meds, auto_created_ids, match_confidence
+    return matched_drugs, auto_created_ids, match_confidence
 
 
 _CLOVA_SUPPORTED_FORMATS = {"jpg", "jpeg", "png", "pdf"}
@@ -1036,6 +875,7 @@ async def _execute_ocr_logic(
     dummy_mode: bool = False,
 ):
     repo = MedicationRepository()
+    dur_repo = DurDrugRepository()
 
     # 1. 상태를 processing으로 변경
     await repo.update_recognition_job(db_session, job_id, "processing")
@@ -1053,16 +893,18 @@ async def _execute_ocr_logic(
         "dummy_mode": used_dummy_fallback,
     }
 
-    matched_meds, auto_created_ids, match_confidence = await _match_or_create_medications(db_session, repo, ocr_fields)
+    matched_drugs, auto_created_ids, match_confidence = await _match_or_create_medications(
+        db_session, dur_repo, ocr_fields
+    )
 
-    for med in matched_meds:
-        confidence = match_confidence.get(med.id, _NO_OCR_EVIDENCE_MATCH_RATE)
-        match_rate = _compute_match_rate(confidence, is_auto_created=med.id in auto_created_ids)
+    for drug in matched_drugs:
+        confidence = match_confidence.get(drug.item_seq, _NO_OCR_EVIDENCE_MATCH_RATE)
+        match_rate = _compute_match_rate(confidence, is_auto_created=drug.item_seq in auto_created_ids)
         candidates.append(
             {
-                "drug_name": med.medication_name,
+                "drug_name": drug.item_name,
                 "match_rate": match_rate,
-                "drug_code": med.standard_code or f"CODE_{med.id}",
+                "drug_code": drug.item_seq,
             }
         )
 
@@ -1092,9 +934,24 @@ async def run_ocr_task(
         await db_session.commit()
 
 
+async def _require_item_seq(session: AsyncSession, repo: MedicationRepository, item_seq: str) -> None:
+    """(T-MED-16) `medication_schedules.item_seq`는 DB FK가 없으므로, 스케줄을 만들기 전
+    앱 레벨에서 마스터 데이터 존재를 확인한다. AUTO_ 더미 코드는 마스터 데이터에 없는 게
+    당연하므로(T-MED-1: 등록 자체가 막히지 않아야 한다) 검증을 건너뛴다."""
+    if item_seq.startswith("AUTO_"):
+        return
+    if not await repo.item_seq_exists(session, item_seq):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 약품 정보를 찾을 수 없습니다.")
+
+
 class MedicationService:
-    def __init__(self, repository: MedicationRepository | None = None) -> None:
+    def __init__(
+        self,
+        repository: MedicationRepository | None = None,
+        dur_drug_repository: DurDrugRepository | None = None,
+    ) -> None:
         self._repository = repository or MedicationRepository()
+        self._dur_drug_repository = dur_drug_repository or DurDrugRepository()
         self._family_repository = FamilyRepository()  # (가족관리) 대상자 권한검증용
 
     async def create_recognition_job(
@@ -1156,52 +1013,53 @@ class MedicationService:
         if not job or job.profile_id != profile_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 작업(Job)을 찾을 수 없습니다.")
 
-        # 최종 약물 확정 및 등록 처리
-        med: Medication | None = None
+        # 최종 약물 확정 및 등록 처리 - (T-MED-16) selected_candidate_drug_code는 이제 그 자체가
+        # item_seq(또는 AUTO_ 더미 코드)다.
+        drug_name: str | None = None
         if selected_candidate_drug_code:
-            med = await self._repository.get_medication_by_code(session, selected_candidate_drug_code)
-            if not med:
-                # 만약 코드로 못 찾으면 ID로 재시도
-                try:
-                    med_id = int(selected_candidate_drug_code.replace("CODE_", ""))
-                    med = await self._repository.get_medication_by_id(session, med_id)
-                except ValueError:
-                    pass
+            item_seq = selected_candidate_drug_code
+            await _require_item_seq(session, self._repository, item_seq)
 
-            if med:
-                # 9~10번: 시간대가 적혀있다면 추출된 시간 사용, 없으면 기본 슬롯 추천
-                times = ["09:00", "13:00", "19:00"]
-                if confirmed_fields and "times" in confirmed_fields:
-                    times = confirmed_fields["times"]
-                elif job.extracted_fields and job.extracted_fields.get("times"):
-                    # (T-MED-13) 실제 OCR에서 시간 파싱에 실패하면 extracted_fields["times"]가
-                    # None일 수 있다 — MedicationSchedule.times는 non-nullable이라 그 경우
-                    # 기본값(위 3줄)으로 폴백해야 한다.
-                    times = job.extracted_fields["times"]
+            candidate = next((c for c in (job.candidates or []) if c["drug_code"] == item_seq), None)
+            drug_name = candidate["drug_name"] if candidate else item_seq
+            display_name = drug_name if item_seq.startswith("AUTO_") else None
 
-                schedule = MedicationSchedule(
-                    profile_id=profile_id, medication_id=med.id, times=times, source_job_id=job_id
-                )
-                await self._repository.create_schedule(session, schedule)
+            # 9~10번: 시간대가 적혀있다면 추출된 시간 사용, 없으면 기본 슬롯 추천
+            times = ["09:00", "13:00", "19:00"]
+            if confirmed_fields and "times" in confirmed_fields:
+                times = confirmed_fields["times"]
+            elif job.extracted_fields and job.extracted_fields.get("times"):
+                # (T-MED-13) 실제 OCR에서 시간 파싱에 실패하면 extracted_fields["times"]가
+                # None일 수 있다 — MedicationSchedule.times는 non-nullable이라 그 경우
+                # 기본값(위 3줄)으로 폴백해야 한다.
+                times = job.extracted_fields["times"]
+
+            schedule = MedicationSchedule(
+                profile_id=profile_id,
+                item_seq=item_seq,
+                display_name=display_name,
+                times=times,
+                source_job_id=job_id,
+            )
+            await self._repository.create_schedule(session, schedule)
 
         # 13번: 음식(T-DOC-2) — 등록된 약의 e약은요 상호작용 문항에서 음식/음주 주의사항을 안내한다.
         guide_cards = []
-        if med:
-            guide_cards.append(await _build_food_interaction_guide_card(med.medication_name))
+        if drug_name:
+            guide_cards.append(await _build_food_interaction_guide_card(drug_name))
 
         return RecognitionConfirmResult(status="confirmed", guide_cards=guide_cards)
 
     async def list_schedules(self, session: AsyncSession, profile_id: int) -> list[MedicationScheduleResponse]:
         schedules = await self._repository.list_schedules_by_profile(session, profile_id)
+        names = await self._dur_drug_repository.get_names_by_item_seqs(session, {s.item_seq for s in schedules})
         return [
             MedicationScheduleResponse(
                 id=s.id,
-                medication_id=s.medication_id,
-                drug_name=s.medication.medication_name,
+                item_seq=s.item_seq,
+                drug_name=s.display_name or names.get(s.item_seq, s.item_seq),
                 times=s.times,
                 source_job_id=s.source_job_id,
-                form_type=s.medication.form_type,
-                dosage_guideline=s.medication.dosage_guideline,
                 hospital_name=s.hospital_name,
             )
             for s in schedules
@@ -1221,14 +1079,13 @@ class MedicationService:
         await session.commit()
         await session.refresh(schedule)
 
+        names = await self._dur_drug_repository.get_names_by_item_seqs(session, {schedule.item_seq})
         return MedicationScheduleResponse(
             id=schedule.id,
-            medication_id=schedule.medication_id,
-            drug_name=schedule.medication.medication_name,
+            item_seq=schedule.item_seq,
+            drug_name=schedule.display_name or names.get(schedule.item_seq, schedule.item_seq),
             times=schedule.times,
             source_job_id=schedule.source_job_id,
-            form_type=schedule.medication.form_type,
-            dosage_guideline=schedule.medication.dosage_guideline,
             hospital_name=schedule.hospital_name,
         )
 
@@ -1241,9 +1098,10 @@ class MedicationService:
     async def create_manual_schedule(
         self, session: AsyncSession, profile_id: int, req: MedicationScheduleCreateRequest
     ) -> MedicationScheduleResponse:
-        med = await self._repository.get_medication_by_code(session, req.drug_code)
-        if not med:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 약품 정보를 찾을 수 없습니다.")
+        item_seq = req.drug_code
+        await _require_item_seq(session, self._repository, item_seq)
+        names = await self._dur_drug_repository.get_names_by_item_seqs(session, {item_seq})
+        drug_name = names.get(item_seq, item_seq)
 
         # (가족관리) target_profile_id가 있으면 "이 약을 실제로 먹을 사람"을 그 프로필로 등록한다.
         # 본인이 아닌 값이면 요청자가 그 프로필의 보호자로 등록되어 있는지 반드시 확인 -
@@ -1258,14 +1116,14 @@ class MedicationService:
                 )
 
         schedule = MedicationSchedule(
-            profile_id=owner_profile_id, medication_id=med.id, times=req.times, hospital_name=req.hospital_name
+            profile_id=owner_profile_id, item_seq=item_seq, times=req.times, hospital_name=req.hospital_name
         )
         await self._repository.create_schedule(session, schedule)
 
         return MedicationScheduleResponse(
             id=schedule.id,
-            medication_id=schedule.medication_id,
-            drug_name=med.medication_name,
+            item_seq=schedule.item_seq,
+            drug_name=drug_name,
             times=schedule.times,
             hospital_name=schedule.hospital_name,
         )
@@ -1289,29 +1147,30 @@ class MedicationService:
         if not stripped_name:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="약품명을 입력해주세요.")
 
-        matches = await self._repository.search_medication_by_name(session, stripped_name)
-        exact_matches = [m for m in matches if m.medication_name == stripped_name]
+        matches = await self._dur_drug_repository.search_item_names(
+            session, stripped_name, _SEARCH_TIER1_CANDIDATE_LIMIT
+        )
+        exact_matches = [(seq, name) for seq, name in matches if name == stripped_name]
 
         auto_created = False
         if len(exact_matches) == 1:
-            med = exact_matches[0]
+            item_seq, item_name = exact_matches[0]
         elif len(matches) == 1:
-            med = matches[0]
+            item_seq, item_name = matches[0]
         elif len(matches) > 1:
-            candidates = [
-                QuickRegisterCandidate(
-                    drug_code=m.standard_code or f"CODE_{m.id}",
-                    medication_name=m.medication_name,
-                    form_type=m.form_type,
-                )
-                for m in matches
-            ]
+            candidates = [QuickRegisterCandidate(drug_code=seq, medication_name=name) for seq, name in matches]
             return QuickRegisterResult(status="multiple_matches", candidates=candidates)
         else:
-            med, auto_created = await _resolve_manual_registration_medication(session, self._repository, stripped_name)
+            matched_drug, auto_created = await _resolve_manual_registration_medication(session, stripped_name)
+            item_seq, item_name = matched_drug.item_seq, matched_drug.item_name
 
+        display_name = item_name if item_seq.startswith("AUTO_") else None
         schedule = MedicationSchedule(
-            profile_id=profile_id, medication_id=med.id, times=times, hospital_name=hospital_name
+            profile_id=profile_id,
+            item_seq=item_seq,
+            display_name=display_name,
+            times=times,
+            hospital_name=hospital_name,
         )
         schedule = await self._repository.create_schedule(session, schedule)
 
@@ -1319,8 +1178,8 @@ class MedicationService:
             status="registered",
             schedule=MedicationScheduleResponse(
                 id=schedule.id,
-                medication_id=schedule.medication_id,
-                drug_name=med.medication_name,
+                item_seq=schedule.item_seq,
+                drug_name=item_name,
                 times=schedule.times,
                 hospital_name=schedule.hospital_name,
             ),
@@ -1331,55 +1190,35 @@ class MedicationService:
         """등록약 중 item_seq가 있는 약들을 서로 대조해 병용금기(DUR) 페어를 찾는다 (T-MED-2-2).
         지병(질병-성분) 기준 금기는 범위 밖 — 등록약 사이의 약물-약물 병용금기만 다룬다."""
         schedules = await self._repository.list_schedules_by_profile(session, profile_id)
-        medications = list({s.medication_id: s.medication for s in schedules}.values())
+        item_seqs = {s.item_seq for s in schedules if not s.item_seq.startswith("AUTO_")}
+        if len(item_seqs) < 2:
+            return InteractionCheckResult(warnings=[], checked_count=len(item_seqs))
 
-        meds_with_seq = await _resolve_medications_with_item_seq(session, medications)
-        if len(meds_with_seq) < 2:
-            return InteractionCheckResult(warnings=[], checked_count=len(meds_with_seq))
-
-        warnings = await _find_interaction_warnings(meds_with_seq)
-        return InteractionCheckResult(warnings=warnings, checked_count=len(meds_with_seq))
+        names = await self._dur_drug_repository.get_names_by_item_seqs(session, item_seqs)
+        warnings = await _find_interaction_warnings(item_seqs, names)
+        return InteractionCheckResult(warnings=warnings, checked_count=len(item_seqs))
 
     async def check_food_interactions(self, session: AsyncSession, profile_id: int) -> FoodInteractionCheckResult:
         """(T-DOC-2) 등록약 전체를 대상으로 e약은요 상호작용 문항에서 음식/음주 주의사항을 모은다.
         confirm_recognition_job의 1회성 안내와 달리, OCR로 등록했든 수동으로 등록했든 상관없이
         "음식(13번)" 탭을 열 때마다 현재 등록약 전체 기준으로 조회한다."""
         schedules = await self._repository.list_schedules_by_profile(session, profile_id)
-        medications = list({s.medication_id: s.medication for s in schedules}.values())
+        names = await self._dur_drug_repository.get_names_by_item_seqs(session, {s.item_seq for s in schedules})
+        display_names = {s.display_name or names.get(s.item_seq, s.item_seq) for s in schedules}
 
-        guide_cards = [await _build_food_interaction_guide_card(med.medication_name) for med in medications]
+        guide_cards = [await _build_food_interaction_guide_card(name) for name in display_names]
 
         # (T-DOC-3) 실제 주의사항이 있는 카드(severity="caution")를 "확인 안 됨"/"주의사항 없음"
         # 카드(severity="info")보다 위로 올린다 — 등록약이 많을수록 실제로 봐야 할 카드가 뒤로
-        # 밀려 놓치기 쉽다. 그룹 내 상대 순서(등록약 순서)는 그대로 유지한다(stable sort).
+        # 밀려 놓치기 쉽다.
         guide_cards.sort(key=lambda card: card.severity != "caution")
 
-        return FoodInteractionCheckResult(guide_cards=guide_cards, checked_count=len(medications))
+        return FoodInteractionCheckResult(guide_cards=guide_cards, checked_count=len(display_names))
 
     async def search_medications(self, session: AsyncSession, query: str) -> list[dict]:
-        """수동 등록 검색창의 자동완성. MySQL(Tier2) 후보에 더해, "더보기 > 약품 검색"이 참조하는
-        것과 같은 Tier1 SQLite(dur_drug_light.db)에만 있는 약도 후보로 보여준다 — 그렇지 않으면
-        Tier1엔 있는데 MySQL엔 아직 캐싱되지 않은 약이 수동 등록 검색에서만 "없음"으로 나온다."""
-        meds = await self._repository.search_medication_by_name(session, query)
-        seen_ids = {m.id for m in meds}
-
-        dur_repo = DurDrugRepository()
-        tier1_results = await dur_repo.search_item_names(session, query, _SEARCH_TIER1_CANDIDATE_LIMIT)
-        for item_seq, item_name in tier1_results:
-            med = await _get_or_create_medication_from_tier1(session, self._repository, item_seq, item_name)
-            if med.id not in seen_ids:
-                seen_ids.add(med.id)
-                meds.append(med)
-
-        return [
-            {
-                "id": m.id,
-                "standard_code": m.standard_code,
-                "medication_name": m.medication_name,
-                "form_type": m.form_type,
-            }
-            for m in meds
-        ]
+        """수동 등록 검색창의 자동완성 — 마스터 DB(dur_prod_master_list)에서 이름으로 검색한다."""
+        results = await self._dur_drug_repository.search_item_names(session, query, _SEARCH_TIER1_CANDIDATE_LIMIT)
+        return [{"item_seq": item_seq, "medication_name": item_name} for item_seq, item_name in results]
 
     async def confirm_recognition_job_for_family(
         self,
@@ -1409,31 +1248,33 @@ class MedicationService:
         if not job or job.profile_id != requester_profile_id:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 작업(Job)을 찾을 수 없습니다.")
 
-        med: Medication | None = None
+        drug_name: str | None = None
         if selected_candidate_drug_code:
-            med = await self._repository.get_medication_by_code(session, selected_candidate_drug_code)
-            if not med:
-                try:
-                    med_id = int(selected_candidate_drug_code.replace("CODE_", ""))
-                    med = await self._repository.get_medication_by_id(session, med_id)
-                except ValueError:
-                    pass
+            item_seq = selected_candidate_drug_code
+            await _require_item_seq(session, self._repository, item_seq)
 
-            if med:
-                times = ["09:00", "13:00", "19:00"]
-                if confirmed_fields and "times" in confirmed_fields:
-                    times = confirmed_fields["times"]
-                elif job.extracted_fields and job.extracted_fields.get("times"):
-                    times = job.extracted_fields["times"]
+            candidate = next((c for c in (job.candidates or []) if c["drug_code"] == item_seq), None)
+            drug_name = candidate["drug_name"] if candidate else item_seq
+            display_name = drug_name if item_seq.startswith("AUTO_") else None
 
-                schedule = MedicationSchedule(
-                    profile_id=target_profile_id, medication_id=med.id, times=times, source_job_id=job_id
-                )
-                await self._repository.create_schedule(session, schedule)
+            times = ["09:00", "13:00", "19:00"]
+            if confirmed_fields and "times" in confirmed_fields:
+                times = confirmed_fields["times"]
+            elif job.extracted_fields and job.extracted_fields.get("times"):
+                times = job.extracted_fields["times"]
+
+            schedule = MedicationSchedule(
+                profile_id=target_profile_id,
+                item_seq=item_seq,
+                display_name=display_name,
+                times=times,
+                source_job_id=job_id,
+            )
+            await self._repository.create_schedule(session, schedule)
 
         guide_cards = []
-        if med:
-            guide_cards.append(await _build_food_interaction_guide_card(med.medication_name))
+        if drug_name:
+            guide_cards.append(await _build_food_interaction_guide_card(drug_name))
 
         return RecognitionConfirmResult(status="confirmed", guide_cards=guide_cards)
 

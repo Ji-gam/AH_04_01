@@ -8,6 +8,7 @@ from app.core import config
 from app.core.db.databases import AsyncSessionLocal
 from app.models.medication_model import MedicationSchedule
 from app.models.notification_schedules import DayOfWeek, FrequencyType, NotificationSchedule
+from app.repositories.dur_drug_repository import DurDrugRepository
 from app.services.push_service import PushService
 
 logger = logging.getLogger("app.push_scheduler")
@@ -64,7 +65,13 @@ async def _check_and_send_due_notifications() -> None:
         # (프론트의 "끄기"도 로컬 전용 음소거일 뿐 서버엔 없음) times에 있는 시각과
         # 매분 그냥 비교한다 - 매일 반복이라고 보면 된다.
         med_result = await session.execute(select(MedicationSchedule))
-        for med_schedule in med_result.scalars().all():
+        med_schedules = list(med_result.scalars().all())
+        # (T-MED-16) MedicationSchedule은 이제 item_seq만 들고 있어, 알림 문구에 쓸 약품명은
+        # 마스터 데이터에서 일괄 조회해야 한다. AUTO_ 더미는 display_name으로 채워져 있다.
+        drug_names = await DurDrugRepository().get_names_by_item_seqs(
+            session, {s.item_seq for s in med_schedules if not s.display_name}
+        )
+        for med_schedule in med_schedules:
             # 이 테이블의 times는 등록 경로에 따라 "HH:MM"(신규 등록)과 "HH:MM:SS"(본인 화면
             # 수정 API가 초까지 붙여 저장하는 경우)가 섞여 있다 - 앞 5글자(HH:MM)만 잘라서
             # 비교해야 형식이 달라도 안전하게 매칭된다(2026-07-18, 이것 때문에 수정한 알림이
@@ -72,12 +79,13 @@ async def _check_and_send_due_notifications() -> None:
             normalized_times = [t[:5] for t in med_schedule.times]
             if current_hhmm not in normalized_times:
                 continue
+            drug_name = med_schedule.display_name or drug_names.get(med_schedule.item_seq, med_schedule.item_seq)
             try:
                 await push_service.send_to_profile_and_guardians(
                     session,
                     med_schedule.profile_id,
                     title="복약 알림",
-                    body=f"{med_schedule.medication.medication_name} 드실 시간이에요!",
+                    body=f"{drug_name} 드실 시간이에요!",
                 )
             except Exception:
                 logger.exception("알림 발송 중 오류 (medication_schedule_id=%s)", med_schedule.id)
