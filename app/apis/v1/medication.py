@@ -21,6 +21,7 @@ from app.dtos.medication_dto import (
     RecognitionResult,
 )
 from app.models.profiles import Profile
+from app.repositories.dur_drug_repository import DrugProfile, DurDrugRepository
 from app.services import medication_open_api_client
 from app.services.medication_service import MedicationService, _strip_trailing_dosage
 
@@ -154,38 +155,26 @@ async def check_medication_food_interactions(
     return await service.check_food_interactions(session, profile.id)
 
 
-_LOCAL_DUR_SQL = """
-SELECT
-    p.item_name,
-    p.entp_name,
-    e.efcy_qesitm,
-    GROUP_CONCAT(DISTINCT r.rule_type || ': ' || r.prohbt_content) AS precautions
-FROM products p
-LEFT JOIN drugs_einfo e ON p.item_seq = e.item_seq
-LEFT JOIN dur_product_rules r ON p.item_seq = r.item_seq
-WHERE p.item_name LIKE ?
-GROUP BY p.item_seq
-LIMIT 15;
-"""
-
-
-def _query_local_dur_rows(cursor, query: str, stripped_query: str | None) -> list:
-    """로컬 DB의 품목명은 'mg'가 아니라 '밀리그램' 등 한글 단위 표기라, OCR/사용자 입력이
+async def _query_mysql_dur_profiles(
+    session: AsyncSession, dur_repo: DurDrugRepository, query: str, stripped_query: str | None
+) -> list[DrugProfile]:
+    """MySQL 품목명은 'mg'가 아니라 '밀리그램' 등 한글 단위 표기라, OCR/사용자 입력이
     'NN mg' 접미사로 끝나면 그대로는 매칭이 안 될 수 있다 — 접미사를 뗀 이름으로 재시도한다."""
-    cursor.execute(_LOCAL_DUR_SQL, (f"%{query}%",))
-    rows = cursor.fetchall()
-    if not rows and stripped_query:
-        cursor.execute(_LOCAL_DUR_SQL, (f"%{stripped_query}%",))
-        rows = cursor.fetchall()
-    return rows
+    profiles = await dur_repo.find_drug_info(session, query)
+    if not profiles and stripped_query:
+        profiles = await dur_repo.find_drug_info(session, stripped_query)
+    return profiles[:15]
 
 
-def _build_dur_result(item_name: str, entp_name: str, efficacy: str | None, precautions: str | None) -> dict:
-    efficacy = (efficacy or "").strip()
-    precautions = (precautions or "").strip()
+def _build_dur_result(profile: DrugProfile) -> dict:
+    efficacy = (profile.efficacy or "").strip()
+    precaution_parts = [profile.precautions] + [
+        f"{rule['rule_type']}: {rule['prohbt_content']}" for rule in profile.dur_rules if rule.get("prohbt_content")
+    ]
+    precautions = " ".join(p.strip() for p in precaution_parts if p and p.strip())
     return {
-        "item_name": item_name,
-        "entp_name": entp_name,
+        "item_name": profile.item_name,
+        "entp_name": profile.entp_name,
         "efficacy": efficacy or "정보 없음",
         "precautions": precautions or "특이사항 없음",
     }
@@ -207,42 +196,32 @@ def _drop_empty_duplicates(results: list[dict]) -> list[dict]:
 
 @medication_router.get(
     "/medications/search-dur",
-    summary="의약품 DUR 및 효능 검색 API (SQLite Light + 공공데이터 폴백)",
+    summary="의약품 DUR 및 효능 검색 API (MySQL + 공공데이터 폴백)",
     description=(
-        "Light SQLite 데이터베이스에서 제품명으로 먼저 검색하고, 결과가 없으면 식약처 공공데이터포털"
-        "(e약은요) API로 실시간 폴백한다. 결과가 끝까지 없으면 `not_found_reason`에"
-        "어디까지 찾아봤는지가 담긴다."
+        "MySQL 품목 마스터(`dur_prod_master_list`+`drugs_data`)에서 제품명으로 먼저 검색하고, 결과가 "
+        "없으면 식약처 공공데이터포털(e약은요) API로 실시간 폴백한다. 결과가 끝까지 없으면 "
+        "`not_found_reason`에 어디까지 찾아봤는지가 담긴다."
     ),
 )
 async def search_medications_dur(
     profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
     query: str = Query(..., min_length=1),
 ):
-    import os
-    import sqlite3
     import time
 
     start_time = time.perf_counter()
 
-    # Resolve path dynamically using the location of this file
-    db_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        "database",
-        "dur_drug_light.db",
-    )
-
     stripped_query = _strip_trailing_dosage(query)
 
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    rows = _query_local_dur_rows(cursor, query, stripped_query)
-    conn.close()
+    dur_repo = DurDrugRepository()
+    profiles = await _query_mysql_dur_profiles(session, dur_repo, query, stripped_query)
+    results = [_build_dur_result(p) for p in profiles]
 
-    results = [_build_dur_result(row[0], row[1], row[2], row[3]) for row in rows]
-
-    # 로컬 SQLite Light DB는 제품 27,231건 중 효능 데이터가 4,753건뿐이라 커버리지가 낮다.
-    # 결과가 아예 없거나(제품명 자체를 못 찾음), 있어도 전부 내용이 비어있으면(제품은 찾았지만
-    # 효능/주의사항 데이터가 없는 4,753건 밖의 케이스) 식약처 공공데이터 API(e약은요)로 폴백한다.
+    # MySQL 품목 마스터는 품목명 23,417건은 다 있지만 효능/주의사항 텍스트(drugs_data, e약은요
+    # 수집분)는 4,758건뿐이라 커버리지가 낮다. 결과가 아예 없거나(제품명 자체를 못 찾음), 있어도
+    # 전부 내용이 비어있으면(제품은 찾았지만 효능/주의사항 데이터가 없는 경우) 식약처 공공데이터
+    # API(e약은요)로 폴백한다.
     checked_public_api = False
     if not results or not any(_has_content(r) for r in results):
         if config.PUBLIC_DATA_API_KEY:
@@ -259,7 +238,13 @@ async def search_medications_dur(
                 precautions = " ".join(p.strip() for p in precaution_parts if p and p.strip())
                 results.append(
                     _build_dur_result(
-                        item.get("itemName") or query, item.get("entpName") or "", item.get("efcyQesitm"), precautions
+                        DrugProfile(
+                            item_seq=str(item.get("itemSeq") or ""),
+                            item_name=item.get("itemName") or query,
+                            entp_name=item.get("entpName") or "",
+                            efficacy=item.get("efcyQesitm"),
+                            precautions=precautions,
+                        )
                     )
                 )
 
@@ -271,12 +256,12 @@ async def search_medications_dur(
     if not results:
         if checked_public_api:
             not_found_reason = (
-                "로컬 DB(식약처 DUR 데이터 일부)와 식약처 공공데이터(e약은요) 모두에서 "
+                "MySQL 품목 마스터(식약처 DUR 데이터)와 식약처 공공데이터(e약은요) 모두에서 "
                 "일치하는 의약품 정보를 찾지 못했습니다."
             )
         else:
             not_found_reason = (
-                "로컬 DB(식약처 DUR 데이터 일부)에서 일치하는 의약품 정보를 찾지 못했습니다. "
+                "MySQL 품목 마스터(식약처 DUR 데이터)에서 일치하는 의약품 정보를 찾지 못했습니다. "
                 "공공데이터포털 실시간 조회는 서비스키가 설정되지 않아 시도하지 못했습니다."
             )
 
@@ -362,8 +347,8 @@ async def delete_medication_schedule(
     summary="의약품 마스터 수동 검색",
     description=(
         "약품명 또는 외형 검색 fallback을 위한 검색창의 자동완성 API입니다. MySQL 캐시(Tier2)에"
-        "더해 '더보기 > 약품 검색'(search-dur)이 참조하는 것과 같은 Tier1 SQLite(dur_drug_light.db)도"
-        "함께 조회해, 두 화면에서 같은 약이 서로 다르게 보이지 않도록 한다."
+        "더해 '더보기 > 약품 검색'(search-dur)이 참조하는 것과 같은 MySQL 품목 마스터"
+        "(dur_prod_master_list)도 함께 조회해, 두 화면에서 같은 약이 서로 다르게 보이지 않도록 한다."
     ),
 )
 async def search_medications(

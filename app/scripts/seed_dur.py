@@ -1,21 +1,27 @@
-"""`app/database/drugs_full.db`(SQLite, `scripts/drug_info_sync/` 파이프라인이 공공데이터포털
-API 24종을 전수 수집해 만든 산출물, 이 리포지토리가 만든 게 아니라 그대로 둔다)를 읽어 MySQL의
-`app/models/dur.py` 테이블들에 시딩한다.
+"""MySQL(`ai_health`)의 DUR 원본 테이블(운영 데이터, 공공데이터포털 API 24종 전수 수집분이 이미
+전량 적재되어 있음)에서 읽어 `app/models/dur.py` 테이블들을 다른 MySQL 세션(주로 테스트 DB)에
+다시 시딩한다.
 
-`app/scripts/seed_food_drug_interaction.py`와 동일 정책: 참조 데이터라 매 실행 시 대상 테이블을
-전부 지우고 SQLite 원본 내용으로 재생성한다. 다만 최대 테이블(`dur_prod_usjnt_taboo`)이 80만
-행대라 ORM 객체를 하나씩 `session.add`하지 않고, SQLite에서 청크(5,000행) 단위로 읽어 SQLAlchemy
-Core `insert()`를 `executemany` 스타일로 반복 실행한다.
+(T-MED-15) 원래 `app/database/drugs_full.db`(SQLite, `scripts/drug_info_sync/` 파이프라인 산출물)를
+읽었으나, SQLite를 더 이상 쓰지 않기로 하면서(원본 데이터는 이미 MySQL에 전량 적재됨) 소스를 MySQL로
+바꿨다. `_TABLE_SPECS`의 각 col_map은 과거 SQLite 원본 컬럼명(키)을 여전히 문서화 목적으로 남겨두되,
+실제 조회/삽입에는 값(모델 속성명 = 현재 MySQL 컬럼명)만 쓴다. 최대 테이블(`dur_prod_usjnt_taboo`)이
+80만 행대라, 소스에서 청크(5,000행) 단위로 읽어 SQLAlchemy Core `insert()`를 `executemany` 스타일로
+반복 실행한다.
 
-실행: uv run python -m app.scripts.seed_dur
+`source_session_factory`(기본: 운영 MySQL `AsyncSessionLocal`, 즉 `ai_health`)와 `session_factory`
+(대상, 테스트 DB 등)가 같은 DB를 가리키면 삭제 후 재삽입 과정에서 원본 데이터가 사라지므로 이를 막는다.
+
+실행: 이제 단독 실행 대상이 없다(운영 데이터가 이미 ai_health에 있음) — 테스트 DB 시딩은
+`app/tests/conftest.py`가 `session_factory=TestSessionLocal`로 자동 호출한다.
 """
 
 import asyncio
-import sqlite3
-from collections.abc import Callable
-from pathlib import Path
+import sys
+from collections.abc import AsyncIterator, Callable, Sequence
+from typing import Any
 
-from sqlalchemy import delete, insert
+from sqlalchemy import Row, delete, insert, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.db.databases import AsyncSessionLocal
@@ -47,13 +53,18 @@ from app.models.dur import (
     MedicineRecall,
 )
 
-SQLITE_PATH = Path(__file__).parent.parent / "database" / "drugs_full.db"
-
 CHUNK_SIZE = 5000
 
-# sqlite 테이블명 -> (모델, {sqlite 컬럼명: 모델 속성명}). SQLite 원본(drugs_full.db) 컬럼을
-# 전부 옮긴다(app/models/dur.py 모듈 docstring 참고) - 병용확인 API가 안 쓰는 컬럼이라도 CSV/API
-# 원본에 있으면 유지한다.
+
+class SameDatabaseError(RuntimeError):
+    """소스와 대상이 같은 DB를 가리키면(운영 데이터를 지우고 빈 데이터로 재생성하는 사고를
+    막기 위해) 시딩을 거부한다."""
+
+
+# (과거 sqlite 원본 컬럼명 -> 모델 속성명). MySQL로 소스를 옮긴 뒤에도 어떤 API 원본 컬럼을
+# 옮기는지 문서화 목적으로 키(과거 SQLite 컬럼명)를 남겨두지만, 실제 조회/삽입에는 값(모델
+# 속성명 = 현재 MySQL 컬럼명)만 쓴다(app/models/dur.py 모듈 docstring 참고) - 병용확인 API가
+# 안 쓰는 컬럼이라도 CSV/API 원본에 있으면 유지한다.
 _TABLE_SPECS: list[tuple[str, type, dict[str, str]]] = [
     (
         "drugs_data",
@@ -563,58 +574,68 @@ _TABLE_SPECS.append(
 )
 
 
-def _iter_sqlite_chunks(conn: sqlite3.Connection, table: str, columns: list[str], chunk_size: int):
-    cursor = conn.cursor()
-    quoted = ", ".join(f'"{c}"' for c in columns)
-    cursor.execute(f'SELECT {quoted} FROM "{table}"')
-    while True:
-        rows = cursor.fetchmany(chunk_size)
-        if not rows:
-            break
+async def _assert_different_database(source_session: AsyncSession, target_session: AsyncSession) -> None:
+    source_db = (await source_session.execute(text("SELECT DATABASE()"))).scalar_one()
+    target_db = (await target_session.execute(text("SELECT DATABASE()"))).scalar_one()
+    if source_db == target_db:
+        raise SameDatabaseError(
+            f"소스와 대상이 같은 DB({source_db})입니다 — 운영 데이터를 지우고 재생성하는 사고를 "
+            "막기 위해 시딩을 중단합니다. 다른 DB(테스트 DB 등)를 대상으로만 실행하세요."
+        )
+
+
+# 모델 속성명이 SQL 예약어(class)와 충돌해 다른 이름(class_)을 쓰는 경우 — 그 외 컬럼은 모두
+# 모델 속성명 = MySQL 컬럼명이 동일하다.
+_COLUMN_ALIASES: dict[str, str] = {"class_": "class"}
+
+
+async def _iter_mysql_chunks(
+    source_session: AsyncSession, table: str, columns: list[str], chunk_size: int
+) -> AsyncIterator[Sequence[Row[Any]]]:
+    quoted = ", ".join(f"{_COLUMN_ALIASES[col]} AS {col}" if col in _COLUMN_ALIASES else col for col in columns)
+    result = await source_session.execute(text(f"SELECT {quoted} FROM {table}"))
+    rows = result.fetchmany(chunk_size)
+    while rows:
         yield rows
+        rows = result.fetchmany(chunk_size)
 
 
 async def seed_dur(
-    sqlite_path: Path = SQLITE_PATH,
-    session_factory: Callable[[], AsyncSession] | async_sessionmaker[AsyncSession] = AsyncSessionLocal,
+    session_factory: Callable[[], AsyncSession] | async_sessionmaker[AsyncSession],
+    source_session_factory: Callable[[], AsyncSession] | async_sessionmaker[AsyncSession] = AsyncSessionLocal,
 ) -> dict[str, int]:
-    """`session_factory`는 기본적으로 운영 MySQL 세션이지만, 테스트 스위트가 격리된 테스트 DB에
-    같은 참조 데이터를 시딩할 때도 재사용한다(`app/tests/conftest.py`)."""
-    conn = sqlite3.connect(sqlite_path)
+    """`session_factory`(대상, 필수 — 테스트 DB 등)에 `source_session_factory`(기본: 운영
+    MySQL `ai_health`)의 DUR 참조 데이터를 복사한다(`app/tests/conftest.py`가 호출)."""
     counts: dict[str, int] = {}
-    try:
-        async with session_factory() as session:
-            # 참조 데이터라 증분 갱신할 이유가 없다 - 매번 전부 지우고 재적재(음식-약물과 동일 정책).
-            for _table, model, _cols in reversed(_TABLE_SPECS):
-                await session.execute(delete(model))
-            await session.commit()
+    async with source_session_factory() as source_session, session_factory() as session:
+        await _assert_different_database(source_session, session)
 
-            for table, model, col_map in _TABLE_SPECS:
-                sqlite_cols = list(col_map.keys())
-                total = 0
-                for rows in _iter_sqlite_chunks(conn, table, sqlite_cols, CHUNK_SIZE):
-                    payload = [
-                        {
-                            col_map[col]: (value if value != "" else None)
-                            for col, value in zip(sqlite_cols, row, strict=True)
-                        }
-                        for row in rows
-                    ]
-                    await session.execute(insert(model), payload)
-                    total += len(payload)
-                await session.commit()
-                counts[table] = total
-                print(f"{table}: {total:,}건 시딩 완료")
-    finally:
-        conn.close()
+        # 참조 데이터라 증분 갱신할 이유가 없다 - 매번 전부 지우고 재적재(음식-약물과 동일 정책).
+        for _table, model, _cols in reversed(_TABLE_SPECS):
+            await session.execute(delete(model))
+        await session.commit()
+
+        for table, model, col_map in _TABLE_SPECS:
+            source_cols = list(col_map.values())
+            total = 0
+            async for rows in _iter_mysql_chunks(source_session, table, source_cols, CHUNK_SIZE):
+                payload = [dict(zip(source_cols, row, strict=True)) for row in rows]
+                await session.execute(insert(model), payload)
+                total += len(payload)
+            await session.commit()
+            counts[table] = total
+            print(f"{table}: {total:,}건 시딩 완료")
 
     return counts
 
 
 async def _main() -> None:
-    counts = await seed_dur()
-    total = sum(counts.values())
-    print(f"\nDUR 데이터 MySQL 시딩 완료: 총 {total:,}건 ({len(counts)}개 테이블)")
+    print(
+        "이 스크립트는 더 이상 단독 실행 대상이 없습니다 — 원본 데이터가 이미 운영 MySQL(ai_health)에 "
+        "있습니다. 테스트 DB 시딩은 app/tests/conftest.py가 session_factory=TestSessionLocal로 "
+        "자동 호출합니다.",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":
