@@ -110,7 +110,7 @@ def resolve_diseases(query: str) -> list[str]:
     무관한 발화도 질의에 disease 필터가 안 걸릴 뿐 similarity_search는 여전히 top-k를
     반환하고, threshold(0.40)만으로는 "식사/운동" 같은 주제어가 겹치는 잡담을 걸러내지
     못했다(실측 2026-07-17). 사용자가 이미 진단받은 질환은 어차피 LLM 시스템 프롬프트의
-    "사용자 건강 컨텍스트"에 항상 실려가므로(`chat_agent._SYSTEM_PROMPT_TEMPLATE`), 답변
+    "질문자 본인 정보"에 항상 실려가므로(`chat_agent._SYSTEM_PROMPT_TEMPLATE`), 답변
     개인화는 이 폴백 없이도 보장된다 — 이 함수가 잃는 건 "질환이 안 드러난 질문에도
     논문을 억지로 찾아 인용하는" 기능뿐이다."""
     matched: list[str] = []
