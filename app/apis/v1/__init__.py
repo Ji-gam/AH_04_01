@@ -1,6 +1,5 @@
 from fastapi import APIRouter
 
-from app.apis.v1.admin_routers import admin_router
 from app.apis.v1.auth_routers import auth_router
 from app.apis.v1.chat_routers import chat_router
 from app.apis.v1.content_routers import content_router
@@ -23,4 +22,3 @@ v1_routers.include_router(disease_router)
 v1_routers.include_router(habit_router)
 v1_routers.include_router(dur_router)
 v1_routers.include_router(family_router)
-v1_routers.include_router(admin_router)
