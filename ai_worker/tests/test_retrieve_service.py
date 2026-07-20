@@ -4,7 +4,7 @@ import pytest
 from langchain_core.documents import Document
 
 from ai_worker.services import retrieve_service
-from ai_worker.services.drug_name_resolver import DrugNameIndex, build_index
+from ai_worker.services.drug_name_resolver import DrugNameIndex, build_index, build_ingredient_index
 
 
 @pytest.fixture(autouse=True)
@@ -63,7 +63,7 @@ def test_cache_searchable_names_collects_ingredients_and_drug_names():
 
     retrieve_service.cache_searchable_names(db)
 
-    assert retrieve_service.db_holder["ingr_names"] == {"졸피뎀타르타르산염", "무관성분"}
+    assert retrieve_service.db_holder["ingr_names"].resolve("졸피뎀타르타르산염 관련 질문") is not None
     assert retrieve_service.db_holder["drug_names"].resolve("타이레놀 부작용") is not None
 
 
@@ -72,7 +72,7 @@ def test_search_documents_filters_by_similarity_threshold(monkeypatch):
     relevant_doc = Document(page_content="관련 문서", metadata={"ingr_name": "졸피뎀타르타르산염"})
     irrelevant_doc = Document(page_content="무관 문서", metadata={"ingr_name": "무관성분"})
     db = FakeChromaDb([(relevant_doc, 0.5), (irrelevant_doc, 2.0)])
-    retrieve_service.db_holder["ingr_names"] = {"졸피뎀타르타르산염", "무관성분"}
+    retrieve_service.db_holder["ingr_names"] = build_ingredient_index(["졸피뎀타르타르산염", "무관성분"])
 
     # 쿼리에 성분명 전체가 그대로 들어있어야 동적 필터가 걸린다(아래 없으면 검색 자체가
     # 생략된다 — test_search_documents_skips_search_when_no_ingredient_identified 참고).
@@ -87,7 +87,7 @@ def test_search_documents_applies_dynamic_ingredient_filter(monkeypatch):
     matching_doc = Document(page_content="졸피뎀 문서", metadata={"ingr_name": "졸피뎀타르타르산염"})
     other_doc = Document(page_content="다른 성분 문서", metadata={"ingr_name": "무관성분"})
     db = FakeChromaDb([(matching_doc, 0.1), (other_doc, 0.1)])
-    retrieve_service.db_holder["ingr_names"] = {"졸피뎀타르타르산염", "무관성분"}
+    retrieve_service.db_holder["ingr_names"] = build_ingredient_index(["졸피뎀타르타르산염", "무관성분"])
 
     chunks = retrieve_service.search_documents(db, "졸피뎀타르타르산염 최대 투여기간", limit=3)
 
@@ -108,7 +108,7 @@ def test_search_documents_skips_search_when_no_drug_identified(monkeypatch):
     질문으로 필터 없이 전체 검색하면 무관한 성분이 임계값을 통과해버린다(실측:
     "당뇨병 진단받았는데 어떡하죠"가 항암제 임부금기 경고와 매칭됨). 성분명도 약 이름도
     식별 안 되면 검색 자체를 생략한다."""
-    retrieve_service.db_holder["ingr_names"] = {"졸피뎀타르타르산염", "무관성분"}
+    retrieve_service.db_holder["ingr_names"] = build_ingredient_index(["졸피뎀타르타르산염", "무관성분"])
     retrieve_service.db_holder["drug_names"] = build_index(["타이레놀정500밀리그람(아세트아미노펜)"])
 
     chunks = retrieve_service.search_documents(_RaisingChromaDb(), "당뇨병 진단받았는데 어떡하죠", limit=3)
@@ -128,7 +128,7 @@ def test_search_documents_finds_drug_by_brand_name(monkeypatch):
     )
     other = Document(page_content="다른 약", metadata={"item_name": "게보린정"})
     db = FakeChromaDb([(tylenol, 0.1), (other, 0.1)])
-    retrieve_service.db_holder["ingr_names"] = set()
+    retrieve_service.db_holder["ingr_names"] = DrugNameIndex()
     retrieve_service.db_holder["drug_names"] = build_index(["타이레놀정500밀리그람(아세트아미노펜)", "게보린정"])
 
     chunks = retrieve_service.search_documents(db, "타이레놀은 부작용이 뭐야?", limit=3)
@@ -142,10 +142,29 @@ def test_search_documents_prefers_ingredient_over_drug_name(monkeypatch):
     monkeypatch.setattr(retrieve_service.settings, "RAG_SIMILARITY_THRESHOLD", 10.0)
     rule = Document(page_content="병용금기 규칙", metadata={"ingr_name": "와파린"})
     db = FakeChromaDb([(rule, 0.1)])
-    retrieve_service.db_holder["ingr_names"] = {"와파린"}
+    retrieve_service.db_holder["ingr_names"] = build_ingredient_index(["와파린"])
     retrieve_service.db_holder["drug_names"] = build_index(["와파린정1밀리그람"])
 
     chunks = retrieve_service.search_documents(db, "와파린 같이 먹어도 돼?", limit=3)
+
+    assert len(chunks) == 1
+    assert chunks[0].content == rule.page_content
+
+
+def test_search_documents_finds_ingredient_by_partial_name(monkeypatch):
+    """저장된 성분명은 화학명 전체("졸피뎀타르타르산염")인데 사용자는 "졸피뎀"까지만 친다.
+
+    예전엔 양방향 완전 포함 검사라 "졸피뎀 노인이 먹어도 돼?"가 0건이었다 — 질의 전체
+    문자열이 성분명에 안 들어있고, 성분명 전체도 질의에 안 들어있기 때문. 접두사 인덱스로
+    바뀐 뒤에는 "졸피뎀"이 3자 이상 접두사라 걸린다."""
+    monkeypatch.setattr(retrieve_service.settings, "RAG_SIMILARITY_THRESHOLD", 10.0)
+    rule = Document(page_content="졸피뎀 병용금기 규칙", metadata={"ingr_name": "졸피뎀타르타르산염"})
+    other = Document(page_content="다른 성분 규칙", metadata={"ingr_name": "와파린"})
+    db = FakeChromaDb([(rule, 0.1), (other, 0.1)])
+    retrieve_service.db_holder["ingr_names"] = build_ingredient_index(["졸피뎀타르타르산염", "와파린"])
+    retrieve_service.db_holder["drug_names"] = DrugNameIndex()
+
+    chunks = retrieve_service.search_documents(db, "졸피뎀 노인이 먹어도 돼?", limit=3)
 
     assert len(chunks) == 1
     assert chunks[0].content == rule.page_content

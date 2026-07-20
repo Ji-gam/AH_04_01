@@ -84,9 +84,9 @@ def main() -> int:
     print("RAG 씨딩 검증 — 색인된 벡터에 실제 질문을 던진다(모킹 없음)")
 
     db = dur.ensure_db()
-    ingredients = len(dur.db_holder["ingr_names"])
+    ingredients = len(dur.db_holder["ingr_names"].entries)
     drug_keys = len(dur.db_holder["drug_names"].entries)
-    print(f"\n캐시된 성분명 {ingredients:,}종 / 약 이름 검색키 {drug_keys:,}종")
+    print(f"\n캐시된 성분명 검색키 {ingredients:,}종 / 약 이름 검색키 {drug_keys:,}종")
     if not ingredients or not drug_keys:
         print("  !! 이름 캐시가 비었다. 색인이 안 됐거나 메타데이터 키가 틀렸다.")
         print("     `uv run python -m ai_worker.ingest`를 먼저 돌렸는지 확인할 것.")

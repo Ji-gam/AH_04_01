@@ -27,7 +27,7 @@
 """
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 # 브랜드명 뒤에 붙는 제형·용량. 여기서부터 잘라내면 앞에 브랜드가 남는다.
@@ -76,15 +76,12 @@ class DrugNameIndex:
         return None
 
 
-def build_index(item_names: Iterable[str]) -> DrugNameIndex:
-    """제품명 목록에서 검색 키를 만든다.
-
-    브랜드 코어뿐 아니라 **그 접두사도 전부** 등록한다. 제품은 `훼스탈골드정`인데 사용자는
-    "훼스탈"까지만 치기 때문이다. 접두사를 열면 오탐이 늘 것 같지만, 3자 이상으로 자르면
-    일반 건강 질문 반례 10개에서 오탐이 하나도 안 났다(실측)."""
+def _build_prefix_index(names: Iterable[str], core_of: Callable[[str], str]) -> DrugNameIndex:
+    """공통 접두사 인덱싱 메커니즘. `core_of`로 이름마다 "검색 키를 뽑을 기준 문자열"만
+    바꿔치기한다 — 제품명은 브랜드 코어, 성분명은 원본 그대로(제형이 안 붙으므로)."""
     keys: dict[str, set[str]] = {}
-    for name in item_names:
-        core = brand_core(name)
+    for name in names:
+        core = core_of(name)
         for end in range(_MIN_KEY_LEN, len(core) + 1):
             keys.setdefault(core[:end], set()).add(name)
 
@@ -92,3 +89,22 @@ def build_index(item_names: Iterable[str]) -> DrugNameIndex:
         sorted(((k, tuple(sorted(v))) for k, v in keys.items()), key=lambda entry: len(entry[0]), reverse=True)
     )
     return DrugNameIndex(entries=entries)
+
+
+def build_index(item_names: Iterable[str]) -> DrugNameIndex:
+    """제품명 목록에서 검색 키를 만든다.
+
+    브랜드 코어뿐 아니라 **그 접두사도 전부** 등록한다. 제품은 `훼스탈골드정`인데 사용자는
+    "훼스탈"까지만 치기 때문이다. 접두사를 열면 오탐이 늘 것 같지만, 3자 이상으로 자르면
+    일반 건강 질문 반례 10개에서 오탐이 하나도 안 났다(실측)."""
+    return _build_prefix_index(item_names, core_of=brand_core)
+
+
+def build_ingredient_index(ingr_names: Iterable[str]) -> DrugNameIndex:
+    """성분명 목록에서 검색 키를 만든다. `build_index`와 같은 접두사 인덱싱을 쓰되
+    `brand_core()`는 적용하지 않는다 — 성분명("졸피뎀타르타르산염")엔 제품명과 달리 제형·용량
+    접미사가 안 붙으므로 그 전처리가 필요 없다(붙이면 화학명을 엉뚱하게 잘라낼 위험만 있다).
+
+    이걸로 "졸피뎀 노인이 먹어도 돼?"가 저장된 "졸피뎀타르타르산염"에 걸린다 — 예전엔 질의
+    전체 문자열이 성분명에 포함되는지만 봐서(양방향 완전 포함 검사) 이런 질문이 0건이었다."""
+    return _build_prefix_index(ingr_names, core_of=lambda name: name.strip())
