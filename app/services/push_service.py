@@ -98,9 +98,7 @@ class PushService:
         await self._send_to_web_subscriptions(session, profile_id, title, body)
         await self._send_to_native_subscriptions(session, profile_id, title, body)
 
-    async def _send_to_web_subscriptions(
-        self, session: AsyncSession, profile_id: int, title: str, body: str
-    ) -> None:
+    async def _send_to_web_subscriptions(self, session: AsyncSession, profile_id: int, title: str, body: str) -> None:
         if not config.VAPID_PRIVATE_KEY:
             logger.warning("VAPID 비밀키가 설정되지 않아 웹푸시 발송을 건너뜁니다.")
             return

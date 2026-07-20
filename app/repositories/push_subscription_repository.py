@@ -66,9 +66,7 @@ class PushSubscriptionRepository:
         return list(result.scalars().all())
 
     async def get_by_device_token(self, session: AsyncSession, device_token: str) -> PushSubscription | None:
-        result = await session.execute(
-            select(PushSubscription).where(PushSubscription.device_token == device_token)
-        )
+        result = await session.execute(select(PushSubscription).where(PushSubscription.device_token == device_token))
         return result.scalar_one_or_none()
 
     async def create_native(
