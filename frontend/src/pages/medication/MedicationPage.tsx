@@ -1373,7 +1373,12 @@ export default function MedicationPage() {
                     }}
                   >
                     <label
-                      style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-start",
+                        cursor: "pointer",
+                      }}
                     >
                       <input
                         type="checkbox"
