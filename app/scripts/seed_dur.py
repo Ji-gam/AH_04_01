@@ -583,10 +583,17 @@ async def _assert_different_database(source_session: AsyncSession, target_sessio
         )
 
 
+# 모델 속성명이 SQL 예약어(class)와 충돌해 다른 이름(class_)을 쓰는 경우 — 그 외 컬럼은 모두
+# 모델 속성명 = MySQL 컬럼명이 동일하다.
+_COLUMN_ALIASES: dict[str, str] = {"class_": "class"}
+
+
 async def _iter_mysql_chunks(
     source_session: AsyncSession, table: str, columns: list[str], chunk_size: int
 ) -> AsyncIterator[list]:
-    quoted = ", ".join(columns)
+    quoted = ", ".join(
+        f"{_COLUMN_ALIASES[col]} AS {col}" if col in _COLUMN_ALIASES else col for col in columns
+    )
     result = await source_session.execute(text(f"SELECT {quoted} FROM {table}"))
     rows = result.fetchmany(chunk_size)
     while rows:
