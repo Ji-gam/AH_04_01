@@ -45,15 +45,25 @@ ai = [
 ]
 app = [
     "alembic>=1.14.0",
+    # 복약 알림 스케줄러(app/services/push_scheduler.py)용 - tool.mypy.overrides에는
+    # 있었지만 실제 의존성 선언이 빠져있었다(2026-07-20 확인, FCM 작업 중 발견).
+    "apscheduler>=3.10.0",
     "asyncmy>=0.2.11",
     "bcrypt<=4.0.1",
     "celery>=5.4.0",
     "fastapi[standard]>=0.128.0",
+    # FCM(Firebase Cloud Messaging) - 앱 패키징(Capacitor) 후 iOS/Android 네이티브 푸시용.
+    # 웹푸시(pywebpush/VAPID)는 그대로 두고, 이건 push_subscriptions.platform이
+    # IOS/ANDROID인 구독(device_token)에만 쓴다.
+    "firebase-admin>=6.5.0",
     "httpx>=0.28.1",
     "orjson>=3.11.5",
     "passlib[bcrypt]>=1.7.4",
     "pillow>=11.0.0",
     "pyjwt>=2.10.1",
+    # 웹푸시 발송(app/services/push_service.py)용 - tool.mypy.overrides에는 있었지만
+    # 실제 의존성 선언이 빠져있었다(2026-07-20 확인, FCM 작업 중 발견).
+    "pywebpush>=2.0.0",
     "sqladmin>=0.28.0",
     "sqlalchemy[asyncio]>=2.0.36",
     "tzdata>=2026.2",
@@ -132,4 +142,9 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # 웹푸시 관련 패키지들도 타입 스텁을 제공하지 않는다(celery와 동일한 이유).
 module = ["py_vapid", "py_vapid.*", "pywebpush", "pywebpush.*", "apscheduler", "apscheduler.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# firebase-admin은 py.typed 마커가 없어 mypy가 스텁을 못 찾는다(celery와 동일한 이유).
+module = ["firebase_admin", "firebase_admin.*"]
 ignore_missing_imports = true

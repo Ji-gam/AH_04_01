@@ -3,6 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.push_subscription import PushPlatform, PushSubscription
 
+NATIVE_PLATFORMS = (PushPlatform.IOS, PushPlatform.ANDROID)
+
 
 class PushSubscriptionRepository:
     async def get_by_endpoint(self, session: AsyncSession, endpoint: str) -> PushSubscription | None:
@@ -51,3 +53,33 @@ class PushSubscriptionRepository:
             )
         )
         return list(result.scalars().all())
+
+    async def list_native_subscriptions_for_profile(
+        self, session: AsyncSession, profile_id: int
+    ) -> list[PushSubscription]:
+        """iOS/Android 네이티브 앱(device_token 기반) 구독만 가져온다 - FCM 발송용."""
+        result = await session.execute(
+            select(PushSubscription).where(
+                PushSubscription.profile_id == profile_id, PushSubscription.platform.in_(NATIVE_PLATFORMS)
+            )
+        )
+        return list(result.scalars().all())
+
+    async def get_by_device_token(self, session: AsyncSession, device_token: str) -> PushSubscription | None:
+        result = await session.execute(
+            select(PushSubscription).where(PushSubscription.device_token == device_token)
+        )
+        return result.scalar_one_or_none()
+
+    async def create_native(
+        self, session: AsyncSession, profile_id: int, platform: PushPlatform, device_token: str
+    ) -> PushSubscription:
+        sub = PushSubscription(profile_id=profile_id, platform=platform, device_token=device_token)
+        session.add(sub)
+        await session.commit()
+        await session.refresh(sub)
+        return sub
+
+    async def delete_by_device_token(self, session: AsyncSession, device_token: str) -> None:
+        await session.execute(delete(PushSubscription).where(PushSubscription.device_token == device_token))
+        await session.commit()

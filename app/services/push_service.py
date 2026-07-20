@@ -1,17 +1,42 @@
 import json
 import logging
 
+import firebase_admin
 from fastapi import HTTPException, status
+from firebase_admin import credentials, messaging
 from pywebpush import WebPushException, webpush
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import config
 from app.models.family_link import FamilyLinkStatus
+from app.models.push_subscription import PushPlatform
 from app.repositories.family_repository import FamilyRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.repositories.push_subscription_repository import PushSubscriptionRepository
 
 logger = logging.getLogger("app.push_service")
+
+_firebase_app: firebase_admin.App | None = None
+_firebase_init_attempted = False
+
+
+def _get_firebase_app() -> firebase_admin.App | None:
+    """FIREBASE_CREDENTIALS_PATH가 설정돼 있으면 firebase_admin 앱을 프로세스당 한 번만
+    초기화해서 재사용한다. 미설정이거나 초기화가 실패하면(파일 없음/형식 오류 등) None을
+    반환하고, 호출부는 iOS/Android 발송만 조용히 건너뛴다(웹푸시는 영향 없음)."""
+    global _firebase_app, _firebase_init_attempted
+    if _firebase_init_attempted:
+        return _firebase_app
+    _firebase_init_attempted = True
+    if not config.FIREBASE_CREDENTIALS_PATH:
+        return None
+    try:
+        cred = credentials.Certificate(config.FIREBASE_CREDENTIALS_PATH)
+        _firebase_app = firebase_admin.initialize_app(cred)
+    except Exception:
+        logger.exception("Firebase Admin SDK 초기화 실패 - FCM 발송을 건너뜁니다.")
+        _firebase_app = None
+    return _firebase_app
 
 
 class PushService:
@@ -50,12 +75,34 @@ class PushService:
     async def unsubscribe(self, session: AsyncSession, endpoint: str) -> None:
         await self._repo.delete_by_endpoint(session, endpoint)
 
+    async def subscribe_native(
+        self, session: AsyncSession, profile_id: int, platform: PushPlatform, device_token: str
+    ) -> None:
+        """iOS/Android 앱이 발급받은 FCM 디바이스 토큰을 등록한다. subscribe()의 웹푸시
+        재구독 로직과 같은 이유로, 이미 등록된 토큰이면 profile_id만 갱신한다(같은 기기에서
+        로그아웃 후 다른 계정으로 로그인한 경우)."""
+        existing = await self._repo.get_by_device_token(session, device_token)
+        if existing:
+            if existing.profile_id != profile_id:
+                await self._repo.update_profile_id(session, existing.id, profile_id)
+            return
+        await self._repo.create_native(session, profile_id, platform, device_token)
+
+    async def unsubscribe_native(self, session: AsyncSession, device_token: str) -> None:
+        await self._repo.delete_by_device_token(session, device_token)
+
     async def send_to_profile(self, session: AsyncSession, profile_id: int, title: str, body: str) -> None:
-        """이 프로필이 구독해둔 모든 기기(WEB만 - IOS/ANDROID는 나중에 네이티브 패키징 시
-        별도 발송 경로 추가 예정)에 푸시를 보낸다. 구독 하나가 실패해도(예: 브라우저에서
-        구독 취소했는데 서버 DB에는 아직 남아있는 경우) 나머지 기기 발송은 계속한다."""
+        """이 프로필이 구독해둔 모든 기기(WEB=웹푸시, IOS/ANDROID=FCM)에 푸시를 보낸다.
+        구독 하나가 실패해도(예: 브라우저에서 구독 취소했는데 서버 DB에는 아직 남아있는
+        경우) 나머지 기기 발송은 계속한다."""
+        await self._send_to_web_subscriptions(session, profile_id, title, body)
+        await self._send_to_native_subscriptions(session, profile_id, title, body)
+
+    async def _send_to_web_subscriptions(
+        self, session: AsyncSession, profile_id: int, title: str, body: str
+    ) -> None:
         if not config.VAPID_PRIVATE_KEY:
-            logger.warning("VAPID 비밀키가 설정되지 않아 푸시 발송을 건너뜁니다.")
+            logger.warning("VAPID 비밀키가 설정되지 않아 웹푸시 발송을 건너뜁니다.")
             return
 
         subscriptions = await self._repo.list_web_subscriptions_for_profile(session, profile_id)
@@ -84,6 +131,30 @@ class PushService:
                     await self._repo.delete_by_id(session, sub.id)
                 else:
                     logger.warning("웹푸시 발송 실패 (subscription_id=%s): %s", sub.id, exc)
+
+    async def _send_to_native_subscriptions(
+        self, session: AsyncSession, profile_id: int, title: str, body: str
+    ) -> None:
+        firebase_app = _get_firebase_app()
+        if firebase_app is None:
+            return
+
+        subscriptions = await self._repo.list_native_subscriptions_for_profile(session, profile_id)
+        for sub in subscriptions:
+            if not sub.device_token:
+                continue
+            try:
+                message = messaging.Message(
+                    notification=messaging.Notification(title=title, body=body),
+                    token=sub.device_token,
+                )
+                messaging.send(message, app=firebase_app)
+            except messaging.UnregisteredError:
+                # 앱 삭제/토큰 만료 등으로 더 이상 유효하지 않은 토큰 - DB에서 정리한다
+                # (웹푸시의 404/410 Gone과 같은 의미).
+                await self._repo.delete_by_id(session, sub.id)
+            except Exception:
+                logger.exception("FCM 발송 실패 (subscription_id=%s)", sub.id)
 
     async def send_to_profile_and_guardians(
         self, session: AsyncSession, profile_id: int, title: str, body: str
