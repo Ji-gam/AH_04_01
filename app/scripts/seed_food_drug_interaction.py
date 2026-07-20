@@ -46,15 +46,11 @@ async def _read_mysql(source_session: AsyncSession) -> dict:
         if source_row
         else {}
     )
-    categories = (
-        (await source_session.execute(select(FoodDrugCategory).order_by(FoodDrugCategory.id))).scalars().all()
-    )
+    categories = (await source_session.execute(select(FoodDrugCategory).order_by(FoodDrugCategory.id))).scalars().all()
     ingredients = (
         (await source_session.execute(select(FoodDrugIngredient).order_by(FoodDrugIngredient.id))).scalars().all()
     )
-    food_items = (
-        (await source_session.execute(select(FoodDrugFoodItem).order_by(FoodDrugFoodItem.id))).scalars().all()
-    )
+    food_items = (await source_session.execute(select(FoodDrugFoodItem).order_by(FoodDrugFoodItem.id))).scalars().all()
     return {
         "source": source,
         "categories": [
@@ -83,9 +79,7 @@ async def _read_mysql(source_session: AsyncSession) -> dict:
     }
 
 
-async def _assert_different_database(
-    source_session: AsyncSession, target_session: AsyncSession
-) -> None:
+async def _assert_different_database(source_session: AsyncSession, target_session: AsyncSession) -> None:
     source_db = (await source_session.execute(text("SELECT DATABASE()"))).scalar_one()
     target_db = (await target_session.execute(text("SELECT DATABASE()"))).scalar_one()
     if source_db == target_db:

@@ -18,9 +18,10 @@
 
 import asyncio
 import sys
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
+from typing import Any
 
-from sqlalchemy import delete, insert, text
+from sqlalchemy import Row, delete, insert, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.db.databases import AsyncSessionLocal
@@ -590,10 +591,8 @@ _COLUMN_ALIASES: dict[str, str] = {"class_": "class"}
 
 async def _iter_mysql_chunks(
     source_session: AsyncSession, table: str, columns: list[str], chunk_size: int
-) -> AsyncIterator[list]:
-    quoted = ", ".join(
-        f"{_COLUMN_ALIASES[col]} AS {col}" if col in _COLUMN_ALIASES else col for col in columns
-    )
+) -> AsyncIterator[Sequence[Row[Any]]]:
+    quoted = ", ".join(f"{_COLUMN_ALIASES[col]} AS {col}" if col in _COLUMN_ALIASES else col for col in columns)
     result = await source_session.execute(text(f"SELECT {quoted} FROM {table}"))
     rows = result.fetchmany(chunk_size)
     while rows:
