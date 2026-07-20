@@ -12,6 +12,7 @@ from typing import NamedTuple, cast
 import httpx
 from fastapi import BackgroundTasks, HTTPException, status
 from PIL import Image
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import AsyncSessionLocal
@@ -37,6 +38,12 @@ from app.repositories.family_repository import FamilyRepository
 from app.repositories.food_drug_interaction_repository import FoodDrugInteractionRepository
 from app.repositories.medication_repository import MedicationRepository
 from app.services import medication_open_api_client
+from app.services.ai_worker_gateway import (
+    AIWorkerGateway,
+    AIWorkerInvalidRequestError,
+    AIWorkerProcessingError,
+    AIWorkerUnavailableError,
+)
 from app.services.food_item_extraction import extract_food_items
 
 logger = logging.getLogger("app.medication_service")
@@ -71,6 +78,12 @@ _DRUG_FORM_SUFFIX_PATTERN = re.compile(r"(정|캡슐|시럽|패취|점안액|디
 # 끝 앵커 대신 텍스트 어디에든 기관명이 포함되면 제외한다(실제 드러그명에 약국/병원/의원/한의원이
 # 부분문자열로 등장하는 경우는 없다고 봐도 안전하다).
 _INSTITUTION_SUFFIX_PATTERN = re.compile(r"약국|병원|의원|한의원")
+
+# (#OCR-LLM) "성분/함량", "효능/효과"처럼 처방전 문서에 고정으로 박히는 라벨 문구가 CLOVA에
+# 심하게 오인식되면("생봉/행정") 우연히 "정"으로 끝나 _DRUG_FORM_SUFFIX_PATTERN을 통과해버린다.
+# 실제 약품명에서 "/"는 항상 숫자와 함께 온다(예: "타진서방정 10/5mg"의 복합 용량 표기) — 라벨
+# 문구는 숫자 없이 한글 단어끼리만 "/"로 이어지므로, "/"가 있는데 숫자가 하나도 없으면 약품명이
+# 아닌 라벨/문구로 보고 제외한다.
 
 # (#120) "아스피린에 과민증이 있는 경우..."처럼 처방전 복약안내 문구에 성분명이 조사와 함께
 # 언급되면("아스피린에"), 실제로는 완결된 약품명이 아닌 문장 중간 단어인데도 편집거리상 다른
@@ -449,6 +462,10 @@ def _is_annotation_line(stripped: str) -> bool:
     return stripped.startswith("(") or stripped.endswith(")") or (stripped.startswith("[") and stripped.endswith("]"))
 
 
+def _is_label_slash_without_digit(stripped: str) -> bool:
+    return "/" in stripped and not any(ch.isdigit() for ch in stripped)
+
+
 def _looks_like_drug_name(word: str) -> bool:
     stripped = word.lstrip("*").strip()
     if len(stripped) < _MIN_DRUG_NAME_LEN:
@@ -456,6 +473,8 @@ def _looks_like_drug_name(word: str) -> bool:
     if _is_annotation_line(stripped):
         return False
     if _INSTITUTION_SUFFIX_PATTERN.search(stripped):
+        return False
+    if _is_label_slash_without_digit(stripped):
         return False
     if not _KOREAN_TOKEN_PATTERN.search(stripped):
         return False
@@ -626,6 +645,8 @@ async def _fuzzy_match_unrecognized_fields(
             continue  # 성분/제조사명 표기 줄은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
         if _INSTITUTION_SUFFIX_PATTERN.search(stripped):
             continue  # 약국/병원명은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
+        if _is_label_slash_without_digit(stripped):
+            continue  # "성분/함량"류 문서 라벨이 오인식된 경우 — 브랜드 약품명이 아니므로 제외
         if _TRAILING_PARTICLE_PATTERN.search(stripped):
             continue  # 조사로 끝나는 문장 중간 단어는 완결된 약품명이 아니므로 퍼지 매칭도 제외
         query = _korean_only(field.text)
@@ -668,6 +689,83 @@ async def _fuzzy_match_one_field(
     return med if med.id not in seen_ids else None
 
 
+_LLM_DRUG_NAME_SYSTEM_PROMPT = (
+    "다음은 처방전/약봉투를 OCR로 인식한 원문이다. 처방전에서 약품명은 보통 '정/캡슐/시럽/패취/"
+    "점안액/디스커스/연고/겔/주' 같은 제형 접미사로 끝나고 그 뒤에 대괄호로 감싼 제조사명이 붙는 "
+    "형식이다(예: '세레타이드500디스커스 [글락소스미스클라인]'). 이 패턴에 해당하는 텍스트는 "
+    "OCR 오탈자로 글자가 깨져 있어도(예: '노스판매취10ug/h' → 실제로는 '노스판패취') 절대 생략하지 "
+    "말고 반드시 약품명 후보로 포함하며, 실제 한글 의약품명 표기에 최대한 가깝게 교정해서 답하라 — "
+    "개별 항목의 확신이 낮다는 이유만으로 빼지 않는다. 용량 단위는 mg/g/ml뿐 아니라 mcg, ug, IU, "
+    "%, ug/h(패취류) 등 다양할 수 있다. 환자 정보, 약국/병원명, 복약 안내 문구, 성분명 단독 언급"
+    "(제형 접미사가 없는 경우), 제조사명은 약품명이 아니므로 제외한다. 답에는 대괄호로 감싼 "
+    "제조사명을 포함하지 말고 약품명(용량 포함)만 남긴다. 원문 전체가 약품명과 무관한 잡음일 "
+    "때만 빈 목록을 반환한다."
+)
+
+
+class _LlmDrugNameCandidates(BaseModel):
+    drug_names: list[str]
+
+
+async def _llm_extract_drug_names(ocr_raw_text: str) -> list[str]:
+    """(#OCR-LLM) 정규식(`_looks_like_drug_name`)/퍼지 매칭 결과와 무관하게 매번 호출해, 그
+    규칙들이 놓쳤을 약을 추가로 구제하는 보완 경로. OCR 원문을 그대로 LLM에 넘겨 약품명 후보를
+    뽑아낸다 — ai_worker가 꺼져있거나(AIWorkerUnavailableError) 요청이 잘못됐거나
+    (AIWorkerInvalidRequestError) 응답 형식이 어긋나면(AIWorkerProcessingError) 빈 목록을
+    반환해 정규식 매칭 결과만으로 계속 진행하게 한다 — 등록 자체가 막히지 않는다는 T-MED-1
+    원칙을 그대로 유지."""
+    if not ocr_raw_text.strip():
+        return []
+    gateway = AIWorkerGateway()
+    try:
+        result = await gateway.call_structured(
+            system_prompt=_LLM_DRUG_NAME_SYSTEM_PROMPT,
+            user_input=ocr_raw_text,
+            schema=_LlmDrugNameCandidates,
+        )
+    except (AIWorkerUnavailableError, AIWorkerInvalidRequestError, AIWorkerProcessingError) as e:
+        logger.warning("LLM 약품명 추출 실패, 기존 폴백으로 넘어갑니다: %s", e)
+        return []
+    return [name.strip() for name in cast(_LlmDrugNameCandidates, result).drug_names if name.strip()]
+
+
+async def _resolve_llm_suggested_names(
+    db_session: AsyncSession, repo: MedicationRepository, names: list[str], seen_ids: set[int]
+) -> tuple[list[Medication], set[int]]:
+    """LLM이 제안한 약품명 후보를 Tier2(마스터 DB) 정확일치 → Tier1 SQLite 정확일치 →
+    Tier3(공공 API)/AUTO_ 더미 순으로 해석한다. OCR confidence 근거가 없는 경로라 호출부가
+    낮은 match_rate(`_NO_OCR_EVIDENCE_MATCH_RATE`)를 매기도록 confidence는 채우지 않는다."""
+    resolved: list[Medication] = []
+    auto_created_ids: set[int] = set()
+    dur_repo = DurDrugRepository()
+
+    for name in _dedupe_drug_names(set(names)):
+        existing = await repo.search_medication_by_name(db_session, name)
+        exact = next((m for m in existing if m.medication_name == name), None)
+        if exact:
+            if exact.id not in seen_ids:
+                seen_ids.add(exact.id)
+                resolved.append(exact)
+            continue
+
+        tier1_results = await dur_repo.search_item_names(db_session, name, 5)
+        tier1_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
+        if tier1_item_seq:
+            tier1_med = await _get_or_create_medication_from_tier1(db_session, repo, tier1_item_seq, name)
+            if tier1_med.id not in seen_ids:
+                seen_ids.add(tier1_med.id)
+                resolved.append(tier1_med)
+            continue
+
+        new_med, is_auto_dummy = await _create_medication_for_unmatched_name(db_session, repo, name)
+        seen_ids.add(new_med.id)
+        if is_auto_dummy:
+            auto_created_ids.add(new_med.id)
+        resolved.append(new_med)
+
+    return resolved, auto_created_ids
+
+
 async def _match_or_create_medications(
     db_session: AsyncSession, repo: MedicationRepository, ocr_fields: list[OcrField]
 ) -> tuple[list[Medication], set[int], dict[int, float]]:
@@ -692,6 +790,21 @@ async def _match_or_create_medications(
         fuzzy_matched, fuzzy_confidence = await _fuzzy_match_unrecognized_fields(db_session, repo, ocr_fields, seen_ids)
         matched_meds.extend(fuzzy_matched)
         match_confidence.update(fuzzy_confidence)
+
+    # (#OCR-LLM) 정규식/퍼지 매칭 결과가 있어도, 그 규칙들이 놓쳤을 수 있는 약을 추가로 구제하기
+    # 위해 매번 LLM으로 한 번 더 보완한다. `seen_ids`로 이미 매칭된 약은 걸러지므로 중복 추가되지
+    # 않는다.
+    if ocr_fields:
+        ocr_raw_text = " ".join(f.text for f in ocr_fields)
+        llm_names = await _llm_extract_drug_names(ocr_raw_text)
+        if llm_names:
+            llm_matched, llm_auto_created_ids = await _resolve_llm_suggested_names(
+                db_session, repo, llm_names, seen_ids
+            )
+            matched_meds.extend(llm_matched)
+            auto_created_ids |= llm_auto_created_ids
+            for med in llm_matched:
+                match_confidence[med.id] = _NO_OCR_EVIDENCE_MATCH_RATE
 
     # 그래도 후보가 하나도 없으면(약품명으로 보이는 텍스트조차 없었던 경우)
     # 마스터 DB 상위 몇 개를 참고용으로 보여준다 — 이 경우엔 수동 검색으로의 전환을 기대한다.
