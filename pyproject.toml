@@ -128,3 +128,8 @@ exclude = ["docs/dev/sample_code_chat", "docs/dev/sample_code_recog"]
 # celery는 타입 스텁(py.typed)을 제공하지 않는다.
 module = ["celery", "celery.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# 웹푸시 관련 패키지들도 타입 스텁을 제공하지 않는다(celery와 동일한 이유).
+module = ["py_vapid", "py_vapid.*", "pywebpush", "pywebpush.*", "apscheduler", "apscheduler.*"]
+ignore_missing_imports = true
