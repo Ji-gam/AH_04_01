@@ -109,7 +109,7 @@ docker-compose up -d --build
 # 음식-약물 상호작용 참조 테이블 (식약처 가이드북 기반) — 매칭 기능이 실제로 동작하려면 필수
 docker compose exec fastapi uv run python -m app.scripts.seed_food_drug_interaction
 
-# DUR(의약품안전사용서비스) 참조 테이블 — app/database/drugs_full.db(공공데이터포털 API 22종
+# DUR(의약품안전사용서비스) 참조 테이블 — app/database/drugs_full.db(공공데이터포털 API 24종
 # 전수 수집본, scripts/drug_info_sync/orchestrate_pipeline.py)가 있어야 실행 가능
 docker compose exec fastapi uv run python -m app.scripts.seed_dur
 
@@ -120,6 +120,52 @@ docker compose exec fastapi uv run python -m app.scripts.seed_demo_data
 세 스크립트 모두 재실행해도 안전합니다(이미 있는 데이터는 건너뜀 — 단, `seed_food_drug_interaction`과
 `seed_dur`은 참조 테이블 전체를 지우고 다시 채우는 방식으로 "안전"합니다. 데모 계정과 달리 정적
 참조 데이터라 증분 갱신할 이유가 없기 때문).
+
+`app/models/dur.py`에 새 컬럼/테이블을 추가하는 마이그레이션(예: `0027_expand_dur_tables.py`)이
+있는 경우, `seed_dur`가 새 컬럼까지 채우려면 **먼저 `alembic upgrade head`로 스키마를 반영한
+뒤에** `seed_dur`를 실행해야 합니다. `docker compose up`은 fastapi 컨테이너 기동 시 항상
+`alembic upgrade head`를 자동으로 실행하므로, 컨테이너를 재기동(`docker compose up -d --build
+fastapi` 또는 재시작)하면 스키마는 이미 최신입니다 — 그다음 위 `seed_dur` 커맨드만 실행하면 됩니다.
+
+#### 🩹 (컨테이너 없이) 로컬 venv에서 직접 alembic/seed 실행하기
+
+컨테이너 재빌드 없이 빠르게 반복 확인하고 싶을 때는 호스트에서 직접 실행할 수도 있습니다.
+
+```bash
+# alembic/asyncmy 등은 app 그룹에 있다
+uv sync --group app
+
+# .env의 DB_HOST=mysql은 "컨테이너 안에서 mysql 컨테이너를 찾기 위한" 값이라, 호스트에서 직접
+# 실행할 땐 mysql이라는 호스트명을 못 찾는다. DB_EXPOSE_PORT로 열려있는 localhost로 덮어써야 한다.
+DB_HOST=localhost uv run --group app python -m alembic upgrade head
+DB_HOST=localhost uv run --group app python -m app.scripts.seed_dur
+```
+
+**⚠️ `alembic upgrade head`가 `Table 'xxx' already exists`로 실패하는 경우**: `alembic_version`
+테이블의 기록과 실제 DB 스키마가 어긋나 있다는 뜻입니다(예: 과거에 다른 방식으로 테이블이
+만들어졌거나, 마이그레이션 적용 후 버전 기록이 누락된 경우). 아래로 실제 상태를 먼저 확인하세요.
+
+```bash
+DB_HOST=localhost uv run --group app python -m alembic current   # 기록된 리비전 확인
+DB_HOST=localhost uv run --group app python -c "
+import asyncio
+from app.core.db.databases import AsyncSessionLocal
+from sqlalchemy import text
+async def main():
+    async with AsyncSessionLocal() as s:
+        r = await s.execute(text('SHOW TABLES'))
+        print(sorted(row[0] for row in r.fetchall()))
+asyncio.run(main())
+"
+```
+
+실제 테이블 목록이 기록된 리비전보다 앞서 있다면(= 스키마는 이미 반영됐는데 기록만 뒤처짐),
+실제 상태와 일치하는 리비전으로 먼저 `stamp`한 뒤 `upgrade head`를 실행하세요.
+
+```bash
+DB_HOST=localhost uv run --group app python -m alembic stamp <실제_상태와_일치하는_리비전>
+DB_HOST=localhost uv run --group app python -m alembic upgrade head
+```
 
 #### ⚠️ RAG 벡터 시딩 (최초 1회, 팀원 각자 로컬에서)
 
