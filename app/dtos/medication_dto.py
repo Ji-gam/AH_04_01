@@ -157,7 +157,14 @@ class FoodInteractionCheckResult(BaseModel):
 
     confirm_recognition_job의 guide_cards(문서 등록 확정 직후 1회성 안내)와 달리, 이 결과는
     등록 방식(OCR/수동 등록)과 무관하게 "음식(13번)" 탭을 열 때마다 현재 등록약 전체를 대상으로
-    조회한다."""
+    조회한다.
+
+    (T-DOC-5) `/medications/food-interactions`는 빠른 1,2단계(식약처 참조 테이블 → MySQL
+    `drugs_data` 스냅샷)만으로 응답한다 — `pending_medication_names`에 담긴 약은 아직 확인되지
+    않은 것이며, 느린 3단계(실시간 e약은요 API)로 확인하려면 `/medications/food-interactions/pending`을
+    별도로 호출해야 한다. 그 응답의 `guide_cards`에는 `pending_medication_names`가 없다(모두
+    확인이 끝난 상태이므로)."""
 
     guide_cards: list[GuideCard] = []
     checked_count: int  # 대상이 된 등록약 수(중복 제거)
+    pending_medication_names: list[str] = []

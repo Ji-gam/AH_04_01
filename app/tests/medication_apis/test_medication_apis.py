@@ -26,6 +26,11 @@ class _FakeDurDrugRepository:
     async def get_names_by_item_seqs(self, session, item_seqs: set[str]) -> dict[str, str]:
         return {seq: name for seq, name in self._items if seq in item_seqs}
 
+    async def find_food_intrc_text(self, session, item_name: str) -> str | None:
+        """(T-DOC-5) 이 가짜 저장소는 이름 검색용 픽스처만 다루므로, 음식 상호작용 빠른 조회
+        (2단계 `drugs_data` 스냅샷)는 항상 "찾지 못함"으로 취급해 느린 경로로 넘긴다."""
+        return None
+
 
 # 마스터 데이터에 있는 것처럼 가장할 고정 픽스처. 실제 OCR 텍스트(용량 포함)와 정확히 일치하는
 # 이름을 쓴다 - dummy_mode(DUMMY_OCR_RAW_TEXT = "*타이레놀정"/"*아스피린정")는 용량 표기가 없는
