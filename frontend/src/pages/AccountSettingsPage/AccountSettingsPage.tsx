@@ -52,8 +52,8 @@ export default function AccountSettingsPage() {
     }
   }
 
-  function handleLogout() {
-    logout();
+  async function handleLogout() {
+    await logout();
     navigate("/", { replace: true });
   }
 
@@ -63,7 +63,7 @@ export default function AccountSettingsPage() {
     setIsWithdrawing(true);
     try {
       await authApi.withdraw(withdrawPassword);
-      logout();
+      await logout();
       navigate("/login", { replace: true });
     } catch {
       setWithdrawError("비밀번호가 잘못되었습니다.");

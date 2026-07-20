@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 from starlette import status
 
 from app.core import config
+from app.core.jwt.exceptions import TokenError
 from app.core.jwt.tokens import AccessToken, RefreshToken
 from app.core.utils.security import hash_password, verify_password
 from app.dtos.auth import LoginRequest, SignUpRequest
@@ -111,6 +112,17 @@ class AuthService:
         await self.refresh_token_repo.create(session, user.id, refresh_token.payload["jti"])
         await session.commit()
         return tokens
+
+    async def logout(self, session: AsyncSession, refresh_token_str: str) -> None:
+        """로그아웃 - refresh_token을 revoke해서 재사용 못하게 한다. 로그아웃은 사용자 입장에서
+        항상 성공해야 하므로(토큰이 이미 만료/위조됐어도), 검증 실패는 조용히 무시한다."""
+        try:
+            verified_rt = self.jwt_service.verify_jwt(token=refresh_token_str, token_type="refresh")
+        except TokenError:
+            return
+        jti = verified_rt.payload["jti"]
+        await self.refresh_token_repo.revoke(session, jti)
+        await session.commit()
 
     async def rotate_refresh_token(
         self, session: AsyncSession, refresh_token_str: str

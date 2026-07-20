@@ -18,7 +18,10 @@ export const authApi = {
       body: JSON.stringify({ email, password }),
     }),
   refresh: () => apiFetch<AuthTokenResult>("/auth/token/refresh"),
-  // 백엔드에 /auth/logout이 아직 없다 — 지금은 프론트에서 accessToken만 비우면 된다 (client.ts의 setAccessToken(null)).
+  // 204 No Content라 JSON 바디가 없다 — apiFetch(res.json())를 쓰면 파싱 에러가 나서 raw fetch를 쓴다.
+  logout: async () => {
+    await apiFetchRaw("/auth/logout", { method: "POST" });
+  },
   me: () => apiFetch<UserInfoResult>("/users/me"),
   updateMe: (payload: UserUpdatePayload) =>
     apiFetch<UserInfoResult>("/users/me", {
