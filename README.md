@@ -1,96 +1,254 @@
-# 웹푸시(Web Push) - 1단계 구현 (임시 스케줄러 방식)
+# AI Healthcare Project Template
 
-지난번에 논의했던 "복약알림이 탭을 닫아도 울리게" 하는 웹푸시 기능입니다.
-**마이그레이션 있음(0021)** - `docker compose exec fastapi uv run alembic upgrade head` 필요.
+이 프로젝트는 AI 모델 추론(Inference) 워커와 FastAPI API 서버를 통합한 서비스 템플릿입니다. 
+현대적인 Python 패키지 관리 도구인 `uv`와 컨테이너화 도구인 `Docker`를 활용하여 일관된 개발 및 배포 환경을 제공합니다.
 
-## ⚠️ 시작하기 전에 꼭 해야 할 것 2가지
+---
 
-### 1. `uv.lock` 갱신 (의존성 추가함)
-`pywebpush`, `apscheduler`를 `pyproject.toml`에 추가했는데, `app/Dockerfile`이
-`uv sync --frozen`(잠금파일과 정확히 일치해야만 성공)을 쓰기 때문에 **로컬에서 먼저
-락파일을 갱신**해야 도커 빌드가 됩니다:
-```powershell
-uv lock
+## 🚀 주요 특징
+
+- **FastAPI Framework**: 고성능 비동기 API 서버 구현.
+- **AI Worker**: 모델 추론 및 학습 작업을 API 서버와 분리하여 처리.
+- **UV Package Manager**: 매우 빠른 의존성 설치 및 가상환경 관리.
+- **SQLAlchemy(AsyncSession) + Alembic**: 비동기 방식의 데이터베이스 모델링·쿼리 관리 및 마이그레이션.
+- **Docker-Compose**: MySQL, Redis, Nginx를 포함한 전체 서비스 스택을 한 번에 실행.
+- **CI/CD Scripts**: 코드 포맷팅(Ruff), 타입 체크(Mypy), 테스트(Pytest)를 위한 자동화 스크립트 제공.
+
+---
+
+## 📂 프로젝트 구조
+
+```text
+.
+├── ai_worker/          # AI 모델 추론 및 학습 관련 코드 (Worker)
+│   ├── core/           # 워커 설정 및 로거
+│   ├── models/         # AI 모델 파일 보관 (PyTorch 등)
+│   ├── tasks/          # 실제 처리할 작업 정의
+│   └── main.py         # 워커 진입점
+├── app/                # FastAPI 서버 코드
+│   ├── apis/           # API 라우터 (v1 버전 관리)
+│   ├── core/           # 서버 설정 (pydantic-settings), DB 설정, JWT, Validator 등 핵심 기능
+│   ├── dtos/           # 데이터 전송 객체 (Pydantic models)
+│   ├── models/         # DB 테이블 정의
+│   ├── services/       # 비즈니스 로직
+│   └── main.py         # FastAPI 애플리케이션 진입점
+├── envs/               # 환경 변수 설정 파일 (.env)
+├── infra/              # 인프라 설정 관련 디렉터리
+│   ├── docker/         # Docker Compose 설정 (운영용)
+│   └── nginx/          # Nginx 설정 파일 (리버스 프록시)
+├── scripts/            # 배포 및 CI용 쉘 스크립트
+├── docker-compose.yml  # 로컬 개발용 서비스 실행 설정
+└── pyproject.toml      # uv 기반 의존성 관리 설정
 ```
-(`--frozen` 없이 `uv sync`만 해도 됩니다 - 락파일이 자동 갱신됨)
 
-### 2. VAPID 키 생성 (1회만)
-```powershell
-uv run python app/scripts/generate_vapid_keys.py
+---
+
+## ⚙️ 사전 준비 사항
+
+- **Python**: 3.13 이상 (로컬 개발 환경용)
+- **UV**: Python 패키지 매니저 ([설치 가이드](https://github.com/astral-sh/uv))
+- **Docker & Docker-Compose**: 전체 서비스 실행용
+
+---
+
+## 🛠️ 설치 및 설정
+
+### 1. 가상환경 구축 및 의존성 설치
+
+`uv`를 사용하여 프로젝트에 필요한 패키지를 설치합니다.
+
+```bash
+# 의존성 설치 (가상환경 자동 생성)
+uv sync
+
+# 특정 그룹의 의존성만 설치하려는 경우
+uv sync --group app  # API 서버용
+uv sync --group ai   # AI 워커용
 ```
-출력되는 두 줄을 `.env`에 그대로 붙여넣으세요:
+
+### 2. 환경 변수 설정
+
+`envs/` 디렉토리에 있는 예시 파일을 복사하여 `.env` 파일을 생성합니다.
+- 로컬용 
+    ```bash
+    cp envs/example.local.env envs/.local.env
+    ```
+- 배포용 
+    ```bash
+    cp envs/example.prod.env envs/.prod.env
+    ```
+
+생성된 `env` 파일 내의 환경변수들은 프로젝트 상황에 맞게 수정하세요.
+
+---
+
+## 🏃 실행 방법
+
+### 1. 로컬 및 개발 환경
+
+#### Docker Compose로 전체 스택 실행
+
+모든 서비스(API, Worker, DB, Redis, Nginx)를 한 번에 실행합니다.
+
+```bash
+docker-compose up -d --build
 ```
-VAPID_PUBLIC_KEY=...
-VAPID_PRIVATE_KEY=...
+
+실행 후 다음 주소로 접속 가능합니다:
+- **API 서버**: [http://localhost/api/docs](http://localhost/api/docs) (Swagger UI)
+- **Nginx**: 80 포트를 통해 API 서버로 요청을 전달합니다.
+
+#### ⚠️ 데이터 시딩 (최초 1회)
+
+`docker compose up`은 `alembic upgrade head`로 테이블만 생성할 뿐, 그 안의 데이터까지 채워주지는
+않습니다. `mysql_data` 볼륨이 없는 새 환경(신규 팀원 로컬, 새 dev/prod DB)에서는 필요에 따라
+아래 스크립트를 한 번 실행하세요. 볼륨이 살아있는 한(`docker compose down -v`로 지우지 않는 한)
+컨테이너를 껐다 켜도 다시 실행할 필요는 없습니다.
+
+```bash
+# 음식-약물 상호작용 참조 테이블 (식약처 가이드북 기반) — 매칭 기능이 실제로 동작하려면 필수
+docker compose exec fastapi uv run python -m app.scripts.seed_food_drug_interaction
+
+# DUR(의약품안전사용서비스) 참조 테이블 — app/database/drugs_full.db(공공데이터포털 API 22종
+# 전수 수집본, scripts/drug_info_sync/orchestrate_pipeline.py)가 있어야 실행 가능
+docker compose exec fastapi uv run python -m app.scripts.seed_dur
+
+# 개발/테스트용 데모 계정 3개 + 습관·복약·알림·AI상담 더미 데이터 — 기능 화면을 바로 확인하고 싶을 때(선택)
+docker compose exec fastapi uv run python -m app.scripts.seed_demo_data
 ```
-**이 키는 한 번 만들면 계속 재사용**하세요 - 나중에 다시 생성하면 그전까지 쌓인 모든
-브라우저 구독이 전부 무효화됩니다(사용자들이 "알림 켜기"를 다시 눌러야 함).
 
-## 1. 파일 어디에 넣는지
+세 스크립트 모두 재실행해도 안전합니다(이미 있는 데이터는 건너뜀 — 단, `seed_food_drug_interaction`과
+`seed_dur`은 참조 테이블 전체를 지우고 다시 채우는 방식으로 "안전"합니다. 데모 계정과 달리 정적
+참조 데이터라 증분 갱신할 이유가 없기 때문).
 
-| 경로 | 상태 | 비고 |
-|---|---|---|
-| `pyproject.toml` | 덮어쓰기 | `pywebpush`, `apscheduler` 추가 |
-| `app/core/config.py` | 덮어쓰기 | `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_CLAIM_EMAIL` 설정 추가 |
-| `app/core/db/migrations/versions/0021_add_push_subscriptions.py` | 신규 | `push_subscriptions` 테이블 |
-| `app/models/push_subscription.py` | 신규 | `PushSubscription` 모델 (platform 컬럼 - 나중에 앱 패키징 시 IOS/ANDROID 확장용) |
-| `app/models/__init__.py` | 덮어쓰기 | 모델 등록 |
-| `app/dtos/push.py` | 신규 | 구독/해제 요청 DTO |
-| `app/repositories/push_subscription_repository.py` | 신규 | |
-| `app/services/push_service.py` | 신규 | 구독 저장 + 실제 발송(`pywebpush`) |
-| `app/services/push_scheduler.py` | 신규 | **임시 스케줄러** (아래 설명) |
-| `app/apis/v1/push_routers.py` | 신규 | `/push/vapid-public-key`, `/push/subscribe`, `/push/unsubscribe` |
-| `app/apis/v1/__init__.py` | 덮어쓰기 | 라우터 등록 |
-| `app/main.py` | 덮어쓰기 | `lifespan`에 스케줄러 시작/종료 추가 |
-| `app/scripts/generate_vapid_keys.py` | 신규 | VAPID 키 생성용 1회성 스크립트 |
-| `frontend/public/service-worker.js` | 신규 | 백그라운드에서 push 이벤트 받아 알림 띄우는 서비스워커 |
-| `frontend/src/api/pushApi.ts` | 신규 | |
-| `frontend/src/utils/webPush.ts` | 신규 | 구독/해제 유틸(`enableWebPush`/`disableWebPush`) |
-| `frontend/src/pages/AlarmPage/AlarmPage.tsx` | 덮어쓰기 | "🔔 알림 켜기" 배너 추가(구독 안 돼있을 때만 노출) |
+#### ⚠️ RAG 벡터 시딩 (최초 1회, 팀원 각자 로컬에서)
 
-## 2. ⚠️ "임시 구현"인 이유 - 꼭 읽어주세요
+챗봇 검색에 쓰는 벡터 저장소(`ai_worker/chroma_data/`)는 **git에 없습니다**(수백 MB 바이너리).
+원본 데이터는 `ai_worker/source/`에 커밋돼 있으니, 각자 로컬에서 한 번 만들면 됩니다.
 
-**정확한 시간에 실제로 발송을 트리거하는 부분이 `celery-beat`가 아니라 APScheduler로
-fastapi 프로세스 안에서 도는 방식**입니다. 원래는 `docker-compose.yml`에
-`celery-worker`/`celery-beat` 서비스를 추가해서 그쪽에서 도는 게 정석인데, 그 파일은
-`app/core/celery_app.py`에 이미 "리더 소유 파일이라 리더가 직접 진행"이라고 적혀있어서,
-지금 당장 웹푸시를 살리려고 **fastapi 프로세스 안에서 1분마다 도는 APScheduler**로 우회
-구현했습니다.
+**API 키도, 과금도, 네트워크도 필요 없습니다.** 임베딩 모델을 로컬에 내려받아 색인도 질의도
+직접 돌립니다. 몇 번을 다시 만들어도 공짜라 마음껏 실험하세요.
 
-**알려진 한계**:
-- uvicorn을 여러 워커/레플리카로 띄우면 이 스케줄러가 워커 개수만큼 중복으로 돌아서 **같은
-  알림이 여러 번 발송될 수 있습니다.** 지금은 로컬/개발 환경(워커 1개) 기준입니다.
-- 나중에 리더분이 `celery-beat`을 붙이시면, `app/services/push_scheduler.py`의
-  `_check_and_send_due_notifications()` 내용을 그대로 celery task로 옮기고 이 스케줄러는
-  빼는 게 정석입니다.
+```bash
+# 1. AI 워커 의존성 — 이 프로젝트는 [dependency-groups]를 쓰므로 --group이다.
+#    `--all-extras`는 아무 그룹도 안 잡고 나머지를 지워버린다(실제로 당함).
+uv sync --group ai
 
-## 3. 앱(네이티브) 패키징 고려사항
+# 2. 뭐가 색인될지 먼저 본다 (색인은 안 함)
+uv run python -m ai_worker.ingest --scan
 
-`PushSubscription` 모델에 `platform` 컬럼(WEB/IOS/ANDROID)을 미리 넣어뒀습니다. 지금은
-WEB만 실제로 씁니다. 나중에 Capacitor로 패키징할 때:
-- iOS/Android 쪽에서 Capacitor Push Notifications 플러그인으로 받은 디바이스 토큰을
-  같은 테이블의 `device_token` 컬럼에 저장하면 됩니다(테이블 새로 안 만들어도 됨)
-- `push_service.py`의 `send_to_profile()`에 platform별 분기(APNs/FCM 발송)만 추가하면 됨
+# 3. 색인. 첫 실행은 임베딩 모델(e5-large, 약 2GB)을 내려받아 5~15분 걸린다.
+uv run python -m ai_worker.ingest
 
-## 4. 테스트한 것
+# 4. 검증 — 실제 질문을 던져 팀과 같은 결과가 나오는지 확인한다.
+uv run python -m ai_worker.scripts.verify_rag
+```
 
-- VAPID 키 생성 스크립트 실제 실행 확인 (공개키/개인키 생성 + `pywebpush`가 그 형식을
-  실제로 파싱해서 서명까지 되는지 end-to-end 확인)
-- SQLite로 구독 생성/중복처리/목록조회/삭제 확인
-- 요일 판정 로직(`_is_due_today`) - DAILY/WEEKLY 케이스, 프론트(`dateUtils.ts`)와 동일한
-  기준으로 맞춰서 검증
-- 프론트 `tsc`/`eslint`/`prettier`/`vitest` 전부 통과
+4번이 전부 OK면 끝입니다. 기대 결과가 스크립트에 박혀 있어 내 로컬이 팀과 같은지 눈으로
+맞춰볼 수 있습니다. **건수가 아니라 질문으로 확인하는 이유**: 색인은 "몇 건 넣었다"고 보고하지만
+그게 검색이 된다는 뜻은 아닙니다. 메타데이터 키가 하나 틀리면 문서는 들어가 있는데 영원히
+안 뽑히고, 실제로 그런 상태로 오래 굴러간 적이 있습니다.
 
-**실제 브라우저에서 알림이 뜨는지는 아직 직접 눌러보지 못했습니다** - VAPID 키 설정하시고
-"🔔 알림 켜기" 눌러서 브라우저 알림 허용하신 다음, 아래 순서로 확인해주세요.
+> 모델은 서빙 프로세스가 1.1GB를 물고 있고, 기동 시 약 10초를 들여 미리 올립니다
+> (`initialize_rag`). 안 그러면 그 10초를 첫 질문한 사용자가 냅니다.
 
-## 5. 화면에서 확인하는 법
+**데이터를 추가하려면** `ai_worker/source/`에 파일을 넣고 3번을 다시 돌리면 됩니다. 등록 절차는
+없습니다 — 폴더에 있으면 색인됩니다(`.csv` / `.json` / `.md` / `.pdf`). RAG 재료가 아닌 것
+(SQL 조회용 표 등)은 여기 두지 않습니다. 자세한 규칙은
+`ai_worker/ingest/__init__.py`와 `ai_worker/source/_tuning.yaml` 참고.
 
-1. 위 "시작하기 전에" 2가지(`uv lock`, VAPID 키) 먼저 처리
-2. `docker compose exec fastapi uv run alembic upgrade head`
-3. `docker compose up -d --build` (또는 로컬 재시작)
-4. 복약알림 화면에서 "🔔 알림 켜기" 클릭 → 브라우저 알림 권한 허용
-5. 알림 하나를 **지금 시각 + 1~2분 후**로 등록 (예: 지금이 14:03이면 14:05로)
-6. **탭을 닫거나 다른 화면으로 이동**한 채로 기다렸다가, 설정한 시각에 OS 알림(Windows
-   알림센터 등)이 뜨는지 확인
-7. 로그(`docker compose logs fastapi`)에서 "푸시 스케줄러 시작됨" 메시지 확인 가능
+재색인은 안 바뀐 문서를 콘텐츠 해시로 걸러 건너뛰므로(`SQLRecordManager`) 몇 번을 돌려도
+안전하고 빠릅니다. 청킹 규칙을 바꿔서 전부 다시 임베딩해야 할 때만 `--force`를 씁니다.
+
+#### 로컬에서 개별 실행 (개발용)
+
+**FastAPI 서버 실행:**
+```bash
+uv run uvicorn app.main:app --reload
+# or
+docker compose up -d --build app
+```
+
+**AI Worker 실행:**
+```bash
+uv run python -m ai_worker.main
+# or
+docker compose up -d --build ai_worker
+```
+
+### 2. EC2 배포 환경 (Production)
+
+제공된 쉘 스크립트를 사용하여 AWS EC2 환경에 이미지를 빌드, 푸시 및 배포할 수 있습니다.
+
+#### 사전 준비
+- EC2 인스턴스 (Ubuntu 권장)
+- SSH 키 페어 (`~/.ssh/` 경로에 위치)
+- 도커 허브(Docker Hub) 계정 및 Personal Access Token
+- 배포용 환경 변수 설정 (`envs/.prod.env`)
+- 도메인 구매 (Gabia, GoDaddy, AWS Route53 등)
+
+#### 자동 배포 스크립트 실행
+`scripts/deployment.sh`는 도커 이미지 빌드, 레포지토리 푸시, EC2 접속 및 컨테이너 실행 과정을 자동화합니다.
+
+```bash
+chmod +x scripts/deployment.sh
+./scripts/deployment.sh
+```
+스크립트 실행 시 다음 정보를 입력해야 합니다:
+1. 도커 허브 계정 정보 (Username, PAT)
+2. 이미지를 업로드할 레포지토리 이름
+3. 배포할 서비스 선택 (FastAPI, AI-Worker) 및 버전(Tag)
+4. SSH 키 파일명 및 EC2 IP 주소
+5. https 사용여부
+   - 5-1. https인 경우 도메인 추가 입력  
+
+#### SSL(HTTPS) 설정 (Certbot)
+도메인을 연결하고 HTTPS를 적용하려면 `scripts/certbot.sh`를 사용합니다.
+
+```bash
+chmod +x scripts/certbot.sh
+./scripts/certbot.sh
+```
+1. 도메인 주소 및 이메일 입력
+2. SSH 키 파일명 및 EC2 IP 주소 입력
+3. Let's Encrypt를 통한 인증서 발급 및 Nginx 설정 자동 갱신 적용
+
+---
+
+## 🧪 테스트 및 품질 관리
+
+제공된 스크립트를 사용하여 코드의 품질을 검증할 수 있습니다.
+
+```bash
+# 테스트 실행
+./scripts/ci/run_test.sh
+
+# 코드 포맷팅 확인 (Ruff)
+./scripts/ci/code_fommatting.sh
+
+# 정적 타입 검사 (Mypy)
+./scripts/ci/check_mypy.sh
+```
+
+---
+
+## 📝 개발 가이드
+
+- **API 추가**: `app/apis/v1/` 아래에 새로운 라우터 파일을 생성하고 `app/apis/v1/__init__.py`에 등록하세요.
+- **DB 모델 추가**: `app/models/`에 SQLAlchemy 2.0 선언형 모델(`Mapped`/`mapped_column`)을 정의하고, `alembic revision --autogenerate`로 마이그레이션을 작성하세요. 같은 커밋/PR에서 `docs/dev/ERD.dbml`도 갱신합니다(`docs/CODING_RULES.md` 6번).
+- **AI 로직 추가**: `ai_worker/tasks/`에 새로운 처리 로직을 작성하고 `ai_worker/main.py`에서 호출하도록 구성하세요.
+
+---
+
+## 📚 문서 지도
+
+이 레포의 규칙/설계 문서는 "얼마나 자주 참조해야 하는지"에 따라 나뉩니다.
+
+| 단계 | 문서 | 언제 보는가 |
+| --- | --- | --- |
+| 1. 진입(매 세션) | `AGENTS.md`(`CLAUDE.md`는 여기로의 리다이렉트) | 작업 시작 전 항상 |
+| 2. 참조(필요할 때) | `docs/CONTRIBUTING.md`, `docs/TROUBLESHOOTING.md`, `docs/CODING_RULES.md`, `docs/FRONTEND_UI_GUIDE.md`, `docs/decision_log/`, `docs/SQUAD_MAP.md` | T-ID 작업, 구조/소유권 확인, "왜 이렇게 됐는지" 찾을 때 |
+| 3. 개발설계 산출물 | `docs/dev/ERD.dbml`, `docs/dev/api_spec_core_v1_v1.1.yaml`, `docs/dev/sample_code_chat/`, `docs/dev/sample_code_recog/` | DB/스키마 변경, 새 도메인 구현 시 참고 예제 |
+| 4. 기획 원본 스냅샷 (수정 금지) | `docs/plan/PRD_ReMedi_v1.1.md`, `docs/plan/TRD_ReMedi_v1.1.md` | T-ID의 입력/출력/성공요건 확인 |
+
+문서 버전 관리: 파일명 고정, 내용 변경 시 헤더 버전만 올림(이력은 `git log`).

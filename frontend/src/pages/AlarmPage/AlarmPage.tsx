@@ -8,7 +8,6 @@ import FamilyNotificationView from "../../components/family/FamilyNotificationVi
 import FamilySwitcher from "../../components/family/FamilySwitcher";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { pinkTheme as t } from "../../theme/pinkTheme";
-import { disableWebPush, enableWebPush, type PushSubscribeStatus } from "../../utils/webPush";
 import SchedulePage from "../SchedulePage/SchedulePage";
 
 import AlarmCalendar from "./components/AlarmCalendar";
@@ -78,40 +77,6 @@ export default function AlarmPage() {
   const [selectedFamily, setSelectedFamily] = useState<{ profileId: number; name: string } | null>(
     null,
   );
-
-  // (웹푸시) 탭이 닫혀있어도 알림을 받으려면 이 구독이 필요하다 - 기존
-  // requestNotificationPermission()은 탭이 열려있을 때만 동작하는 별개 메커니즘이라 그대로 둠.
-  const [pushStatus, setPushStatus] = useState<PushSubscribeStatus | "idle">("idle");
-
-  async function handleEnablePush() {
-    const status = await enableWebPush();
-    setPushStatus(status);
-  }
-
-  async function handleDisablePush() {
-    await disableWebPush();
-    setPushStatus("idle");
-  }
-
-  useEffect(() => {
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      setPushStatus("unsupported");
-      return;
-    }
-    if (Notification.permission === "denied") {
-      setPushStatus("denied");
-      return;
-    }
-    navigator.serviceWorker
-      .getRegistration("/service-worker.js")
-      .then((reg) => reg?.pushManager.getSubscription())
-      .then((sub) => {
-        if (sub) setPushStatus("subscribed");
-      })
-      .catch(() => {
-        // 조회 실패는 조용히 무시 - "알림 켜기" 버튼이 그대로 남아있으니 다시 시도 가능.
-      });
-  }, []);
 
   const [schedules, setSchedules] = useState<NotificationScheduleResult[]>([]);
   const [medSchedules, setMedSchedules] = useState<MedicationSchedule[]>([]);
@@ -482,77 +447,6 @@ export default function AlarmPage() {
             </button>
           </div>
         </div>
-
-        {/* (웹푸시) 탭을 닫아도 알림을 받으려면 최초 1회 이 버튼으로 브라우저 알림 권한을
-         * 허용해야 한다 - requestNotificationPermission()과 별개의 실제 백그라운드 푸시. */}
-        {pushStatus !== "subscribed" && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              border: `1px solid ${t.border}`,
-              borderRadius: 10,
-              padding: "10px 14px",
-              marginBottom: 16,
-              background: t.primarySoft,
-            }}
-          >
-            <p style={{ margin: 0, fontSize: 13, color: t.text }}>
-              {pushStatus === "denied"
-                ? "브라우저 알림이 차단되어 있어요. 브라우저 설정에서 허용해주세요."
-                : pushStatus === "unsupported"
-                  ? "이 브라우저는 알림을 지원하지 않아요."
-                  : "탭을 닫아도 복약 시간에 알림을 받으려면 켜주세요."}
-            </p>
-            {pushStatus !== "denied" && pushStatus !== "unsupported" && (
-              <button
-                type="button"
-                onClick={handleEnablePush}
-                style={{
-                  border: "none",
-                  borderRadius: 999,
-                  background: t.primary,
-                  color: "#fff",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  padding: "6px 14px",
-                  cursor: "pointer",
-                  flexShrink: 0,
-                }}
-              >
-                🔔 알림 켜기
-              </button>
-            )}
-          </div>
-        )}
-        {pushStatus === "subscribed" && (
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              fontSize: 12,
-              color: t.textMuted,
-              marginBottom: 16,
-            }}
-          >
-            <span>🔔 알림 켜짐</span>
-            <button
-              type="button"
-              onClick={handleDisablePush}
-              style={{
-                border: "none",
-                background: "none",
-                color: t.textMuted,
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
-              끄기
-            </button>
-          </div>
-        )}
 
         {showAddForm && (
           <Modal

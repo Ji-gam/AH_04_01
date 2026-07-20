@@ -39,15 +39,5 @@ export default tseslint.config(
       ],
     },
   },
-  {
-    files: ["public/service-worker.js"],
-    languageOptions: {
-      ecmaVersion: 2020,
-      // 서비스워커는 일반 브라우저 스크립트가 아니라 별도 전역 스코프(self가 브라우저의
-      // window가 아니라 ServiceWorkerGlobalScope를 가리킴)에서 돈다 - globals 패키지의
-      // 전용 프리셋을 써야 self/caches/clients 등을 ESLint가 정의된 전역으로 인식한다.
-      globals: globals.serviceworker,
-    },
-  },
   prettierConfig,
 );
