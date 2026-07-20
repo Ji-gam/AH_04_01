@@ -615,6 +615,10 @@ export default function MedicationPage() {
       alert(`${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`);
       setCurrentJobId(null);
       setJobStatus(null);
+      // 확정 패널이 화면에 남아 재클릭을 유발하지 않도록 OCR 세션 상태를 함께 초기화한다.
+      setCandidates([]);
+      setExtractedFields(null);
+      setSelectedDrugCodes([]);
     } catch (err) {
       console.error(err);
     } finally {
@@ -1114,7 +1118,7 @@ export default function MedicationPage() {
 
                 <button
                   onClick={handleConfirmSubmit}
-                  disabled={selectedDrugCodes.length === 0 || isConfirmingJob}
+                  disabled={!currentJobId || selectedDrugCodes.length === 0 || isConfirmingJob}
                   style={{
                     width: "100%",
                     padding: "10px",
