@@ -162,6 +162,27 @@ async def test_ingredient_screening_includes_source_drug_dosage():
     assert source["unit"] == "밀리그램"
 
 
+async def test_ingredient_screening_includes_rule_detail_for_grade_and_max_qty():
+    """T-MED-14 후속: 임부금기/용량주의 규칙엔 rule_detail(등급/최대 1일 용량)이 채워지고,
+    해당 컬럼이 없는 규칙(노인주의)은 null이어야 한다."""
+    async with await _client() as client:
+        response = await client.post(
+            "/api/v1/dur/screening/ingredient",
+            json={"drug_names": [IBUPROFEN_200]},
+        )
+    assert response.status_code == 200
+    data = response.json()
+
+    ibuprofen = next(i for i in data["ingredients"] if i["ingr_code"] == "D000363")
+    rule_detail_by_type: dict[str, list] = {}
+    for rule in ibuprofen["rules"]:
+        rule_detail_by_type.setdefault(rule["rule_type"], []).append(rule["rule_detail"])
+
+    assert any(d is not None for d in rule_detail_by_type["임부금기"])
+    assert any(d is not None for d in rule_detail_by_type["용량주의"])
+    assert all(d is None for d in rule_detail_by_type["노인주의"])
+
+
 async def test_ingredient_screening_all_unmatched_returns_200_with_empty_ingredients():
     async with await _client() as client:
         response = await client.post(

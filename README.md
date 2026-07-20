@@ -109,7 +109,7 @@ docker-compose up -d --build
 # 음식-약물 상호작용 참조 테이블 (식약처 가이드북 기반) — 매칭 기능이 실제로 동작하려면 필수
 docker compose exec fastapi uv run python -m app.scripts.seed_food_drug_interaction
 
-# DUR(의약품안전사용서비스) 참조 테이블 — app/database/drugs_full.db(공공데이터포털 API 22종
+# DUR(의약품안전사용서비스) 참조 테이블 — app/database/drugs_full.db(공공데이터포털 API 24종
 # 전수 수집본, scripts/drug_info_sync/orchestrate_pipeline.py)가 있어야 실행 가능
 docker compose exec fastapi uv run python -m app.scripts.seed_dur
 
@@ -121,30 +121,84 @@ docker compose exec fastapi uv run python -m app.scripts.seed_demo_data
 `seed_dur`은 참조 테이블 전체를 지우고 다시 채우는 방식으로 "안전"합니다. 데모 계정과 달리 정적
 참조 데이터라 증분 갱신할 이유가 없기 때문).
 
+`app/models/dur.py`에 새 컬럼/테이블을 추가하는 마이그레이션(예: `0027_expand_dur_tables.py`)이
+있는 경우, `seed_dur`가 새 컬럼까지 채우려면 **먼저 `alembic upgrade head`로 스키마를 반영한
+뒤에** `seed_dur`를 실행해야 합니다. `docker compose up`은 fastapi 컨테이너 기동 시 항상
+`alembic upgrade head`를 자동으로 실행하므로, 컨테이너를 재기동(`docker compose up -d --build
+fastapi` 또는 재시작)하면 스키마는 이미 최신입니다 — 그다음 위 `seed_dur` 커맨드만 실행하면 됩니다.
+
+#### 🩹 (컨테이너 없이) 로컬 venv에서 직접 alembic/seed 실행하기
+
+컨테이너 재빌드 없이 빠르게 반복 확인하고 싶을 때는 호스트에서 직접 실행할 수도 있습니다.
+
+```bash
+# alembic/asyncmy 등은 app 그룹에 있다
+uv sync --group app
+
+# .env의 DB_HOST=mysql은 "컨테이너 안에서 mysql 컨테이너를 찾기 위한" 값이라, 호스트에서 직접
+# 실행할 땐 mysql이라는 호스트명을 못 찾는다. DB_EXPOSE_PORT로 열려있는 localhost로 덮어써야 한다.
+DB_HOST=localhost uv run --group app python -m alembic upgrade head
+DB_HOST=localhost uv run --group app python -m app.scripts.seed_dur
+```
+
+**⚠️ `alembic upgrade head`가 `Table 'xxx' already exists`로 실패하는 경우**: `alembic_version`
+테이블의 기록과 실제 DB 스키마가 어긋나 있다는 뜻입니다(예: 과거에 다른 방식으로 테이블이
+만들어졌거나, 마이그레이션 적용 후 버전 기록이 누락된 경우). 아래로 실제 상태를 먼저 확인하세요.
+
+```bash
+DB_HOST=localhost uv run --group app python -m alembic current   # 기록된 리비전 확인
+DB_HOST=localhost uv run --group app python -c "
+import asyncio
+from app.core.db.databases import AsyncSessionLocal
+from sqlalchemy import text
+async def main():
+    async with AsyncSessionLocal() as s:
+        r = await s.execute(text('SHOW TABLES'))
+        print(sorted(row[0] for row in r.fetchall()))
+asyncio.run(main())
+"
+```
+
+실제 테이블 목록이 기록된 리비전보다 앞서 있다면(= 스키마는 이미 반영됐는데 기록만 뒤처짐),
+실제 상태와 일치하는 리비전으로 먼저 `stamp`한 뒤 `upgrade head`를 실행하세요.
+
+```bash
+DB_HOST=localhost uv run --group app python -m alembic stamp <실제_상태와_일치하는_리비전>
+DB_HOST=localhost uv run --group app python -m alembic upgrade head
+```
+
 #### ⚠️ RAG 벡터 시딩 (최초 1회, 팀원 각자 로컬에서)
 
 챗봇 검색에 쓰는 벡터 저장소(`ai_worker/chroma_data/`)는 **git에 없습니다**(수백 MB 바이너리).
-원본 데이터는 `ai_worker/source/`에 커밋돼 있으니, 각자 로컬에서 한 번 만들면 됩니다.
+논문 JSON/OCR 마크다운은 `ai_worker/source/`에 커밋돼 있지만, **DUR/e약은요 CSV 8개는
+더 이상 커밋되지 않습니다** — MySQL이 원본이고(`app/scripts/seed_dur.py`가 옮겨놨습니다),
+빌드 시점마다 최신 데이터로 새로 뽑아옵니다. 그래서 MySQL DUR 시딩(위 "DUR 데이터 시딩"
+참고)을 먼저 끝내야 합니다.
 
 **API 키도, 과금도, 네트워크도 필요 없습니다.** 임베딩 모델을 로컬에 내려받아 색인도 질의도
 직접 돌립니다. 몇 번을 다시 만들어도 공짜라 마음껏 실험하세요.
 
 ```bash
+# 0. MySQL에 DUR 데이터가 이미 있어야 한다(uv run python -m app.scripts.seed_dur, 위 참고).
+
 # 1. AI 워커 의존성 — 이 프로젝트는 [dependency-groups]를 쓰므로 --group이다.
 #    `--all-extras`는 아무 그룹도 안 잡고 나머지를 지워버린다(실제로 당함).
 uv sync --group ai
 
-# 2. 뭐가 색인될지 먼저 본다 (색인은 안 함)
+# 2. MySQL의 DUR/e약은요 데이터를 드롭 폴더 CSV로 뽑아온다(source/에 8개 파일 생성/갱신).
+uv run python -m ai_worker.scripts.export_source_from_mysql
+
+# 3. 뭐가 색인될지 먼저 본다 (색인은 안 함)
 uv run python -m ai_worker.ingest --scan
 
-# 3. 색인. 첫 실행은 임베딩 모델(e5-large, 약 2GB)을 내려받아 5~15분 걸린다.
+# 4. 색인. 첫 실행은 임베딩 모델(e5-large, 약 2GB)을 내려받아 5~15분 걸린다.
 uv run python -m ai_worker.ingest
 
-# 4. 검증 — 실제 질문을 던져 팀과 같은 결과가 나오는지 확인한다.
+# 5. 검증 — 실제 질문을 던져 팀과 같은 결과가 나오는지 확인한다.
 uv run python -m ai_worker.scripts.verify_rag
 ```
 
-4번이 전부 OK면 끝입니다. 기대 결과가 스크립트에 박혀 있어 내 로컬이 팀과 같은지 눈으로
+5번이 전부 OK면 끝입니다. 기대 결과가 스크립트에 박혀 있어 내 로컬이 팀과 같은지 눈으로
 맞춰볼 수 있습니다. **건수가 아니라 질문으로 확인하는 이유**: 색인은 "몇 건 넣었다"고 보고하지만
 그게 검색이 된다는 뜻은 아닙니다. 메타데이터 키가 하나 틀리면 문서는 들어가 있는데 영원히
 안 뽑히고, 실제로 그런 상태로 오래 굴러간 적이 있습니다.
@@ -152,9 +206,10 @@ uv run python -m ai_worker.scripts.verify_rag
 > 모델은 서빙 프로세스가 1.1GB를 물고 있고, 기동 시 약 10초를 들여 미리 올립니다
 > (`initialize_rag`). 안 그러면 그 10초를 첫 질문한 사용자가 냅니다.
 
-**데이터를 추가하려면** `ai_worker/source/`에 파일을 넣고 3번을 다시 돌리면 됩니다. 등록 절차는
-없습니다 — 폴더에 있으면 색인됩니다(`.csv` / `.json` / `.md` / `.pdf`). RAG 재료가 아닌 것
-(SQL 조회용 표 등)은 여기 두지 않습니다. 자세한 규칙은
+**DUR/e약은요 데이터를 갱신하려면** MySQL을 다시 시딩하고(0번) 2번부터 다시 돌리면 됩니다.
+**그 외 RAG 재료(논문/가이드 문서 등)를 추가하려면** `ai_worker/source/`에 파일을 넣고 4번을
+다시 돌리면 됩니다. 등록 절차는 없습니다 — 폴더에 있으면 색인됩니다(`.csv` / `.json` / `.md`
+/ `.pdf`). RAG 재료가 아닌 것(SQL 조회용 표 등)은 여기 두지 않습니다. 자세한 규칙은
 `ai_worker/ingest/__init__.py`와 `ai_worker/source/_tuning.yaml` 참고.
 
 재색인은 안 바뀐 문서를 콘텐츠 해시로 걸러 건너뛰므로(`SQLRecordManager`) 몇 번을 돌려도

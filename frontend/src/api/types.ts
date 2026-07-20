@@ -28,41 +28,6 @@ export interface ChatSessionCreateResult {
   session_id: string;
 }
 
-// 백엔드 app/dtos/admin.py와 1:1로 수동 동기화 (T-ADMIN-1). 관리자 전용 - 아무도 안 보는 화면이라
-// 백엔드 스키마를 최소한으로 미러링한다.
-export interface AdminChatSessionListItem {
-  id: number;
-  profile_id: number;
-  profile_name: string;
-  created_at: string;
-}
-
-/** source/(드롭 폴더)와 _manifest.yaml 대조 결과. unregistered가 이 타입의 존재 이유다 —
- *  예전엔 등록 안 된 파일을 조용히 무시해서, 데이터를 넣어도 아무 반응이 없었다. */
-export interface SourceScanResult {
-  indexed: string[];
-  unsupported: string[];
-}
-
-export interface IngestStatusResult {
-  structured_count: number;
-  unstructured_count: number;
-  papers_raw_counts: Record<string, number>;
-  sources: SourceScanResult;
-}
-
-export interface IngestCsvResult {
-  filename: string;
-  deleted: number;
-  ingested: number;
-  collection_count: number;
-  errors: string[];
-}
-
-export interface IngestPapersResult {
-  status: string;
-}
-
 // 백엔드 app/dtos/notifications.py와 1:1로 수동 동기화.
 export type FrequencyType = "DAILY" | "WEEKLY";
 export type DayOfWeek = "일" | "월" | "화" | "수" | "목" | "금" | "토";
@@ -95,7 +60,7 @@ export interface NotificationScheduleUpdateRequest {
 export interface ChatSourceRef {
   name: string;
   url?: string | null;
-  // T-ADMIN-1: RAG 유사도 스코어. 환자용 ChatPage는 렌더링하지 않고, 관리자 세션 상세 페이지만 사용.
+  // RAG 유사도 스코어. 디버깅/품질 확인용 - 현재 ChatPage는 렌더링하지 않는다.
   score?: number | null;
 }
 
@@ -341,6 +306,9 @@ export interface DurIngredientRuleDetail {
   rule_type: string;
   prohbt_content: string | null;
   remark: string | null;
+  /** 규칙별 부가 수치/등급 (임부금기=등급, 특정연령대금기=연령 기준, 용량주의=최대 1일 용량,
+   * 투여기간주의=최대 투여기간, 해당 없으면 null) */
+  rule_detail: string | null;
 }
 
 /** 이 성분을 가진 입력 약품 - item_seq로 상세화면 링크 가능, qnt/unit은 이 약에서의 실제 함량
