@@ -410,6 +410,7 @@ export default function DurScreeningPage() {
                       {ing.rules.map((rule, idx) => (
                         <div className="dur-ingr-rule" key={idx}>
                           <b>{rule.rule_type}</b> — {rule.prohbt_content}
+                          {rule.rule_detail ? ` (${rule.rule_detail})` : ""}
                         </div>
                       ))}
                     </div>

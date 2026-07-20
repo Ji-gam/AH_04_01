@@ -102,6 +102,11 @@ class IngredientRuleDetail(BaseModel):
     rule_type: str
     prohbt_content: str | None = None
     remark: str | None = None
+    rule_detail: str | None = Field(
+        None,
+        description="규칙별 부가 수치/등급 (임부금기=등급, 특정연령대금기=연령 기준, "
+        "용량주의=최대 1일 용량, 투여기간주의=최대 투여기간, 해당 없으면 null)",
+    )
 
 
 class IngredientSourceDrug(BaseModel):

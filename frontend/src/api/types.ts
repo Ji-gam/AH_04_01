@@ -341,6 +341,9 @@ export interface DurIngredientRuleDetail {
   rule_type: string;
   prohbt_content: string | null;
   remark: string | null;
+  /** 규칙별 부가 수치/등급 (임부금기=등급, 특정연령대금기=연령 기준, 용량주의=최대 1일 용량,
+   * 투여기간주의=최대 투여기간, 해당 없으면 null) */
+  rule_detail: string | null;
 }
 
 /** 이 성분을 가진 입력 약품 - item_seq로 상세화면 링크 가능, qnt/unit은 이 약에서의 실제 함량
