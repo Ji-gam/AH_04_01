@@ -119,9 +119,34 @@ async def test_stream_chat_answer_uses_no_reference_text_when_no_chunks_found(mo
     assert "참고 문서:\n없음" in system_prompt
 
 
+async def test_stream_chat_answer_prompt_tells_llm_not_to_confuse_asker_with_question_subject(monkeypatch):
+    """실측 버그(2026-07-20): "인데놀 노인이 먹어도 돼?"에 질문자 본인의 is_geriatric로
+    답하던 사고 — 시스템 프롬프트가 "질문자 본인 정보"임을 명시하고, 질문이 제3자/일반
+    대상에 대한 것이면 그 정보를 쓰지 말라는 지시가 빠지지 않았는지 회귀 가드."""
+    monkeypatch.setattr(chat_agent_module, "ensure_db", lambda: "dur-db-sentinel")
+    monkeypatch.setattr(chat_agent_module, "search_documents", lambda db, msg, limit: [])
+    monkeypatch.setattr(chat_agent_module, "ensure_paper_db", lambda: "paper-db-sentinel")
+    monkeypatch.setattr(chat_agent_module, "search_papers", lambda db, msg, limit: [])
+
+    fake_llm = FakeStreamingLLM(["답변"])
+    monkeypatch.setattr(chat_agent_module, "_build_llm", lambda: fake_llm)
+
+    _ = [
+        c
+        async for c in chat_agent_module.stream_chat_answer(
+            "질문", context={"is_geriatric": False}, history=[], injected_context=[]
+        )
+    ]
+
+    system_prompt = fake_llm.received_messages[0]["content"]
+    assert "질문자 본인 정보" in system_prompt
+    assert "질문자가 아닌 다른" in system_prompt
+    assert "혼동하지 마세요" in system_prompt
+
+
 def test_search_all_skips_paper_search_when_query_has_no_disease(monkeypatch):
     """질환이 안 드러난 질문은 진단 이력과 무관하게 논문 검색을 생략한다 — 개인화는
-    시스템 프롬프트의 "사용자 건강 컨텍스트"가 담당한다(disease_query_resolver 참고)."""
+    시스템 프롬프트의 "질문자 본인 정보"가 담당한다(disease_query_resolver 참고)."""
     monkeypatch.setattr(chat_agent_module, "ensure_db", lambda: "dur-db-sentinel")
     monkeypatch.setattr(chat_agent_module, "search_documents", lambda db, msg, limit: [])
     monkeypatch.setattr(chat_agent_module, "ensure_paper_db", lambda: "paper-db-sentinel")
