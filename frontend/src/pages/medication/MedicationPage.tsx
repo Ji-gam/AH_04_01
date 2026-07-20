@@ -1372,7 +1372,14 @@ export default function MedicationPage() {
                       gap: 10,
                     }}
                   >
-                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                    <label
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        alignItems: "flex-start",
+                        cursor: "pointer",
+                      }}
+                    >
                       <input
                         type="checkbox"
                         checked={selectedScheduleIds.includes(s.id)}
@@ -1390,7 +1397,7 @@ export default function MedicationPage() {
                           </span>
                         )}
                       </div>
-                    </div>
+                    </label>
                     <button
                       onClick={() => handleDeleteSchedule(s.id)}
                       disabled={isLoading}
