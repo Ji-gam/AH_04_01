@@ -170,6 +170,45 @@ def test_search_documents_finds_ingredient_by_partial_name(monkeypatch):
     assert chunks[0].content == rule.page_content
 
 
+def test_search_documents_finds_dur_rule_by_product_name(monkeypatch):
+    """ "타이레놀 같이 먹어도 돼?"는 제품명 질의지만 DUR 병용금기는 성분(아세트아미노펜)
+    단위로 키가 걸려 있다. product_ingredients 브릿지가 제품명 매칭에서 성분명을 찾아
+    $or로 함께 걸어야, item_name만 있는 e약은요 문서뿐 아니라 ingr_name만 있는 DUR
+    문서까지 같이 뽑힌다."""
+    monkeypatch.setattr(retrieve_service.settings, "RAG_SIMILARITY_THRESHOLD", 10.0)
+    dur_rule = Document(page_content="아세트아미노펜 병용금기 규칙", metadata={"ingr_name": "아세트아미노펜"})
+    summary = Document(
+        page_content="타이레놀 e약은요 요약", metadata={"item_name": "타이레놀정500밀리그람(아세트아미노펜)"}
+    )
+    other = Document(page_content="무관 성분 규칙", metadata={"ingr_name": "와파린"})
+    db = FakeChromaDb([(dur_rule, 0.1), (summary, 0.1), (other, 0.1)])
+    retrieve_service.db_holder["ingr_names"] = DrugNameIndex()
+    retrieve_service.db_holder["drug_names"] = build_index(["타이레놀정500밀리그람(아세트아미노펜)"])
+    retrieve_service.db_holder["product_ingredients"] = {"타이레놀정500밀리그람(아세트아미노펜)": ("아세트아미노펜",)}
+
+    chunks = retrieve_service.search_documents(db, "타이레놀 같이 먹어도 돼?", limit=3)
+
+    contents = {chunk.content for chunk in chunks}
+    assert contents == {dur_rule.page_content, summary.page_content}
+
+
+def test_search_documents_falls_back_to_item_name_only_without_bridge_entry(monkeypatch):
+    """브릿지 사전에 없는 제품(등록 안 됐거나 단일 성분 매핑이 비어있는 경우)은 예전처럼
+    item_name 필터만 걸어야 한다 — $or 도입 전 동작을 그대로 보존."""
+    monkeypatch.setattr(retrieve_service.settings, "RAG_SIMILARITY_THRESHOLD", 10.0)
+    summary = Document(page_content="게보린 e약은요 요약", metadata={"item_name": "게보린정"})
+    unrelated_dur_rule = Document(page_content="무관 DUR 규칙", metadata={"ingr_name": "아세트아미노펜"})
+    db = FakeChromaDb([(summary, 0.1), (unrelated_dur_rule, 0.1)])
+    retrieve_service.db_holder["ingr_names"] = DrugNameIndex()
+    retrieve_service.db_holder["drug_names"] = build_index(["게보린정"])
+    retrieve_service.db_holder["product_ingredients"] = {}
+
+    chunks = retrieve_service.search_documents(db, "게보린 부작용", limit=3)
+
+    assert len(chunks) == 1
+    assert chunks[0].content == summary.page_content
+
+
 def test_drug_name_index_is_empty_by_default():
     """색인 전이거나 캐싱이 실패해도 검색이 터지지 않고 그냥 0건이어야 한다."""
     assert DrugNameIndex().resolve("타이레놀 부작용") is None
