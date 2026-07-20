@@ -49,8 +49,8 @@ async def prepare_database():
     async with TestSessionLocal() as session:
         await refresh_food_drug_interaction_cache(session)
 
-    # DUR 참조 데이터도 실제 `drugs_full.db`(전체 수집본)를 그대로 테스트 DB에 시딩한다 -
-    # `dur_prod_usjnt_taboo`가 80만 행대라 세션당 1회뿐이라도 시간이 걸릴 수 있다.
+    # DUR 참조 데이터도 운영 MySQL(ai_health, 이미 전체 수집본이 적재되어 있음)에서 그대로 테스트
+    # DB로 복사한다 - `dur_prod_usjnt_taboo`가 80만 행대라 세션당 1회뿐이라도 시간이 걸릴 수 있다.
     await seed_dur(session_factory=TestSessionLocal)
 
     yield

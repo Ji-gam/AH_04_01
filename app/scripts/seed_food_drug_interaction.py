@@ -1,22 +1,21 @@
-"""`app/database/food_drug_interaction.db`(SQLite, `build_food_drug_interaction_db.py`가
-`food_drug_interaction_reference.json`에서 생성한 파생 산출물)를 읽어 MySQL
-(`food_drug_sources`/`food_drug_categories`/`food_drug_ingredients`/`food_drug_food_items`)에
-시딩한다.
+"""MySQL(`ai_health`)의 `food_drug_sources`/`food_drug_categories`/`food_drug_ingredients`/
+`food_drug_food_items`(운영 데이터, 이미 시딩되어 있음)를 읽어 다른 MySQL 세션(주로 테스트 DB)에
+같은 참조 데이터를 다시 심는다.
 
-원문 소스와 SQLite 빌드 스크립트는 그대로 둔다 — 저장 형식만 SQLite에서 MySQL로 바꿨다
-(팀 전체가 로컬 파일 대신 공유 DB에서 조회하도록, 2026-07-16 멘토 피드백). 이미 시딩된 MySQL에
-다시 실행하면 기존 행을 전부 지우고 SQLite 파일 내용으로 재생성한다(참조 데이터라 증분 갱신할
-이유가 없고, SQLite 원본이 갱신되면 그대로 다시 반영되어야 하기 때문).
+(T-MED-15) 원래 `app/database/food_drug_interaction.db`(SQLite, `build_food_drug_interaction_db.py`
+산출물)를 읽었으나, SQLite를 더 이상 쓰지 않기로 하면서(원본 데이터는 이미 MySQL에 있음) 소스를
+MySQL로 바꿨다. `source_session_factory`(기본: 운영 MySQL `AsyncSessionLocal`, 즉 `ai_health`)와
+`session_factory`(대상, 테스트 DB 등)가 같은 DB를 가리키면 삭제 후 재삽입 과정에서 원본 데이터가
+사라지므로 이를 막는다.
 
-실행: uv run python -m app.scripts.seed_food_drug_interaction
+실행: uv run python -m app.scripts.seed_food_drug_interaction <target-db-name>
 """
 
 import asyncio
-import sqlite3
+import sys
 from collections.abc import Callable
-from pathlib import Path
 
-from sqlalchemy import delete
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.db.databases import AsyncSessionLocal
@@ -27,54 +26,95 @@ from app.models.food_drug_interaction import (
     FoodDrugSource,
 )
 
-SQLITE_PATH = Path(__file__).parent.parent / "database" / "food_drug_interaction.db"
+
+class SameDatabaseError(RuntimeError):
+    """소스와 대상이 같은 DB를 가리키면(운영 데이터를 지우고 빈 데이터로 재생성하는 사고를
+    막기 위해) 시딩을 거부한다."""
 
 
-def _read_sqlite(sqlite_path: Path) -> dict:
-    conn = sqlite3.connect(sqlite_path)
-    try:
-        conn.row_factory = sqlite3.Row
-        source = conn.execute("SELECT * FROM food_drug_source").fetchone()
-        categories = conn.execute(
-            "SELECT id, category, drug_class, food_interaction, alcohol_interaction, source_page "
-            "FROM food_drug_categories ORDER BY id"
-        ).fetchall()
-        ingredients = conn.execute(
-            "SELECT category_id, name_ko, name_en FROM food_drug_ingredients ORDER BY id"
-        ).fetchall()
-        food_items = conn.execute(
-            "SELECT category_id, food_name, detail, polarity FROM food_drug_food_items ORDER BY id"
-        ).fetchall()
-        return {
-            "source": dict(source) if source else {},
-            "categories": [dict(row) for row in categories],
-            "ingredients": [dict(row) for row in ingredients],
-            "food_items": [dict(row) for row in food_items],
+async def _read_mysql(source_session: AsyncSession) -> dict:
+    source_row = (await source_session.execute(select(FoodDrugSource))).scalars().first()
+    source = (
+        {
+            "title": source_row.title,
+            "publisher": source_row.publisher,
+            "published": source_row.published,
+            "url": source_row.url,
+            "note": source_row.note,
+            "not_covered": source_row.not_covered,
         }
-    finally:
-        conn.close()
+        if source_row
+        else {}
+    )
+    categories = (
+        (await source_session.execute(select(FoodDrugCategory).order_by(FoodDrugCategory.id))).scalars().all()
+    )
+    ingredients = (
+        (await source_session.execute(select(FoodDrugIngredient).order_by(FoodDrugIngredient.id))).scalars().all()
+    )
+    food_items = (
+        (await source_session.execute(select(FoodDrugFoodItem).order_by(FoodDrugFoodItem.id))).scalars().all()
+    )
+    return {
+        "source": source,
+        "categories": [
+            {
+                "id": c.id,
+                "category": c.category,
+                "drug_class": c.drug_class,
+                "food_interaction": c.food_interaction,
+                "alcohol_interaction": c.alcohol_interaction,
+                "source_page": c.source_page,
+            }
+            for c in categories
+        ],
+        "ingredients": [
+            {"category_id": i.category_id, "name_ko": i.name_ko, "name_en": i.name_en} for i in ingredients
+        ],
+        "food_items": [
+            {
+                "category_id": f.category_id,
+                "food_name": f.food_name,
+                "detail": f.detail,
+                "polarity": f.polarity,
+            }
+            for f in food_items
+        ],
+    }
+
+
+async def _assert_different_database(
+    source_session: AsyncSession, target_session: AsyncSession
+) -> None:
+    source_db = (await source_session.execute(text("SELECT DATABASE()"))).scalar_one()
+    target_db = (await target_session.execute(text("SELECT DATABASE()"))).scalar_one()
+    if source_db == target_db:
+        raise SameDatabaseError(
+            f"소스와 대상이 같은 DB({source_db})입니다 — 운영 데이터를 지우고 재생성하는 사고를 "
+            "막기 위해 시딩을 중단합니다. 다른 DB(테스트 DB 등)를 대상으로만 실행하세요."
+        )
 
 
 async def seed_food_drug_interaction(
-    sqlite_path: Path = SQLITE_PATH,
-    session_factory: Callable[[], AsyncSession] | async_sessionmaker[AsyncSession] = AsyncSessionLocal,
+    session_factory: Callable[[], AsyncSession] | async_sessionmaker[AsyncSession],
+    source_session_factory: Callable[[], AsyncSession] | async_sessionmaker[AsyncSession] = AsyncSessionLocal,
 ) -> int:
-    """`session_factory`는 기본적으로 운영 MySQL 세션이지만, 테스트 스위트가 격리된 테스트 DB에
-    같은 참조 데이터를 시딩할 때도 재사용한다(`app/tests/conftest.py`)."""
-    data = _read_sqlite(sqlite_path)
+    """`session_factory`(대상, 필수 — 테스트 DB 등)에 `source_session_factory`(기본: 운영
+    MySQL `ai_health`)의 참조 데이터를 복사한다."""
+    async with source_session_factory() as source_session, session_factory() as session:
+        await _assert_different_database(source_session, session)
+        data = await _read_mysql(source_session)
 
-    async with session_factory() as session:
         await session.execute(delete(FoodDrugFoodItem))
         await session.execute(delete(FoodDrugIngredient))
         await session.execute(delete(FoodDrugCategory))
         await session.execute(delete(FoodDrugSource))
 
         if data["source"]:
-            session.add(FoodDrugSource(**{k: v for k, v in data["source"].items() if k != "id"}))
+            session.add(FoodDrugSource(**data["source"]))
 
         old_id_to_category = {}
         for row in data["categories"]:
-            old_id = row["id"]
             category = FoodDrugCategory(
                 category=row["category"],
                 drug_class=row["drug_class"],
@@ -83,7 +123,7 @@ async def seed_food_drug_interaction(
                 source_page=row["source_page"],
             )
             session.add(category)
-            old_id_to_category[old_id] = category
+            old_id_to_category[row["id"]] = category
 
         # FK를 채우려면 새 category.id가 필요하므로 flush로 먼저 발급받는다.
         await session.flush()
@@ -112,8 +152,12 @@ async def seed_food_drug_interaction(
 
 
 async def _main() -> None:
-    count = await seed_food_drug_interaction()
-    print(f"{count}개 카테고리 MySQL 시딩 완료")
+    print(
+        "이 스크립트는 더 이상 단독 실행 대상이 없습니다 — 원본 데이터가 이미 운영 MySQL(ai_health)에 "
+        "있습니다. 테스트 DB 시딩은 app/tests/conftest.py가 session_factory=TestSessionLocal로 "
+        "자동 호출합니다.",
+        file=sys.stderr,
+    )
 
 
 if __name__ == "__main__":

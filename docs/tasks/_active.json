@@ -23,5 +23,10 @@
     "owner": "agent-Genie",
     "branch": "feature/T-LLM-2-dur-interaction-warning",
     "started": "2026-07-17"
+  },
+  "T-MED-15": {
+    "owner": "claude",
+    "branch": "feat/T-MED-15-sqlite-removal-mysql-unify",
+    "started": "2026-07-20"
   }
 }
