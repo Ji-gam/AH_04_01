@@ -13,6 +13,15 @@ class Config(BaseSettings):
     OPENAI_EMBEDDING_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
 
+    # 공유 MySQL(app/core/config.py와 동일 필드명 — 같은 .env를 두 서비스가 나눠 쓴다).
+    # ai_worker 자체는 요청 처리 중엔 MySQL을 안 읽는다(retrieve_service는 Chroma만 연다) —
+    # 오직 scripts/export_source_from_mysql.py(빌드 시점, 드롭 폴더 CSV 생성용)만 쓴다.
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 3306
+    DB_USER: str = "root"
+    DB_PASSWORD: str = "pw1234"
+    DB_NAME: str = "ai_health"
+
     # **RAG엔 필요 없다.** 임베딩은 모델을 로컬에 내려받아 돌리므로 네트워크도 키도 안 쓴다
     # (ingest/embeddings.py의 _LocalHFEmbeddings). 이 키가 필요한 건 아직 안 받은 후보
     # 모델을 API로 비교하는 1회성 도구뿐이다(scripts/benchmark_embeddings.py).
