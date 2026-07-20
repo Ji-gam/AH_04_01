@@ -1415,7 +1415,9 @@ class MedicationService:
             pending_medication_names=pending_medication_names,
         )
 
-    async def check_food_interactions_pending(self, session: AsyncSession, profile_id: int) -> FoodInteractionCheckResult:
+    async def check_food_interactions_pending(
+        self, session: AsyncSession, profile_id: int
+    ) -> FoodInteractionCheckResult:
         """(T-DOC-5) `check_food_interactions`가 1,2단계로 확인하지 못해 넘긴(주로 상표명이면서
         `drugs_data` 스냅샷에도 없는) 약만 골라 느린 3단계(실시간 e약은요 API)로 확인한다.
         결과는 약품명 기준 프로세스 메모리 캐시에 저장되어(`_build_food_interaction_guide_card_slow_cached`)
