@@ -42,7 +42,9 @@ class PushSubscriptionRepository:
         await session.execute(delete(PushSubscription).where(PushSubscription.id == subscription_id))
         await session.commit()
 
-    async def list_web_subscriptions_for_profile(self, session: AsyncSession, profile_id: int) -> list[PushSubscription]:
+    async def list_web_subscriptions_for_profile(
+        self, session: AsyncSession, profile_id: int
+    ) -> list[PushSubscription]:
         result = await session.execute(
             select(PushSubscription).where(
                 PushSubscription.profile_id == profile_id, PushSubscription.platform == PushPlatform.WEB

@@ -49,6 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await medication_open_api_client.close_http_client()
     scheduler.shutdown()
 
+
 app = FastAPI(
     title="AI HealthCare API",
     summary="복약·건강관리 서비스(ReMedi) 백엔드 API",
