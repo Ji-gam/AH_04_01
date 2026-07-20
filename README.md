@@ -170,27 +170,35 @@ DB_HOST=localhost uv run --group app python -m alembic upgrade head
 #### ⚠️ RAG 벡터 시딩 (최초 1회, 팀원 각자 로컬에서)
 
 챗봇 검색에 쓰는 벡터 저장소(`ai_worker/chroma_data/`)는 **git에 없습니다**(수백 MB 바이너리).
-원본 데이터는 `ai_worker/source/`에 커밋돼 있으니, 각자 로컬에서 한 번 만들면 됩니다.
+논문 JSON/OCR 마크다운은 `ai_worker/source/`에 커밋돼 있지만, **DUR/e약은요 CSV 8개는
+더 이상 커밋되지 않습니다** — MySQL이 원본이고(`app/scripts/seed_dur.py`가 옮겨놨습니다),
+빌드 시점마다 최신 데이터로 새로 뽑아옵니다. 그래서 MySQL DUR 시딩(위 "DUR 데이터 시딩"
+참고)을 먼저 끝내야 합니다.
 
 **API 키도, 과금도, 네트워크도 필요 없습니다.** 임베딩 모델을 로컬에 내려받아 색인도 질의도
 직접 돌립니다. 몇 번을 다시 만들어도 공짜라 마음껏 실험하세요.
 
 ```bash
+# 0. MySQL에 DUR 데이터가 이미 있어야 한다(uv run python -m app.scripts.seed_dur, 위 참고).
+
 # 1. AI 워커 의존성 — 이 프로젝트는 [dependency-groups]를 쓰므로 --group이다.
 #    `--all-extras`는 아무 그룹도 안 잡고 나머지를 지워버린다(실제로 당함).
 uv sync --group ai
 
-# 2. 뭐가 색인될지 먼저 본다 (색인은 안 함)
+# 2. MySQL의 DUR/e약은요 데이터를 드롭 폴더 CSV로 뽑아온다(source/에 8개 파일 생성/갱신).
+uv run python -m ai_worker.scripts.export_source_from_mysql
+
+# 3. 뭐가 색인될지 먼저 본다 (색인은 안 함)
 uv run python -m ai_worker.ingest --scan
 
-# 3. 색인. 첫 실행은 임베딩 모델(e5-large, 약 2GB)을 내려받아 5~15분 걸린다.
+# 4. 색인. 첫 실행은 임베딩 모델(e5-large, 약 2GB)을 내려받아 5~15분 걸린다.
 uv run python -m ai_worker.ingest
 
-# 4. 검증 — 실제 질문을 던져 팀과 같은 결과가 나오는지 확인한다.
+# 5. 검증 — 실제 질문을 던져 팀과 같은 결과가 나오는지 확인한다.
 uv run python -m ai_worker.scripts.verify_rag
 ```
 
-4번이 전부 OK면 끝입니다. 기대 결과가 스크립트에 박혀 있어 내 로컬이 팀과 같은지 눈으로
+5번이 전부 OK면 끝입니다. 기대 결과가 스크립트에 박혀 있어 내 로컬이 팀과 같은지 눈으로
 맞춰볼 수 있습니다. **건수가 아니라 질문으로 확인하는 이유**: 색인은 "몇 건 넣었다"고 보고하지만
 그게 검색이 된다는 뜻은 아닙니다. 메타데이터 키가 하나 틀리면 문서는 들어가 있는데 영원히
 안 뽑히고, 실제로 그런 상태로 오래 굴러간 적이 있습니다.
@@ -198,9 +206,10 @@ uv run python -m ai_worker.scripts.verify_rag
 > 모델은 서빙 프로세스가 1.1GB를 물고 있고, 기동 시 약 10초를 들여 미리 올립니다
 > (`initialize_rag`). 안 그러면 그 10초를 첫 질문한 사용자가 냅니다.
 
-**데이터를 추가하려면** `ai_worker/source/`에 파일을 넣고 3번을 다시 돌리면 됩니다. 등록 절차는
-없습니다 — 폴더에 있으면 색인됩니다(`.csv` / `.json` / `.md` / `.pdf`). RAG 재료가 아닌 것
-(SQL 조회용 표 등)은 여기 두지 않습니다. 자세한 규칙은
+**DUR/e약은요 데이터를 갱신하려면** MySQL을 다시 시딩하고(0번) 2번부터 다시 돌리면 됩니다.
+**그 외 RAG 재료(논문/가이드 문서 등)를 추가하려면** `ai_worker/source/`에 파일을 넣고 4번을
+다시 돌리면 됩니다. 등록 절차는 없습니다 — 폴더에 있으면 색인됩니다(`.csv` / `.json` / `.md`
+/ `.pdf`). RAG 재료가 아닌 것(SQL 조회용 표 등)은 여기 두지 않습니다. 자세한 규칙은
 `ai_worker/ingest/__init__.py`와 `ai_worker/source/_tuning.yaml` 참고.
 
 재색인은 안 바뀐 문서를 콘텐츠 해시로 걸러 건너뛰므로(`SQLRecordManager`) 몇 번을 돌려도
