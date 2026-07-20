@@ -7,6 +7,7 @@ from fastapi.responses import ORJSONResponse
 from app.apis.v1 import v1_routers
 from app.core import config
 from app.core.config import Env
+from app.core.db.databases import AsyncSessionLocal
 from app.scripts.seed_health_content import seed_health_content
 from app.services import medication_open_api_client
 from app.services.medication_service import refresh_food_drug_interaction_cache
@@ -36,13 +37,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if config.ENV == Env.LOCAL:
         await seed_health_content()
 
+    # 음식-약물 상호작용 참조 테이블을 프로세스 메모리 캐시로 미리 읽어들인다 - 안 하면
+    # "정보를 찾지 못해 확인할 수 없습니다"만 뜬다(캐시가 비어있어서 매칭 자체가 안 됨).
+    async with AsyncSessionLocal() as session:
+        await refresh_food_drug_interaction_cache(session)
+
     # (웹푸시, 임시 구현) celery-beat이 아직 없어서 fastapi 프로세스 안에서 APScheduler로
     # 대신 돈다 - 자세한 배경은 app/services/push_scheduler.py의 docstring 참고.
     scheduler = start_push_scheduler()
     yield
     await medication_open_api_client.close_http_client()
     scheduler.shutdown()
-
 
 app = FastAPI(
     title="AI HealthCare API",
