@@ -1,3 +1,4 @@
+import csv
 from typing import Any
 
 from langchain_chroma import Chroma
@@ -6,9 +7,19 @@ from ai_worker.core.config import settings
 from ai_worker.core.logger import setup_logger
 from ai_worker.ingest.embeddings import get_embeddings
 from ai_worker.ingest.pipeline import build_vector_store
-from ai_worker.ingest.sources import STRUCTURED
+from ai_worker.ingest.sources import SOURCE_DIR, STRUCTURED
 from ai_worker.schemas.retrieval_schema import DocumentChunk
-from ai_worker.services.drug_name_resolver import DrugNameIndex, build_index, build_ingredient_index
+from ai_worker.services.drug_name_resolver import (
+    DrugNameIndex,
+    build_index,
+    build_ingredient_index,
+    build_product_ingredient_map,
+)
+
+# 제품명 -> 성분명 조회 사전(RAG 문서 아님, `ai_worker/scripts/export_source_from_mysql.py`가
+# 빌드 시점에 만든다). `source/` 안에 있지만 밑줄 접두어라 ingest 색인에서는 제외된다
+# (`ai_worker/ingest/sources.py`의 `_is_source_file`) — RAG와 같은 배포 산출물 취급만 받는다.
+PRODUCT_INGREDIENT_MAP_PATH = SOURCE_DIR / "_item_ingredient_map.csv"
 
 logger = setup_logger("ai_worker.retrieve_service")
 
@@ -29,7 +40,21 @@ db_holder: dict[str, Any] = {
     "db": None,
     "ingr_names": DrugNameIndex(),
     "drug_names": DrugNameIndex(),
+    "product_ingredients": {},
 }
+
+
+def _load_product_ingredient_map() -> dict[str, tuple[str, ...]]:
+    """빌드 시점에 만들어진 제품명->성분명 조회 사전을 읽는다. 파일이 없으면(아직
+    `export_source_from_mysql`을 안 돌린 로컬/테스트 환경) 빈 사전 — 브릿지 없이도
+    기존 성분명/약 이름 검색은 그대로 동작해야 하므로 예외를 던지지 않는다."""
+    if not PRODUCT_INGREDIENT_MAP_PATH.exists():
+        logger.warning(f"{PRODUCT_INGREDIENT_MAP_PATH.name} 없음 — 제품명->성분명 브릿지 비활성화")
+        return {}
+    with PRODUCT_INGREDIENT_MAP_PATH.open(encoding="utf-8", newline="") as f:
+        mapping = build_product_ingredient_map(csv.DictReader(f))
+    logger.info(f"Cached product-ingredient bridge: {len(mapping)}개 제품")
+    return mapping
 
 
 def cache_searchable_names(db: Chroma) -> None:
@@ -77,6 +102,7 @@ def initialize_rag() -> None:
         db = build_vector_store(COLLECTION_NAME)
         db_holder["db"] = db
         cache_searchable_names(db)
+        db_holder["product_ingredients"] = _load_product_ingredient_map()
         warm_up_embeddings()
         logger.info("RAG Initialization completed.")
     except Exception as e:
@@ -101,25 +127,35 @@ def ensure_db() -> Chroma:
         db = build_vector_store(COLLECTION_NAME)
         db_holder["db"] = db
         cache_searchable_names(db)
+        db_holder["product_ingredients"] = _load_product_ingredient_map()
     return db
 
 
-def _build_filter(query: str) -> dict[str, Any] | None:
-    """질의에서 성분명이나 약 이름을 찾아 메타데이터 필터를 만든다. 못 찾으면 None.
+def _build_filters(query: str) -> list[dict[str, Any]]:
+    """질의에서 성분명이나 약 이름을 찾아 메타데이터 필터 목록을 만든다. 못 찾으면 빈 리스트.
 
     성분명을 먼저 본다 — DUR 금기/주의 규칙이 성분 단위라 더 구체적인 답이기 때문이다.
     성분명이 없으면 약 이름으로 e약은요(효능/용법/부작용 산문)를 찾는다. 둘 다 같은 접두사
     인덱스(`drug_name_resolver.DrugNameIndex`)로 찾는다 — 사용자는 "졸피뎀타르타르산염"이
     아니라 "졸피뎀"까지만 치기 때문이다.
 
-    둘은 서로 배타적이다: DUR 문서엔 ingr_name만, e약은요 문서엔 item_name만 있다.
-    그래서 "타이레놀 같이 먹어도 돼?"는 아직 DUR 병용금기를 못 뽑는다 — 그 규칙은
-    성분(아세트아미노펜)으로 키가 걸려 있고, 제품 -> 성분 변환은 별도 작업이다."""
+    DUR 문서엔 ingr_name만, e약은요 문서엔 item_name만 있어 원래는 서로 배타적이었다.
+    "타이레놀 같이 먹어도 돼?"처럼 제품명으로 물으면 DUR 병용금기(성분 단위, 아세트아미노펜)를
+    못 뽑던 문제는 `db_holder["product_ingredients"]`(제품명->성분명 조회 사전,
+    `drug_name_resolver.build_product_ingredient_map` 참고)로 다리를 놓아 해결한다 — 제품명이
+    매칭되면 그 제품의 성분 필터도 목록에 함께 넣는다.
+
+    필터를 하나의 `$or`로 합치지 않고 목록으로 따로 반환하는 이유: Chroma의
+    similarity_search는 필터(그리고 `$or`로 묶은 필터 전체)에서 상위 k개를 고른다. e약은요는
+    산문이라 쿼리와 임베딩 거리가 더 가깝게 나와, 하나의 `$or`로 합치면 DUR 규칙(짧은 템플릿
+    문장)이 top-k에서 통째로 밀려난다(실측 2026-07-20: "타이레놀 같이 먹어도 돼?"가 e약은요
+    5건만 반환하고 병용금기 규칙은 후보에도 못 낌). `search_documents()`가 필터마다 따로
+    top-k를 뽑아야 두 종류 다 안전하게 살아남는다."""
     matched_ingr = db_holder["ingr_names"].resolve(query)
     if matched_ingr is not None:
         key, ingredients = matched_ingr
         logger.info(f"Dynamic metadata filter applied: ingr '{key}' -> {len(ingredients)}개 성분")
-        return {"ingr_name": ingredients[0] if len(ingredients) == 1 else {"$in": ingredients}}
+        return [{"ingr_name": ingredients[0] if len(ingredients) == 1 else {"$in": ingredients}}]
 
     matched_drug = db_holder["drug_names"].resolve(query)
     if matched_drug is not None:
@@ -127,9 +163,20 @@ def _build_filter(query: str) -> dict[str, Any] | None:
         logger.info(f"Dynamic metadata filter applied: drug '{key}' -> {len(products)}개 제품")
         # 브랜드 하나에 제품이 여럿이다("타이레놀" -> 정/서방정/현탁액...). 하나만 고르면
         # 엉뚱한 제형이 잡히므로 전부 넘기고 유사도가 고르게 한다.
-        return {"item_name": products[0] if len(products) == 1 else {"$in": products}}
+        filters = [{"item_name": products[0] if len(products) == 1 else {"$in": products}}]
 
-    return None
+        bridged_ingredients: set[str] = set()
+        for product in products:
+            bridged_ingredients.update(db_holder["product_ingredients"].get(product, ()))
+
+        if bridged_ingredients:
+            ingr_list = sorted(bridged_ingredients)
+            logger.info(f"Dynamic metadata filter applied: drug '{key}' -> 성분 브릿지 {len(ingr_list)}개")
+            filters.append({"ingr_name": ingr_list[0] if len(ingr_list) == 1 else {"$in": ingr_list}})
+
+        return filters
+
+    return []
 
 
 def search_documents(db: Chroma, query: str, limit: int) -> list[DocumentChunk]:
@@ -144,14 +191,18 @@ def search_documents(db: Chroma, query: str, limit: int) -> list[DocumentChunk]:
     임베딩 호환성 검증(`assert_embedding_compatible`)은 호출자(라우터) 책임이다."""
     logger.info(f"Retrieving documents for query: '{query}' (limit: {limit})")
 
-    filter_dict = _build_filter(query)
+    filters = _build_filters(query)
 
-    if filter_dict is None:
+    if not filters:
         logger.info("쿼리에서 성분명·약 이름을 식별하지 못해 검색을 생략합니다.")
         return []
 
-    # 유사도 점수(Score)를 포함한 검색 수행
-    docs_with_scores = db.similarity_search_with_score(query, k=limit, filter=filter_dict)
+    # 필터마다 따로 top-k를 뽑아 합친다(단일 $or로 합치지 않는 이유는 _build_filters
+    # 참고) — 제품명 브릿지가 걸리면 필터가 2개(item_name, ingr_name)라 최대 limit*2건이
+    # 후보로 모일 수 있다.
+    docs_with_scores: list[tuple[Any, float]] = []
+    for filter_dict in filters:
+        docs_with_scores.extend(db.similarity_search_with_score(query, k=limit, filter=filter_dict))
 
     # 디버깅 로그 출력 (유사도 거리 분석용)
     for doc, score in docs_with_scores:
@@ -164,6 +215,9 @@ def search_documents(db: Chroma, query: str, limit: int) -> list[DocumentChunk]:
     # 가져와 임베딩 백엔드별로 튜닝할 수 있게 한다(거리 스케일이 백엔드마다 다름).
     threshold = settings.RAG_SIMILARITY_THRESHOLD
     valid_docs_with_scores = [(doc, score) for doc, score in docs_with_scores if score < threshold]
+    # 필터별로 따로 뽑아 합쳤으니(위 주석 참고) 점수 오름차순(더 유사할수록 앞)으로
+    # 다시 정렬해야 어느 필터에서 나왔든 더 관련 있는 문서가 앞에 온다.
+    valid_docs_with_scores.sort(key=lambda pair: pair[1])
 
     # 문서의 내용과 메타데이터를 함께 추출
     chunks = [
