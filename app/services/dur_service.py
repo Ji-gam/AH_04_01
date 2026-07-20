@@ -209,7 +209,7 @@ class DurScreeningService:
                 if name:
                     ingr_names.setdefault(code, name)
 
-        seen_ingr_rules: dict[str, set[tuple[str, str | None, str | None]]] = {}
+        seen_ingr_rules: dict[str, set[tuple[str, str | None, str | None, str | None]]] = {}
         rules_by_ingr: dict[str, list[IngredientRuleDetail]] = {}
         for r in await repo.get_ingredient_level_rules(list(source_items_by_ingr.keys())):
             # 성분-조합 짝 단위로 저장된 원본이라 같은 (성분,규칙,내용) 조합이 반복되는 경우가 많다.
