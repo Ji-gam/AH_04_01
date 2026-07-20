@@ -128,6 +128,7 @@ _EXPECTED_COLUMNS = {
         "DEL_YN",
         "AGE_BASE",
     },
+    "_item_ingredient_map.csv": {"ITEM_NAME", "INGR_NAME"},
     "dur_usjnt_taboo.csv": {
         "TYPE_NAME",
         "MIX_TYPE",
@@ -174,6 +175,18 @@ def test_query_aliases_every_mysql_column_to_its_original_name():
     assert "ingr_name AS INGR_NAME" in export.query
     assert export.query.startswith("SELECT ")
     assert export.query.endswith("FROM dur_spcify_agrde_taboo")
+
+
+def test_item_ingredient_map_query_joins_drugs_data_for_item_name():
+    """item_ingredient_map엔 item_name이 없다(item_seq만 있음, app/models/dur.py) — drugs_data와
+    조인해야 한다. dur_prod_master_list가 아니라 drugs_data와 조인하는 이유: retrieve_service의
+    db_holder["drug_names"]가 drugs_data.csv 기준으로 색인되므로, 같은 테이블로 조인해야
+    ITEM_NAME 문자열이 정확히 일치한다(실측 2026-07-20)."""
+    export = next(e for e in EXPORTS if e.filename == "_item_ingredient_map.csv")
+
+    assert "d.item_name AS ITEM_NAME" in export.query
+    assert "m.ingr_name AS INGR_NAME" in export.query
+    assert "item_ingredient_map m JOIN drugs_data d ON m.item_seq = d.item_seq" in export.query
 
 
 def test_written_csv_is_readable_by_the_real_csv_loader(tmp_path):

@@ -19,15 +19,18 @@
 실측(질문 7개 / 반례 10개): 아래 방식으로 7/7 적중, 오탐 0/10.
 한계에 부딪히면 그때 LLM을 얹으면 된다 — 순서가 그렇다.
 
-## 남아있는 것
+## 제품명 -> 성분명 브릿지 (2026-07-20 해결)
 
-"타이레놀 부작용?"은 e약은요를 뽑지만 "타이레놀 같이 먹어도 돼?"는 DUR 병용금기를 못
-뽑는다. DUR 규칙은 성분(아세트아미노펜)으로 키가 걸려 있어서다. 제품 -> 성분 변환이
-필요한데 그 표(`item_ingredient_map`)는 SQL 쪽에 있어 별도 작업이다.
+"타이레놀 부작용?"은 e약은요를 뽑지만, DUR 병용금기 같은 규칙은 성분(아세트아미노펜)으로
+키가 걸려 있어 제품명만으로는 원래 못 찾았다. `build_product_ingredient_map()`이 MySQL의
+`item_ingredient_map`을 빌드 시점에 내려받은 조회 사전(`_item_ingredient_map.csv`,
+`ai_worker/scripts/export_source_from_mysql.py`)으로 이 변환을 채운다 —
+`retrieve_service._build_filter()`가 제품명 매칭 시 이 사전으로 성분명까지 같이 찾아
+`$or` 필터를 건다.
 """
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
 # 브랜드명 뒤에 붙는 제형·용량. 여기서부터 잘라내면 앞에 브랜드가 남는다.
@@ -98,6 +101,25 @@ def build_index(item_names: Iterable[str]) -> DrugNameIndex:
     "훼스탈"까지만 치기 때문이다. 접두사를 열면 오탐이 늘 것 같지만, 3자 이상으로 자르면
     일반 건강 질문 반례 10개에서 오탐이 하나도 안 났다(실측)."""
     return _build_prefix_index(item_names, core_of=brand_core)
+
+
+def build_product_ingredient_map(rows: Iterable[Mapping[str, str]]) -> dict[str, tuple[str, ...]]:
+    """제품명 -> 그 제품에 든 성분명들(제품명->성분 브릿지, `_item_ingredient_map.csv` 전용).
+
+    `DrugNameIndex`처럼 접두사 인덱스가 아니라 **완전 일치 사전**이다 — 이미 `build_index()`로
+    브랜드를 찾아 정확한 제품명을 얻은 뒤 그 결과로 다시 조회하는 2차 조회라, 여기서 또
+    부분매칭을 할 필요가 없다(`retrieve_service._build_filter` 참고).
+
+    한 제품이 성분을 여럿 가질 수 있어(복합제, 예: "타이레놀콜드-에스정" -> 4성분) 값은
+    튜플이다."""
+    mapping: dict[str, set[str]] = {}
+    for row in rows:
+        item_name = (row.get("ITEM_NAME") or "").strip()
+        ingr_name = (row.get("INGR_NAME") or "").strip()
+        if not item_name or not ingr_name:
+            continue
+        mapping.setdefault(item_name, set()).add(ingr_name)
+    return {name: tuple(sorted(ingredients)) for name, ingredients in mapping.items()}
 
 
 def build_ingredient_index(ingr_names: Iterable[str]) -> DrugNameIndex:

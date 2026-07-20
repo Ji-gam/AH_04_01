@@ -170,10 +170,10 @@ DB_HOST=localhost uv run --group app python -m alembic upgrade head
 #### ⚠️ RAG 벡터 시딩 (최초 1회, 팀원 각자 로컬에서)
 
 챗봇 검색에 쓰는 벡터 저장소(`ai_worker/chroma_data/`)는 **git에 없습니다**(수백 MB 바이너리).
-논문 JSON/OCR 마크다운은 `ai_worker/source/`에 커밋돼 있지만, **DUR/e약은요 CSV 8개는
-더 이상 커밋되지 않습니다** — MySQL이 원본이고(`app/scripts/seed_dur.py`가 옮겨놨습니다),
-빌드 시점마다 최신 데이터로 새로 뽑아옵니다. 그래서 MySQL DUR 시딩(위 "DUR 데이터 시딩"
-참고)을 먼저 끝내야 합니다.
+논문 JSON/OCR 마크다운은 `ai_worker/source/`에 커밋돼 있지만, **DUR/e약은요 CSV 8개(+ 제품명
+->성분명 조회용 `_item_ingredient_map.csv` 1개, RAG 문서 아님)는 더 이상 커밋되지 않습니다** —
+MySQL이 원본이고(`app/scripts/seed_dur.py`가 옮겨놨습니다), 빌드 시점마다 최신 데이터로 새로
+뽑아옵니다. 그래서 MySQL DUR 시딩(위 "DUR 데이터 시딩" 참고)을 먼저 끝내야 합니다.
 
 **API 키도, 과금도, 네트워크도 필요 없습니다.** 임베딩 모델을 로컬에 내려받아 색인도 질의도
 직접 돌립니다. 몇 번을 다시 만들어도 공짜라 마음껏 실험하세요.
@@ -185,7 +185,8 @@ DB_HOST=localhost uv run --group app python -m alembic upgrade head
 #    `--all-extras`는 아무 그룹도 안 잡고 나머지를 지워버린다(실제로 당함).
 uv sync --group ai
 
-# 2. MySQL의 DUR/e약은요 데이터를 드롭 폴더 CSV로 뽑아온다(source/에 8개 파일 생성/갱신).
+# 2. MySQL의 DUR/e약은요 데이터를 드롭 폴더 CSV로 뽑아온다(source/에 9개 파일 생성/갱신,
+#    그중 _item_ingredient_map.csv는 밑줄 접두어라 아래 3번 색인 대상에선 자동 제외된다).
 uv run python -m ai_worker.scripts.export_source_from_mysql
 
 # 3. 뭐가 색인될지 먼저 본다 (색인은 안 함)

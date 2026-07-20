@@ -2,9 +2,9 @@
 
 CSV는 더 이상 원본이 아니라 **빌드 산출물**이다. 원본은 MySQL이다(`app/scripts/seed_dur.py`가
 `drugs_full.db`에서 이미 옮겨놨다). 이 스크립트는 매 빌드 시점에 최신 MySQL 데이터로
-`ai_worker/source/`의 CSV 8개를 다시 써서, 기존 `python -m ai_worker.ingest`가 그대로
-읽게 한다 — 인제스천 엔진(`ai_worker/ingest/*`)과 `_tuning.yaml`은 이 변경으로 한 줄도
-안 바뀐다.
+`ai_worker/source/`의 CSV 8개(RAG 문서 재료) + 조회용 사전 CSV 1개(`_item_ingredient_map.csv`,
+RAG 문서 아님)를 다시 써서, 기존 `python -m ai_worker.ingest`가 그대로 읽게 한다 —
+인제스천 엔진(`ai_worker/ingest/*`)과 `_tuning.yaml`은 이 변경으로 한 줄도 안 바뀐다.
 
 컬럼명을 원래 식약처 API 표기(`TYPE_NAME` 등)로 되돌려 쓰는 이유: `_tuning.yaml`의
 `exclude_columns`/`metadata_columns`가 전부 그 표기를 전제로 만들어져 있다. 여기서만
@@ -139,6 +139,21 @@ EXPORTS: list[_Export] = [
             **_INGREDIENT_RULE_TAIL,
             "SERS_NAME": "sers_name",
         },
+    ),
+    _Export(
+        # 밑줄 접두어 = `ai_worker/ingest/sources.py`의 `_is_source_file`이 RAG 색인 대상에서
+        # 제외한다(`_tuning.yaml`과 같은 규칙). 이 파일은 RAG 문서가 아니라 제품명->성분명
+        # 조회용 사전 데이터라(`retrieve_service._load_product_ingredient_map` 참고),
+        # source/ 드롭 폴더의 "여기엔 RAG 재료만 넣는다" 원칙을 어기지 않으면서도 같은
+        # export 스크립트/디렉터리를 공유하려고 이 접두어를 쓴다.
+        "_item_ingredient_map.csv",
+        # drugs_data와 조인하는 이유: item_ingredient_map 자체엔 item_name이 없고 item_seq만
+        # 있다(app/models/dur.py). dur_prod_master_list(23,421건)로 조인할 수도 있지만, 그러면
+        # 이 CSV의 ITEM_NAME이 retrieve_service.db_holder["drug_names"](drugs_data.csv 기준,
+        # 4,758건)의 표기와 어긋날 위험이 있다 — 실측(2026-07-20)으로 drugs_data 조인은
+        # 정확히 같은 문자열을 준다는 걸 확인했다(예: "타이레놀정500밀리그람(아세트아미노펜)").
+        "item_ingredient_map m JOIN drugs_data d ON m.item_seq = d.item_seq",
+        {"ITEM_NAME": "d.item_name", "INGR_NAME": "m.ingr_name"},
     ),
     _Export(
         "dur_usjnt_taboo.csv",
