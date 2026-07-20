@@ -613,11 +613,9 @@ export default function MedicationPage() {
       );
       await fetchSchedules();
       alert(`${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`);
-      setCurrentJobId(null);
-      setJobStatus(null);
-      // 확정 패널이 화면에 남아 재클릭을 유발하지 않도록 OCR 세션 상태를 함께 초기화한다.
-      setCandidates([]);
-      setExtractedFields(null);
+      // currentJobId/candidates는 그대로 둔다 — 후보별 등록 여부는 등록약 목록(schedules)에서
+      // 파생되므로(아래 isRegistered), 등록 목록에서 삭제하면 같은 후보를 재업로드 없이 다시
+      // 선택해 등록할 수 있어야 한다. 방금 제출한 선택 상태만 비운다.
       setSelectedDrugCodes([]);
     } catch (err) {
       console.error(err);
@@ -923,7 +921,10 @@ export default function MedicationPage() {
                   {candidates.map((c) => {
                     const durInfo = durWarningsByName[c.drug_name];
                     const activeFlags = durInfo?.dur_simple.filter((f) => f.present) ?? [];
-                    const checked = selectedDrugCodes.includes(c.drug_code);
+                    // 등록 여부는 등록약 목록(schedules)에서 이름으로 파생한다 — 등록약이 목록에서
+                    // 삭제되면 자동으로 다시 선택 가능해지고, 이미지를 다시 올릴 필요가 없다.
+                    const isRegistered = schedules.some((s) => s.drug_name === c.drug_name);
+                    const checked = !isRegistered && selectedDrugCodes.includes(c.drug_code);
                     return (
                       <label
                         key={c.drug_code}
@@ -934,8 +935,9 @@ export default function MedicationPage() {
                           border: `1px solid ${checked ? pinkTheme.primary : pinkTheme.border}`,
                           borderRadius: 12,
                           padding: 10,
-                          cursor: "pointer",
-                          background: pinkTheme.cardBg,
+                          cursor: isRegistered ? "not-allowed" : "pointer",
+                          background: isRegistered ? pinkTheme.border : pinkTheme.cardBg,
+                          opacity: isRegistered ? 0.6 : 1,
                           boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
                         }}
                       >
@@ -943,6 +945,7 @@ export default function MedicationPage() {
                           type="checkbox"
                           value={c.drug_code}
                           checked={checked}
+                          disabled={isRegistered}
                           style={{ marginTop: 3 }}
                           onChange={(e) =>
                             setSelectedDrugCodes((prev) =>
@@ -968,7 +971,24 @@ export default function MedicationPage() {
                           💊
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>{c.drug_name}</div>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>
+                            {c.drug_name}
+                            {isRegistered && (
+                              <span
+                                style={{
+                                  marginLeft: 8,
+                                  fontSize: 11,
+                                  fontWeight: 700,
+                                  color: pinkTheme.textMuted,
+                                  border: `1px solid ${pinkTheme.textMuted}`,
+                                  borderRadius: 999,
+                                  padding: "1px 8px",
+                                }}
+                              >
+                                등록됨
+                              </span>
+                            )}
+                          </div>
                           <div style={{ fontSize: 11.5, color: pinkTheme.textMuted }}>
                             매칭률 {(c.match_rate * 100).toFixed(0)}%
                             {c.match_rate < 0.6 && " · 마스터 DB 미등록, 신규 인식"}
