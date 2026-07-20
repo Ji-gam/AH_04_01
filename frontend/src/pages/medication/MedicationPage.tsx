@@ -401,6 +401,10 @@ export default function MedicationPage() {
     "schedule",
   );
 
+  // 11번 단계: 등록약 목록 복수 선택 삭제용 — 개별 삭제 버튼과 별개로, 여러 개를 한 번에
+  // 지울 수 있도록 체크박스 선택 상태를 둔다.
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<number[]>([]);
+
   // 약물 상호작용(12번) — DurScreeningPage.tsx 화면4와 동일하게 durApi.screenInteraction/
   // screenIngredient를 등록약 이름으로 호출해서 상호작용/리콜/공유성분 3종을 함께 보여준다
   // (기존 /medications/interactions은 병용금기만 다뤄 효능군중복·공유성분을 놓쳤다).
@@ -439,6 +443,11 @@ export default function MedicationPage() {
     setRegDurIngredients(null);
     setFoodInteractionResult(null);
   }, [schedules.length]);
+
+  // 목록이 갱신되면(삭제/재조회) 이미 사라진 스케줄 id는 선택 상태에서도 걷어낸다.
+  useEffect(() => {
+    setSelectedScheduleIds((prev) => prev.filter((id) => schedules.some((s) => s.id === id)));
+  }, [schedules]);
 
   useEffect(() => {
     if (activeTab !== "interaction" || regDurInteractions || regDurLoading) return;
@@ -701,6 +710,33 @@ export default function MedicationPage() {
     if (!window.confirm("이 복약 스케줄을 삭제하시겠습니까?")) return;
     try {
       await deleteSchedule(scheduleId);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const toggleScheduleSelection = (scheduleId: number) => {
+    setSelectedScheduleIds((prev) =>
+      prev.includes(scheduleId) ? prev.filter((id) => id !== scheduleId) : [...prev, scheduleId],
+    );
+  };
+
+  const toggleSelectAllSchedules = () => {
+    setSelectedScheduleIds((prev) =>
+      prev.length === schedules.length ? [] : schedules.map((s) => s.id),
+    );
+  };
+
+  // 복수 선택 삭제 — deleteSchedule이 건마다 목록을 재조회하므로, 경합을 피하려고 순차 처리한다.
+  const handleBulkDeleteSchedules = async () => {
+    if (selectedScheduleIds.length === 0) return;
+    if (!window.confirm(`선택한 ${selectedScheduleIds.length}개의 복약 스케줄을 삭제하시겠습니까?`))
+      return;
+    try {
+      for (const scheduleId of selectedScheduleIds) {
+        await deleteSchedule(scheduleId);
+      }
+      setSelectedScheduleIds([]);
     } catch (err) {
       console.error(err);
     }
@@ -1280,28 +1316,80 @@ export default function MedicationPage() {
               <p>등록된 복약 스케줄이 없습니다.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "5px",
+                  }}
+                >
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: "13px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedScheduleIds.length === schedules.length}
+                      onChange={toggleSelectAllSchedules}
+                    />
+                    전체 선택 ({selectedScheduleIds.length}/{schedules.length})
+                  </label>
+                  <button
+                    onClick={handleBulkDeleteSchedules}
+                    disabled={isLoading || selectedScheduleIds.length === 0}
+                    style={{
+                      backgroundColor: pinkTheme.danger,
+                      color: "#fff",
+                      border: "none",
+                      padding: "5px 12px",
+                      borderRadius: "4px",
+                      cursor:
+                        isLoading || selectedScheduleIds.length === 0 ? "not-allowed" : "pointer",
+                      opacity: selectedScheduleIds.length === 0 ? 0.5 : 1,
+                    }}
+                  >
+                    선택 삭제 ({selectedScheduleIds.length})
+                  </button>
+                </div>
                 {schedules.map((s) => (
                   <div
                     key={s.id}
                     style={{
-                      border: `1px solid ${pinkTheme.border}`,
+                      border: `1px solid ${
+                        selectedScheduleIds.includes(s.id) ? pinkTheme.primary : pinkTheme.border
+                      }`,
                       padding: "10px",
                       borderRadius: "4px",
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "flex-start",
+                      gap: 10,
                     }}
                   >
-                    <div>
-                      <strong>{s.drug_name}</strong>
-                      <p style={{ margin: "5px 0 0 0", fontSize: "14px" }}>
-                        복용 시간: {s.times.join(", ")}
-                      </p>
-                      {s.source_job_id && (
-                        <span style={{ fontSize: "11px", color: pinkTheme.success }}>
-                          ✓ OCR 인식을 통해 자동 등록됨
-                        </span>
-                      )}
+                    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedScheduleIds.includes(s.id)}
+                        onChange={() => toggleScheduleSelection(s.id)}
+                        style={{ marginTop: 4 }}
+                      />
+                      <div>
+                        <strong>{s.drug_name}</strong>
+                        <p style={{ margin: "5px 0 0 0", fontSize: "14px" }}>
+                          복용 시간: {s.times.join(", ")}
+                        </p>
+                        {s.source_job_id && (
+                          <span style={{ fontSize: "11px", color: pinkTheme.success }}>
+                            ✓ OCR 인식을 통해 자동 등록됨
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <button
                       onClick={() => handleDeleteSchedule(s.id)}
