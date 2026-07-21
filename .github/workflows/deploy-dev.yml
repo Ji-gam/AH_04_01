@@ -38,6 +38,16 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/ai-health:ai-v1.0.0
 
+      - name: Sync nginx config to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "infra/nginx/default.conf"
+          target: "~/ai_project/nginx/"
+          strip_components: 2
+
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.0.3
         with:
