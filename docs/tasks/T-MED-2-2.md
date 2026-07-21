@@ -130,4 +130,4 @@ frontend/src/types/**
     `_find_interaction_warnings` 두 헬퍼로 분리했다.
 - 브랜치명: `feature/T-MED-2-2-drug-interaction-check` (원래 `claude/drug-contraindications-api-75ca69`에서
   팀 브랜치 컨벤션에 맞춰 개명)
-- PR: https://github.com/AI-HealthCare-04/AH_04_01/pull/38 (`dev` 대상)
+- PR: https://github.com/Ji-gam/AH_04_01/pull/38 (`dev` 대상)

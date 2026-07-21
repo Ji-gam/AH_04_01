@@ -47,5 +47,5 @@ T-DOC-2에서 "음식(13번)" 탭 안내 카드를 e약은요(`DrbEasyDrugInfoSe
 ## 참고
 
 - Task Contract: `docs/tasks/T-DOC-3.md`(참조 테이블 연동), `docs/tasks/T-DOC-4.md`(음식명 칩 UI)
-- PR: [#146](https://github.com/AI-HealthCare-04/AH_04_01/pull/146) (closes #145, #147)
+- PR: [#146](https://github.com/Ji-gam/AH_04_01/pull/146) (closes #145, #147)
 - 데이터 파일: `app/database/food_drug_interaction_reference.json`
