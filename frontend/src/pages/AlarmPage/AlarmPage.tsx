@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { apiFetch, apiFetchRaw } from "../../api/client";
@@ -15,16 +15,7 @@ import AlarmForm, { type AlarmFormSubmit } from "./components/AlarmForm";
 import MedTimeForm from "./components/MedTimeForm";
 import Modal from "./components/Modal";
 import ToggleSwitch from "./components/ToggleSwitch";
-import { isScheduleDueOnDate, toDateString } from "./dateUtils";
-
-function getCurrentHHMM(): string {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-function isDueToday(schedule: NotificationScheduleResult): boolean {
-  return isScheduleDueOnDate(schedule, new Date());
-}
+import { toDateString } from "./dateUtils";
 
 function dayLabel(schedule: NotificationScheduleResult): string {
   return schedule.frequency_type === "DAILY" ? "매일" : `매주 ${schedule.target_day_of_week}요일`;
@@ -152,37 +143,6 @@ export default function AlarmPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.state]);
 
-  // 탭이 열려 있는 동안, 오늘 예약 시각이 되면 브라우저 알림을 자동으로 띄운다.
-  // 같은 시각의 약(직접 등록 알림 + 복약 관리 약)은 하나로 묶어 한 번만 울린다.
-  // 진짜 백그라운드 푸시(서비스워커)가 아니라 포그라운드 폴링이라 탭을 닫으면 울리지 않는다.
-  const firedTodayRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    const checkAndFire = () => {
-      if (!("Notification" in window) || Notification.permission !== "granted") return;
-      const nowHHMM = getCurrentHHMM();
-      const names: string[] = [];
-      for (const s of schedules) {
-        if (s.is_active && isDueToday(s) && s.alarm_time.slice(0, 5) === nowHHMM) {
-          names.push(s.medication_name);
-        }
-      }
-      for (const m of medSchedules) {
-        const matchTime = m.times.find((time) => time.slice(0, 5) === nowHHMM);
-        if (matchTime && !medAlarmDisabled.has(`med-${m.id}-${matchTime}`)) {
-          names.push(m.drug_name);
-        }
-      }
-      if (names.length === 0) return;
-      const key = `${new Date().toDateString()}:${nowHHMM}`;
-      if (firedTodayRef.current.has(key)) return;
-      firedTodayRef.current.add(key);
-      new Notification("💊 복약 시간이에요!", { body: [...new Set(names)].join(", ") });
-    };
-    checkAndFire();
-    const timer = setInterval(checkAndFire, 15000);
-    return () => clearInterval(timer);
-  }, [schedules, medSchedules, medAlarmDisabled]);
-
   const handleToggleMedAlarm = (key: string) => {
     setMedAlarmDisabled((prev) => {
       const next = new Set(prev);
@@ -191,12 +151,6 @@ export default function AlarmPage() {
       saveMedAlarmDisabled(next);
       return next;
     });
-  };
-
-  const requestNotificationPermission = () => {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
   };
 
   // 하루 2회(bid)/3회(tid)면 시각별로 알림을 한 건씩 등록한다 (백엔드는 알림 1건 = 시각 1개).
@@ -443,7 +397,6 @@ export default function AlarmPage() {
             <button
               type="button"
               onClick={() => {
-                requestNotificationPermission();
                 setShowAddForm((v) => !v);
                 setEditingSchedule(null);
                 setFormError(undefined);
