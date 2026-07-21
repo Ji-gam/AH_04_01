@@ -3,6 +3,7 @@ import { useNavigate, Outlet } from "react-router-dom";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 import BottomNav from "./BottomNav";
+import InstallPwaBanner from "./InstallPwaBanner";
 
 /** 앱 화면 공통 뼈대(2026-07-18) - 상단은 "더보기"로 바로 가는 햄버거 아이콘 하나만 두고,
  * 자주 쓰는 화면은 하단 아이콘 탭 바(BottomNav) + 더보기 화면 그리드로 접근한다. 예전 상단
@@ -41,6 +42,9 @@ export default function Layout() {
           ☰
         </button>
       </nav>
+      {/* 선택 기능(설치 안 해도 무방) - 설치 가능/미설치 상태일 때만 뜨고, 닫으면 이
+          기기에서는 다시 안 뜬다. */}
+      <InstallPwaBanner />
       {/* nav 높이를 뺀 나머지 전체를 자식(Outlet)에 넘긴다 — 자식이 height:100dvh를 다시
           쓰면 nav 높이만큼 화면 아래로 넘쳐서 폼 같은 하단 요소가 잘려 보이지 않는다. */}
       <div style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
