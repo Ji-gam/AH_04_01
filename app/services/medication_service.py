@@ -58,10 +58,17 @@ _CLOVA_OCR_RETRY_DELAY_SECONDS = 0.5
 
 # 약품명 후보로 볼 만한 OCR 텍스트 블록 판별 기준.
 # "정"/"캡슐" 같은 제형 접미사만으로는 "환자정보", "서방정"(잘린 조각) 등 일반 텍스트도
-# 걸려버려서, 반드시 (a) 용량 숫자+단위(mg/g/ml)가 붙어 있거나 (b) 처방전 약품 목록에서
-# 흔히 쓰이는 "*" 불릿 표시가 있거나 (c) 흔한 약품 제형 접미사로 끝나는 경우만 후보로
-# 인정한다. (c)는 최소 길이(_MIN_DRUG_NAME_LEN) 조건과 함께 적용되므로 "환자정보"/"서방정"
-# 같은 짧은 일반 텍스트 조각은 그 단계에서 이미 걸러진다.
+# 걸려버려서, 반드시 (a) 처방전 약품 목록에서 흔히 쓰이는 "*" 불릿 표시가 있거나 (b) 흔한
+# 약품 제형 접미사로 끝나는 경우만 후보로 인정한다. (b)는 최소 길이(_MIN_DRUG_NAME_LEN)
+# 조건과 함께 적용되므로 "환자정보"/"서방정" 같은 짧은 일반 텍스트 조각은 그 단계에서 이미
+# 걸러진다.
+#
+# (#128) 예전에는 용량 숫자+단위(mg/g/ml)가 붙어 있기만 해도 후보로 인정했는데, 실제
+# 처방전에는 브랜드명 카드 아래에 괄호 없이 "알마게이트 500mg"처럼 성분명+용량 줄이 그대로
+# 따라붙는 포맷이 있어(약국 영수증형 처방전), 이 줄도 용량 패턴만으로 별도 약품 후보가 되어
+# 브랜드명과 성분명이 각각 다른 약으로 중복 등록됐다(6개 약인데 14개로 등록됨). 제형 접미사가
+# 없는 용량줄은 더 이상 자체적으로 후보가 되지 않고, 대신 _fuzzy_match_unrecognized_fields의
+# 유사도 매칭 경로로 넘어가 실제 마스터 DB에 있는 약과 확실히 비슷할 때만 구제된다.
 _KOREAN_TOKEN_PATTERN = re.compile(r"[가-힣]{2,}")
 _DOSAGE_PATTERN = re.compile(r"\d+(mg|g|ml)", re.IGNORECASE)
 _MIN_DRUG_NAME_LEN = 5
@@ -395,6 +402,14 @@ def _is_label_slash_without_digit(stripped: str) -> bool:
     return "/" in stripped and not any(ch.isdigit() for ch in stripped)
 
 
+def _is_bare_dosage_line(stripped: str) -> bool:
+    """(#128) "알마게이트 500mg"처럼 제형 접미사 없이 성분명+용량만 있는 줄은, 그 위 브랜드명
+    카드가 이미 별도 OCR 필드로 잡히므로 여기서 또 약품 후보로 잡히면 같은 약이 브랜드명/성분명
+    이름으로 중복 등록된다. 제형 접미사가 있으면(예: "노스판패취10ug/h") 오탈자 구제 대상으로
+    계속 남겨야 하므로, 접미사가 없고 용량 패턴만 있는 경우에만 제외한다."""
+    return bool(_DOSAGE_PATTERN.search(stripped)) and not _DRUG_FORM_SUFFIX_PATTERN.search(stripped)
+
+
 def _looks_like_drug_name(word: str) -> bool:
     stripped = word.lstrip("*").strip()
     if len(stripped) < _MIN_DRUG_NAME_LEN:
@@ -407,11 +422,7 @@ def _looks_like_drug_name(word: str) -> bool:
         return False
     if not _KOREAN_TOKEN_PATTERN.search(stripped):
         return False
-    return (
-        bool(_DOSAGE_PATTERN.search(stripped))
-        or word.strip().startswith("*")
-        or bool(_DRUG_FORM_SUFFIX_PATTERN.search(stripped))
-    )
+    return word.strip().startswith("*") or bool(_DRUG_FORM_SUFFIX_PATTERN.search(stripped))
 
 
 def _dedupe_drug_names(names: set[str]) -> list[str]:
@@ -508,6 +519,8 @@ async def _fuzzy_match_unrecognized_fields(
         stripped = field.text.lstrip("*").strip()
         if _is_annotation_line(stripped):
             continue  # 성분/제조사명 표기 줄은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
+        if _is_bare_dosage_line(stripped):
+            continue  # (#128) 제형 접미사 없는 성분명+용량 줄은 브랜드 카드 아래 붙는 설명이지 별도 약이 아니므로 제외
         if _INSTITUTION_SUFFIX_PATTERN.search(stripped):
             continue  # 약국/병원명은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
         if _is_label_slash_without_digit(stripped):

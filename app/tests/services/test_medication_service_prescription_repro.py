@@ -124,6 +124,27 @@ async def test_fuzzy_match_rescues_clova_character_misread():
     assert match_confidence["KD_NOSP002"] == 0.9
 
 
+async def test_unparenthesized_ingredient_line_is_not_treated_as_a_drug_name():
+    """(#128) 약국 영수증형 처방전은 브랜드명 카드 아래에 괄호 없이 "알마게이트 500mg"처럼
+    성분명+용량 줄이 그대로 붙는다(예: 6개 약품 처방전이 14개로 등록되던 실사례). 이 줄이
+    제형 접미사 없이 용량 패턴만으로 별도 약품 후보가 되면 안 된다."""
+    dur_repo = _FakeDurDrugRepository([("KD_GDASP001", "경동아스피린장용정"), ("KD_ASP001", "아스피린 100mg")])
+
+    async with TestSessionLocal() as session:
+        matched, _auto_created_ids, _match_confidence = await medication_service._match_or_create_medications(
+            session,
+            dur_repo,
+            [
+                OcrField(text="경동아스피린장용정", confidence=0.9),
+                OcrField(text="아스피린 100mg", confidence=0.9),
+            ],
+        )
+
+    matched_item_seqs = {d.item_seq for d in matched}
+    assert "KD_GDASP001" in matched_item_seqs
+    assert "KD_ASP001" not in matched_item_seqs, "괄호 없는 성분표기 줄이 별도 약품으로 잘못 매칭됨"
+
+
 async def test_fuzzy_match_does_not_trigger_on_unrelated_prescription_text():
     """처방전 설명 문구("혈압을 낮추고 심장 근육으로...") 같은 무관한 텍스트가 마스터 데이터의
     엉뚱한 약과 우연히 유사도가 높게 나와 오매칭되면 안 된다. (후보가 하나도 없을 때의 참고용
