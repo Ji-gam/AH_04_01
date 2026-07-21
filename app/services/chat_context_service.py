@@ -23,7 +23,13 @@ _GERIATRIC_AGE_THRESHOLD = 65
 
 
 class ChatContextService:
-    def build(self, profile: Profile | None, medications: list[MedicationSchedule]) -> dict:
+    def build(
+        self, profile: Profile | None, medications: list[MedicationSchedule], drug_names: dict[str, str] | None = None
+    ) -> dict:
+        """(T-MED-16) `medications`는 이제 item_seq만 들고 있어(마스터 데이터 캐시 테이블이 없어짐),
+        약품명이 필요하면 호출자가 미리 `DurDrugRepository.get_names_by_item_seqs`로 조회해
+        `drug_names`로 넘겨야 한다 - 여기서는 여전히 추가 DB 조회를 하지 않는다."""
+        drug_names = drug_names or {}
         if profile is None:
             return {
                 "profile_id": None,
@@ -42,7 +48,10 @@ class ChatContextService:
             "name": profile.name,
             "conditions": map_diagnosis_entries(conditions),
             "family_history": map_diagnosis_entries(family_history),
-            "medications": [{"name": m.medication.medication_name, "times_per_day": len(m.times)} for m in medications],
+            "medications": [
+                {"name": m.display_name or drug_names.get(m.item_seq, m.item_seq), "times_per_day": len(m.times)}
+                for m in medications
+            ],
             "goals": [],
             "is_pregnant": bool(profile.is_pregnant),
             "is_geriatric": profile.age is not None and profile.age >= _GERIATRIC_AGE_THRESHOLD,

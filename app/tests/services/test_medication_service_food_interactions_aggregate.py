@@ -11,12 +11,15 @@ MySQL `drugs_data` 스냅샷만 사용해 실시간 API를 호출하지 않는�
 데이터를 참조하지 않고 결정적으로 동작하게 한다.
 """
 
+from typing import cast
+
 from httpx import ASGITransport, AsyncClient
 from starlette import status
 
 from app.main import app
-from app.models.medication_model import Medication, MedicationSchedule
+from app.models.medication_model import MedicationSchedule
 from app.repositories.dur_drug_repository import DurDrugRepository
+from app.repositories.medication_repository import MedicationRepository
 from app.services import medication_open_api_client
 from app.services.medication_service import MedicationService
 from app.tests.medication_apis.test_medication_apis import _seed_dummy_medications, _signup_and_login
@@ -42,19 +45,28 @@ class _FakeRepository:
         return self._schedules
 
 
-def _schedule(medication: Medication) -> MedicationSchedule:
-    schedule = MedicationSchedule(medication_id=medication.id, times=["09:00"])
-    schedule.medication = medication
-    return schedule
+class _FakeDurDrugRepository:
+    """(T-MED-16) 이 단위 테스트들은 스케줄에 이미 `display_name`을 채워서 이름 해석이 필요
+    없으므로, 아무것도 반환하지 않는 가짜 구현으로 `get_names_by_item_seqs`의 실제 DB 조회를
+    피한다(세션이 None이라 실제 조회를 하면 바로 에러가 난다)."""
+
+    async def get_names_by_item_seqs(self, session, item_seqs):
+        return {}
 
 
-def _medication(med_id: int, name: str) -> Medication:
-    return Medication(id=med_id, medication_name=name)
+def _schedule(item_seq: str, name: str) -> MedicationSchedule:
+    return MedicationSchedule(item_seq=item_seq, display_name=name, times=["09:00"])
+
+
+def _service(schedules: list[MedicationSchedule]) -> MedicationService:
+    return MedicationService(
+        repository=cast(MedicationRepository, _FakeRepository(schedules)),
+        dur_drug_repository=cast(DurDrugRepository, _FakeDurDrugRepository()),
+    )
 
 
 async def test_returns_empty_result_when_no_registered_medications():
-    repository = _FakeRepository([])
-    service = MedicationService(repository=repository)
+    service = _service([])
 
     result = await service.check_food_interactions(session=None, profile_id=1)
 
@@ -76,9 +88,8 @@ async def test_fast_check_does_not_call_live_api_and_defers_unresolved_to_pendin
 
     monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
 
-    med = _medication(1, "타이레놀정")
-    repository = _FakeRepository([_schedule(med)])
-    service = MedicationService(repository=repository)
+    # 같은 약을 여러 시간대로 등록해도(스케줄 2개) 조회는 약 단위로 한 번만 해야 한다.
+    service = _service([_schedule("1", "타이레놀정"), _schedule("1", "타이레놀정")])
 
     result = await service.check_food_interactions(session=None, profile_id=1)
 
@@ -100,9 +111,7 @@ async def test_pending_check_dedupes_multiple_schedules_of_same_medication(monke
 
     monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
 
-    med = _medication(1, "타이레놀정")
-    repository = _FakeRepository([_schedule(med), _schedule(med)])
-    service = MedicationService(repository=repository)
+    service = _service([_schedule("1", "타이레놀정"), _schedule("1", "타이레놀정")])
 
     result = await service.check_food_interactions_pending(session=None, profile_id=1)
 
@@ -123,10 +132,7 @@ async def test_pending_check_reports_unavailable_card_when_api_fails_but_keeps_o
 
     monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
 
-    med_ok = _medication(1, "정상약")
-    med_fail = _medication(2, "실패약")
-    repository = _FakeRepository([_schedule(med_ok), _schedule(med_fail)])
-    service = MedicationService(repository=repository)
+    service = _service([_schedule("1", "정상약"), _schedule("2", "실패약")])
 
     result = await service.check_food_interactions_pending(session=None, profile_id=1)
 
@@ -153,11 +159,7 @@ async def test_pending_check_sorts_caution_cards_before_info_cards(monkeypatch):
 
     monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
 
-    med_info_1 = _medication(1, "정보없는약1")
-    med_info_2 = _medication(2, "정보없는약2")
-    med_caution = _medication(3, "실제주의사항약")
-    repository = _FakeRepository([_schedule(med_info_1), _schedule(med_info_2), _schedule(med_caution)])
-    service = MedicationService(repository=repository)
+    service = _service([_schedule("1", "정보없는약1"), _schedule("2", "정보없는약2"), _schedule("3", "실제주의사항약")])
 
     result = await service.check_food_interactions_pending(session=None, profile_id=1)
 
@@ -174,8 +176,8 @@ async def test_food_interactions_endpoint_returns_pending_medication_when_unreso
         return [{"itemName": item_name, "intrcQesitm": "자몽주스를 피하세요."}]
 
     monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _fake_summary)
+    _seed_dummy_medications(monkeypatch)
 
-    await _seed_dummy_medications()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         token = await _signup_and_login(client, "food_interaction_test@example.com")
         headers = {"Authorization": f"Bearer {token}"}

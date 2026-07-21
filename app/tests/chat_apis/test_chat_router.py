@@ -131,7 +131,7 @@ async def test_list_chat_messages_success():
 async def test_geriatric_diazepam_dur_warning_in_chat():
     from sqlalchemy import select
 
-    from app.models.medication_model import Medication, MedicationSchedule
+    from app.models.medication_model import MedicationSchedule
     from app.models.profiles import Profile
     from app.repositories.medication_repository import MedicationRepository
     from app.tests.conftest import TestSessionLocal
@@ -149,13 +149,11 @@ async def test_geriatric_diazepam_dur_warning_in_chat():
             await session.commit()
 
             repo = MedicationRepository()
-            medication = await repo.create_medication(
-                session,
-                Medication(medication_name="디아제팜", form_type="TABLET"),
-            )
             await repo.create_schedule(
                 session,
-                MedicationSchedule(profile_id=profile.id, medication_id=medication.id, times=["08:00"]),
+                MedicationSchedule(
+                    profile_id=profile.id, item_seq="AUTO_TEST_DIAZEPAM", display_name="디아제팜", times=["08:00"]
+                ),
             )
 
         session_response = await client.post("/api/v1/chat/sessions", headers=headers)

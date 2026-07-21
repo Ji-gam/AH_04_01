@@ -19,7 +19,7 @@ write-back한다(빈 응답을 캐싱하면 나중에 API에 데이터가 채워
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 
-from sqlalchemy import select, text
+from sqlalchemy import bindparam, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.drug_data_cache_model import DrugDataCache
@@ -142,6 +142,19 @@ class DurDrugRepository:
             {"q": f"{prefix}%", "limit": limit},
         )
         return [(row.item_seq, row.item_name) for row in result.all()]
+
+    async def get_names_by_item_seqs(self, session: AsyncSession, item_seqs: set[str]) -> dict[str, str]:
+        """(T-MED-16) 복약 스케줄 목록 등에서 여러 item_seq를 이름으로 한 번에 변환한다(N+1 방지).
+        `dur_prod_master_list`가 커버리지가 가장 넓어(23,417건) 기준으로 쓴다 - `search_item_names`
+        와 동일한 이유(모듈 docstring 참고). AUTO_ 더미 등 마스터 데이터에 없는 item_seq는
+        결과에서 그냥 빠진다(호출부가 `display_name`으로 보완)."""
+        if not item_seqs:
+            return {}
+        stmt = text("SELECT item_seq, item_name FROM dur_prod_master_list WHERE item_seq IN :seqs").bindparams(
+            bindparam("seqs", expanding=True)
+        )
+        result = await session.execute(stmt, {"seqs": list(item_seqs)})
+        return {row.item_seq: row.item_name for row in result.all()}
 
     async def find_drug_info(self, session: AsyncSession, item_name: str) -> list[DrugProfile]:
         """제품명 부분 일치로 검색해, 매칭된 제품마다 관련 데이터를 모두 모아 반환한다.
