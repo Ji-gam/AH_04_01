@@ -118,7 +118,7 @@ class IngredientSourceDrug(BaseModel):
     item_seq: str
     item_name: str
     qnt: str | None = Field(None, description="이 약에서 이 성분의 함량 (예: '60')")
-    unit: str | None = Field(None, description="함량 단위 (예: '밀리그램')")
+    unit: str | None = Field(None, description="함량 단위, 영어로 정규화됨 (예: 'mg')")
 
 
 class IngredientDetail(BaseModel):

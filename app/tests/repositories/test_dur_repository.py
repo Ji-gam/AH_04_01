@@ -148,8 +148,8 @@ async def test_get_ingredient_codes_for_items_resolves_via_material_name_for_no_
 
     by_code = {code: (name, qnt, unit) for code, name, qnt, unit in codes["197000053"]}
     assert {"D000316", "D001098"}.issubset(by_code.keys())
-    assert by_code["D000316"] == ("슈도에페드린염산염", "60", "밀리그램")
-    assert by_code["D001098"] == ("트리프롤리딘염산염수화물", "2.5", "밀리그램")
+    assert by_code["D000316"] == ("슈도에페드린염산염", "60", "mg")
+    assert by_code["D001098"] == ("트리프롤리딘염산염수화물", "2.5", "mg")
 
 
 async def test_get_ingredient_codes_for_items_empty_when_truly_unresolvable(repo):
