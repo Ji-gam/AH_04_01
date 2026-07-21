@@ -32,13 +32,33 @@ const QUICK_LINKS: { to: string; icon: string; label: string }[] = [
   { to: "/medication", icon: "➕", label: "약 등록" },
 ];
 
+/** 건강정보 중 하나라도 채워져 있으면 "입력했다"고 본다 - 항목 전부를 다 채울 필요는 없다.
+ * 백엔드에 별도의 "입력 완료" 플래그가 없고 전부 nullable 필드라, 이렇게 판단한다. */
+function hasEnteredHealthInfo(info: HealthInfoResult | null): boolean {
+  if (!info) return false;
+  return (
+    info.gender !== null ||
+    info.birth_date !== null ||
+    info.height_cm !== null ||
+    info.weight_kg !== null ||
+    info.is_pregnant !== null ||
+    info.diagnosis_history.length > 0 ||
+    info.family_history.length > 0 ||
+    !!info.special_notes ||
+    !!info.other_notes
+  );
+}
+
 /** 시작화면. 로그인 유도는 상단 네비게이션(Layout)의 "로그인" 링크가 이미 담당하므로 여기서는
  * 따로 안 만든다 - 비로그인일 때 이 영역은 비워둔다.
  * 화면 맨 위(인사말 바로 아래)엔 건강정보 입력 유도 배너를 먼저 두고, 그 아래에 가족 연결
  * 요청 알림을 둔다(둘 다 화면 최상단 근처 - 다른 카드들보다 우선).
  * 로그인 상태면 "오늘의 건강 카드"(금일 약 복용 현황)도 보여준다.
  * [주의] "안 뜨게 하기"는 이번 로그인 세션 동안만 유지된다(sessionStorage) - 앱을 껐다 켜거나
- * 다시 로그인하면 매번 새로 물어본다. healthBannerDismiss.ts 참고. */
+ * 다시 로그인하면 매번 새로 물어본다. healthBannerDismiss.ts 참고.
+ * [주의2] 건강정보를 이미 하나라도 입력했으면(hasEnteredHealthInfo) 세션 dismiss 여부와
+ * 무관하게 배너 자체를 안 띄운다 - 이미 입력한 사람한테 계속 "입력하시겠습니까"를 물어보는
+ * 건 UX상 맞지 않다(2026-07-20 수정). */
 export default function HomePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -70,12 +90,12 @@ export default function HomePage() {
   const nearbyLocation = useNearbyRegionLabel();
 
   useEffect(() => {
-    if (user && !isDismissedThisSession(user.profile_id)) {
+    if (user && !isDismissedThisSession(user.profile_id) && !hasEnteredHealthInfo(healthInfo)) {
       setShowBanner(true);
     } else {
       setShowBanner(false);
     }
-  }, [user]);
+  }, [user, healthInfo]);
 
   useEffect(() => {
     Promise.all([apiFetch<MedicationSchedule[]>("/medications"), notificationApi.list()])

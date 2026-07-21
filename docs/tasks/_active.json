@@ -24,9 +24,9 @@
     "branch": "feature/T-LLM-2-dur-interaction-warning",
     "started": "2026-07-17"
   },
-  "T-MED-15": {
+  "T-MED-16": {
     "owner": "claude",
-    "branch": "feat/T-MED-15-sqlite-removal-mysql-unify",
+    "branch": "feat/T-MED-16-item-seq-direct-ref",
     "started": "2026-07-20"
   }
 }

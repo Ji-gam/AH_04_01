@@ -21,6 +21,7 @@ habit_key는 항상 유효한 정적 폴백 키(DISEASE_HABITS/BASE_HABITS)만 �
 
 import asyncio
 import random
+import uuid
 from datetime import date, time, timedelta
 from typing import TypedDict
 
@@ -33,7 +34,7 @@ from app.models.disease_entries import DiagnosisEntry
 from app.models.habit_logs import HabitLog
 from app.models.habit_selections import HabitSelection
 from app.models.habit_subtype_suggestions import HabitSubtypeSuggestion
-from app.models.medication_model import Medication, MedicationSchedule
+from app.models.medication_model import MedicationSchedule
 from app.models.notification_schedules import FrequencyType, NotificationSchedule
 from app.models.profiles import Disease, Profile
 from app.repositories.disease_entry_repository import DiagnosisEntryRepository, DiseaseSubtypeRepository
@@ -47,8 +48,6 @@ HISTORY_DAYS = 10
 
 class MedicationSpec(TypedDict):
     medication_name: str
-    form_type: str
-    dosage_guideline: str
     times: list[str]
 
 
@@ -91,8 +90,6 @@ DEMO_PROFILES: list[DemoProfileSpec] = [
         "habit_keys": ["water", "walk", "diabetes_walk"],
         "medication": {
             "medication_name": "메트포르민정",
-            "form_type": "TABLET",
-            "dosage_guideline": "1일 2회, 아침·저녁 식후 복용",
             "times": ["08:00", "19:00"],
         },
         "chat_turns": [
@@ -121,8 +118,6 @@ DEMO_PROFILES: list[DemoProfileSpec] = [
         "habit_keys": ["water", "heart_low_salt"],
         "medication": {
             "medication_name": "아스피린장용정",
-            "form_type": "TABLET",
-            "dosage_guideline": "1일 1회, 아침 식후 복용",
             "times": ["08:00"],
         },
         "chat_turns": [
@@ -141,8 +136,6 @@ DEMO_PROFILES: list[DemoProfileSpec] = [
         "habit_keys": ["water", "walk"],
         "medication": {
             "medication_name": "종합비타민정",
-            "form_type": "TABLET",
-            "dosage_guideline": "1일 1회, 아침 식후 복용",
             "times": ["09:00"],
         },
         "chat_turns": [
@@ -227,25 +220,19 @@ async def _seed_habit_history(session, profile: Profile, habit_keys: list[str]) 
             session.add(HabitLog(profile_id=profile.id, log_date=log_date, habit_key=key, progress=progress))
 
 
-async def _get_or_create_medication(session, spec: MedicationSpec) -> Medication:
-    result = await session.execute(select(Medication).where(Medication.medication_name == spec["medication_name"]))
-    existing = result.scalar_one_or_none()
-    if existing is not None:
-        return existing
-
-    medication = Medication(
-        medication_name=spec["medication_name"],
-        form_type=spec["form_type"],
-        dosage_guideline=spec["dosage_guideline"],
-    )
-    session.add(medication)
-    await session.flush()
-    return medication
-
-
 async def _seed_medication_and_alarm(session, profile: Profile, spec: MedicationSpec) -> None:
-    medication = await _get_or_create_medication(session, spec)
-    session.add(MedicationSchedule(profile_id=profile.id, medication_id=medication.id, times=spec["times"]))
+    """(T-MED-16) 데모 약품명이 실제 마스터 데이터(dur_prod_master_list)에 있다는 보장이 없어,
+    OCR/수동 등록의 AUTO_ 더미 등록과 동일한 패턴으로 item_seq를 즉석 생성하고 display_name에
+    데모 약품명을 채운다."""
+    item_seq = f"AUTO_{uuid.uuid4().hex[:10].upper()}"
+    session.add(
+        MedicationSchedule(
+            profile_id=profile.id,
+            item_seq=item_seq,
+            display_name=spec["medication_name"],
+            times=spec["times"],
+        )
+    )
     for alarm in spec["times"]:
         hour, minute = (int(part) for part in alarm.split(":"))
         session.add(

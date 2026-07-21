@@ -12,6 +12,7 @@ import type {
 } from "../../api/types";
 import FamilySwitcher from "../../components/family/FamilySwitcher";
 import FamilyTrackerView from "../../components/family/FamilyTrackerView";
+import OcrProgressBar from "../../components/ui/OcrProgressBar";
 import { useAuth } from "../../hooks/useAuth";
 import {
   useMedication,
@@ -906,10 +907,13 @@ export default function MedicationPage() {
                       ? "이미지 분석 및 매칭 추출 중..."
                       : jobStatus}
                 </h4>
-                {jobStatus === "processing" && (
-                  <p style={{ fontSize: "12px", color: pinkTheme.textMuted }}>
-                    단계: 약 정보 추출 중 → 복약 시간표 생성 중...
-                  </p>
+                {(jobStatus === "pending" || jobStatus === "processing") && (
+                  <div style={{ marginTop: 8 }}>
+                    <OcrProgressBar
+                      status={jobStatus}
+                      label="단계: 약 정보 추출 중 → 복약 시간표 생성 중..."
+                    />
+                  </div>
                 )}
               </div>
             )}

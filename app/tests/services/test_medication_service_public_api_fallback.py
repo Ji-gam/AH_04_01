@@ -1,14 +1,23 @@
 import httpx
 
-from app.repositories.medication_repository import MedicationRepository
 from app.services import medication_open_api_client, medication_service
 from app.services.medication_service import OcrField
 from app.tests.conftest import TestSessionLocal
 
 
-async def test_unmatched_drug_uses_public_api_data_when_available(monkeypatch):
-    """Tier 2(로컬 DB)에 없는 약이어도 Tier 3(공공 API)에서 데이터를 찾으면
-    AUTO_ 더미가 아니라 실제 데이터로 채워진 레코드를 생성해야 한다."""
+class _FakeDurDrugRepository:
+    """마스터 데이터에 아무것도 없는 것처럼 가장해, Tier3(공공 API)/AUTO_ 더미 경로만 타게 한다."""
+
+    async def search_item_names(self, session, item_name: str, limit: int) -> list[tuple[str, str]]:
+        return []
+
+    async def search_item_names_by_prefix(self, session, prefix: str, limit: int) -> list[tuple[str, str]]:
+        return []
+
+
+async def test_unmatched_drug_uses_public_api_item_seq_when_available(monkeypatch):
+    """마스터 데이터에 없는 약이어도 Tier 3(공공 API)에서 품목기준코드를 찾으면
+    AUTO_ 더미가 아니라 그 item_seq로 매칭돼야 한다."""
 
     async def _fake_pill(item_name=None, **kwargs):
         return [{"ITEM_SEQ": "200000001", "DRUG_SHAPE": "원형", "COLOR_CLASS1": "하양", "PRINT_FRONT": "ABC"}]
@@ -28,21 +37,15 @@ async def test_unmatched_drug_uses_public_api_data_when_available(monkeypatch):
     monkeypatch.setattr(medication_open_api_client, "fetch_dur_item_info", _fake_dur)
 
     async with TestSessionLocal() as session:
-        repo = MedicationRepository()
         matched, auto_created_ids, match_confidence = await medication_service._match_or_create_medications(
-            session, repo, [OcrField(text="*낫모르는약100mg", confidence=0.9)]
+            session, _FakeDurDrugRepository(), [OcrField(text="*낫모르는약100mg", confidence=0.9)]
         )
 
     assert len(matched) == 1
-    med = matched[0]
-    assert med.id not in auto_created_ids
-    assert match_confidence[med.id] == 0.9
-    assert med.standard_code == "PDP_200000001"
-    assert med.shape == "원형"
-    assert med.color == "하양"
-    assert med.letters == "ABC"
-    assert med.dosage_guideline == "1회 1정"
-    assert med.side_effects == "주의사항 텍스트"
+    drug = matched[0]
+    assert drug.item_seq not in auto_created_ids
+    assert match_confidence[drug.item_seq] == 0.9
+    assert drug.item_seq == "200000001"
 
 
 async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_has_no_data(monkeypatch):
@@ -57,15 +60,14 @@ async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_has_no_da
     monkeypatch.setattr(medication_open_api_client, "fetch_dur_item_info", _empty)
 
     async with TestSessionLocal() as session:
-        repo = MedicationRepository()
         matched, auto_created_ids, _ = await medication_service._match_or_create_medications(
-            session, repo, [OcrField(text="*아무데이터도없는약999mg", confidence=0.9)]
+            session, _FakeDurDrugRepository(), [OcrField(text="*아무데이터도없는약999mg", confidence=0.9)]
         )
 
     assert len(matched) == 1
-    med = matched[0]
-    assert med.id in auto_created_ids
-    assert med.standard_code.startswith("AUTO_")
+    drug = matched[0]
+    assert drug.item_seq in auto_created_ids
+    assert drug.item_seq.startswith("AUTO_")
 
 
 async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_times_out(monkeypatch):
@@ -81,15 +83,14 @@ async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_times_out
     monkeypatch.setattr(medication_open_api_client, "fetch_dur_item_info", _raise)
 
     async with TestSessionLocal() as session:
-        repo = MedicationRepository()
         matched, auto_created_ids, _ = await medication_service._match_or_create_medications(
-            session, repo, [OcrField(text="*타임아웃약700mg", confidence=0.9)]
+            session, _FakeDurDrugRepository(), [OcrField(text="*타임아웃약700mg", confidence=0.9)]
         )
 
     assert len(matched) == 1
-    med = matched[0]
-    assert med.id in auto_created_ids
-    assert med.standard_code.startswith("AUTO_")
+    drug = matched[0]
+    assert drug.item_seq in auto_created_ids
+    assert drug.item_seq.startswith("AUTO_")
 
 
 async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_errors(monkeypatch):
@@ -104,12 +105,11 @@ async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_errors(mo
     monkeypatch.setattr(medication_open_api_client, "fetch_dur_item_info", _raise)
 
     async with TestSessionLocal() as session:
-        repo = MedicationRepository()
         matched, auto_created_ids, _ = await medication_service._match_or_create_medications(
-            session, repo, [OcrField(text="*API장애약500mg", confidence=0.9)]
+            session, _FakeDurDrugRepository(), [OcrField(text="*API장애약500mg", confidence=0.9)]
         )
 
     assert len(matched) == 1
-    med = matched[0]
-    assert med.id in auto_created_ids
-    assert med.standard_code.startswith("AUTO_")
+    drug = matched[0]
+    assert drug.item_seq in auto_created_ids
+    assert drug.item_seq.startswith("AUTO_")

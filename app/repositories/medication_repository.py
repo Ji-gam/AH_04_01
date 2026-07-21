@@ -1,46 +1,28 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.medication_model import Medication, MedicationRecognitionJob, MedicationSchedule
+from app.models.dur import DrugIdentification, DrugMaster, DurProdMasterList
+from app.models.medication_model import MedicationRecognitionJob, MedicationSchedule
 
 
 class MedicationRepository:
-    async def get_medication_by_id(self, session: AsyncSession, med_id: int) -> Medication | None:
-        result = await session.execute(select(Medication).where(Medication.id == med_id))
-        return result.scalar_one_or_none()
-
-    async def get_medication_by_code(self, session: AsyncSession, code: str) -> Medication | None:
-        result = await session.execute(select(Medication).where(Medication.standard_code == code))
-        return result.scalar_one_or_none()
-
-    async def search_medication_by_name(self, session: AsyncSession, name: str) -> list[Medication]:
-        result = await session.execute(select(Medication).where(Medication.medication_name.like(f"%{name}%")).limit(10))
-        return list(result.scalars().all())
-
-    async def list_medication_names(self, session: AsyncSession, limit: int) -> list[tuple[int, str]]:
-        """(#106) OCR 글자 오인식(예: "패취"→"매취") 구제를 위한 유사도 매칭에서, 마스터 DB
-        약품명 전체와 비교할 (id, 이름) 목록을 가져온다. 비교 비용을 억제하기 위해 상한을 둔다."""
-        result = await session.execute(select(Medication.id, Medication.medication_name).limit(limit))
-        return [(row.id, row.medication_name) for row in result.all()]
-
-    async def search_medications_by_appearance(
-        self, session: AsyncSession, shape: str | None, color: str | None, letters: str | None
-    ) -> list[Medication]:
-        query = select(Medication)
-        if shape:
-            query = query.where(Medication.shape == shape)
-        if color:
-            query = query.where(Medication.color == color)
-        if letters:
-            query = query.where(Medication.letters.like(f"%{letters}%"))
-        result = await session.execute(query.limit(10))
-        return list(result.scalars().all())
-
-    async def create_medication(self, session: AsyncSession, medication: Medication) -> Medication:
-        session.add(medication)
-        await session.commit()
-        await session.refresh(medication)
-        return medication
+    async def item_seq_exists(self, session: AsyncSession, item_seq: str) -> bool:
+        """(T-MED-16) `medication_schedules.item_seq`는 DB FK가 없으므로(마스터 데이터에서
+        item_seq가 row 단위 UNIQUE가 아님) 여기서 앱 레벨로 존재만 확인한다. `dur_prod_master_list`
+        (검색/매칭이 실제로 기준으로 삼는 품목 마스터, 가장 넓은 커버리지) 또는 `drugs_data`/
+        `drug_identification` 어느 한쪽에라도 있으면 유효한 것으로 본다."""
+        result = await session.execute(
+            select(DurProdMasterList.id).where(DurProdMasterList.item_seq == item_seq).limit(1)
+        )
+        if result.first() is not None:
+            return True
+        result = await session.execute(select(DrugMaster.id).where(DrugMaster.item_seq == item_seq).limit(1))
+        if result.first() is not None:
+            return True
+        result = await session.execute(
+            select(DrugIdentification.id).where(DrugIdentification.item_seq == item_seq).limit(1)
+        )
+        return result.first() is not None
 
     async def create_schedule(self, session: AsyncSession, schedule: MedicationSchedule) -> MedicationSchedule:
         session.add(schedule)

@@ -113,7 +113,8 @@ class ChatService:
         medications = (
             await self._medication_repository.list_schedules_by_profile(session, profile_id) if profile else []
         )
-        context = self._chat_context_service.build(profile, medications)
+        drug_names = await self._dur_drug_repository.get_names_by_item_seqs(session, {m.item_seq for m in medications})
+        context = self._chat_context_service.build(profile, medications, drug_names)
         # MessageRole enum 값 자체가 "USER"/"ASSISTANT"(대문자)라, OpenAI 메시지 role로
         # 그대로 보내면 거부당한다(소문자 "user"/"assistant"만 허용) — chat_routers.py의
         # 이력 조회 응답과 동일하게 여기서도 API 경계에서 소문자로 변환한다.

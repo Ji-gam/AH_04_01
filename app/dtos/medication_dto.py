@@ -9,7 +9,7 @@ class RecognitionJobCreateResult(BaseModel):
 class RecognitionCandidate(BaseModel):
     drug_name: str
     match_rate: float
-    drug_code: str
+    drug_code: str  # (T-MED-16) item_seq 또는 AUTO_ 더미 코드
 
 
 class RecognitionResult(BaseModel):
@@ -21,7 +21,7 @@ class RecognitionResult(BaseModel):
 
 
 class RecognitionConfirmRequest(BaseModel):
-    selected_candidate_drug_code: str | None = None
+    selected_candidate_drug_code: str | None = None  # (T-MED-16) item_seq 또는 AUTO_ 더미 코드
     confirmed_fields: dict | None = None
 
 
@@ -31,7 +31,7 @@ class RecognitionConfirmForFamilyRequest(BaseModel):
     기존 확정등록 흐름(RecognitionConfirmRequest)은 건드리지 않기 위해 분리했다."""
 
     target_profile_id: int
-    selected_candidate_drug_code: str | None = None
+    selected_candidate_drug_code: str | None = None  # (T-MED-16) item_seq 또는 AUTO_ 더미 코드
     confirmed_fields: dict | None = None
 
 
@@ -76,7 +76,7 @@ class RecognitionConfirmResult(BaseModel):
 
 class MedicationScheduleResponse(BaseModel):
     id: int
-    medication_id: int
+    item_seq: str  # (T-MED-16) drugs_data/drug_identification 등 마스터 데이터 조인 키 (또는 AUTO_ 더미 코드)
     drug_name: str
     times: list[str]
     source_job_id: str | None = None
@@ -87,7 +87,7 @@ class MedicationScheduleResponse(BaseModel):
 
 
 class MedicationScheduleCreateRequest(BaseModel):
-    drug_code: str  # standard_code
+    drug_code: str  # (T-MED-16) item_seq
     times: list[str]
     hospital_name: str | None = None
     # (가족관리) 이 약을 누가 먹을지 - 생략하면 본인. 본인이 아닌 값은 family_links에서
@@ -124,7 +124,7 @@ class QuickRegisterRequest(BaseModel):
 
 
 class QuickRegisterCandidate(BaseModel):
-    drug_code: str
+    drug_code: str  # (T-MED-16) item_seq
     medication_name: str
     form_type: str | None = None
 

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { familyApi, type FamilyLinkItem } from "../../api/familyApi";
 import { familyMedicationApi, type MedicationSearchResult } from "../../api/familyMedicationApi";
 import { pinkTheme } from "../../theme/pinkTheme";
+import OcrProgressBar from "../ui/OcrProgressBar";
 
 const inputStyle: React.CSSProperties = {
   padding: "8px 10px",
@@ -348,6 +349,9 @@ export default function FamilyRegisterSection() {
                       ? "인식 중..."
                       : "업로드 및 인식"}
                   </button>
+                  {(jobStatus === "uploading" || jobStatus === "processing") && (
+                    <OcrProgressBar status={jobStatus} label="사진에서 약 정보를 읽는 중..." />
+                  )}
                   {jobStatus === "done" && candidates.length > 0 && (
                     <>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
