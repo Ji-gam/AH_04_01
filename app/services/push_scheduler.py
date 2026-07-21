@@ -1,14 +1,17 @@
 import logging
-from datetime import datetime
+from datetime import datetime, time
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import config
 from app.core.db.databases import AsyncSessionLocal
 from app.models.medication_model import MedicationSchedule
 from app.models.notification_schedules import DayOfWeek, FrequencyType, NotificationSchedule
+from app.models.notification_settings import NotificationSetting
 from app.repositories.dur_drug_repository import DurDrugRepository
+from app.services.notification_settings_service import NotificationSettingsService
 from app.services.push_service import PushService
 
 logger = logging.getLogger("app.push_scheduler")
@@ -33,6 +36,109 @@ def _is_due_today(schedule: NotificationSchedule, js_weekday: int) -> bool:
     return schedule.target_day_of_week == _JS_STYLE_KOREAN_DAYS[js_weekday]
 
 
+def _is_in_quiet_hours(now_time: time, quiet_start: time, quiet_end: time) -> bool:
+    if quiet_start <= quiet_end:
+        return quiet_start <= now_time < quiet_end
+    # 자정을 넘어가는 무음 시간대(예: 22:00~07:00) - 시작 이후 또는 종료 이전이면 무음이다.
+    return now_time >= quiet_start or now_time < quiet_end
+
+
+def _should_send(setting: NotificationSetting, now: datetime) -> bool:
+    """알림설정(NotificationSettingsPage.tsx가 저장한 값)을 확인해, 사용자가 복약알림
+    푸시를 꺼뒀거나 지금이 무음 시간대면 보내지 않는다."""
+    if not setting.push_enabled:
+        return False
+    if setting.quiet_mode_enabled and _is_in_quiet_hours(now.time(), setting.quiet_start, setting.quiet_end):
+        return False
+    return True
+
+
+class _SettingsCache:
+    """스케줄 여러 개가 같은 프로필 소유일 수 있어(하루 2회/3회 복용 등), 한 틱 안에서는
+    프로필당 한 번만 알림설정을 조회한다."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+        self._service = NotificationSettingsService()
+        self._cache: dict[int, NotificationSetting] = {}
+
+    async def get(self, profile_id: int) -> NotificationSetting:
+        if profile_id not in self._cache:
+            self._cache[profile_id] = await self._service.get_settings(self._session, profile_id)
+        return self._cache[profile_id]
+
+
+async def _send_due_notification_schedules(
+    session: AsyncSession,
+    push_service: PushService,
+    settings: _SettingsCache,
+    now: datetime,
+    js_weekday: int,
+    current_hhmm: str,
+) -> None:
+    """복약알림(NotificationSchedule) - 화면의 "알림 추가"로 직접 만든 것."""
+    result = await session.execute(select(NotificationSchedule).where(NotificationSchedule.is_active.is_(True)))
+    for schedule in result.scalars().all():
+        if schedule.alarm_time.strftime("%H:%M") != current_hhmm:
+            continue
+        if not _is_due_today(schedule, js_weekday):
+            continue
+        setting = await settings.get(schedule.profile_id)
+        if not _should_send(setting, now):
+            continue
+        try:
+            await push_service.send_to_profile_and_guardians(
+                session,
+                schedule.profile_id,
+                title="복약 알림",
+                body=f"{schedule.medication_name} 드실 시간이에요!",
+            )
+        except Exception:
+            logger.exception("알림 발송 중 오류 (notification_schedule_id=%s)", schedule.id)
+
+
+async def _send_due_medication_schedules(
+    session: AsyncSession,
+    push_service: PushService,
+    settings: _SettingsCache,
+    now: datetime,
+    current_hhmm: str,
+) -> None:
+    """트랙커(MedicationSchedule) - 사진/검색으로 등록한 약. 화면(AlarmPage.tsx)의 "등록된
+    알림" 목록엔 이것도 같이 병합해서 보여주고 있어서, 실제 발송도 똑같이 다뤄야 한다 - 이게
+    빠져있어서 트랙커로 등록한 약은 시간이 와도 알림이 안 갔다(2026-07-18 확인된 버그, 여기서
+    고침). 이 테이블엔 요일 개념이 없어서 times에 있는 시각과 매분 그냥 비교한다 - 매일
+    반복이라고 보면 된다."""
+    med_result = await session.execute(select(MedicationSchedule))
+    med_schedules = list(med_result.scalars().all())
+    # (T-MED-16) MedicationSchedule은 이제 item_seq만 들고 있어, 알림 문구에 쓸 약품명은
+    # 마스터 데이터에서 일괄 조회해야 한다. AUTO_ 더미는 display_name으로 채워져 있다.
+    drug_names = await DurDrugRepository().get_names_by_item_seqs(
+        session, {s.item_seq for s in med_schedules if not s.display_name}
+    )
+    for med_schedule in med_schedules:
+        # 이 테이블의 times는 등록 경로에 따라 "HH:MM"(신규 등록)과 "HH:MM:SS"(본인 화면
+        # 수정 API가 초까지 붙여 저장하는 경우)가 섞여 있다 - 앞 5글자(HH:MM)만 잘라서
+        # 비교해야 형식이 달라도 안전하게 매칭된다(2026-07-18, 이것 때문에 수정한 알림이
+        # 하나도 안 울리던 버그를 여기서 고침).
+        normalized_times = [t[:5] for t in med_schedule.times]
+        if current_hhmm not in normalized_times:
+            continue
+        setting = await settings.get(med_schedule.profile_id)
+        if not _should_send(setting, now):
+            continue
+        drug_name = med_schedule.display_name or drug_names.get(med_schedule.item_seq, med_schedule.item_seq)
+        try:
+            await push_service.send_to_profile_and_guardians(
+                session,
+                med_schedule.profile_id,
+                title="복약 알림",
+                body=f"{drug_name} 드실 시간이에요!",
+            )
+        except Exception:
+            logger.exception("알림 발송 중 오류 (medication_schedule_id=%s)", med_schedule.id)
+
+
 async def _check_and_send_due_notifications() -> None:
     now = datetime.now(tz=config.TIMEZONE)
     js_weekday = now.isoweekday() % 7  # Python isoweekday: 월=1~일=7 -> JS 기준(일=0~토=6)으로 변환
@@ -40,55 +146,9 @@ async def _check_and_send_due_notifications() -> None:
 
     async with AsyncSessionLocal() as session:
         push_service = PushService()
-
-        # 1) 복약알림(NotificationSchedule) - 화면의 "알림 추가"로 직접 만든 것.
-        result = await session.execute(select(NotificationSchedule).where(NotificationSchedule.is_active.is_(True)))
-        for schedule in result.scalars().all():
-            if schedule.alarm_time.strftime("%H:%M") != current_hhmm:
-                continue
-            if not _is_due_today(schedule, js_weekday):
-                continue
-            try:
-                await push_service.send_to_profile_and_guardians(
-                    session,
-                    schedule.profile_id,
-                    title="복약 알림",
-                    body=f"{schedule.medication_name} 드실 시간이에요!",
-                )
-            except Exception:
-                logger.exception("알림 발송 중 오류 (notification_schedule_id=%s)", schedule.id)
-
-        # 2) 트랙커(MedicationSchedule) - 사진/검색으로 등록한 약. 화면(AlarmPage.tsx)의
-        # "등록된 알림" 목록엔 이것도 같이 병합해서 보여주고 있어서, 실제 발송도 똑같이
-        # 다뤄야 한다 - 이게 빠져있어서 트랙커로 등록한 약은 시간이 와도 알림이 안 갔다
-        # (2026-07-18 확인된 버그, 여기서 고침). 이 테이블엔 요일/on-off 개념이 없어서
-        # (프론트의 "끄기"도 로컬 전용 음소거일 뿐 서버엔 없음) times에 있는 시각과
-        # 매분 그냥 비교한다 - 매일 반복이라고 보면 된다.
-        med_result = await session.execute(select(MedicationSchedule))
-        med_schedules = list(med_result.scalars().all())
-        # (T-MED-16) MedicationSchedule은 이제 item_seq만 들고 있어, 알림 문구에 쓸 약품명은
-        # 마스터 데이터에서 일괄 조회해야 한다. AUTO_ 더미는 display_name으로 채워져 있다.
-        drug_names = await DurDrugRepository().get_names_by_item_seqs(
-            session, {s.item_seq for s in med_schedules if not s.display_name}
-        )
-        for med_schedule in med_schedules:
-            # 이 테이블의 times는 등록 경로에 따라 "HH:MM"(신규 등록)과 "HH:MM:SS"(본인 화면
-            # 수정 API가 초까지 붙여 저장하는 경우)가 섞여 있다 - 앞 5글자(HH:MM)만 잘라서
-            # 비교해야 형식이 달라도 안전하게 매칭된다(2026-07-18, 이것 때문에 수정한 알림이
-            # 하나도 안 울리던 버그를 여기서 고침).
-            normalized_times = [t[:5] for t in med_schedule.times]
-            if current_hhmm not in normalized_times:
-                continue
-            drug_name = med_schedule.display_name or drug_names.get(med_schedule.item_seq, med_schedule.item_seq)
-            try:
-                await push_service.send_to_profile_and_guardians(
-                    session,
-                    med_schedule.profile_id,
-                    title="복약 알림",
-                    body=f"{drug_name} 드실 시간이에요!",
-                )
-            except Exception:
-                logger.exception("알림 발송 중 오류 (medication_schedule_id=%s)", med_schedule.id)
+        settings = _SettingsCache(session)
+        await _send_due_notification_schedules(session, push_service, settings, now, js_weekday, current_hhmm)
+        await _send_due_medication_schedules(session, push_service, settings, now, current_hhmm)
 
 
 def start_push_scheduler() -> AsyncIOScheduler:

@@ -56,6 +56,22 @@ export interface NotificationScheduleUpdateRequest {
   is_active?: boolean;
 }
 
+// 백엔드 app/dtos/notification_settings.py와 1:1로 수동 동기화.
+export interface NotificationSettingsResult {
+  push_enabled: boolean;
+  chatbot_reply_enabled: boolean;
+  notice_enabled: boolean;
+  marketing_enabled: boolean;
+  quiet_mode_enabled: boolean;
+  quiet_start: string; // "HH:MM:SS"
+  quiet_end: string; // "HH:MM:SS"
+  sound_enabled: boolean;
+  vibration_enabled: boolean;
+  popup_enabled: boolean;
+}
+
+export type NotificationSettingsUpdateRequest = Partial<NotificationSettingsResult>;
+
 // T-LLM-7-3-2: 답변 생성에 쓰인 출처 각주 1건(DUR은 name만, 논문은 url도 있음).
 export interface ChatSourceRef {
   name: string;

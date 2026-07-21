@@ -1,48 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { notificationSettingsApi } from "../../api/notificationSettingsApi";
+import type { NotificationSettingsResult } from "../../api/types";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import ToggleSwitch from "../AlarmPage/components/ToggleSwitch";
-
-/** localStorage에 이 형태 그대로 저장한다 — 백엔드 알림설정 도메인이 생기면 연동 예정. */
-interface NotificationSettings {
-  pushEnabled: boolean;
-  chatbotReplyEnabled: boolean;
-  noticeEnabled: boolean;
-  marketingEnabled: boolean;
-  quietModeEnabled: boolean;
-  quietStart: string;
-  quietEnd: string;
-  soundEnabled: boolean;
-  vibrationEnabled: boolean;
-  popupEnabled: boolean;
-}
-
-const STORAGE_KEY = "notificationSettings";
-
-const DEFAULT_SETTINGS: NotificationSettings = {
-  pushEnabled: true,
-  chatbotReplyEnabled: true,
-  noticeEnabled: false,
-  marketingEnabled: false,
-  quietModeEnabled: true,
-  quietStart: "22:00",
-  quietEnd: "07:00",
-  soundEnabled: true,
-  vibrationEnabled: true,
-  popupEnabled: true,
-};
-
-function loadSettings(): NotificationSettings {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw
-      ? { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<NotificationSettings>) }
-      : DEFAULT_SETTINGS;
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
-}
 
 /** 스피커 없이 짧게 "삐" 소리를 내는 테스트용 비프음 (오디오 파일 없이 Web Audio로 생성). */
 function playTestBeep() {
@@ -123,19 +85,39 @@ function ToggleRow({ label, desc, checked, onChange }: ToggleRowProps) {
 
 export default function NotificationSettingsPage() {
   const navigate = useNavigate();
-  const [settings, setSettings] = useState<NotificationSettings>(() => loadSettings());
+  const [settings, setSettings] = useState<NotificationSettingsResult | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [testStatus, setTestStatus] = useState<string | null>(null);
 
-  const update = <K extends keyof NotificationSettings>(key: K, value: NotificationSettings[K]) => {
+  useEffect(() => {
+    notificationSettingsApi
+      .get()
+      .then(setSettings)
+      .catch(() => setError("알림설정을 불러오지 못했습니다."))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // 서버 응답은 그대로, 화면엔 낙관적으로 먼저 반영한다 — 실패하면 이전 값으로 되돌린다.
+  const update = <K extends keyof NotificationSettingsResult>(
+    key: K,
+    value: NotificationSettingsResult[K],
+  ) => {
+    if (!settings) return;
+    const prev = settings;
     const next = { ...settings, [key]: value };
     setSettings(next);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     setTestStatus(null);
+    notificationSettingsApi.update({ [key]: value }).catch(() => {
+      setSettings(prev);
+      setError("설정 저장에 실패했습니다.");
+    });
   };
 
-  const toggle = (key: keyof NotificationSettings) => update(key, !settings[key] as never);
+  const toggle = (key: keyof NotificationSettingsResult) => update(key, !settings?.[key] as never);
 
   const handleSendTest = async () => {
+    if (!settings) return;
     if (!("Notification" in window)) {
       setTestStatus("이 브라우저는 알림 기능을 지원하지 않아요.");
       return;
@@ -148,13 +130,13 @@ export default function NotificationSettingsPage() {
       setTestStatus("알림 권한이 꺼져 있어요. 브라우저 설정에서 알림을 허용해주세요.");
       return;
     }
-    if (settings.popupEnabled) {
+    if (settings.popup_enabled) {
       new Notification("🔔 테스트 알림", { body: "설정하신 알림이 이렇게 도착해요." });
     }
-    if (settings.soundEnabled) {
+    if (settings.sound_enabled) {
       playTestBeep();
     }
-    if (settings.vibrationEnabled && navigator.vibrate) {
+    if (settings.vibration_enabled && navigator.vibrate) {
       navigator.vibrate(200);
     }
     setTestStatus("✓ 테스트 알림을 보냈어요.");
@@ -185,109 +167,116 @@ export default function NotificationSettingsPage() {
           받고 싶은 알림과 무음 시간대를 설정해주세요.
         </p>
 
-        <ToggleRow
-          label="복약알림 푸시"
-          desc="복약 시간에 맞춰 푸시 알림을 받습니다"
-          checked={settings.pushEnabled}
-          onChange={() => toggle("pushEnabled")}
-        />
-        <ToggleRow
-          label="AI챗봇 답변 알림"
-          desc="AI챗봇 상담 답변이 도착하면 알려드려요"
-          checked={settings.chatbotReplyEnabled}
-          onChange={() => toggle("chatbotReplyEnabled")}
-        />
-        <ToggleRow
-          label="공지사항 알림"
-          desc="서비스 공지사항 및 업데이트 소식을 알려드려요"
-          checked={settings.noticeEnabled}
-          onChange={() => toggle("noticeEnabled")}
-        />
-        <ToggleRow
-          label="마케팅 알림"
-          desc="이벤트 및 혜택 정보를 알려드려요"
-          checked={settings.marketingEnabled}
-          onChange={() => toggle("marketingEnabled")}
-        />
+        {loading && <p style={{ color: t.textMuted, fontSize: 14 }}>불러오는 중...</p>}
+        {error && <p style={{ color: t.danger, fontSize: 13 }}>{error}</p>}
 
-        <p style={sectionTitleStyle}>무음 시간대</p>
-        <ToggleRow
-          label="무음 모드"
-          desc="설정한 시간대에는 알림 소리 없이 무음으로 받아요"
-          checked={settings.quietModeEnabled}
-          onChange={() => toggle("quietModeEnabled")}
-        />
-        {settings.quietModeEnabled && (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "14px 0",
-              borderBottom: `1px solid ${t.border}`,
-            }}
-          >
-            <input
-              type="time"
-              aria-label="무음 시작 시간"
-              value={settings.quietStart}
-              onChange={(e) => update("quietStart", e.target.value)}
-              style={timeInputStyle}
+        {settings && (
+          <>
+            <ToggleRow
+              label="복약알림 푸시"
+              desc="복약 시간에 맞춰 푸시 알림을 받습니다"
+              checked={settings.push_enabled}
+              onChange={() => toggle("push_enabled")}
             />
-            <span style={{ color: t.textMuted, fontSize: 13 }}>~</span>
-            <input
-              type="time"
-              aria-label="무음 종료 시간"
-              value={settings.quietEnd}
-              onChange={(e) => update("quietEnd", e.target.value)}
-              style={timeInputStyle}
+            <ToggleRow
+              label="AI챗봇 답변 알림"
+              desc="AI챗봇 상담 답변이 도착하면 알려드려요"
+              checked={settings.chatbot_reply_enabled}
+              onChange={() => toggle("chatbot_reply_enabled")}
             />
-          </div>
-        )}
+            <ToggleRow
+              label="공지사항 알림"
+              desc="서비스 공지사항 및 업데이트 소식을 알려드려요"
+              checked={settings.notice_enabled}
+              onChange={() => toggle("notice_enabled")}
+            />
+            <ToggleRow
+              label="마케팅 알림"
+              desc="이벤트 및 혜택 정보를 알려드려요"
+              checked={settings.marketing_enabled}
+              onChange={() => toggle("marketing_enabled")}
+            />
 
-        <p style={sectionTitleStyle}>알림 강도</p>
-        <ToggleRow
-          label="소리"
-          desc="알림이 올 때 소리를 재생해요"
-          checked={settings.soundEnabled}
-          onChange={() => toggle("soundEnabled")}
-        />
-        <ToggleRow
-          label="진동"
-          desc="알림이 올 때 진동으로 알려드려요 (진동 지원 기기)"
-          checked={settings.vibrationEnabled}
-          onChange={() => toggle("vibrationEnabled")}
-        />
-        <ToggleRow
-          label="팝업"
-          desc="알림이 올 때 화면에 팝업으로 보여드려요"
-          checked={settings.popupEnabled}
-          onChange={() => toggle("popupEnabled")}
-        />
+            <p style={sectionTitleStyle}>무음 시간대</p>
+            <ToggleRow
+              label="무음 모드"
+              desc="설정한 시간대에는 알림 소리 없이 무음으로 받아요"
+              checked={settings.quiet_mode_enabled}
+              onChange={() => toggle("quiet_mode_enabled")}
+            />
+            {settings.quiet_mode_enabled && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "14px 0",
+                  borderBottom: `1px solid ${t.border}`,
+                }}
+              >
+                <input
+                  type="time"
+                  aria-label="무음 시작 시간"
+                  value={settings.quiet_start.slice(0, 5)}
+                  onChange={(e) => update("quiet_start", `${e.target.value}:00`)}
+                  style={timeInputStyle}
+                />
+                <span style={{ color: t.textMuted, fontSize: 13 }}>~</span>
+                <input
+                  type="time"
+                  aria-label="무음 종료 시간"
+                  value={settings.quiet_end.slice(0, 5)}
+                  onChange={(e) => update("quiet_end", `${e.target.value}:00`)}
+                  style={timeInputStyle}
+                />
+              </div>
+            )}
 
-        <button
-          type="button"
-          onClick={handleSendTest}
-          style={{
-            width: "100%",
-            padding: "14px 0",
-            marginTop: 24,
-            borderRadius: 12,
-            border: `1px solid ${t.primary}`,
-            background: t.cardBg,
-            color: t.primary,
-            fontSize: 15,
-            fontWeight: 700,
-            cursor: "pointer",
-          }}
-        >
-          🔔 테스트 알림 보내기
-        </button>
+            <p style={sectionTitleStyle}>알림 강도</p>
+            <ToggleRow
+              label="소리"
+              desc="알림이 올 때 소리를 재생해요"
+              checked={settings.sound_enabled}
+              onChange={() => toggle("sound_enabled")}
+            />
+            <ToggleRow
+              label="진동"
+              desc="알림이 올 때 진동으로 알려드려요 (진동 지원 기기)"
+              checked={settings.vibration_enabled}
+              onChange={() => toggle("vibration_enabled")}
+            />
+            <ToggleRow
+              label="팝업"
+              desc="알림이 올 때 화면에 팝업으로 보여드려요"
+              checked={settings.popup_enabled}
+              onChange={() => toggle("popup_enabled")}
+            />
 
-        {testStatus && (
-          <p style={{ margin: "10px 0 0", fontSize: 13, color: t.textMuted, textAlign: "center" }}>
-            {testStatus}
-          </p>
+            <button
+              type="button"
+              onClick={handleSendTest}
+              style={{
+                width: "100%",
+                padding: "14px 0",
+                marginTop: 24,
+                borderRadius: 12,
+                border: `1px solid ${t.primary}`,
+                background: t.cardBg,
+                color: t.primary,
+                fontSize: 15,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              🔔 테스트 알림 보내기
+            </button>
+
+            {testStatus && (
+              <p style={{ margin: "10px 0 0", fontSize: 13, color: t.textMuted, textAlign: "center" }}>
+                {testStatus}
+              </p>
+            )}
+          </>
         )}
       </div>
     </div>
