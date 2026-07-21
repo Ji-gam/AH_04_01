@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse as Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -114,6 +114,25 @@ async def token_refresh(
         domain=config.COOKIE_DOMAIN or None,
         expires=tokens["access_token"].payload["exp"],
     )
+    return resp
+
+
+@auth_router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="로그아웃",
+    description="refresh_token 쿠키를 무효화(revoke)하고 쿠키를 삭제한다. 쿠키가 없거나 이미 만료됐어도 항상 성공한다.",
+)
+async def logout(
+    request: Request,
+    session: Annotated[AsyncSession, Depends(get_db)],
+    auth_service: Annotated[AuthService, Depends(AuthService)],
+) -> Response:
+    refresh_token_str = request.cookies.get("refresh_token")
+    if refresh_token_str:
+        await auth_service.logout(session, refresh_token_str)
+    resp = Response(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    resp.delete_cookie(key="refresh_token", domain=config.COOKIE_DOMAIN or None)
     return resp
 
 

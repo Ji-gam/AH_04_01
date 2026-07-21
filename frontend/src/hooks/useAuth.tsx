@@ -26,7 +26,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -73,7 +73,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [fetchMe],
   );
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try {
+      await authApi.logout();
+    } catch {
+      // 로그아웃은 백엔드 호출이 실패해도(네트워크 문제 등) 로컬 상태는 정리해야 한다 -
+      // 사용자 입장에서 "로그아웃이 안 됐다"고 느끼는 게 제일 나쁜 경험이다.
+    }
     setAccessToken(null);
     setUser(null);
   }, []);
