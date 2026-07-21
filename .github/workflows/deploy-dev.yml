@@ -61,3 +61,4 @@ jobs:
             docker compose up -d fastapi ai-worker mysql redis nginx
             sleep 5
             docker compose restart nginx
+            docker image prune -af --filter "until=24h"
