@@ -37,6 +37,8 @@ from app.services.ai_worker_gateway import (
 )
 from app.services.chat_context_service import ChatContextService
 from app.services.dur_service import DurScreeningService
+from app.services.notification_settings_service import NotificationSettingsService
+from app.services.push_service import PushService
 
 logger = logging.getLogger("app.chat_service")
 
@@ -79,6 +81,8 @@ class ChatService:
         profile_repository: ProfileRepository | None = None,
         medication_repository: MedicationRepository | None = None,
         dur_screening_service: DurScreeningService | None = None,
+        push_service: PushService | None = None,
+        notification_settings_service: NotificationSettingsService | None = None,
     ) -> None:
         self._repository = repository or ChatRepository()
         self._chat_context_service = chat_context_service or ChatContextService()
@@ -87,6 +91,8 @@ class ChatService:
         self._profile_repository = profile_repository or ProfileRepository()
         self._medication_repository = medication_repository or MedicationRepository()
         self._dur_screening_service = dur_screening_service or DurScreeningService()
+        self._push_service = push_service or PushService()
+        self._notification_settings_service = notification_settings_service or NotificationSettingsService()
 
     async def create_session(self, session: AsyncSession, profile_id: int):
         return await self._repository.create_session(session, profile_id)
@@ -171,6 +177,19 @@ class ChatService:
             sources=sources or None,
             disclaimer=disclaimer or None,
         )
+
+        # 저장까지 끝난 뒤(= 이 턴이 완전히 끝난 뒤) 보낸다 - "done" 청크 이후에는 코드를
+        # 더 못 두므로(이 async generator가 여기서 끝남) 반드시 yield 이전에 호출해야 한다.
+        # 사용자가 이 채팅 화면을 벗어나 있어도(앱을 완전히 끄지만 않았다면) 답변 도착을
+        # 알 수 있게 하는 게 목적이라, 대화 내용 자체는 알림 문구에 담지 않는다.
+        try:
+            settings = await self._notification_settings_service.get_settings(session, profile_id)
+            if settings.chatbot_reply_enabled:
+                await self._push_service.send_to_profile(
+                    session, profile_id, title="💬 AI 상담 답변 도착", body="질문하신 내용에 답변이 도착했어요."
+                )
+        except Exception:
+            logger.exception("챗봇 답변 알림 발송 실패 (profile_id=%s)", profile_id)
 
         yield {"type": "done", "content": "", "disclaimer": disclaimer}
 
