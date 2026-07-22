@@ -42,13 +42,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     async with AsyncSessionLocal() as session:
         await refresh_food_drug_interaction_cache(session)
-
     # (웹푸시, 임시 구현) celery-beat이 아직 없어서 fastapi 프로세스 안에서 APScheduler로
-    # 대신 돈다 - 자세한 배경은 app/services/push_scheduler.py의 docstring 참고.
-    scheduler = start_push_scheduler()
+    # 대신 돈다 - 자세한 배경은 app/services/push_scheduler.py의 docstring 참고. app.state에
+    # 보관하는 이유: 스누즈(push_routers.py)가 이 스케줄러에 일회성 지연 발송 job을 추가해야 한다.
+    app.state.push_scheduler = start_push_scheduler()
     yield
+    app.state.push_scheduler.shutdown()
     await medication_open_api_client.close_http_client()
-    scheduler.shutdown()
 
 
 app = FastAPI(
