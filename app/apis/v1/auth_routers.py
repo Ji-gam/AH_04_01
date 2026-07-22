@@ -4,6 +4,7 @@ from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse as Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response as PlainResponse
 
 from app.core import config
 from app.core.config import Env
@@ -127,11 +128,11 @@ async def logout(
     request: Request,
     session: Annotated[AsyncSession, Depends(get_db)],
     auth_service: Annotated[AuthService, Depends(AuthService)],
-) -> Response:
+) -> PlainResponse:
     refresh_token_str = request.cookies.get("refresh_token")
     if refresh_token_str:
         await auth_service.logout(session, refresh_token_str)
-    resp = Response(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    resp = PlainResponse(status_code=status.HTTP_204_NO_CONTENT)
     resp.delete_cookie(key="refresh_token", domain=config.COOKIE_DOMAIN or None)
     return resp
 
