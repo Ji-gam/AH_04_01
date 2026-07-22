@@ -29,17 +29,93 @@ interface Props {
   onChange: (value: string) => void;
 }
 
-/** [실험용] 가족관리 - 처방전 인식 후 시간대 설정에서 쓰는 시간 입력 한 줄. 기존
- * `<input type="time">`(브라우저 기본 시간선택기) 대신, 본인 몫 복약알림 화면과 비슷한
- * 스타일(오전/오후 버튼 + 시/분 숫자칸)로 통일하고, 시계 아이콘을 누르면 아날로그 시계로도
- * 고를 수 있게 추가했다. 채택 여부는 실제로 써보고 팀에서 정하기로 함. */
+const HOUR_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
+const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => i * 5);
+
+/** [실험용] 가족관리 - 처방전 인식 후 시간대 설정에서 쓰는 시간 입력 한 줄.
+ *
+ * <datalist>를 써봤는데, "이미 값이 입력된 칸은 지우고 화살표를 눌러야만 목록이 뜨는"
+ * 브라우저 기본 동작이 있어서(개발자가 통제 불가) 자체 제작 드롭다운으로 교체했다:
+ *   - 칸에 포커스가 가면(지금 뭐가 써있든 상관없이) 항상 아래에 목록이 뜬다.
+ *   - 목록 항목을 누르면 그 값으로 바로 반영되고 목록이 닫힌다.
+ *   - 목록을 안 누르고 계속 타이핑도 가능하다 - 값 자체는 문자열 버퍼로 관리해서, 지우는
+ *     도중(빈 문자열)엔 아직 반영 안 하고 화면에 빈 칸을 그대로 보여준다(숫자가 실제로
+ *     입력됐을 때만 반영 - 예전에 "지우면 1로 튀는" 문제의 원인이었던 부분).
+ *   - 목록 항목은 onMouseDown에서 처리한다 - onClick을 쓰면 그 전에 input의 onBlur가
+ *     먼저 발동해서 목록이 닫혀버려 클릭이 씹히는 문제가 있다(흔한 콤보박스 구현 이슈).
+ * 아날로그 시계 아이콘도 그대로 유지 - 타이핑/목록클릭/시계, 세 가지 다 지원. */
 export default function FamilyTimeSlotRow({ value, onChange }: Props) {
   const tp = parseHHMM(value);
   const [clockOpen, setClockOpen] = useState(false);
+  const [hourListOpen, setHourListOpen] = useState(false);
+  const [minuteListOpen, setMinuteListOpen] = useState(false);
+
+  const [hourText, setHourText] = useState(String(tp.hour));
+  const [minuteText, setMinuteText] = useState(String(tp.minute).padStart(2, "0"));
 
   const update = (patch: Partial<TimeParts>) => {
     onChange(toHHMM({ ...tp, ...patch }));
   };
+
+  function handleHourChange(raw: string) {
+    const digits = raw.replace(/\D/g, "").slice(0, 2);
+    setHourText(digits);
+    if (digits === "") return; // 지우는 중 - 아직 반영 안 함, "1"로 안 튐
+    update({ hour: Math.min(12, Math.max(1, Number(digits))) });
+  }
+
+  function handleHourBlur() {
+    if (hourText === "" || Number(hourText) < 1) setHourText(String(tp.hour));
+    setHourListOpen(false);
+  }
+
+  function selectHour(h: number) {
+    setHourText(String(h));
+    update({ hour: h });
+    setHourListOpen(false);
+  }
+
+  function handleMinuteChange(raw: string) {
+    const digits = raw.replace(/\D/g, "").slice(0, 2);
+    setMinuteText(digits);
+    if (digits === "") return;
+    update({ minute: Math.min(59, Number(digits)) });
+  }
+
+  function handleMinuteBlur() {
+    if (minuteText === "") setMinuteText(String(tp.minute).padStart(2, "0"));
+    setMinuteListOpen(false);
+  }
+
+  function selectMinute(m: number) {
+    setMinuteText(String(m).padStart(2, "0"));
+    update({ minute: m });
+    setMinuteListOpen(false);
+  }
+
+  const dropdownStyle: React.CSSProperties = {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    marginTop: 4,
+    zIndex: 30,
+    background: t.cardBg,
+    border: `1px solid ${t.border}`,
+    borderRadius: 8,
+    boxShadow: "0 6px 16px rgba(255, 111, 145, 0.2)",
+    maxHeight: 160,
+    overflowY: "auto",
+    minWidth: 56,
+  };
+
+  const optionStyle = (isSelected: boolean): React.CSSProperties => ({
+    padding: "7px 12px",
+    cursor: "pointer",
+    fontSize: 13,
+    color: isSelected ? "#fff" : t.text,
+    background: isSelected ? t.primary : "transparent",
+    whiteSpace: "nowrap",
+  });
 
   return (
     <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 6 }}>
@@ -61,41 +137,85 @@ export default function FamilyTimeSlotRow({ value, onChange }: Props) {
           {p}
         </button>
       ))}
-      <input
-        type="number"
-        min={1}
-        max={12}
-        value={tp.hour}
-        onChange={(e) => update({ hour: Math.min(12, Math.max(1, Number(e.target.value) || 1)) })}
-        aria-label="시"
-        style={{
-          width: 46,
-          padding: "6px 6px",
-          borderRadius: 8,
-          border: `1px solid ${t.border}`,
-          outline: "none",
-          fontSize: 13,
-          textAlign: "center",
-        }}
-      />
+
+      <div style={{ position: "relative" }}>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={hourText}
+          onChange={(e) => handleHourChange(e.target.value)}
+          onFocus={() => setHourListOpen(true)}
+          onBlur={handleHourBlur}
+          aria-label="시"
+          style={{
+            width: 46,
+            padding: "6px 6px",
+            borderRadius: 8,
+            border: `1px solid ${t.border}`,
+            outline: "none",
+            fontSize: 13,
+            textAlign: "center",
+          }}
+        />
+        {hourListOpen && (
+          <div style={dropdownStyle}>
+            {HOUR_OPTIONS.map((h) => (
+              <div
+                key={h}
+                onMouseDown={(e) => {
+                  e.preventDefault(); // input의 onBlur보다 먼저 실행되게 - 안 그러면 목록이 먼저 닫혀 클릭이 씹힌다.
+                  selectHour(h);
+                }}
+                style={optionStyle(tp.hour === h)}
+              >
+                {h}시
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <span style={{ color: t.textMuted }}>:</span>
-      <input
-        type="number"
-        min={0}
-        max={59}
-        value={tp.minute}
-        onChange={(e) => update({ minute: Math.min(59, Math.max(0, Number(e.target.value) || 0)) })}
-        aria-label="분"
-        style={{
-          width: 46,
-          padding: "6px 6px",
-          borderRadius: 8,
-          border: `1px solid ${t.border}`,
-          outline: "none",
-          fontSize: 13,
-          textAlign: "center",
-        }}
-      />
+
+      <div style={{ position: "relative" }}>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={minuteText}
+          onChange={(e) => handleMinuteChange(e.target.value)}
+          onFocus={() => setMinuteListOpen(true)}
+          onBlur={handleMinuteBlur}
+          aria-label="분"
+          style={{
+            width: 46,
+            padding: "6px 6px",
+            borderRadius: 8,
+            border: `1px solid ${t.border}`,
+            outline: "none",
+            fontSize: 13,
+            textAlign: "center",
+          }}
+        />
+        {minuteListOpen && (
+          <div style={dropdownStyle}>
+            {MINUTE_OPTIONS.map((m) => (
+              <div
+                key={m}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectMinute(m);
+                }}
+                style={optionStyle(tp.minute === m)}
+              >
+                {String(m).padStart(2, "0")}분
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <button
         type="button"
         aria-label="시계로 시각 선택"
@@ -105,7 +225,7 @@ export default function FamilyTimeSlotRow({ value, onChange }: Props) {
         🕐
       </button>
       {clockOpen && (
-        <div style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, zIndex: 20 }}>
+        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, zIndex: 20 }}>
           <AnalogClockPicker
             hour={tp.hour}
             minute={tp.minute}

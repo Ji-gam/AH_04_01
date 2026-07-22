@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   familyMedicationApi,
@@ -128,6 +128,11 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
   const [isBusy, setIsBusy] = useState(false);
 
   const [file, setFile] = useState<File | null>(null);
+  // 카메라 촬영/갤러리 선택을 각각 별도 버튼으로 분리한다 - <input capture>는 브라우저에
+  // 따라 "카메라만" 강제로 열려버려서, 하나의 input만 쓰면 갤러리에서 고르는 게 아예
+  // 안 되는 경우가 있다(2026-07-21, PWA 모바일 테스트 중 발견).
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<"uploading" | "processing" | "done" | "failed" | null>(
     null,
@@ -403,11 +408,51 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            style={{ display: "none" }}
+          />
+          <input
+            ref={galleryInputRef}
             type="file"
             accept="image/*"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            style={{ fontSize: 12 }}
+            style={{ display: "none" }}
           />
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              style={{
+                ...primaryButtonStyle,
+                flex: 1,
+                background: t.cardBg,
+                color: t.primary,
+                border: `1.5px solid ${t.primary}`,
+              }}
+            >
+              📷 카메라로 촬영
+            </button>
+            <button
+              type="button"
+              onClick={() => galleryInputRef.current?.click()}
+              style={{
+                ...primaryButtonStyle,
+                flex: 1,
+                background: t.cardBg,
+                color: t.primary,
+                border: `1.5px solid ${t.primary}`,
+              }}
+            >
+              🖼️ 갤러리에서 선택
+            </button>
+          </div>
+          {file && (
+            <p style={{ margin: 0, fontSize: 12, color: t.textMuted }}>선택된 파일: {file.name}</p>
+          )}
           <button
             type="button"
             onClick={handleUpload}

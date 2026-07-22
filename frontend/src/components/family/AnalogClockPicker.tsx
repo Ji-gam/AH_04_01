@@ -82,9 +82,8 @@ export default function AnalogClockPicker({
             padding: "2px 4px",
           }}
         >
-          {String(hour).padStart(2, "0")}
+          {String(hour).padStart(2, "0")}시
         </button>
-        <span style={{ fontSize: 28, fontWeight: 700, color: t.textMuted }}>:</span>
         <button
           type="button"
           onClick={() => setMode("minute")}
@@ -98,7 +97,7 @@ export default function AnalogClockPicker({
             padding: "2px 4px",
           }}
         >
-          {String(minute).padStart(2, "0")}
+          {String(minute).padStart(2, "0")}분
         </button>
       </div>
 
