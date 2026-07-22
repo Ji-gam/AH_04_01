@@ -3,8 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse as Response
 from fastapi.responses import RedirectResponse
-from starlette.responses import Response as PlainResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.responses import Response as PlainResponse
 
 from app.core import config
 from app.core.config import Env
