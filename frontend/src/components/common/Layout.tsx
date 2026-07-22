@@ -29,9 +29,21 @@ export default function Layout() {
           type="button"
           aria-label="홈으로 이동"
           onClick={() => navigate("/")}
-          style={{ border: "none", background: "none", padding: 0, cursor: "pointer", lineHeight: 0 }}
+          style={{
+            border: "none",
+            background: "none",
+            padding: 0,
+            cursor: "pointer",
+            lineHeight: 0,
+          }}
         >
-          <img src="/icons/icon-192.png" alt="" width={28} height={28} style={{ borderRadius: 8 }} />
+          <img
+            src="/icons/icon-192.png"
+            alt=""
+            width={28}
+            height={28}
+            style={{ borderRadius: 8 }}
+          />
         </button>
         <button
           type="button"
