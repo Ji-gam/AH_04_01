@@ -57,15 +57,27 @@ class PushService:
         title: str,
         body: str,
         snooze_source: tuple[str, int] | None = None,
+        alarm_time: str | None = None,
+        consult_url: str | None = None,
     ) -> None:
         """이 프로필이 구독해둔 모든 기기(WEB만 - IOS/ANDROID는 나중에 네이티브 패키징 시
-        별도 발송 경로 추가 예정)에 푸시를 보낸다. 구독 하나가 실패해도(예: 브라우저에서
+        별도 발송 경로 예정)에 푸시를 보낸다. 구독 하나가 실패해도(예: 브라우저에서
         구독 취소했는데 서버 DB에는 아직 남아있는 경우) 나머지 기기 발송은 계속한다.
 
-        snooze_source=(source_type, source_id)를 주면 알림에 "30분/1시간 후 다시" 액션
-        버튼을 붙인다(service-worker.js가 payload.actions/data를 그대로 showNotification에
-        넘긴다) - 복약알림 본인 몫에만 쓰고, 가족에게 전달하는 사본에는 안 붙인다(스누즈는
-        본인이 결정할 일이라 가족이 대신 미룰 수 있으면 안 된다)."""
+        snooze_source=(source_type, source_id)를 주면 알림에 "30분 후 다시"/"빈도 줄이기"
+        액션 버튼을 붙인다(service-worker.js가 payload.actions/data를 그대로 showNotification에
+        넘긴다) - 복약알림 본인 몫에만 쓰고, 가족에게 전달하는 사본에는 안 붙인다(스누즈/빈도
+        조정은 본인이 결정할 일이라 가족이 대신 할 수 있으면 안 된다). 액션 버튼은 브라우저마다
+        보통 최대 2개까지만 확실히 렌더링돼서(F-NTFY-3), "1시간 후 다시"는 "빈도 줄이기"로
+        교체했다 - 둘 다 넣으면 일부 기기에서 3번째 버튼이 아예 안 보일 수 있어서다.
+
+        alarm_time("HH:MM")은 medication_schedule 빈도 줄이기 전용 - 그 스케줄의 여러 시각
+        중 "이 알림이 울린 시각"만 정확히 골라 뺄 수 있도록 함께 실어보낸다. 모르면(예: 스누즈
+        후 재발송) 생략해도 된다 - 서버가 alarm_time 없이는 조용히 아무것도 지우지 않는다.
+
+        consult_url을 주면(F-NTFY-5 부작용 사전 안내 전용) "불편한 증상이 있어요" 액션
+        버튼을 붙인다 - service-worker.js가 클릭 시 이 URL(챗봇 자동 질문 딥링크)을 연다.
+        snooze_source와 동시에 쓰는 경우는 없다(용도가 겹치지 않음)."""
         if not config.VAPID_PRIVATE_KEY:
             logger.warning("VAPID 비밀키가 설정되지 않아 푸시 발송을 건너뜁니다.")
             return
@@ -73,11 +85,17 @@ class PushService:
         payload: dict = {"title": title, "body": body}
         if snooze_source is not None:
             source_type, source_id = snooze_source
-            payload["data"] = {"profile_id": profile_id, "source_type": source_type, "source_id": source_id}
+            data: dict = {"profile_id": profile_id, "source_type": source_type, "source_id": source_id}
+            if alarm_time is not None:
+                data["alarm_time"] = alarm_time
+            payload["data"] = data
             payload["actions"] = [
                 {"action": "snooze_30", "title": "30분 후 다시"},
-                {"action": "snooze_60", "title": "1시간 후 다시"},
+                {"action": "reduce_freq", "title": "빈도 줄이기"},
             ]
+        elif consult_url is not None:
+            payload["data"] = {"url": consult_url}
+            payload["actions"] = [{"action": "open_consult", "title": "불편한 증상이 있어요"}]
 
         subscriptions = await self._repo.list_web_subscriptions_for_profile(session, profile_id)
         for sub in subscriptions:
@@ -113,6 +131,7 @@ class PushService:
         title: str,
         body: str,
         snooze_source: tuple[str, int] | None = None,
+        alarm_time: str | None = None,
     ) -> None:
         """`send_to_profile`은 그대로 두고, 여기에 "이 사람을 관리하는 보호자들에게도 같이
         보낸다"는 것만 추가한다. 보호자가 자기 기기에서 "🔔 알림 켜기"를 눌러 구독해두면
@@ -120,9 +139,10 @@ class PushService:
         가족 구성원의 알림도 자동으로 같이 받게 된다.
 
         보호자가 여러 명을 관리할 수 있어 "누구 약인지" 구분이 안 되면 헷갈리므로, 보호자
-        쪽엔 대상자 이름을 붙여서 보낸다(본인 몫은 그대로 둠). snooze_source는 본인 몫에만
-        전달한다 - 가족 사본은 스누즈 액션 버튼 없이 정보 전달용으로만 보낸다."""
-        await self.send_to_profile(session, profile_id, title, body, snooze_source=snooze_source)
+        쪽엔 대상자 이름을 붙여서 보낸다(본인 몫은 그대로 둠). snooze_source/alarm_time은
+        본인 몫에만 전달한다 - 가족 사본은 스누즈/빈도조정 액션 버튼 없이 정보 전달용으로만
+        보낸다."""
+        await self.send_to_profile(session, profile_id, title, body, snooze_source=snooze_source, alarm_time=alarm_time)
 
         guardian_links = await self._family_repo.list_as_member(session, profile_id, status=FamilyLinkStatus.ACCEPTED)
         if not guardian_links:

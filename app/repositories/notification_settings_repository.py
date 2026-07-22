@@ -37,3 +37,15 @@ class NotificationSettingsRepository:
         for key, value in data.items():
             setattr(setting, key, value)
         await session.flush()
+
+    async def list_settings_with_notice_enabled(self, session: AsyncSession) -> list[NotificationSetting]:
+        """전체 행을 반환한다(profile_id만이 아니라) - 브로드캐스트 쪽(notice_service.py)이
+        무음 시간대까지 같이 확인해야 해서 quiet_mode_enabled/quiet_start/quiet_end도 필요하다."""
+        result = await session.execute(select(NotificationSetting).where(NotificationSetting.notice_enabled.is_(True)))
+        return list(result.scalars().all())
+
+    async def list_settings_with_marketing_enabled(self, session: AsyncSession) -> list[NotificationSetting]:
+        result = await session.execute(
+            select(NotificationSetting).where(NotificationSetting.marketing_enabled.is_(True))
+        )
+        return list(result.scalars().all())

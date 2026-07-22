@@ -140,12 +140,27 @@ def _build_service(
         retriever=cast(AIWorkerGateway, retriever or FakeRetriever()),
         profile_repository=cast(ProfileRepository, profile_repository or FakeProfileRepository()),
         medication_repository=cast(MedicationRepository, medication_repository or FakeMedicationRepository()),
+        # 실제 생성은 _run_detached가 독립 세션(session_factory())으로 도는데, 테스트는
+        # 진짜 DB가 필요 없으니(다른 의존성도 전부 fake) 아무 것도 안 하는 가짜 세션을 준다.
+        session_factory=_fake_session_factory,
     )
     if dur_drug_repository is not None:
         kwargs["dur_drug_repository"] = cast(DurDrugRepository, dur_drug_repository)
     if dur_screening_service is not None:
         kwargs["dur_screening_service"] = cast(DurScreeningService, dur_screening_service)
     return ChatService(**kwargs)
+
+
+class _FakeSessionContext:
+    async def __aenter__(self):
+        return None
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+def _fake_session_factory() -> _FakeSessionContext:
+    return _FakeSessionContext()
 
 
 async def _collect(stream: AsyncIterator[dict]) -> list[dict]:
@@ -158,7 +173,7 @@ async def test_emergency_keyword_short_circuits_without_saving():
     retriever = FakeRetriever()
     service = _build_service(repository, retriever=retriever)
 
-    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="가슴 통증 있어요"))
+    chunks = await _collect(service.stream_reply(profile_id=1, session_id=10, message="가슴 통증 있어요"))
 
     assert chunks == [
         {"type": "emergency_fallback", "content": EMERGENCY_FALLBACK_MESSAGE, "disclaimer": DISCLAIMER_TEXT}
@@ -185,9 +200,7 @@ async def test_normal_message_streams_sources_then_tokens_and_saves_conversation
     retriever = FakeRetriever(stream_chunks=stream_chunks)
     service = _build_service(repository, profile_repository=profiles, retriever=retriever)
 
-    chunks = await _collect(
-        service.stream_reply(session=None, profile_id=1, session_id=10, message="두통약 뭐가 좋아요?")
-    )
+    chunks = await _collect(service.stream_reply(profile_id=1, session_id=10, message="두통약 뭐가 좋아요?"))
 
     assert chunks[0] == stream_chunks[0]
     assert chunks[-1] == {"type": "done", "content": "", "disclaimer": DISCLAIMER_TEXT}
@@ -217,9 +230,7 @@ async def test_medical_response_saves_disclaimer_with_assistant_message():
     retriever = FakeRetriever(stream_chunks=stream_chunks, is_medical_related=True)
     service = _build_service(repository, retriever=retriever)
 
-    chunks = await _collect(
-        service.stream_reply(session=None, profile_id=1, session_id=10, message="타이레놀 먹어도 되나요?")
-    )
+    chunks = await _collect(service.stream_reply(profile_id=1, session_id=10, message="타이레놀 먹어도 되나요?"))
 
     assert chunks[-1] == {"type": "done", "content": "", "disclaimer": DISCLAIMER_TEXT}
     saved_disclaimer = repository.saved_messages[-1][4]
@@ -234,7 +245,7 @@ async def test_normal_message_saves_none_sources_when_no_rag_matches():
 
     service = _build_service(repository, retriever=retriever)
 
-    await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="잡담"))
+    await _collect(service.stream_reply(profile_id=1, session_id=10, message="잡담"))
 
     assert repository.saved_messages[-1] == (10, MessageRole.ASSISTANT, "fake-llm-reply", None, None)
 
@@ -252,7 +263,7 @@ async def test_stream_reply_lowercases_history_roles_for_openai_compatibility():
     retriever = FakeRetriever()
     service = _build_service(repository, retriever=retriever)
 
-    await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="다음 질문"))
+    await _collect(service.stream_reply(profile_id=1, session_id=10, message="다음 질문"))
 
     _, _, history_payload, _ = retriever.stream_chat_calls[0]
     assert history_payload == [
@@ -275,9 +286,7 @@ async def test_stream_reply_passes_history_context_and_injected_dur_warnings():
         retriever=retriever,
     )
 
-    await _collect(
-        service.stream_reply(session=None, profile_id=2, session_id=11, message="아스피린 먹어도 괜찮은지 물어봅니다.")
-    )
+    await _collect(service.stream_reply(profile_id=2, session_id=11, message="아스피린 먹어도 괜찮은지 물어봅니다."))
 
     assert len(retriever.stream_chat_calls) == 1
     message, context, history, injected_context = retriever.stream_chat_calls[0]
@@ -333,7 +342,7 @@ async def test_medical_relatedness_uses_llm_when_ai_worker_sources_present():
     retriever = FakeRetriever(stream_chunks=stream_chunks, is_medical_related=True)
     service = _build_service(repository, retriever=retriever)
 
-    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="질문"))
+    chunks = await _collect(service.stream_reply(profile_id=1, session_id=10, message="질문"))
 
     assert retriever.structured_calls
     assert retriever.structured_calls[-1][2] is MedicalRelatednessClassification
@@ -351,7 +360,7 @@ async def test_medical_relatedness_skips_llm_when_no_sources_at_all():
     retriever = FakeRetriever(stream_chunks=stream_chunks)
     service = _build_service(repository, retriever=retriever)
 
-    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="오늘 날씨 어때?"))
+    chunks = await _collect(service.stream_reply(profile_id=1, session_id=10, message="오늘 날씨 어때?"))
 
     assert retriever.structured_calls == []
     assert chunks[-1] == {"type": "done", "content": "", "disclaimer": ""}
@@ -374,7 +383,7 @@ async def test_medical_relatedness_uses_llm_when_injected_dur_warning_present_ev
         retriever=retriever,
     )
 
-    await _collect(service.stream_reply(session=None, profile_id=2, session_id=11, message="아스피린 먹어도 되나요"))
+    await _collect(service.stream_reply(profile_id=2, session_id=11, message="아스피린 먹어도 되나요"))
 
     assert retriever.structured_calls
     assert retriever.structured_calls[-1][2] is MedicalRelatednessClassification
@@ -392,7 +401,7 @@ async def test_stream_reply_saves_partial_content_when_ai_worker_reports_inband_
     retriever = FakeRetriever(stream_chunks=stream_chunks)
     service = _build_service(repository, retriever=retriever)
 
-    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="질문"))
+    chunks = await _collect(service.stream_reply(profile_id=1, session_id=10, message="질문"))
 
     assert chunks[-1]["type"] == "done"
     saved_answer = repository.saved_messages[-1][2]
@@ -414,7 +423,7 @@ async def test_stream_reply_saves_partial_content_when_stream_connection_fails_m
     )
     service = _build_service(repository, retriever=retriever)
 
-    chunks = await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="질문"))
+    chunks = await _collect(service.stream_reply(profile_id=1, session_id=10, message="질문"))
 
     assert chunks[-1]["type"] == "done"
     saved_answer = repository.saved_messages[-1][2]
@@ -429,7 +438,7 @@ async def test_stream_reply_saves_interruption_notice_when_connection_fails_befo
     retriever = FakeRetriever(stream_chunks=[], raise_after_stream_chunks=AIWorkerUnavailableError("down"))
     service = _build_service(repository, retriever=retriever)
 
-    await _collect(service.stream_reply(session=None, profile_id=1, session_id=10, message="질문"))
+    await _collect(service.stream_reply(profile_id=1, session_id=10, message="질문"))
 
     saved_answer = repository.saved_messages[-1][2]
     assert "중단되었습니다" in saved_answer
@@ -540,9 +549,7 @@ async def test_stream_reply_injects_interaction_warnings_for_two_or_more_medicat
         retriever=retriever,
     )
 
-    await _collect(
-        service.stream_reply(session=None, profile_id=3, session_id=12, message="와파린이랑 아스피린 같이 먹어도 돼?")
-    )
+    await _collect(service.stream_reply(profile_id=3, session_id=12, message="와파린이랑 아스피린 같이 먹어도 돼?"))
 
     _, _, _, injected_context = retriever.stream_chat_calls[0]
     assert any("[병용금기 경고] 와파린 + 아스피린 (병용금기) — 출혈 위험 증가" in c for c in injected_context)

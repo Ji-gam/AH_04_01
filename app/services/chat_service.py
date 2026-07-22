@@ -16,13 +16,17 @@ T-LLM-7-3-2: DUR 검색(`/retrieve`)과 논문 검색+답변(`/agent/paper-searc
 되면 그때 키워드를 보강하는 쪽으로 대응한다(LLM 분류 재도입이 아니라).
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
+from datetime import datetime
 from typing import cast
 
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core import config
+from app.core.db.databases import AsyncSessionLocal
 from app.models.chat import MessageRole
 from app.repositories.chat_repository import ChatRepository
 from app.repositories.dur_drug_repository import DurDrugRepository
@@ -37,6 +41,9 @@ from app.services.ai_worker_gateway import (
 )
 from app.services.chat_context_service import ChatContextService
 from app.services.dur_service import DurScreeningService
+from app.services.notification_settings_service import NotificationSettingsService
+from app.services.push_service import PushService
+from app.services.quiet_hours import is_in_quiet_hours
 
 logger = logging.getLogger("app.chat_service")
 
@@ -46,6 +53,12 @@ _AI_WORKER_ERRORS = (AIWorkerUnavailableError, AIWorkerProcessingError, AIWorker
 # 알릴 수 없으므로, 받은 만큼만 살리고 이 안내문을 이어붙인 뒤 정상 종료 절차(저장/면책
 # 문구 판정)를 그대로 밟는다.
 _STREAM_INTERRUPTED_NOTICE = "[응답이 중단되었습니다. 잠시 후 다시 시도해주세요.]"
+
+# 답변 생성을 요청 연결과 무관하게 끝까지 돌리려고 asyncio.create_task로 분리하는데(아래
+# ChatService._run_detached 참고), 태스크 객체 참조를 아무 데도 안 들고 있으면 파이썬이
+# 도중에 가비지컬렉트해버릴 수 있다(공식 문서가 명시적으로 경고하는 함정) - 여기 모아뒀다가
+# 끝나면 스스로 빠지게 한다.
+_background_tasks: set[asyncio.Task] = set()
 
 
 class MedicalRelatednessClassification(BaseModel):
@@ -79,6 +92,9 @@ class ChatService:
         profile_repository: ProfileRepository | None = None,
         medication_repository: MedicationRepository | None = None,
         dur_screening_service: DurScreeningService | None = None,
+        push_service: PushService | None = None,
+        notification_settings_service: NotificationSettingsService | None = None,
+        session_factory: async_sessionmaker[AsyncSession] | None = None,
     ) -> None:
         self._repository = repository or ChatRepository()
         self._chat_context_service = chat_context_service or ChatContextService()
@@ -87,17 +103,24 @@ class ChatService:
         self._profile_repository = profile_repository or ProfileRepository()
         self._medication_repository = medication_repository or MedicationRepository()
         self._dur_screening_service = dur_screening_service or DurScreeningService()
+        self._push_service = push_service or PushService()
+        self._notification_settings_service = notification_settings_service or NotificationSettingsService()
+        # _run_detached()가 요청 스코프 session 대신 이 팩토리로 독립된 세션을 새로 연다.
+        self._session_factory = session_factory or AsyncSessionLocal
 
     async def create_session(self, session: AsyncSession, profile_id: int):
         return await self._repository.create_session(session, profile_id)
 
-    async def stream_reply(
-        self, session: AsyncSession, profile_id: int, session_id: int, message: str
-    ) -> AsyncIterator[dict]:
+    async def stream_reply(self, profile_id: int, session_id: int, message: str) -> AsyncIterator[dict]:
         """
         응급 키워드가 감지되면 LLM을 호출하지 않고 고정 fallback만 반환한다(T-LLM-1 원칙).
-        이 경우 대화 기록도 저장하지 않는다.
-        """
+        이 경우 대화 기록도 저장하지 않고, 별도 태스크도 만들지 않는다.
+
+        응급이 아니면 실제 생성(`_generate`)은 `_run_detached` 태스크로 분리해서 시작한다 -
+        사용자가 채팅 화면을 벗어나거나 탭을 닫아도(라우터의 StreamingResponse 소비가
+        Starlette에 의해 취소돼도) 생성 자체는 끝까지 진행되어 저장과 답변 완료 알림까지
+        마치도록 하기 위함이다(F-NTFY-6 챗봇 답변 알림). 이 제너레이터는 그 태스크가 큐에
+        넣는 청크를 그대로 릴레이만 한다."""
         if safety_service.check_emergency(message):
             yield {
                 "type": "emergency_fallback",
@@ -106,6 +129,35 @@ class ChatService:
             }
             return
 
+        queue: asyncio.Queue[dict | None] = asyncio.Queue()
+        task = asyncio.create_task(self._run_detached(profile_id, session_id, message, queue))
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
+
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                return
+            yield chunk
+
+    async def _run_detached(
+        self, profile_id: int, session_id: int, message: str, queue: "asyncio.Queue[dict | None]"
+    ) -> None:
+        """호출자(라우터)의 요청-스코프 session을 쓰지 않고 독립된 세션을 새로 연다 -
+        habit_repository.save_subtype_suggestions와 같은 이유다: 요청이 끝나면(탭이
+        닫히면) 그 session은 닫히지만, 이 태스크는 그 뒤에도 계속 돌아야 한다."""
+        try:
+            async with self._session_factory() as session:
+                async for chunk in self._generate(session, profile_id, session_id, message):
+                    await queue.put(chunk)
+        except Exception:
+            logger.exception("채팅 답변 생성 태스크 실패 (profile_id=%s, session_id=%s)", profile_id, session_id)
+        finally:
+            queue.put_nowait(None)
+
+    async def _generate(
+        self, session: AsyncSession, profile_id: int, session_id: int, message: str
+    ) -> AsyncIterator[dict]:
         history = await self._repository.list_messages(session, session_id)
 
         # profile은 이 턴에서 한 번만 조회하고, 그 결과로 컨텍스트/DUR 게이팅을 전부 파생시킨다.
@@ -171,6 +223,21 @@ class ChatService:
             sources=sources or None,
             disclaimer=disclaimer or None,
         )
+
+        # 저장까지 끝난 뒤(= 이 턴이 완전히 끝난 뒤) 보낸다 - "done" 청크 이후에는 코드를
+        # 더 못 두므로(이 async generator가 여기서 끝남) 반드시 yield 이전에 호출해야 한다.
+        # 이 메서드는 _run_detached 태스크 안에서 독립 세션으로 돌아서, 사용자가 채팅
+        # 화면을 벗어나거나 탭을 완전히 닫아도 여기까지는 끝까지 실행된다 - 대화 내용
+        # 자체는 알림 문구에 담지 않는다(잠금화면 노출 등 프라이버시 고려).
+        try:
+            settings = await self._notification_settings_service.get_settings(session, profile_id)
+            # 챗봇 답변 알림은 필수 알림(복약)이 아니라, 무음 시간대엔 보류한다(F-NTFY-6).
+            if settings.chatbot_reply_enabled and not is_in_quiet_hours(settings, datetime.now(tz=config.TIMEZONE)):
+                await self._push_service.send_to_profile(
+                    session, profile_id, title="💬 AI 상담 답변 도착", body="질문하신 내용에 답변이 도착했어요."
+                )
+        except Exception:
+            logger.exception("챗봇 답변 알림 발송 실패 (profile_id=%s)", profile_id)
 
         yield {"type": "done", "content": "", "disclaimer": disclaimer}
 

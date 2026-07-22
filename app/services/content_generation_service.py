@@ -19,12 +19,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.content_repository import ContentRepository
 from app.scripts.generate_health_content import generate_content_card
 from app.services import safety_service
+from app.services.content_notification_service import ContentNotificationService
 from app.services.content_service import CATEGORIES, CATEGORY_TOPICS, POPULAR_DISEASES, _today_kst
 
 
 class ContentGenerationService:
-    def __init__(self, repository: ContentRepository | None = None) -> None:
+    def __init__(
+        self,
+        repository: ContentRepository | None = None,
+        content_notification_service: ContentNotificationService | None = None,
+    ) -> None:
         self._repository = repository or ContentRepository()
+        self._content_notification_service = content_notification_service or ContentNotificationService()
 
     async def generate_and_save(
         self,
@@ -57,6 +63,9 @@ class ContentGenerationService:
             content = await self._repository.save(
                 session, disease_code=disease_code, category=category, content_date=content_date, **card
             )
+            # 같은 날 재생성(위 existing 분기)은 알리지 않는다 - 관리자가 버튼을 여러 번
+            # 눌러 다듬는 동안 매번 알림이 쏟아지면 안 되므로, 그 날 처음 생기는 콘텐츠에만 보낸다.
+            await self._content_notification_service.notify_new_content(session, disease_code, card["title"])
 
         return self._to_response(content)
 

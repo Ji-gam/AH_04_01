@@ -62,6 +62,14 @@ class DiagnosisEntryRepository:
         )
         return list(result.scalars().all())
 
+    async def list_profile_ids_by_disease(self, session: AsyncSession, disease: Disease) -> list[int]:
+        """이 질환을 진단병력에 등록해둔 프로필 ID(중복 제거) - 라이프스타일 콘텐츠 알림
+        발송 대상을 고를 때 쓴다(content_notification_service.py)."""
+        result = await session.execute(
+            select(DiagnosisEntry.profile_id).where(DiagnosisEntry.disease == disease).distinct()
+        )
+        return list(result.scalars().all())
+
 
 class FamilyHistoryEntryRepository:
     async def replace_all_for_profile(

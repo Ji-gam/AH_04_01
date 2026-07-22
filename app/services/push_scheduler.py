@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -37,21 +37,13 @@ def _is_due_today(schedule: NotificationSchedule, js_weekday: int) -> bool:
     return schedule.target_day_of_week == _JS_STYLE_KOREAN_DAYS[js_weekday]
 
 
-def _is_in_quiet_hours(now_time: time, quiet_start: time, quiet_end: time) -> bool:
-    if quiet_start <= quiet_end:
-        return quiet_start <= now_time < quiet_end
-    # 자정을 넘어가는 무음 시간대(예: 22:00~07:00) - 시작 이후 또는 종료 이전이면 무음이다.
-    return now_time >= quiet_start or now_time < quiet_end
-
-
-def _should_send(setting: NotificationSetting, now: datetime) -> bool:
-    """알림설정(NotificationSettingsPage.tsx가 저장한 값)을 확인해, 사용자가 복약알림
-    푸시를 꺼뒀거나 지금이 무음 시간대면 보내지 않는다."""
-    if not setting.push_enabled:
-        return False
-    if setting.quiet_mode_enabled and _is_in_quiet_hours(now.time(), setting.quiet_start, setting.quiet_end):
-        return False
-    return True
+def _should_send(setting: NotificationSetting) -> bool:
+    """복약 알림은 PRD(F-NTFY-6)가 "복약 필수 알림은 무음 시간대에도 발송"하도록 명시한
+    필수 알림이라, push_enabled(사용자가 복약알림 자체를 꺼둔 경우)만 확인하고
+    quiet_mode_enabled/무음 시간대는 일부러 확인하지 않는다 - 무음 시간대는 나중에
+    라이프스타일 팁 등 비필수 알림(F-NTFY-6)에 실제 발송 로직이 생기면 그쪽에 적용해야
+    한다."""
+    return setting.push_enabled
 
 
 class _SettingsCache:
@@ -86,7 +78,7 @@ async def _send_due_notification_schedules(
         if not _is_due_today(schedule, js_weekday):
             continue
         setting = await settings.get(schedule.profile_id)
-        if not _should_send(setting, now):
+        if not _should_send(setting):
             continue
         # 워커가 여러 개면 같은 1분 틱에 이 알림을 동시에 집으려 할 수 있다 - DB 유니크
         # 제약으로 선착순 클레임해서, 못 딴 워커는 조용히 건너뛴다(start_push_scheduler
@@ -100,6 +92,7 @@ async def _send_due_notification_schedules(
                 title="복약 알림",
                 body=f"{schedule.medication_name} 드실 시간이에요!",
                 snooze_source=("notification_schedule", schedule.id),
+                alarm_time=current_hhmm,
             )
         except Exception:
             logger.exception("알림 발송 중 오류 (notification_schedule_id=%s)", schedule.id)
@@ -134,7 +127,7 @@ async def _send_due_medication_schedules(
         if current_hhmm not in normalized_times:
             continue
         setting = await settings.get(med_schedule.profile_id)
-        if not _should_send(setting, now):
+        if not _should_send(setting):
             continue
         if not await send_log_repo.try_claim("medication_schedule", med_schedule.id, now.date(), current_hhmm):
             continue
@@ -146,6 +139,7 @@ async def _send_due_medication_schedules(
                 title="복약 알림",
                 body=f"{drug_name} 드실 시간이에요!",
                 snooze_source=("medication_schedule", med_schedule.id),
+                alarm_time=current_hhmm,
             )
         except Exception:
             logger.exception("알림 발송 중 오류 (medication_schedule_id=%s)", med_schedule.id)

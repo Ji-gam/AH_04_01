@@ -7,6 +7,9 @@ import {
 import { familyNotificationApi } from "../../api/familyNotificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
 import AlarmCalendar from "../../pages/AlarmPage/components/AlarmCalendar";
+import AlarmForm, { type AlarmFormSubmit } from "../../pages/AlarmPage/components/AlarmForm";
+import MedTimeForm from "../../pages/AlarmPage/components/MedTimeForm";
+import Modal from "../../pages/AlarmPage/components/Modal";
 import ToggleSwitch from "../../pages/AlarmPage/components/ToggleSwitch";
 import { toDateString } from "../../pages/AlarmPage/dateUtils";
 import { pinkTheme as t } from "../../theme/pinkTheme";
@@ -43,8 +46,15 @@ export default function FamilyNotificationView({
   const [isSaving, setIsSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editTime, setEditTime] = useState("");
+  // [2026-07-21 변경] 인라인(칸 하나짜리) 수정 대신, 본인 몫 복약알림 화면과 같은 모달 폼
+  // (AlarmForm/MedTimeForm)을 그대로 재사용한다 - 두 컴포넌트 다 이 파일에서 고치지 않고
+  // 그대로 가져다 쓰기만 한다(이미 AlarmCalendar/ToggleSwitch를 이 방식으로 쓰고 있던 것과
+  // 같은 패턴).
+  const [editingAlarm, setEditingAlarm] = useState<NotificationScheduleResult | null>(null);
+  const [editingMedRow, setEditingMedRow] = useState<{
+    med: FamilyMedicationScheduleItem;
+    time: string;
+  } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -118,15 +128,48 @@ export default function FamilyNotificationView({
     }
   }
 
-  async function handleSaveEdit(row: RegisteredRow) {
+  // AlarmForm은 하루 여러 번(alarm_times 배열)까지 지원하지만, 여기서는 "기존 알림 하나를
+  // 고치는 것"이라 본인 몫 화면의 수정 모드와 동일하게 alarm_times[0]만 사용한다.
+  async function handleSaveAlarmEdit(data: AlarmFormSubmit) {
+    if (!editingAlarm) return;
+    setFormError(null);
+    setIsSaving(true);
     try {
-      if (row.alarm) {
-        await familyNotificationApi.update(row.alarm.id, { alarm_time: `${editTime}:00` });
-      }
-      setEditingKey(null);
+      await familyNotificationApi.update(editingAlarm.id, {
+        medication_name: data.medication_name,
+        frequency_type: data.frequency_type,
+        target_day_of_week: data.target_day_of_week,
+        alarm_time: data.alarm_times[0],
+      });
+      setEditingAlarm(null);
       await load();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "수정에 실패했습니다.");
+      setFormError(err instanceof Error ? err.message : "수정에 실패했습니다.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  // 이 med는 여러 시각 중 하나(editingMedRow.time)를 대표하는 행이다 - 그 시각만 새 시각으로
+  // 바꾸고 나머지 시각은 그대로 둔다 (본인 몫 AlarmForm.handleUpdateMedTime과 같은 패턴).
+  async function handleSaveMedEdit(newTime: string) {
+    if (!editingMedRow) return;
+    setFormError(null);
+    setIsSaving(true);
+    try {
+      const oldHHMM = editingMedRow.time;
+      const newTimes = [
+        ...new Set(
+          editingMedRow.med.times.map((tm) => (tm.slice(0, 5) === oldHHMM ? newTime : tm)),
+        ),
+      ].sort();
+      await familyMedicationApi.updateForFamily(editingMedRow.med.id, newTimes);
+      setEditingMedRow(null);
+      await load();
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "수정에 실패했습니다.");
+    } finally {
+      setIsSaving(false);
     }
   }
 
@@ -242,6 +285,33 @@ export default function FamilyNotificationView({
         </div>
       )}
 
+      {editingAlarm && (
+        <Modal onClose={() => setEditingAlarm(null)}>
+          <AlarmForm
+            key={editingAlarm.id}
+            initial={editingAlarm}
+            isSaving={isSaving}
+            errorMessage={formError ?? undefined}
+            onCancel={() => setEditingAlarm(null)}
+            onSubmit={handleSaveAlarmEdit}
+          />
+        </Modal>
+      )}
+
+      {editingMedRow && (
+        <Modal onClose={() => setEditingMedRow(null)}>
+          <MedTimeForm
+            key={`${editingMedRow.med.id}-${editingMedRow.time}`}
+            medName={editingMedRow.med.drug_name}
+            initialTime={editingMedRow.time}
+            isSaving={isSaving}
+            errorMessage={formError ?? undefined}
+            onCancel={() => setEditingMedRow(null)}
+            onSubmit={handleSaveMedEdit}
+          />
+        </Modal>
+      )}
+
       {loading && <p style={{ color: t.textMuted, fontSize: 13 }}>불러오는 중...</p>}
       {error && <p style={{ color: t.danger, fontSize: 13 }}>{error}</p>}
 
@@ -305,116 +375,87 @@ export default function FamilyNotificationView({
                         padding: "6px 0",
                       }}
                     >
-                      {editingKey === row.key ? (
-                        <div style={{ display: "flex", gap: 6, alignItems: "center", flex: 1 }}>
-                          <span style={{ fontSize: 14, color: t.text }}>{row.name}</span>
-                          <input
-                            type="time"
-                            value={editTime}
-                            onChange={(e) => setEditTime(e.target.value)}
-                            style={{
-                              padding: "4px 8px",
-                              border: `1px solid ${t.border}`,
-                              borderRadius: 6,
-                              fontSize: 13,
-                            }}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => handleSaveEdit(row)}
-                            style={{
-                              border: "none",
-                              borderRadius: 6,
-                              background: t.primary,
-                              color: "#fff",
-                              fontSize: 12,
-                              padding: "4px 10px",
-                              cursor: "pointer",
-                            }}
-                          >
-                            저장
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditingKey(null)}
-                            style={{
-                              border: `1px solid ${t.border}`,
-                              borderRadius: 6,
-                              background: t.cardBg,
-                              color: t.textMuted,
-                              fontSize: 12,
-                              padding: "4px 10px",
-                              cursor: "pointer",
-                            }}
-                          >
-                            취소
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <div>
-                            <p style={{ margin: 0, fontSize: 14, color: t.text }}>💊 {row.name}</p>
-                            <p style={{ margin: 0, fontSize: 12, color: t.textMuted }}>
-                              {row.subLabel}
-                            </p>
-                          </div>
-                          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                            {row.alarm && (
-                              <>
-                                <ToggleSwitch
-                                  checked={row.alarm.is_active}
-                                  onChange={() => handleToggle(row.alarm!)}
-                                  ariaLabel={`${row.name} 알림 ${row.alarm.is_active ? "끄기" : "켜기"}`}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingKey(row.key);
-                                    setEditTime(row.time);
-                                  }}
-                                  style={{
-                                    border: "none",
-                                    background: "none",
-                                    cursor: "pointer",
-                                    fontSize: 14,
-                                  }}
-                                  aria-label="시간 수정"
-                                >
-                                  ✏️
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(row.alarm!)}
-                                  style={{
-                                    border: "none",
-                                    background: "none",
-                                    color: t.textMuted,
-                                    fontSize: 12,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  삭제
-                                </button>
-                              </>
-                            )}
-                            {row.med && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteMed(row.med!)}
-                                style={{
-                                  border: "none",
-                                  background: "none",
-                                  color: t.textMuted,
-                                  fontSize: 12,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                삭제
-                              </button>
-                            )}
-                          </div>
-                        </>
-                      )}
+                      <div>
+                        <p style={{ margin: 0, fontSize: 14, color: t.text }}>💊 {row.name}</p>
+                        <p style={{ margin: 0, fontSize: 12, color: t.textMuted }}>
+                          {row.subLabel}
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        {row.alarm && (
+                          <>
+                            <ToggleSwitch
+                              checked={row.alarm.is_active}
+                              onChange={() => handleToggle(row.alarm!)}
+                              ariaLabel={`${row.name} 알림 ${row.alarm.is_active ? "끄기" : "켜기"}`}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormError(null);
+                                setEditingAlarm(row.alarm!);
+                              }}
+                              style={{
+                                border: "none",
+                                background: "none",
+                                cursor: "pointer",
+                                fontSize: 14,
+                              }}
+                              aria-label="알림 수정"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(row.alarm!)}
+                              style={{
+                                border: "none",
+                                background: "none",
+                                color: t.textMuted,
+                                cursor: "pointer",
+                                fontSize: 14,
+                              }}
+                              aria-label="알림 삭제"
+                            >
+                              🗑️
+                            </button>
+                          </>
+                        )}
+                        {row.med && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setFormError(null);
+                                setEditingMedRow({ med: row.med!, time: row.time });
+                              }}
+                              style={{
+                                border: "none",
+                                background: "none",
+                                cursor: "pointer",
+                                fontSize: 14,
+                              }}
+                              aria-label={`${row.name} 복용 시각 수정`}
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMed(row.med!)}
+                              style={{
+                                border: "none",
+                                background: "none",
+                                color: t.textMuted,
+                                cursor: "pointer",
+                                fontSize: 14,
+                              }}
+                              aria-label={`${row.name} 등록 삭제`}
+                            >
+                              🗑️
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

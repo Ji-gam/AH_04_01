@@ -58,7 +58,7 @@ async def send_chat_message(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="채팅 세션을 찾을 수 없습니다.")
 
     async def event_stream():
-        async for chunk in ChatService().stream_reply(session, profile.id, session_id, body.message):
+        async for chunk in ChatService().stream_reply(profile.id, session_id, body.message):
             yield json.dumps(chunk, ensure_ascii=False) + "\n"
 
     return StreamingResponse(event_stream(), media_type="text/plain")

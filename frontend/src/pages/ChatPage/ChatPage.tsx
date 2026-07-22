@@ -10,10 +10,16 @@ export default function ChatPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const autoSentRef = useRef(false);
-  // 최초 마운트 시점의 location.state만 본다(전송 직후 state를 지우므로 리렌더 때는 이미 없음) -
+  // 쿼리 파라미터(?autoMessage=...)는 알림의 액션 버튼(예: F-NTFY-5 "불편한 증상이
+  // 있어요")이 service-worker의 clients.openWindow(url)로 열 때 쓴다 - 탭이 완전히
+  // 닫혀있던 경우라 React Router의 location.state를 실어보낼 방법이 없기 때문이다.
+  // in-app navigate(location.state)와 나란히 지원한다.
+  const queryAutoMessageRef = useRef(new URLSearchParams(location.search).get("autoMessage"));
+  // 최초 마운트 시점의 location.state/쿼리만 본다(전송 직후 지우므로 리렌더 때는 이미 없음) -
   // 자동 전송이 예정돼 있으면 "마지막 상담 복원"을 건너뛰어야 질문이 화면에 바로 보인다.
   const hasAutoMessageRef = useRef(
-    Boolean((location.state as { autoMessage?: string } | null)?.autoMessage),
+    Boolean((location.state as { autoMessage?: string } | null)?.autoMessage) ||
+      Boolean(queryAutoMessageRef.current),
   );
 
   const {
@@ -47,7 +53,9 @@ export default function ChatPage() {
   }, [messages, isStreaming]);
 
   useEffect(() => {
-    const autoMessage = (location.state as { autoMessage?: string } | null)?.autoMessage;
+    const autoMessage =
+      (location.state as { autoMessage?: string } | null)?.autoMessage ??
+      queryAutoMessageRef.current;
     if (autoMessage && !autoSentRef.current) {
       autoSentRef.current = true;
       void sendMessage(autoMessage);

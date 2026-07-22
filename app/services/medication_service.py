@@ -45,6 +45,7 @@ from app.services.ai_worker_gateway import (
     AIWorkerUnavailableError,
 )
 from app.services.food_item_extraction import extract_food_items
+from app.services.side_effect_notification_service import SideEffectNotificationService
 
 logger = logging.getLogger("app.medication_service")
 
@@ -97,7 +98,13 @@ _INSTITUTION_SUFFIX_PATTERN = re.compile(r"약국|병원|의원|한의원")
 # 실약품명("아스피린정")과 우연히 비슷해(1글자 차이) 임계값을 넘겨버릴 수 있다. 조사는 한국어에서
 # 띄어쓰기 없이 명사 바로 뒤에 붙으므로, 이런 조사로 끝나는 토큰은 완결된 약품명일 수 없다고 보고
 # 퍼지 매칭 대상에서 제외한다.
-_TRAILING_PARTICLE_PATTERN = re.compile(r"(?:에서|부터|까지|으로|처럼|이나|은|는|이|가|을|를|도|만|와|과|의|에|로|나)$")
+#
+# (#OCR-LLM-2) "전액본인부담금이란"처럼 영수증/문서에 박힌 설명 문구("~이란")도 "*" 불릿과 함께
+# OCR 오인식되면 마찬가지로 문장이 완결되지 않은 것으로 보고 제외한다 — "란"으로 끝나는 실제
+# 약품명은 없다고 봐도 안전하다.
+_TRAILING_PARTICLE_PATTERN = re.compile(
+    r"(?:에서|부터|까지|으로|처럼|이나|은|는|이|가|을|를|도|만|와|과|의|에|로|나|란)$"
+)
 
 # (#106) CLOVA OCR이 "패취"를 "매취"로 읽는 것처럼 글자 하나를 비슷한 글자로 잘못 읽으면,
 # 접미사/용량 패턴이 아예 안 맞아 _looks_like_drug_name을 통과하지 못한다. 이런 텍스트를
@@ -464,6 +471,11 @@ def _looks_like_drug_name(word: str) -> bool:
     # 화면에 성분명이 그대로 노출된다.
     if _is_ingredient_salt_name(stripped):
         return False
+    # (#OCR-LLM-2) "*전액본인부담금이란"처럼 영수증/문서 설명 문구가 "*" 불릿과 함께 오인식되면,
+    # 제형 접미사가 없어도 "*" 조건 하나만으로 통과해버려 매번 새 AUTO_ 더미로 재등록됐다. 조사/
+    # 설명형 어미로 끝나는(완결되지 않은 문장 조각인) 텍스트는 "*"가 붙어 있어도 약품명일 수 없다.
+    if _TRAILING_PARTICLE_PATTERN.search(stripped):
+        return False
     return word.strip().startswith("*") or bool(_DRUG_FORM_SUFFIX_PATTERN.search(stripped))
 
 
@@ -476,6 +488,21 @@ def _dedupe_drug_names(names: set[str]) -> list[str]:
         if not any(name != k and name in k for k in kept):
             kept.append(name)
     return kept
+
+
+def _find_master_item_seq(tier1_results: list[tuple[str, str]], name: str) -> str | None:
+    """(#OCR-MASTER-MATCH) 마스터 DB(`dur_prod_master_list`)의 `item_name`은 공공데이터포털
+    원본 그대로라 "한미오메가연질캡슐(오메가-3산에틸에스테르90)"처럼 브랜드명 뒤에 성분/함량이
+    괄호로 붙는 경우가 흔한데, OCR은 보통 괄호 밖 브랜드명까지만 인식한다. 문자열 완전일치만
+    요구하면 실제로 마스터에 있는 약도 매번 이 조건에서 탈락해 Tier3 실시간 공공 API 호출로
+    새는데(등록이 느려지고, 그때그때 별도 item_seq가 새로 발급돼 같은 약이 매번 다른 코드로
+    등록된다), 완전일치 다음으로 "마스터 이름이 OCR명 뒤에 곧장 '('로 이어지는" 후보가 하나뿐일
+    때만 채택해 이 탈락을 구제한다 - 후보가 여럿이면(어느 쪽인지 모호하면) Tier3로 넘긴다."""
+    exact = [seq for seq, iname in tier1_results if iname == name]
+    if exact:
+        return exact[0]
+    prefix_matches = [seq for seq, iname in tier1_results if iname[len(name) :][:1] == "(" and iname.startswith(name)]
+    return prefix_matches[0] if len(prefix_matches) == 1 else None
 
 
 async def _resolve_unmatched_name(db_session: AsyncSession, name: str) -> tuple[str, bool]:
@@ -511,7 +538,7 @@ async def _resolve_manual_registration_medication(db_session: AsyncSession, name
     순으로 확인한다. 반환값: (매칭/생성된 약, AUTO_ 더미 생성 여부)."""
     dur_repo = DurDrugRepository()
     tier1_results = await dur_repo.search_item_names(db_session, name, 5)
-    tier1_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
+    tier1_item_seq = _find_master_item_seq(tier1_results, name)
     if tier1_item_seq:
         return MatchedDrug(item_seq=tier1_item_seq, item_name=name), False
 
@@ -539,7 +566,7 @@ async def _resolve_or_create_drug_like_names(
     for name in _dedupe_drug_names(set(name_confidence)):
         confidence = name_confidence[name]
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
-        exact_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
+        exact_item_seq = _find_master_item_seq(tier1_results, name)
         if exact_item_seq:
             confidences[exact_item_seq] = max(confidences.get(exact_item_seq, 0.0), confidence)
             if exact_item_seq not in seen_ids:
@@ -649,6 +676,32 @@ async def _llm_extract_drug_names(ocr_raw_text: str) -> list[str]:
     return [name.strip() for name in cast(_LlmDrugNameCandidates, result).drug_names if name.strip()]
 
 
+def _is_plausible_llm_drug_name(name: str) -> bool:
+    """(#OCR-LLM) LLM 제안 경로는 정규식 경로(`_looks_like_drug_name`)를 거치지 않으므로,
+    프롬프트가 제외를 지시한 환자 정보/영수증 문구/숫자 코드(예: "전액본인부담금이란",
+    "201501025")가 그대로 섞여 들어와도 막을 방법이 없었다. 실제 약품명이라면 제형 접미사
+    (정/캡슐/...) 또는 용량 표기(mg/g/ml) 중 최소 하나는 있어야 하므로, 정규식 경로와 동일한
+    최소 형태 조건으로 걸러낸다.
+
+    (#OCR-LLM-3) "클로르페니라민말레산염2mg"처럼 제형 접미사 없이 성분명+용량만 있는 줄도
+    용량 표기 조건만으로는 걸러지지 않아, 처방전에 나란히 적힌 브랜드명 카드 아래 성분명
+    설명 줄까지 별도 약으로 노출됐다(#128에서 정규식/퍼지 경로는 이미 막은 것과 같은 문제) -
+    `_is_ingredient_salt_name`/`_is_bare_dosage_line`로 정규식 경로와 동일하게 제외한다."""
+    if not _KOREAN_TOKEN_PATTERN.search(name):
+        return False
+    if _is_annotation_line(name):
+        return False
+    if _INSTITUTION_SUFFIX_PATTERN.search(name):
+        return False
+    if _is_label_slash_without_digit(name):
+        return False
+    if _is_ingredient_salt_name(name):
+        return False
+    if _is_bare_dosage_line(name):
+        return False
+    return bool(_DRUG_FORM_SUFFIX_PATTERN.search(name) or _DOSAGE_PATTERN.search(name))
+
+
 async def _resolve_llm_suggested_names(
     db_session: AsyncSession,
     dur_repo: DurDrugRepository,
@@ -668,11 +721,13 @@ async def _resolve_llm_suggested_names(
     auto_created_ids: set[str] = set()
 
     for name in _dedupe_drug_names(set(names)):
+        if not _is_plausible_llm_drug_name(name):
+            continue
         if name in seen_names:
             continue
 
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
-        exact_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
+        exact_item_seq = _find_master_item_seq(tier1_results, name)
         if exact_item_seq:
             if exact_item_seq not in seen_ids:
                 seen_ids.add(exact_item_seq)
@@ -1087,10 +1142,12 @@ class MedicationService:
         self,
         repository: MedicationRepository | None = None,
         dur_drug_repository: DurDrugRepository | None = None,
+        side_effect_notification_service: SideEffectNotificationService | None = None,
     ) -> None:
         self._repository = repository or MedicationRepository()
         self._dur_drug_repository = dur_drug_repository or DurDrugRepository()
         self._family_repository = FamilyRepository()  # (가족관리) 대상자 권한검증용
+        self._side_effect_notification_service = side_effect_notification_service or SideEffectNotificationService()
 
     async def create_recognition_job(
         self,
@@ -1160,7 +1217,13 @@ class MedicationService:
 
             candidate = next((c for c in (job.candidates or []) if c["drug_code"] == item_seq), None)
             drug_name = candidate["drug_name"] if candidate else item_seq
-            display_name = drug_name if item_seq.startswith("AUTO_") else None
+            # (#OCR-DISPLAY-NAME) `item_seq.startswith("AUTO_")`만으로 "마스터 DB에 있다"고
+            # 가정하면 안 된다 - Tier3 공공 API로 해석된 item_seq(AUTO_ 아님)도 로컬
+            # `dur_prod_master_list`엔 없을 수 있어(커버리지 차이), `list_schedules`의
+            # `names.get(item_seq, item_seq)` 폴백이 숫자 코드 그대로("201501025") 노출됐다.
+            # 실제 마스터 존재 여부를 확인해 display_name을 채운다.
+            master_names = await self._dur_drug_repository.get_names_by_item_seqs(session, {item_seq})
+            display_name = None if item_seq in master_names else drug_name
 
             # 9~10번: 시간대가 적혀있다면 추출된 시간 사용, 없으면 기본 슬롯 추천
             times = ["09:00", "13:00", "19:00"]
@@ -1180,6 +1243,7 @@ class MedicationService:
                 source_job_id=job_id,
             )
             await self._repository.create_schedule(session, schedule)
+            await self._side_effect_notification_service.notify_if_side_effects(session, profile_id, drug_name)
 
         # 13번: 음식(T-DOC-2) — 등록된 약의 e약은요 상호작용 문항에서 음식/음주 주의사항을 안내한다.
         guide_cards = []
@@ -1257,6 +1321,7 @@ class MedicationService:
             profile_id=owner_profile_id, item_seq=item_seq, times=req.times, hospital_name=req.hospital_name
         )
         await self._repository.create_schedule(session, schedule)
+        await self._side_effect_notification_service.notify_if_side_effects(session, owner_profile_id, drug_name)
 
         return MedicationScheduleResponse(
             id=schedule.id,
@@ -1302,7 +1367,11 @@ class MedicationService:
             matched_drug, auto_created = await _resolve_manual_registration_medication(session, stripped_name)
             item_seq, item_name = matched_drug.item_seq, matched_drug.item_name
 
-        display_name = item_name if item_seq.startswith("AUTO_") else None
+        # (#OCR-DISPLAY-NAME) `_resolve_manual_registration_medication`이 Tier3 공공 API로
+        # 해석한 item_seq도 AUTO_ 접두사는 없지만 로컬 `dur_prod_master_list`엔 없을 수 있다 -
+        # 실제 마스터 존재 여부로 판단해야 조회 시 숫자 코드가 이름 대신 노출되지 않는다.
+        master_names = await self._dur_drug_repository.get_names_by_item_seqs(session, {item_seq})
+        display_name = None if item_seq in master_names else item_name
         schedule = MedicationSchedule(
             profile_id=profile_id,
             item_seq=item_seq,
@@ -1311,6 +1380,7 @@ class MedicationService:
             hospital_name=hospital_name,
         )
         schedule = await self._repository.create_schedule(session, schedule)
+        await self._side_effect_notification_service.notify_if_side_effects(session, profile_id, item_name)
 
         return QuickRegisterResult(
             status="registered",
@@ -1445,6 +1515,7 @@ class MedicationService:
                 source_job_id=job_id,
             )
             await self._repository.create_schedule(session, schedule)
+            await self._side_effect_notification_service.notify_if_side_effects(session, target_profile_id, drug_name)
 
         guide_cards = []
         if drug_name:
@@ -1485,6 +1556,39 @@ class MedicationService:
         if not is_guardian:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
         return await self.check_food_interactions_pending(session, target_profile_id)
+
+    async def update_schedule_for_family(
+        self, session: AsyncSession, requester_profile_id: int, schedule_id: int, req: MedicationScheduleUpdateRequest
+    ) -> MedicationScheduleResponse:
+        """(가족관리) 보호자가 가족 구성원 몫 복약 스케줄을 수정한다 - update_schedule(본인용)과
+        delete_schedule_for_family(가족용 삭제)를 그대로 합친 패턴이다. 본인용은
+        `schedule.profile_id != profile_id`로 소유자만 확인하지만, 여기서는 소유자 자신이
+        아니라 "요청자가 그 소유자의 보호자인지"를 확인한다."""
+        schedule = await self._repository.get_schedule_by_id(session, schedule_id)
+        if not schedule:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 복약 스케줄을 찾을 수 없습니다.")
+        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, schedule.profile_id)
+        if not is_guardian:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="해당 복약 스케줄을 수정할 권한이 없습니다."
+            )
+
+        if req.times is not None:
+            schedule.times = req.times
+        if req.hospital_name is not None:
+            schedule.hospital_name = req.hospital_name
+        await session.commit()
+        await session.refresh(schedule)
+
+        names = await self._dur_drug_repository.get_names_by_item_seqs(session, {schedule.item_seq})
+        return MedicationScheduleResponse(
+            id=schedule.id,
+            item_seq=schedule.item_seq,
+            drug_name=schedule.display_name or names.get(schedule.item_seq, schedule.item_seq),
+            times=schedule.times,
+            source_job_id=schedule.source_job_id,
+            hospital_name=schedule.hospital_name,
+        )
 
     async def delete_schedule_for_family(
         self, session: AsyncSession, requester_profile_id: int, schedule_id: int
