@@ -5,11 +5,16 @@ import { apiFetch, apiFetchRaw, getAccessToken, tryRefreshAccessToken } from "./
 // 분리했다 - 아래 함수들은 useMedication.ts의 동명 함수와 로직이 겹치는 부분이 있는데
 // 의도적인 중복이다. 백엔드도 confirm-for-family는 별도 엔드포인트로 분리해뒀다.
 
+// [2026-07-21 버그 수정] MedicationSearchResult가 예전엔 standard_code/id/form_type을
+// 갖고 있었는데, 백엔드가 T-MED-16 리팩터링(item_seq 직접 참조 방식)을 거치면서
+// GET /medications/search가 실제로는 { item_seq, medication_name } 두 필드만 응답하게
+// 바뀌었다 - 프론트는 이 변경을 놓쳐서 selectedDrug.standard_code가 항상 undefined였고,
+// JSON.stringify가 undefined 필드를 통째로 빼먹어 서버가 "drug_code: Field required"
+// 422를 냈다(검색 등록만 깨지고, 사진 인식 등록은 RecognitionCandidate.drug_code라는
+// 별개의, 이미 올바른 필드를 쓰고 있어서 안 깨졌던 것). 실제 응답 모양 그대로 맞춘다.
 export interface MedicationSearchResult {
-  id: number;
-  standard_code: string;
+  item_seq: string;
   medication_name: string;
-  form_type: string | null;
 }
 
 export interface RecognitionCandidate {
@@ -148,4 +153,13 @@ export const familyMedicationApi = {
   deleteForFamily: async (scheduleId: number) => {
     await apiFetchRaw(`/medications/${scheduleId}/for-family`, { method: "DELETE" });
   },
+
+  // [2026-07-21 추가] 트래커 등록약(MedicationSchedule)의 가족 몫 수정 - 직접등록 알림
+  // (NotificationSchedule)의 familyNotificationApi.update는 이미 있었는데, 트래커 등록약
+  // 쪽은 삭제만 있고 수정이 빠져있었다.
+  updateForFamily: (scheduleId: number, times: string[]) =>
+    apiFetch<FamilyMedicationScheduleItem>(`/medications/${scheduleId}/for-family`, {
+      method: "PATCH",
+      body: JSON.stringify({ times }),
+    }),
 };

@@ -9,6 +9,9 @@ import {
 } from "../../api/familyMedicationApi";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 
+import FamilyOcrProgressBar from "./FamilyOcrProgressBar";
+import FamilyTimeSlotRow from "./FamilyTimeSlotRow";
+
 const inputStyle: React.CSSProperties = {
   padding: "10px 12px",
   border: `1px solid ${t.border}`,
@@ -28,9 +31,17 @@ const primaryButtonStyle: React.CSSProperties = {
 
 type Tab = "register" | "list" | "interactions" | "food";
 
-// 기본 시간대 매핑 - "1일 N회"는 있는데 정확한 시각(아침/점심/저녁 중 어디인지)까지는
-// OCR로 못 잡는 경우가 많아, 흔한 국내 처방 관행(아침/점심/저녁/자기전) 순으로 채운다.
-// 사용자가 +/-로 언제든 수동 조정 가능하니, 여기서는 "횟수"만 정확히 맞추는 게 목표다.
+/** 하루 복용 횟수 선택지 - 본인 몫 복약알림(AlarmForm)과 같은 임상 표기 규칙을 따른다.
+ * OCR로 인식된 횟수를 기본값으로 쓰되(deriveTimeSlots), 인식이 잘 안 됐을 때 사용자가
+ * 수동으로 바꿀 수 있게 버튼으로 노출한다(2026-07-21, "+ 시간 추가" 방식은 인식이 잘못됐을
+ * 때 몇 번을 눌러야 할지 감이 안 온다는 피드백으로 교체). */
+const DOSE_COUNT_OPTIONS = [
+  { count: 1, label: "1회 (qd)" },
+  { count: 2, label: "2회 (bid)" },
+  { count: 3, label: "3회 (tid)" },
+  { count: 4, label: "4회 (qid)" },
+] as const;
+
 const DEFAULT_TIMES_BY_COUNT: Record<number, string[]> = {
   1: ["08:00"],
   2: ["08:00", "19:00"],
@@ -38,11 +49,6 @@ const DEFAULT_TIMES_BY_COUNT: Record<number, string[]> = {
   4: ["08:00", "13:00", "19:00", "22:00"],
 };
 
-/** OCR 원문에 실제 "08:00" 같은 시:분 숫자가 박혀있는 처방전은 드물고, 대부분
- * "1일 2회"/"1일 3회" 식으로 횟수만 적혀있다(약봉투/조제명세서 관행). 백엔드
- * `_parse_dosage_fields`는 시:분 패턴만 찾으므로(공용 로직이라 여기서는 안 건드림),
- * 프론트에서 OCR 원문을 한 번 더 보고 "N회" 패턴을 찾아 슬롯 개수를 정한다.
- * "N회"도 못 찾으면 안전하게 1칸(사용자가 +로 늘리면 됨)으로 시작한다. */
 function deriveTimeSlots(
   extractedFields: { times?: string[]; ocr_raw_text?: string } | null | undefined,
 ): string[] {
@@ -111,20 +117,16 @@ export default function FamilyTrackerView({
 function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
   const [subTab, setSubTab] = useState<"search" | "photo">("search");
 
-  // 검색 탭 (단일 선택 - 검색은 보통 약 하나를 찾는 용도라 그대로 유지)
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MedicationSearchResult[]>([]);
   const [selectedDrug, setSelectedDrug] = useState<MedicationSearchResult | null>(null);
-  const [searchTimesInput, setSearchTimesInput] = useState("08:00");
+  // [2026-07-21] 쉼표구분 텍스트 입력 → 사진탭과 같은 오전/오후+복용횟수 스타일로 통일.
+  // 검색 등록은 OCR 인식이 없어 기본값은 그냥 1회로 시작한다.
+  const [searchTimeSlots, setSearchTimeSlots] = useState<string[]>(["08:00"]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
-  // 사진 탭 - 처방전 한 장에서 여러 약이 인식될 수 있으므로 다중 선택(체크박스, 기본 전체
-  // 선택)으로 하고, 복용 시간은 "하루 N회" 감지된 슬롯 개수만큼 칸을 만들어서 입력받는다.
-  // 약마다 실제 복용 횟수가 다를 수 있지만, 결국 봉지 단위로 같이 복용하는 경우가 많아
-  // OCR에서 감지된 최대 슬롯 수 하나를 모든 선택 약품에 공통 적용한다(원본 수동등록 화면의
-  // "여러 약 체크박스 + 공용 시간대" 방식과 같은 설계, 시간 입력만 슬롯형으로 바꿈).
   const [file, setFile] = useState<File | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<"uploading" | "processing" | "done" | "failed" | null>(
@@ -143,14 +145,15 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
           clearInterval(timer);
           setJobStatus(status.status);
           if (status.status === "done") {
+            // RecognitionCandidate.drug_code는 (T-MED-16 기준) 이미 item_seq 값을 담고
+            // 있어서 그대로 옮겨 쓰면 된다 - 검색 결과(MedicationSearchResult)와 달리 이
+            // 경로는 원래부터 필드명 버그가 없었다.
             const found = status.candidates.map((c) => ({
-              id: 0,
-              standard_code: c.drug_code,
+              item_seq: c.drug_code,
               medication_name: c.drug_name,
-              form_type: null,
             }));
             setCandidates(found);
-            setSelectedCodes(new Set(found.map((c) => c.standard_code))); // 기본 전체 선택
+            setSelectedCodes(new Set(found.map((c) => c.item_seq)));
 
             setTimeSlots(deriveTimeSlots(status.extracted_fields));
           }
@@ -181,14 +184,10 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
     setMessage(null);
     setIsBusy(true);
     try {
-      const times = searchTimesInput
-        .split(",")
-        .map((tm) => tm.trim())
-        .filter(Boolean);
       await familyMedicationApi.registerForFamily(
         targetProfileId,
-        selectedDrug.standard_code,
-        times,
+        selectedDrug.item_seq,
+        searchTimeSlots,
       );
       setMessage(`${selectedDrug.medication_name} 등록 완료`);
       setSelectedDrug(null);
@@ -228,12 +227,22 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
     setTimeSlots((prev) => prev.map((s, i) => (i === index ? value : s)));
   }
 
-  function addSlot() {
-    setTimeSlots((prev) => [...prev, "08:00"]);
+  // 이미 입력/인식된 시각은 유지하고, 늘어나거나 줄어든 칸만 기본 시각으로 채우거나 잘라낸다
+  // (AlarmForm의 handleDoseCountChange와 같은 패턴).
+  function handleDoseCountChange(count: number) {
+    setTimeSlots((prev) =>
+      Array.from({ length: count }, (_, i) => prev[i] ?? DEFAULT_TIMES_BY_COUNT[count][i]),
+    );
   }
 
-  function removeSlot(index: number) {
-    setTimeSlots((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+  function updateSearchSlot(index: number, value: string) {
+    setSearchTimeSlots((prev) => prev.map((s, i) => (i === index ? value : s)));
+  }
+
+  function handleSearchDoseCountChange(count: number) {
+    setSearchTimeSlots((prev) =>
+      Array.from({ length: count }, (_, i) => prev[i] ?? DEFAULT_TIMES_BY_COUNT[count][i]),
+    );
   }
 
   async function handleRegisterSelectedFromPhoto() {
@@ -241,7 +250,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
     setError(null);
     setMessage(null);
     setIsBusy(true);
-    const toRegister = candidates.filter((c) => selectedCodes.has(c.standard_code));
+    const toRegister = candidates.filter((c) => selectedCodes.has(c.item_seq));
     try {
       // (#195) 본인 몫 등록(MedicationPage.handleConfirmSubmit)과 같은 이유로, 약품 개수만큼
       // confirm 요청을 순차 대기하지 않고 병렬로 보낸다.
@@ -250,7 +259,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
           familyMedicationApi.confirmForFamily(
             jobId,
             targetProfileId,
-            candidate.standard_code,
+            candidate.item_seq,
             timeSlots,
           ),
         ),
@@ -330,16 +339,15 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {results.map((r) => (
                 <button
-                  key={r.standard_code}
+                  key={r.item_seq}
                   type="button"
                   onClick={() => setSelectedDrug(r)}
                   style={{
                     padding: "6px 10px",
                     borderRadius: 999,
-                    border: `1.5px solid ${selectedDrug?.standard_code === r.standard_code ? t.primary : t.border}`,
-                    background:
-                      selectedDrug?.standard_code === r.standard_code ? t.primary : t.cardBg,
-                    color: selectedDrug?.standard_code === r.standard_code ? "#fff" : t.text,
+                    border: `1.5px solid ${selectedDrug?.item_seq === r.item_seq ? t.primary : t.border}`,
+                    background: selectedDrug?.item_seq === r.item_seq ? t.primary : t.cardBg,
+                    color: selectedDrug?.item_seq === r.item_seq ? "#fff" : t.text,
                     fontSize: 12,
                     cursor: "pointer",
                   }}
@@ -351,13 +359,36 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
           )}
           {selectedDrug && (
             <>
-              <input
-                type="text"
-                value={searchTimesInput}
-                onChange={(e) => setSearchTimesInput(e.target.value)}
-                placeholder="복용시간, 쉼표로 구분 (예: 08:00,19:00)"
-                style={inputStyle}
-              />
+              <p style={{ margin: "4px 0 0", fontSize: 12, color: t.textMuted }}>하루 복용 횟수:</p>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {DOSE_COUNT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.count}
+                    type="button"
+                    onClick={() => handleSearchDoseCountChange(opt.count)}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 999,
+                      border: `1px solid ${t.border}`,
+                      background: searchTimeSlots.length === opt.count ? t.primary : "white",
+                      color: searchTimeSlots.length === opt.count ? "white" : t.text,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {searchTimeSlots.map((slot, idx) => (
+                  <FamilyTimeSlotRow
+                    key={idx}
+                    value={slot}
+                    onChange={(v) => updateSearchSlot(idx, v)}
+                  />
+                ))}
+              </div>
               <button
                 type="button"
                 onClick={handleRegisterFromSearch}
@@ -388,6 +419,12 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
               : "업로드 및 인식"}
           </button>
 
+          {(jobStatus === "uploading" || jobStatus === "processing") && (
+            <div style={{ padding: "12px 4px 4px" }}>
+              <FamilyOcrProgressBar status={jobStatus} />
+            </div>
+          )}
+
           {jobStatus === "done" && candidates.length > 0 && (
             <>
               <p style={{ margin: "4px 0 0", fontSize: 12, color: t.textMuted }}>
@@ -396,7 +433,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {candidates.map((c) => (
                   <label
-                    key={c.standard_code}
+                    key={c.item_seq}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -411,8 +448,8 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
                   >
                     <input
                       type="checkbox"
-                      checked={selectedCodes.has(c.standard_code)}
-                      onChange={() => toggleCandidate(c.standard_code)}
+                      checked={selectedCodes.has(c.item_seq)}
+                      onChange={() => toggleCandidate(c.item_seq)}
                     />
                     💊 {c.medication_name}
                   </label>
@@ -420,50 +457,33 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
               </div>
 
               <p style={{ margin: "8px 0 0", fontSize: 12, color: t.textMuted }}>
-                복용 시간대 설정 (하루 {timeSlots.length}회 - 처방전에서 인식된 횟수 기준, 필요하면
-                +/-로 조정):
+                하루 복용 횟수 (처방전에서 인식된 횟수가 기본값으로 선택돼요 - 인식이 잘못됐으면
+                직접 눌러서 바꿔주세요):
               </p>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {DOSE_COUNT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.count}
+                    type="button"
+                    onClick={() => handleDoseCountChange(opt.count)}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 999,
+                      border: `1px solid ${t.border}`,
+                      background: timeSlots.length === opt.count ? t.primary : "white",
+                      color: timeSlots.length === opt.count ? "white" : t.text,
+                      fontSize: 12,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {timeSlots.map((slot, idx) => (
-                  <div key={idx} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    <input
-                      type="time"
-                      value={slot}
-                      onChange={(e) => updateSlot(idx, e.target.value)}
-                      style={{ ...inputStyle, flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeSlot(idx)}
-                      disabled={timeSlots.length <= 1}
-                      style={{
-                        border: `1px solid ${t.border}`,
-                        borderRadius: 8,
-                        background: t.cardBg,
-                        color: t.textMuted,
-                        padding: "8px 12px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      −
-                    </button>
-                  </div>
+                  <FamilyTimeSlotRow key={idx} value={slot} onChange={(v) => updateSlot(idx, v)} />
                 ))}
-                <button
-                  type="button"
-                  onClick={addSlot}
-                  style={{
-                    border: `1px dashed ${t.border}`,
-                    borderRadius: 8,
-                    background: "none",
-                    color: t.textMuted,
-                    padding: "8px",
-                    cursor: "pointer",
-                    fontSize: 12,
-                  }}
-                >
-                  + 시간 추가
-                </button>
               </div>
 
               <button
