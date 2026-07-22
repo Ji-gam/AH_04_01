@@ -912,10 +912,7 @@ export default function MedicationPage() {
                 </h4>
                 {(jobStatus === "pending" || jobStatus === "processing") && (
                   <div style={{ marginTop: 8 }}>
-                    <OcrProgressBar
-                      status={jobStatus}
-                      label="단계: 약 정보 추출 중 → 복약 시간표 생성 중..."
-                    />
+                    <OcrProgressBar status={jobStatus} />
                   </div>
                 )}
               </div>

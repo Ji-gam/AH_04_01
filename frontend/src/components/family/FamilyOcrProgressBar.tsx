@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
 import { pinkTheme } from "../../theme/pinkTheme";
+import { useOcrStage } from "../ui/ocrStages";
 
 export type FamilyOcrJobStatus = "pending" | "uploading" | "processing" | "done" | "failed";
 
 interface FamilyOcrProgressBarProps {
   status: FamilyOcrJobStatus | null;
+  /** 지정하면 자동 단계 문구 대신 이 텍스트를 고정으로 보여준다. */
   label?: string;
 }
 
@@ -18,6 +20,7 @@ export default function FamilyOcrProgressBar({ status, label }: FamilyOcrProgres
   const [percent, setPercent] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isActive = status === "pending" || status === "uploading" || status === "processing";
+  const stage = useOcrStage(isActive);
 
   useEffect(() => {
     if (isActive) {
@@ -40,6 +43,9 @@ export default function FamilyOcrProgressBar({ status, label }: FamilyOcrProgres
   if (!status) return null;
 
   const barColor = status === "failed" ? pinkTheme.danger : pinkTheme.primary;
+  const displayLabel =
+    label ?? (isActive ? stage.label : status === "done" ? "분석 완료!" : "분석에 실패했습니다");
+  const displayIcon = isActive ? stage.icon : status === "done" ? "✅" : "⚠️";
 
   return (
     <div style={{ width: "100%" }}>
@@ -56,9 +62,14 @@ export default function FamilyOcrProgressBar({ status, label }: FamilyOcrProgres
           fontWeight: 600,
           color: pinkTheme.text,
           textAlign: "center",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
         }}
       >
-        {label ?? "인식중입니다 기달려주세요~"}
+        <span aria-hidden>{displayIcon}</span>
+        {displayLabel}
       </p>
       <div style={{ position: "relative", width: "100%", height: 10, marginTop: 16 }}>
         <div

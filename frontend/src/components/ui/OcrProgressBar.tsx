@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from "react";
 
 import { pinkTheme } from "../../theme/pinkTheme";
 
+import { useOcrStage } from "./ocrStages";
+
 export type OcrJobStatus = "pending" | "uploading" | "processing" | "done" | "failed";
 
 interface OcrProgressBarProps {
   status: OcrJobStatus | null;
+  /** 지정하면 자동 단계 문구 대신 이 텍스트를 고정으로 보여준다. */
   label?: string;
 }
 
@@ -18,6 +21,7 @@ export default function OcrProgressBar({ status, label }: OcrProgressBarProps) {
   const rafRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isActive = status === "pending" || status === "uploading" || status === "processing";
+  const stage = useOcrStage(isActive);
 
   useEffect(() => {
     if (isActive) {
@@ -40,30 +44,76 @@ export default function OcrProgressBar({ status, label }: OcrProgressBarProps) {
   if (!status) return null;
 
   const barColor = status === "failed" ? pinkTheme.danger : pinkTheme.primary;
+  const displayLabel =
+    label ?? (isActive ? stage.label : status === "done" ? "분석 완료!" : "분석에 실패했습니다");
+  const displayIcon = isActive ? stage.icon : status === "done" ? "✅" : "⚠️";
 
   return (
     <div style={{ width: "100%" }}>
-      {label && (
-        <p style={{ margin: "0 0 6px", fontSize: 12, color: pinkTheme.textMuted }}>{label}</p>
-      )}
-      <div
+      <style>{`
+        @keyframes ocr-progress-icon-bounce {
+          0%, 100% { transform: translateY(0) rotate(-8deg); }
+          50% { transform: translateY(-4px) rotate(8deg); }
+        }
+      `}</style>
+      <p
         style={{
-          width: "100%",
-          height: 8,
-          borderRadius: 999,
-          background: pinkTheme.primarySoft,
-          overflow: "hidden",
+          margin: "0 0 12px",
+          fontSize: 13,
+          fontWeight: 600,
+          color: pinkTheme.text,
+          textAlign: "center",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
         }}
       >
+        <span aria-hidden>{displayIcon}</span>
+        {displayLabel}
+      </p>
+      <div style={{ position: "relative", width: "100%", height: 10, marginTop: 16 }}>
         <div
           style={{
-            width: `${percent}%`,
+            width: "100%",
             height: "100%",
             borderRadius: 999,
-            background: barColor,
-            transition: "width 0.2s ease-out, background-color 0.2s ease-out",
+            background: pinkTheme.primarySoft,
+            overflow: "hidden",
           }}
-        />
+        >
+          <div
+            style={{
+              width: `${percent}%`,
+              height: "100%",
+              borderRadius: 999,
+              background: barColor,
+              transition: "width 0.2s ease-out, background-color 0.2s ease-out",
+            }}
+          />
+        </div>
+        {/* 진행률(percent)을 따라 가로로 이동(transition)하는 현재 단계 아이콘. 이동 중 위아래로
+            통통 튀는 연출은 별도 keyframe 애니메이션으로 분리해서 transform 속성이 안 겹치게 했다. */}
+        <div
+          style={{
+            position: "absolute",
+            left: `${percent}%`,
+            top: -14,
+            transform: "translateX(-50%)",
+            transition: "left 0.2s ease-out",
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              display: "inline-block",
+              fontSize: 20,
+              animation: isActive ? "ocr-progress-icon-bounce 0.6s ease-in-out infinite" : "none",
+            }}
+          >
+            {displayIcon}
+          </span>
+        </div>
       </div>
     </div>
   );
