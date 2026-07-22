@@ -637,6 +637,23 @@ async def _llm_extract_drug_names(ocr_raw_text: str) -> list[str]:
     return [name.strip() for name in cast(_LlmDrugNameCandidates, result).drug_names if name.strip()]
 
 
+def _is_plausible_llm_drug_name(name: str) -> bool:
+    """(#OCR-LLM) LLM 제안 경로는 정규식 경로(`_looks_like_drug_name`)를 거치지 않으므로,
+    프롬프트가 제외를 지시한 환자 정보/영수증 문구/숫자 코드(예: "전액본인부담금이란",
+    "201501025")가 그대로 섞여 들어와도 막을 방법이 없었다. 실제 약품명이라면 제형 접미사
+    (정/캡슐/...) 또는 용량 표기(mg/g/ml) 중 최소 하나는 있어야 하므로, 정규식 경로와 동일한
+    최소 형태 조건으로 걸러낸다."""
+    if not _KOREAN_TOKEN_PATTERN.search(name):
+        return False
+    if _is_annotation_line(name):
+        return False
+    if _INSTITUTION_SUFFIX_PATTERN.search(name):
+        return False
+    if _is_label_slash_without_digit(name):
+        return False
+    return bool(_DRUG_FORM_SUFFIX_PATTERN.search(name) or _DOSAGE_PATTERN.search(name))
+
+
 async def _resolve_llm_suggested_names(
     db_session: AsyncSession,
     dur_repo: DurDrugRepository,
@@ -656,6 +673,8 @@ async def _resolve_llm_suggested_names(
     auto_created_ids: set[str] = set()
 
     for name in _dedupe_drug_names(set(names)):
+        if not _is_plausible_llm_drug_name(name):
+            continue
         if name in seen_names:
             continue
 
