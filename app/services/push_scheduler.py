@@ -9,6 +9,7 @@ from app.core.db.databases import AsyncSessionLocal
 from app.models.medication_model import MedicationSchedule
 from app.models.notification_schedules import DayOfWeek, FrequencyType, NotificationSchedule
 from app.repositories.dur_drug_repository import DurDrugRepository
+from app.repositories.push_send_log_repository import PushSendLogRepository
 from app.services.push_service import PushService
 
 logger = logging.getLogger("app.push_scheduler")
@@ -40,6 +41,8 @@ async def _check_and_send_due_notifications() -> None:
 
     async with AsyncSessionLocal() as session:
         push_service = PushService()
+        send_log_repo = PushSendLogRepository()
+        today = now.date()
 
         # 1) 복약알림(NotificationSchedule) - 화면의 "알림 추가"로 직접 만든 것.
         result = await session.execute(select(NotificationSchedule).where(NotificationSchedule.is_active.is_(True)))
@@ -47,6 +50,11 @@ async def _check_and_send_due_notifications() -> None:
             if schedule.alarm_time.strftime("%H:%M") != current_hhmm:
                 continue
             if not _is_due_today(schedule, js_weekday):
+                continue
+            # 워커가 여러 개면 같은 1분 틱에 이 알림을 동시에 집으려 할 수 있다 - DB 유니크
+            # 제약으로 선착순 클레임해서, 못 딴 워커는 조용히 건너뛴다(start_push_scheduler
+            # docstring의 "알려진 한계" 참고).
+            if not await send_log_repo.try_claim("notification_schedule", schedule.id, today, current_hhmm):
                 continue
             try:
                 await push_service.send_to_profile_and_guardians(
@@ -79,6 +87,8 @@ async def _check_and_send_due_notifications() -> None:
             normalized_times = [t[:5] for t in med_schedule.times]
             if current_hhmm not in normalized_times:
                 continue
+            if not await send_log_repo.try_claim("medication_schedule", med_schedule.id, today, current_hhmm):
+                continue
             drug_name = med_schedule.display_name or drug_names.get(med_schedule.item_seq, med_schedule.item_seq)
             try:
                 await push_service.send_to_profile_and_guardians(
@@ -98,9 +108,11 @@ def start_push_scheduler() -> AsyncIOScheduler:
     구현했다.
 
     [알려진 한계] uvicorn을 여러 워커/레플리카로 띄우면 이 스케줄러가 워커 개수만큼 동시에
-    돌아서 같은 알림이 중복 발송될 수 있다 - 지금은 로컬/개발 환경(워커 1개)에서만 쓰는 걸
-    전제로 한다. 나중에 celery-beat이 생기면 `_check_and_send_due_notifications`의 내용을
-    그대로 celery task로 옮기고 이 스케줄러는 빼는 게 정석이다."""
+    돈다 - 실제 발송(중복 알림)은 `PushSendLogRepository.try_claim`이 (알림 종류, id, 날짜,
+    시각) 단위 DB 유니크 제약으로 선착순 클레임해서 워커 하나만 보내도록 막지만, 워커마다
+    똑같이 DB를 조회하고 클레임을 시도하는 낭비 자체는 여전히 남아있다. 나중에 celery-beat이
+    생기면 `_check_and_send_due_notifications`의 내용을 그대로 celery task로 옮기고 이
+    스케줄러는 빼는 게 정석이다."""
     scheduler = AsyncIOScheduler(timezone=str(config.TIMEZONE))
     scheduler.add_job(_check_and_send_due_notifications, "interval", minutes=1, id="push_due_notifications")
     scheduler.start()
