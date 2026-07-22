@@ -45,6 +45,7 @@ from app.services.ai_worker_gateway import (
     AIWorkerUnavailableError,
 )
 from app.services.food_item_extraction import extract_food_items
+from app.services.side_effect_notification_service import SideEffectNotificationService
 
 logger = logging.getLogger("app.medication_service")
 
@@ -1094,10 +1095,12 @@ class MedicationService:
         self,
         repository: MedicationRepository | None = None,
         dur_drug_repository: DurDrugRepository | None = None,
+        side_effect_notification_service: SideEffectNotificationService | None = None,
     ) -> None:
         self._repository = repository or MedicationRepository()
         self._dur_drug_repository = dur_drug_repository or DurDrugRepository()
         self._family_repository = FamilyRepository()  # (가족관리) 대상자 권한검증용
+        self._side_effect_notification_service = side_effect_notification_service or SideEffectNotificationService()
 
     async def create_recognition_job(
         self,
@@ -1187,6 +1190,7 @@ class MedicationService:
                 source_job_id=job_id,
             )
             await self._repository.create_schedule(session, schedule)
+            await self._side_effect_notification_service.notify_if_side_effects(session, profile_id, drug_name)
 
         # 13번: 음식(T-DOC-2) — 등록된 약의 e약은요 상호작용 문항에서 음식/음주 주의사항을 안내한다.
         guide_cards = []
@@ -1264,6 +1268,7 @@ class MedicationService:
             profile_id=owner_profile_id, item_seq=item_seq, times=req.times, hospital_name=req.hospital_name
         )
         await self._repository.create_schedule(session, schedule)
+        await self._side_effect_notification_service.notify_if_side_effects(session, owner_profile_id, drug_name)
 
         return MedicationScheduleResponse(
             id=schedule.id,
@@ -1318,6 +1323,7 @@ class MedicationService:
             hospital_name=hospital_name,
         )
         schedule = await self._repository.create_schedule(session, schedule)
+        await self._side_effect_notification_service.notify_if_side_effects(session, profile_id, item_name)
 
         return QuickRegisterResult(
             status="registered",
@@ -1452,6 +1458,7 @@ class MedicationService:
                 source_job_id=job_id,
             )
             await self._repository.create_schedule(session, schedule)
+            await self._side_effect_notification_service.notify_if_side_effects(session, target_profile_id, drug_name)
 
         guide_cards = []
         if drug_name:
