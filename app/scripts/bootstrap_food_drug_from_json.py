@@ -11,7 +11,10 @@
 동일해야 하므로(다른 결과가 나오면 리뷰된 적 없는 새 규칙이 생기는 셈) 그 모듈의 함수/상수를
 그대로 재사용한다.
 
-실행: uv run python -m app.scripts.bootstrap_food_drug_from_json [reference.json 경로]
+배포 파이프라인에서 매 배포마다 조건 없이 돌려도 되도록, `FoodDrugCategory`에 이미 행이 있으면
+재적재 없이 스킵한다(`--force`로 강제 재실행 가능).
+
+실행: uv run python -m app.scripts.bootstrap_food_drug_from_json [reference.json 경로] [--force]
 """
 
 import asyncio
@@ -19,7 +22,7 @@ import json
 import sys
 from pathlib import Path
 
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 
 from app.core.db.databases import AsyncSessionLocal
 from app.models.food_drug_interaction import (
@@ -37,9 +40,18 @@ from app.scripts.build_food_drug_interaction_db import (
 DEFAULT_JSON_PATH = Path(__file__).parent.parent / "database" / "food_drug_interaction_reference.json"
 
 
-async def bootstrap_food_drug_from_json(json_path: Path = DEFAULT_JSON_PATH) -> int:
+async def bootstrap_food_drug_from_json(json_path: Path = DEFAULT_JSON_PATH, force: bool = False) -> int:
     """운영 MySQL(`ai_health`)의 음식-약물 참조 테이블을 `json_path` 내용으로 전체 삭제 후
-    재적재한다."""
+    재적재한다. `force=False`(기본값)면 이미 데이터가 있는 환경에서는 아무것도 하지 않고
+    0을 반환한다. 파일 존재 여부보다 스킵 체크를 먼저 해, 배포 파이프라인에서 매번 무조건
+    호출해도 안전하게 넘어간다."""
+    async with AsyncSessionLocal() as session:
+        if not force:
+            existing = await session.scalar(select(func.count()).select_from(FoodDrugCategory))
+            if existing:
+                print(f"food_drug_category에 이미 {existing:,}건이 있어 시딩을 건너뜁니다 (--force로 강제 실행 가능)")
+                return 0
+
     if not json_path.exists():
         raise FileNotFoundError(f"{json_path}가 없습니다 — 백업(database.zip)에서 복원하세요.")
 
@@ -117,8 +129,10 @@ async def bootstrap_food_drug_from_json(json_path: Path = DEFAULT_JSON_PATH) -> 
 
 
 async def _main() -> None:
-    json_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_JSON_PATH
-    await bootstrap_food_drug_from_json(json_path)
+    args = [a for a in sys.argv[1:] if a != "--force"]
+    force = "--force" in sys.argv[1:]
+    json_path = Path(args[0]) if args else DEFAULT_JSON_PATH
+    await bootstrap_food_drug_from_json(json_path, force=force)
 
 
 if __name__ == "__main__":
