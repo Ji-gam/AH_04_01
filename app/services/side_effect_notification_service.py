@@ -47,11 +47,27 @@ class SideEffectNotificationService:
             result = await self._dur_drug_repository.drug_data(session, drug_name)
             side_effects = next((p.side_effects for p in result.profiles if p.side_effects), None)
             if not side_effects:
+                # webpush()/messaging.send()는 성공 시 아무 로그도 안 남겨서, 여기서 "왜
+                # 안 보냈는지"를 로그에 안 남기면 나중에 "발송 시도 자체가 없었는지" /
+                # "보냈는데 전달이 안 됐는지" 구분할 방법이 없다(2026-07-23, 실기기 테스트
+                # 때 이 구분이 안 돼서 원인 추적이 막힌 적이 있어 추가).
+                logger.info(
+                    "부작용 사전 안내 스킵 - 부작용 정보 없음 (profile_id=%s, drug_name=%s, provenance=%s)",
+                    profile_id,
+                    drug_name,
+                    result.provenance,
+                )
                 return
 
             setting = await self._notification_settings_service.get_settings(session, profile_id)
             now = datetime.now(tz=config.TIMEZONE)
-            if not setting.push_enabled or is_in_quiet_hours(setting, now):
+            if not setting.push_enabled:
+                logger.info(
+                    "부작용 사전 안내 스킵 - push_enabled 꺼짐 (profile_id=%s, drug_name=%s)", profile_id, drug_name
+                )
+                return
+            if is_in_quiet_hours(setting, now):
+                logger.info("부작용 사전 안내 스킵 - 무음시간대 (profile_id=%s, drug_name=%s)", profile_id, drug_name)
                 return
 
             summary = (
@@ -66,5 +82,6 @@ class SideEffectNotificationService:
                 body=f"부작용: {summary}",
                 consult_url=_build_consult_url(drug_name),
             )
+            logger.info("부작용 사전 안내 발송 시도함 (profile_id=%s, drug_name=%s)", profile_id, drug_name)
         except Exception:
             logger.exception("부작용 사전 안내 알림 발송 실패 (profile_id=%s, drug_name=%s)", profile_id, drug_name)
