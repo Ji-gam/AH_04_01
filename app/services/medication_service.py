@@ -435,6 +435,18 @@ def _is_bare_dosage_line(stripped: str) -> bool:
     return bool(_DOSAGE_PATTERN.search(stripped)) and not _DRUG_FORM_SUFFIX_PATTERN.search(stripped)
 
 
+# 화면에는 정/캡슐 같은 제품명만 노출하고 성분명은 노출하지 않기로 했다 - 복합제 처방전은
+# "*에보글립틴타르타르산염 6.869mg", "*아토르바스타틴칼슘삼수화물 10.8", "*로베글리타존황산염
+# 0.5mg"처럼 화학적 염/수화물 표기로 끝나는 성분명 줄을 "*" 불릿과 함께 나열한다. 이런 줄은
+# "산염"/"수화물"로 끝나는 화학명 특유의 패턴이 있어, 마스터 DB 매칭 실패를 이유로 대충 필터링
+# 못 하는 일반 약품명(테스트에서 흔히 쓰는 "낫모르는약100mg"류 플레이스홀더 등)과 구분할 수 있다.
+_INGREDIENT_SALT_SUFFIX_PATTERN = re.compile(r"(산염|수화물)(?![가-힣])")
+
+
+def _is_ingredient_salt_name(stripped: str) -> bool:
+    return bool(_INGREDIENT_SALT_SUFFIX_PATTERN.search(stripped)) and not _DRUG_FORM_SUFFIX_PATTERN.search(stripped)
+
+
 def _looks_like_drug_name(word: str) -> bool:
     stripped = word.lstrip("*").strip()
     if len(stripped) < _MIN_DRUG_NAME_LEN:
@@ -446,6 +458,11 @@ def _looks_like_drug_name(word: str) -> bool:
     if _is_label_slash_without_digit(stripped):
         return False
     if not _KOREAN_TOKEN_PATTERN.search(stripped):
+        return False
+    # "*"가 붙어 있어도 화학적 염/수화물 이름(성분명)이면 후보에서 제외한다 - 그렇지 않으면
+    # 복합제 처방전의 성분 breakdown 줄이 "*" 조건 하나만으로 제형 접미사 검사를 건너뛰어,
+    # 화면에 성분명이 그대로 노출된다.
+    if _is_ingredient_salt_name(stripped):
         return False
     return word.strip().startswith("*") or bool(_DRUG_FORM_SUFFIX_PATTERN.search(stripped))
 

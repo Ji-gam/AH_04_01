@@ -597,6 +597,9 @@ export default function MedicationPage() {
     try {
       setCandidates([]);
       setExtractedFields(null);
+      // 이전 job의 폴링이 재시작되지 않도록, 상태를 pending으로 바꾸기 전에
+      // currentJobId부터 비워서 폴링 useEffect 조건(currentJobId && pending)이 거짓이 되게 한다.
+      setCurrentJobId(null);
       setJobStatus("pending");
       const jobId = await uploadJob(file, sourceType);
       setCurrentJobId(jobId);
