@@ -19,7 +19,6 @@ import {
   type FoodInteractionCheckResult,
   type FoodItem,
   type RecognitionCandidate,
-  type RecognitionJobResult,
 } from "../../hooks/useMedication";
 import { pinkTheme } from "../../theme/pinkTheme";
 import Modal from "../AlarmPage/components/Modal";
@@ -321,8 +320,6 @@ function MedicationSelectCard({
   );
 }
 
-type ExtractedFields = NonNullable<RecognitionJobResult["extracted_fields"]>;
-
 export default function MedicationPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -357,7 +354,6 @@ export default function MedicationPage() {
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<RecognitionCandidate[]>([]);
-  const [extractedFields, setExtractedFields] = useState<ExtractedFields | null>(null);
 
   // OCR로 인식된 후보들에 대해, 등록 확정 전에 바로 DUR 주의사항(임부금기/노인주의 등 pill)과
   // 후보끼리의 병용금기/효능군중복 상호작용을 보여준다 — 기존 dur/screening API를 그대로
@@ -510,7 +506,6 @@ export default function MedicationPage() {
           setJobStatus(res.status);
           if (res.status === "done") {
             setCandidates(res.candidates);
-            setExtractedFields(res.extracted_fields ?? null);
             // 인식된 약이 여러 개일 수 있으므로 기본으로 전부 선택해두고, 사용자가 해제할 수 있게 한다.
             setSelectedDrugCodes(res.candidates.map((c) => c.drug_code));
             if (res.extracted_fields?.times) {
@@ -606,7 +601,6 @@ export default function MedicationPage() {
     if (!file) return;
     try {
       setCandidates([]);
-      setExtractedFields(null);
       // 이전 job의 폴링이 재시작되지 않도록, 상태를 pending으로 바꾸기 전에
       // currentJobId부터 비워서 폴링 useEffect 조건(currentJobId && pending)이 거짓이 되게 한다.
       setCurrentJobId(null);
@@ -986,16 +980,6 @@ export default function MedicationPage() {
                     }}
                   >
                     <h3>분석 결과 및 매칭 추천</h3>
-                    <p
-                      style={{
-                        fontSize: "12px",
-                        color: pinkTheme.text,
-                        backgroundColor: pinkTheme.primarySoft,
-                        padding: "5px",
-                      }}
-                    >
-                      <strong>인식된 raw 텍스트:</strong> {extractedFields?.ocr_raw_text}
-                    </p>
 
                     <div
                       style={{
