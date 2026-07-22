@@ -25,6 +25,19 @@ def test_is_plausible_llm_drug_name_accepts_real_drug_shapes():
     assert medication_service._is_plausible_llm_drug_name("글루코파지엑스알100mg서방정") is True
 
 
+def test_looks_like_drug_name_rejects_bulleted_receipt_caption():
+    """(#OCR-LLM-2) "*" 불릿 조건은 제형 접미사 검사를 건너뛰므로, "*전액본인부담금이란"처럼
+    영수증 설명 문구가 "*"와 함께 오인식되면 필터 없이 통과해 매 스캔마다 새 AUTO_ 더미로
+    재등록됐다 - 조사/설명 어미로 끝나면 "*"가 붙어 있어도 걸러야 한다."""
+    assert medication_service._looks_like_drug_name("*전액본인부담금이란") is False
+    assert medication_service._looks_like_drug_name("전액본인부담금이란") is False
+
+
+def test_looks_like_drug_name_still_accepts_bulleted_brand_names():
+    assert medication_service._looks_like_drug_name("*리피로우정20mg") is True
+    assert medication_service._looks_like_drug_name("*노스판패취10ug/h") is True
+
+
 async def test_resolve_llm_suggested_names_filters_out_noise_before_registering():
     """(#OCR-LLM) `_resolve_llm_suggested_names`가 노이즈 이름을 마스터 DB/AUTO_ 더미 생성
     단계까지 보내지 않고 그 전에 걸러야 한다."""
