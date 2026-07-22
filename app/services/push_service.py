@@ -50,13 +50,34 @@ class PushService:
     async def unsubscribe(self, session: AsyncSession, endpoint: str) -> None:
         await self._repo.delete_by_endpoint(session, endpoint)
 
-    async def send_to_profile(self, session: AsyncSession, profile_id: int, title: str, body: str) -> None:
+    async def send_to_profile(
+        self,
+        session: AsyncSession,
+        profile_id: int,
+        title: str,
+        body: str,
+        snooze_source: tuple[str, int] | None = None,
+    ) -> None:
         """이 프로필이 구독해둔 모든 기기(WEB만 - IOS/ANDROID는 나중에 네이티브 패키징 시
         별도 발송 경로 추가 예정)에 푸시를 보낸다. 구독 하나가 실패해도(예: 브라우저에서
-        구독 취소했는데 서버 DB에는 아직 남아있는 경우) 나머지 기기 발송은 계속한다."""
+        구독 취소했는데 서버 DB에는 아직 남아있는 경우) 나머지 기기 발송은 계속한다.
+
+        snooze_source=(source_type, source_id)를 주면 알림에 "30분/1시간 후 다시" 액션
+        버튼을 붙인다(service-worker.js가 payload.actions/data를 그대로 showNotification에
+        넘긴다) - 복약알림 본인 몫에만 쓰고, 가족에게 전달하는 사본에는 안 붙인다(스누즈는
+        본인이 결정할 일이라 가족이 대신 미룰 수 있으면 안 된다)."""
         if not config.VAPID_PRIVATE_KEY:
             logger.warning("VAPID 비밀키가 설정되지 않아 푸시 발송을 건너뜁니다.")
             return
+
+        payload: dict = {"title": title, "body": body}
+        if snooze_source is not None:
+            source_type, source_id = snooze_source
+            payload["data"] = {"profile_id": profile_id, "source_type": source_type, "source_id": source_id}
+            payload["actions"] = [
+                {"action": "snooze_30", "title": "30분 후 다시"},
+                {"action": "snooze_60", "title": "1시간 후 다시"},
+            ]
 
         subscriptions = await self._repo.list_web_subscriptions_for_profile(session, profile_id)
         for sub in subscriptions:
@@ -66,7 +87,7 @@ class PushService:
                         "endpoint": sub.endpoint,
                         "keys": {"p256dh": sub.p256dh_key, "auth": sub.auth_key},
                     },
-                    data=json.dumps({"title": title, "body": body}),
+                    data=json.dumps(payload),
                     vapid_private_key=config.VAPID_PRIVATE_KEY,
                     vapid_claims={"sub": config.VAPID_CLAIM_EMAIL},
                     # WNS(Windows, notify.windows.com 엔드포인트 - Edge가 이걸 씀)는 이 헤더가
@@ -86,7 +107,12 @@ class PushService:
                     logger.warning("웹푸시 발송 실패 (subscription_id=%s): %s", sub.id, exc)
 
     async def send_to_profile_and_guardians(
-        self, session: AsyncSession, profile_id: int, title: str, body: str
+        self,
+        session: AsyncSession,
+        profile_id: int,
+        title: str,
+        body: str,
+        snooze_source: tuple[str, int] | None = None,
     ) -> None:
         """`send_to_profile`은 그대로 두고, 여기에 "이 사람을 관리하는 보호자들에게도 같이
         보낸다"는 것만 추가한다. 보호자가 자기 기기에서 "🔔 알림 켜기"를 눌러 구독해두면
@@ -94,8 +120,9 @@ class PushService:
         가족 구성원의 알림도 자동으로 같이 받게 된다.
 
         보호자가 여러 명을 관리할 수 있어 "누구 약인지" 구분이 안 되면 헷갈리므로, 보호자
-        쪽엔 대상자 이름을 붙여서 보낸다(본인 몫은 그대로 둠)."""
-        await self.send_to_profile(session, profile_id, title, body)
+        쪽엔 대상자 이름을 붙여서 보낸다(본인 몫은 그대로 둠). snooze_source는 본인 몫에만
+        전달한다 - 가족 사본은 스누즈 액션 버튼 없이 정보 전달용으로만 보낸다."""
+        await self.send_to_profile(session, profile_id, title, body, snooze_source=snooze_source)
 
         guardian_links = await self._family_repo.list_as_member(session, profile_id, status=FamilyLinkStatus.ACCEPTED)
         if not guardian_links:

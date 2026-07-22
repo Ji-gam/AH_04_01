@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -92,6 +92,7 @@ async def _send_due_notification_schedules(
                 schedule.profile_id,
                 title="복약 알림",
                 body=f"{schedule.medication_name} 드실 시간이에요!",
+                snooze_source=("notification_schedule", schedule.id),
             )
         except Exception:
             logger.exception("알림 발송 중 오류 (notification_schedule_id=%s)", schedule.id)
@@ -134,6 +135,7 @@ async def _send_due_medication_schedules(
                 med_schedule.profile_id,
                 title="복약 알림",
                 body=f"{drug_name} 드실 시간이에요!",
+                snooze_source=("medication_schedule", med_schedule.id),
             )
         except Exception:
             logger.exception("알림 발송 중 오류 (medication_schedule_id=%s)", med_schedule.id)
@@ -149,6 +151,59 @@ async def _check_and_send_due_notifications() -> None:
         settings = _SettingsCache(session)
         await _send_due_notification_schedules(session, push_service, settings, now, js_weekday, current_hhmm)
         await _send_due_medication_schedules(session, push_service, settings, now, current_hhmm)
+
+
+async def _send_snoozed_notification(profile_id: int, source_type: str, source_id: int) -> None:
+    """스누즈로 예약된 일회성 재발송(push_routers.py의 /push/snooze 참고). 예약 시점과
+    실제 발송 시점 사이에 알림이 수정/삭제될 수 있어 문구를 다시 조회한다 - 꺼졌거나
+    지워졌으면 조용히 건너뛴다. 무음 시간대는 일부러 확인하지 않는다 - 사용자가 명시적으로
+    "이 시간에 다시 알려줘"를 선택한 거라, 그 사이 무음 시간대에 들어갔다고 억누르면 오히려
+    스누즈의 의도(꼭 다시 알림받기)에 반한다. push_enabled(알림 자체를 꺼둔 경우)만 확인한다."""
+    async with AsyncSessionLocal() as session:
+        # 소유권 확인이 먼저다 - 알림설정 조회(get_or_create)가 없는 profile_id에 대해
+        # notification_settings 행을 만들려다 FK 위반으로 죽는 걸 막는다(다른 프로필
+        # 소유의 알림이거나, 그 사이 지워진 profile_id일 수 있음).
+        title = "복약 알림"
+        if source_type == "notification_schedule":
+            schedule = await session.get(NotificationSchedule, source_id)
+            if schedule is None or not schedule.is_active or schedule.profile_id != profile_id:
+                return
+            body = f"{schedule.medication_name} 드실 시간이에요! (미뤄둔 알림)"
+        else:
+            med_schedule = await session.get(MedicationSchedule, source_id)
+            if med_schedule is None or med_schedule.profile_id != profile_id:
+                return
+            drug_name = med_schedule.display_name
+            if not drug_name:
+                names = await DurDrugRepository().get_names_by_item_seqs(session, {med_schedule.item_seq})
+                drug_name = names.get(med_schedule.item_seq, med_schedule.item_seq)
+            body = f"{drug_name} 드실 시간이에요! (미뤄둔 알림)"
+
+        setting = await NotificationSettingsService().get_settings(session, profile_id)
+        if not setting.push_enabled:
+            return
+
+        try:
+            await PushService().send_to_profile_and_guardians(
+                session, profile_id, title=title, body=body, snooze_source=(source_type, source_id)
+            )
+        except Exception:
+            logger.exception(
+                "스누즈 알림 발송 중 오류 (profile_id=%s, source_type=%s, source_id=%s)",
+                profile_id,
+                source_type,
+                source_id,
+            )
+
+
+def schedule_snooze(
+    scheduler: AsyncIOScheduler, profile_id: int, source_type: str, source_id: int, minutes: int
+) -> None:
+    """일회성 지연 작업을 등록한다. 반복 job(push_due_notifications)과 달리 이건 이 요청을
+    받은 워커 프로세스 하나에서만 실행되니, ①번에서 다룬 "워커 여러 개면 중복 발송" 문제가
+    여기엔 해당되지 않는다."""
+    run_date = datetime.now(tz=config.TIMEZONE) + timedelta(minutes=minutes)
+    scheduler.add_job(_send_snoozed_notification, "date", run_date=run_date, args=[profile_id, source_type, source_id])
 
 
 def start_push_scheduler() -> AsyncIOScheduler:
