@@ -621,15 +621,27 @@ async def _llm_extract_drug_names(ocr_raw_text: str) -> list[str]:
 
 
 async def _resolve_llm_suggested_names(
-    db_session: AsyncSession, dur_repo: DurDrugRepository, names: list[str], seen_ids: set[str]
+    db_session: AsyncSession,
+    dur_repo: DurDrugRepository,
+    names: list[str],
+    seen_ids: set[str],
+    seen_names: set[str],
 ) -> tuple[list[MatchedDrug], set[str]]:
     """LLM이 제안한 약품명 후보를 마스터 DB 정확일치 → Tier3(공공 API)/AUTO_ 더미 순으로 해석한다.
     OCR confidence 근거가 없는 경로라 호출부가 낮은 match_rate(`_NO_OCR_EVIDENCE_MATCH_RATE`)를
-    매기도록 confidence는 채우지 않는다."""
+    매기도록 confidence는 채우지 않는다.
+
+    `seen_names`(정규식/퍼지 경로가 이미 후보로 만든 약품명 문자열)에 이미 있는 이름은 건너뛴다 —
+    마스터 DB에 없는 약은 Tier3/AUTO_ 더미 경로에서 매번 새 item_seq(공공 API 결과 또는 랜덤 UUID)를
+    받기 때문에, seen_ids(item_seq 기준)만으로는 정규식 경로가 이미 만든 것과 같은 약품명을 LLM
+    경로가 또 별도 항목으로 중복 추가하는 걸 막지 못한다."""
     resolved: list[MatchedDrug] = []
     auto_created_ids: set[str] = set()
 
     for name in _dedupe_drug_names(set(names)):
+        if name in seen_names:
+            continue
+
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
         exact_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
         if exact_item_seq:
@@ -678,12 +690,15 @@ async def _match_or_create_medications(
         match_confidence.update(fuzzy_confidence)
 
     # 정규식/퍼지 매칭 결과가 있어도, 그 규칙들이 놓쳤을 수 있는 약을 추가로 구제하기 위해 매번
-    # LLM으로 한 번 더 보완한다. `seen_ids`로 이미 매칭된 약은 걸러지므로 중복 추가되지 않는다.
+    # LLM으로 한 번 더 보완한다. 마스터 DB에 있는 약은 `seen_ids`(item_seq)로 걸러지고, 마스터
+    # DB에 없는 약은 이름이 같아도 매번 새 item_seq(Tier3 API/AUTO_ 더미)를 받으므로 `seen_names`
+    # (약품명 문자열)로 따로 걸러야 정규식 경로가 이미 만든 후보를 LLM이 또 중복 추가하지 않는다.
     if llm_task is not None:
         llm_names = await llm_task
         if llm_names:
+            seen_names = {drug.item_name for drug in matched_drugs}
             llm_matched, llm_auto_created_ids = await _resolve_llm_suggested_names(
-                db_session, dur_repo, llm_names, seen_ids
+                db_session, dur_repo, llm_names, seen_ids, seen_names
             )
             matched_drugs.extend(llm_matched)
             auto_created_ids |= llm_auto_created_ids

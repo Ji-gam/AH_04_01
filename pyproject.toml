@@ -45,6 +45,7 @@ ai = [
 ]
 app = [
     "alembic>=1.14.0",
+    "apscheduler>=3.11.0",
     "asyncmy>=0.2.11",
     "bcrypt<=4.0.1",
     "celery>=5.4.0",
@@ -54,6 +55,7 @@ app = [
     "passlib[bcrypt]>=1.7.4",
     "pillow>=11.0.0",
     "pyjwt>=2.10.1",
+    "pywebpush>=2.0.3",
     "sqladmin>=0.28.0",
     "sqlalchemy[asyncio]>=2.0.36",
     "tzdata>=2026.2",

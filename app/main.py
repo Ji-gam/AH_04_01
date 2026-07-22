@@ -34,19 +34,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """`ENV=local`에서는 서버 기동 시 건강 콘텐츠 픽스처를 자동으로 시드한다 — 셀러리/LLM
     키가 없는 팀원도 별도 스크립트 실행 없이 곧장 개인화 콘텐츠를 확인할 수 있게 하기 위함.
     dev/prod는 실제 생성 파이프라인이 채운 MySQL을 그대로 조회하므로 건너뛴다.
-
     음식-약물 참조 테이블은 모든 환경에서 동일한 정적 데이터라(2026-07-16 SQLite에서 MySQL로
     이전) `seed_food_drug_interaction`으로 미리 시딩된 MySQL 테이블을 앱 기동 시 1회 읽어
     프로세스 메모리에 캐싱한다 — 상세: `app/repositories/food_drug_interaction_repository.py`."""
     if config.ENV == Env.LOCAL:
         await seed_health_content()
+
     async with AsyncSessionLocal() as session:
         await refresh_food_drug_interaction_cache(session)
-    # [버그 수정] start_push_scheduler()가 정의만 되어있고 아무 데서도 호출되지 않아서,
-    # 복약 알림 발송(1분 간격 스케줄러)이 지금까지 실제로는 한 번도 동작한 적이 없었다 -
-    # docker-compose.yml의 fastapi 서비스도 그냥 uvicorn만 띄우고 이걸 부르지 않는다.
-    # app.state에 인스턴스를 보관해두는 이유: 스누즈(push_routers.py)가 나중에 이 스케줄러에
-    # 일회성 지연 발송 job을 추가해야 한다.
+    # (웹푸시, 임시 구현) celery-beat이 아직 없어서 fastapi 프로세스 안에서 APScheduler로
+    # 대신 돈다 - 자세한 배경은 app/services/push_scheduler.py의 docstring 참고. app.state에
+    # 보관하는 이유: 스누즈(push_routers.py)가 이 스케줄러에 일회성 지연 발송 job을 추가해야 한다.
     app.state.push_scheduler = start_push_scheduler()
     yield
     app.state.push_scheduler.shutdown()

@@ -22,6 +22,7 @@ from app.services.ai_worker_gateway import (
     AIWorkerProcessingError,
     AIWorkerUnavailableError,
 )
+from app.services.push_service import PushService
 
 logger = logging.getLogger("app.habit_service")
 
@@ -120,9 +121,11 @@ class HabitService:
         self,
         repository: HabitRepository | None = None,
         gateway: AIWorkerGateway | None = None,
+        push_service: PushService | None = None,
     ) -> None:
         self._repository = repository or HabitRepository()
         self._gateway = gateway or AIWorkerGateway()
+        self._push_service = push_service or PushService()
 
     async def build_full_pool(self, session: AsyncSession, profile: Profile) -> list[HabitDef]:
         """가능한 전체 습관 후보 = 기본 세트 + 등록된 진단마다 맞춤 습관.
@@ -249,11 +252,33 @@ class HabitService:
                 status_code=status.HTTP_404_NOT_FOUND, detail="오늘 선택한 습관 목록에 없는 항목입니다."
             )
 
+        # 이번 체크로 "방금 막" 오늘의 습관을 전부 완료했을 때만(이미 완료된 상태에서 다시
+        # 체크 API를 호출하는 경우는 제외) 목표달성 알림을 보낸다 - 그래서 증가시키기 전의
+        # 완료 상태를 먼저 계산해둔다.
+        logs_before = await self._repository.list_logs_for_date(session, profile.id, today)
+        was_all_completed = self._to_response(
+            catalog, {log.habit_key: log.progress for log in logs_before}
+        ).all_completed
+
         await self._repository.increment_progress(session, profile.id, today, habit_key, cap=habit_def.target)
 
         logs = await self._repository.list_logs_for_date(session, profile.id, today)
         progress_by_key = {log.habit_key: log.progress for log in logs}
-        return self._to_response(catalog, progress_by_key)
+        response = self._to_response(catalog, progress_by_key)
+
+        if not was_all_completed and response.all_completed:
+            try:
+                await self._push_service.send_to_profile(
+                    session,
+                    profile.id,
+                    "🎉 오늘의 습관 목표 달성!",
+                    "오늘 고른 습관을 모두 완료했어요. 정말 잘하고 있어요!",
+                )
+            except Exception:
+                # 알림은 부가 기능이라, 발송 실패가 습관 체크 자체(핵심 기능)를 막으면 안 된다.
+                logger.exception("습관 목표달성 알림 발송 실패 (profile_id=%s)", profile.id)
+
+        return response
 
     async def _selected_catalog(self, session: AsyncSession, profile: Profile, today: date) -> list[HabitDef]:
         by_key = {h.key: h for h in await self.build_full_pool(session, profile)}
