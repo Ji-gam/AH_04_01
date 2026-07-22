@@ -72,6 +72,24 @@ export interface NotificationSettingsResult {
 
 export type NotificationSettingsUpdateRequest = Partial<NotificationSettingsResult>;
 
+// 백엔드 app/dtos/notice.py와 1:1로 수동 동기화.
+export type NoticeKind = "NOTICE" | "MARKETING";
+
+export interface NoticeResult {
+  id: number;
+  kind: NoticeKind;
+  title: string;
+  body: string;
+  created_at: string;
+  is_new: boolean;
+}
+
+export interface NoticeCreateRequest {
+  kind: NoticeKind;
+  title: string;
+  body: string;
+}
+
 // T-LLM-7-3-2: 답변 생성에 쓰인 출처 각주 1건(DUR은 name만, 논문은 url도 있음).
 export interface ChatSourceRef {
   name: string;

@@ -37,3 +37,15 @@ class NotificationSettingsRepository:
         for key, value in data.items():
             setattr(setting, key, value)
         await session.flush()
+
+    async def list_profile_ids_with_notice_enabled(self, session: AsyncSession) -> list[int]:
+        result = await session.execute(
+            select(NotificationSetting.profile_id).where(NotificationSetting.notice_enabled.is_(True))
+        )
+        return list(result.scalars().all())
+
+    async def list_profile_ids_with_marketing_enabled(self, session: AsyncSession) -> list[int]:
+        result = await session.execute(
+            select(NotificationSetting.profile_id).where(NotificationSetting.marketing_enabled.is_(True))
+        )
+        return list(result.scalars().all())

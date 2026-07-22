@@ -1,44 +1,33 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import { noticeApi } from "../../api/noticeApi";
+import type { NoticeResult } from "../../api/types";
 import { pinkTheme } from "../../theme/pinkTheme";
 
-interface Notice {
-  id: string;
-  date: string;
-  isNew: boolean;
-  title: string;
-  body: string;
-}
-
-// 지금은 백엔드 없이 정적으로 관리한다 - 공지가 자주 안 바뀌고 개수도 적어서, API+DB까지
-// 만들 필요 없이 여기 배열만 고치면 된다(더보기 > 관리자 컨텐츠생성과는 별개 - 그건 "정보"
-// 탭에 실리는 건강 콘텐츠고, 이건 서비스 자체 공지다).
-const NOTICES: Notice[] = [
-  {
-    id: "service-launch",
-    date: "2026-07-01",
-    isNew: false,
-    title: "🎉 Re:medi 서비스를 시작합니다",
-    body: "복약관리와 건강 상담을 한 곳에서 - Re:medi를 오픈했습니다.\n\n처방전/알약을 스캔해서 복약 일정을 자동으로 등록하고, 시간에 맞춰 알림을 받아보세요. 개인건강정보를 등록하면 나에게 맞는 라이프스타일 습관과 건강 콘텐츠도 추천해드려요. 부모님 등 가족 구성원을 연결하면 가족 몫의 약도 함께 챙길 수 있습니다.\n\n앞으로도 더 편한 복약관리를 위해 계속 업데이트할게요. 잘 부탁드립니다!",
-  },
-  {
-    id: "ai-chat-paper-citation",
-    date: "2026-07-15",
-    isNew: true,
-    title: "💬 AI 건강 상담에 논문 근거 답변이 추가됐어요",
-    body: "AI 건강 상담이 더 똑똑해졌습니다. 이제 질문에 답할 때 관련 의학 논문을 함께 찾아서, 답변 아래 출처 칩으로 보여드려요. 칩을 누르면 어떤 논문을 근거로 답했는지 바로 확인할 수 있습니다.\n\n의약품 상호작용(DUR) 정보도 같은 방식으로 통합해서, 복용 중인 약과 관련된 질문에 더 정확하게 답할 수 있게 됐어요.\n\n하단에는 자주 쓰는 화면(복약스케쥴/약등록/홈/가족관리/응급안내)으로 바로 이동할 수 있는 아이콘 메뉴도 새로 생겼으니 함께 확인해보세요.",
-  },
-];
-
-/** 더보기 > 공지사항(2026-07-16 신설). 지금은 백엔드 없이 정적 배열로 관리하는 간단한
- * 목록+아코디언 화면이다 - 더보기에서 열었을 때만 뒤로가기가 더보기로 돌아간다(PR #182와
- * 같은 규칙). */
+/** 더보기 > 공지사항(2026-07-16 신설, 2026-07-22 백엔드 연동) - 등록된 공지/마케팅 소식을
+ * 목록+아코디언으로 보여준다. 더보기에서 열었을 때만 뒤로가기가 더보기로 돌아간다(PR #182와
+ * 같은 규칙). 새 공지 등록은 더보기 > 관리자 공지등록(NoticeAdminPage.tsx)에서 한다. */
 export default function NoticePage() {
   const navigate = useNavigate();
   const location = useLocation();
   const cameFromMore = (location.state as { from?: string } | null)?.from === "more";
-  const [openId, setOpenId] = useState<string | null>(NOTICES.find((n) => n.isNew)?.id ?? null);
+
+  const [notices, setNotices] = useState<NoticeResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<number | null>(null);
+
+  useEffect(() => {
+    noticeApi
+      .list()
+      .then((items) => {
+        setNotices(items);
+        setOpenId(items.find((n) => n.is_new)?.id ?? null);
+      })
+      .catch(() => setError("공지사항을 불러오지 못했습니다."))
+      .finally(() => setLoading(false));
+  }, []);
 
   return (
     <div style={{ background: pinkTheme.pageBg, minHeight: "100%", padding: "24px 16px" }}>
@@ -63,8 +52,19 @@ export default function NoticePage() {
           📢 공지사항
         </h1>
 
+        {loading && <p style={{ color: pinkTheme.textMuted, fontSize: 14 }}>불러오는 중...</p>}
+        {error && <p style={{ color: pinkTheme.danger, fontSize: 14 }}>{error}</p>}
+
+        {!loading && !error && notices.length === 0 && (
+          <p
+            style={{ color: pinkTheme.textMuted, fontSize: 14, textAlign: "center", marginTop: 20 }}
+          >
+            아직 등록된 공지사항이 없어요.
+          </p>
+        )}
+
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {NOTICES.map((notice) => {
+          {notices.map((notice) => {
             const isOpen = openId === notice.id;
             return (
               <div
@@ -98,7 +98,7 @@ export default function NoticePage() {
                       <span style={{ fontSize: 14.5, fontWeight: 700, color: pinkTheme.text }}>
                         {notice.title}
                       </span>
-                      {notice.isNew && (
+                      {notice.is_new && (
                         <span
                           aria-hidden
                           style={{
@@ -115,7 +115,7 @@ export default function NoticePage() {
                       )}
                     </div>
                     <p style={{ margin: "4px 0 0", fontSize: 12, color: pinkTheme.textMuted }}>
-                      {notice.date}
+                      {notice.created_at.slice(0, 10)}
                     </p>
                   </div>
                   <span
