@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import Modal from "../../pages/AlarmPage/components/Modal";
 import { pinkTheme as t } from "../../theme/pinkTheme";
@@ -54,13 +54,27 @@ export default function FamilyTimeSlotRow({ value, onChange }: Props) {
   const [hourText, setHourText] = useState(String(tp.hour));
   const [minuteText, setMinuteText] = useState(String(tp.minute).padStart(2, "0"));
 
-  // 시계 아이콘으로 고르는 등 "바깥에서" 값이 바뀌면, 입력칸에 보이는 텍스트도 같이
-  // 맞춰준다 - 이게 없으면 시계로 골라도 실제 값은 바뀌는데 입력칸 글자는 그대로라
-  // "꼬여 보이는" 버그가 난다(2026-07-21 확인).
+  // "이 입력칸 자체에서 타이핑해서 생긴 변경"과 "시계 등 바깥에서 생긴 변경"을 구분해야
+  // 한다 - 구분 안 하면, "3"을 입력하는 그 순간 update()가 부모 값을 바꾸고, 그걸 감지한
+  // useEffect가 "03"(두 자리로 채움)으로 즉시 되돌려버려서, 그 다음 눌러야 할 두 번째
+  // 숫자가 이미 두 자리라 안 들어가는 문제가 있었다(2026-07-21 확인 - "30분 넣으려고
+  // 3, 0 순서로 눌러도 0이 반영 안 되는" 버그의 원인). 스스로 일으킨 변경일 때는 이
+  // 플래그로 동기화를 한 번 건너뛴다.
+  const skipNextHourSync = useRef(false);
+  const skipNextMinuteSync = useRef(false);
+
   useEffect(() => {
+    if (skipNextHourSync.current) {
+      skipNextHourSync.current = false;
+      return;
+    }
     setHourText(String(tp.hour));
   }, [tp.hour]);
   useEffect(() => {
+    if (skipNextMinuteSync.current) {
+      skipNextMinuteSync.current = false;
+      return;
+    }
     setMinuteText(String(tp.minute).padStart(2, "0"));
   }, [tp.minute]);
 
@@ -72,6 +86,7 @@ export default function FamilyTimeSlotRow({ value, onChange }: Props) {
     const digits = raw.replace(/\D/g, "").slice(0, 2);
     setHourText(digits);
     if (digits === "") return; // 지우는 중 - 아직 반영 안 함, "1"로 안 튐
+    skipNextHourSync.current = true; // 이 update()로 생기는 되돌아온 동기화는 건너뛴다
     update({ hour: Math.min(12, Math.max(1, Number(digits))) });
   }
 
@@ -90,11 +105,14 @@ export default function FamilyTimeSlotRow({ value, onChange }: Props) {
     const digits = raw.replace(/\D/g, "").slice(0, 2);
     setMinuteText(digits);
     if (digits === "") return;
+    skipNextMinuteSync.current = true; // 이 update()로 생기는 되돌아온 동기화는 건너뛴다
     update({ minute: Math.min(59, Number(digits)) });
   }
 
   function handleMinuteBlur() {
-    if (minuteText === "") setMinuteText(String(tp.minute).padStart(2, "0"));
+    // 한 자리만 입력하고 벗어나도(예: "3"), 실제 값은 이미 반영돼있으니(3분) 표시만
+    // 두 자리로 깔끔하게 정리한다.
+    setMinuteText(String(tp.minute).padStart(2, "0"));
     setMinuteListOpen(false);
   }
 
