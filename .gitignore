@@ -57,6 +57,11 @@ app/database/drugs_full.db
 scripts/drug_info_sync/progress_db.log
 scripts/drug_info_sync/download_db_mode/
 
+# FCM(Firebase Cloud Messaging) 서비스 계정 키 - 비공개키가 든 비밀 파일이라 각자 로컬에만
+# 둔다. Firebase 콘솔 > 프로젝트 설정 > 서비스 계정 > "새 비공개 키 생성"으로 발급받아
+# app/secrets/firebase-service-account.json에 넣으면 된다.
+app/secrets/
+
 # 개인 로컬 백업(drugs_full.db 등 app/database/*.db 원본을 담은 zip) - 커밋 대상 아님
 app/database/database.zip
 

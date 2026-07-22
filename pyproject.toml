@@ -50,6 +50,8 @@ app = [
     "bcrypt<=4.0.1",
     "celery>=5.4.0",
     "fastapi[standard]>=0.128.0",
+    # FCM(Firebase Cloud Messaging) - 웹/네이티브 공통 발송 채널(app/services/push_service.py).
+    "firebase-admin>=7.5.0",
     "httpx>=0.28.1",
     "orjson>=3.11.5",
     "passlib[bcrypt]>=1.7.4",
@@ -134,4 +136,9 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 # 웹푸시 관련 패키지들도 타입 스텁을 제공하지 않는다(celery와 동일한 이유).
 module = ["py_vapid", "py_vapid.*", "pywebpush", "pywebpush.*", "apscheduler", "apscheduler.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# firebase-admin은 py.typed 마커가 없어 mypy가 스텁을 못 찾는다(celery와 동일한 이유).
+module = ["firebase_admin", "firebase_admin.*"]
 ignore_missing_imports = true
