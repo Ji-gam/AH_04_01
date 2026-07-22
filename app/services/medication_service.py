@@ -490,6 +490,21 @@ def _dedupe_drug_names(names: set[str]) -> list[str]:
     return kept
 
 
+def _find_master_item_seq(tier1_results: list[tuple[str, str]], name: str) -> str | None:
+    """(#OCR-MASTER-MATCH) 마스터 DB(`dur_prod_master_list`)의 `item_name`은 공공데이터포털
+    원본 그대로라 "한미오메가연질캡슐(오메가-3산에틸에스테르90)"처럼 브랜드명 뒤에 성분/함량이
+    괄호로 붙는 경우가 흔한데, OCR은 보통 괄호 밖 브랜드명까지만 인식한다. 문자열 완전일치만
+    요구하면 실제로 마스터에 있는 약도 매번 이 조건에서 탈락해 Tier3 실시간 공공 API 호출로
+    새는데(등록이 느려지고, 그때그때 별도 item_seq가 새로 발급돼 같은 약이 매번 다른 코드로
+    등록된다), 완전일치 다음으로 "마스터 이름이 OCR명 뒤에 곧장 '('로 이어지는" 후보가 하나뿐일
+    때만 채택해 이 탈락을 구제한다 - 후보가 여럿이면(어느 쪽인지 모호하면) Tier3로 넘긴다."""
+    exact = [seq for seq, iname in tier1_results if iname == name]
+    if exact:
+        return exact[0]
+    prefix_matches = [seq for seq, iname in tier1_results if iname[len(name) :][:1] == "(" and iname.startswith(name)]
+    return prefix_matches[0] if len(prefix_matches) == 1 else None
+
+
 async def _resolve_unmatched_name(name: str) -> tuple[str, bool]:
     """마스터 DB(`dur_prod_master_list`)에 없는 약품명에 대해 Tier 3(공공 API)로 품목기준코드를
     조회 → 실패 시 AUTO_ 더미 코드 생성 순으로 item_seq를 확보한다(T-MED-4/T-MED-1: 등록 자체가
@@ -511,7 +526,7 @@ async def _resolve_manual_registration_medication(db_session: AsyncSession, name
     순으로 확인한다. 반환값: (매칭/생성된 약, AUTO_ 더미 생성 여부)."""
     dur_repo = DurDrugRepository()
     tier1_results = await dur_repo.search_item_names(db_session, name, 5)
-    tier1_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
+    tier1_item_seq = _find_master_item_seq(tier1_results, name)
     if tier1_item_seq:
         return MatchedDrug(item_seq=tier1_item_seq, item_name=name), False
 
@@ -539,7 +554,7 @@ async def _resolve_or_create_drug_like_names(
     for name in _dedupe_drug_names(set(name_confidence)):
         confidence = name_confidence[name]
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
-        exact_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
+        exact_item_seq = _find_master_item_seq(tier1_results, name)
         if exact_item_seq:
             confidences[exact_item_seq] = max(confidences.get(exact_item_seq, 0.0), confidence)
             if exact_item_seq not in seen_ids:
@@ -691,7 +706,7 @@ async def _resolve_llm_suggested_names(
             continue
 
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
-        exact_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
+        exact_item_seq = _find_master_item_seq(tier1_results, name)
         if exact_item_seq:
             if exact_item_seq not in seen_ids:
                 seen_ids.add(exact_item_seq)
