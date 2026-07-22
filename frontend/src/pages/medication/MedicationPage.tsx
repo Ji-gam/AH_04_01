@@ -39,14 +39,11 @@ function foodPolarityStyle(polarity: FoodItem["polarity"]) {
   return FOOD_POLARITY_STYLES[polarity ?? "avoid"];
 }
 
-/** 처방전/알약 분석 시작 카드의 "구분" 선택지 — 가족 등록 화면(FamilyTrackerView)의
- * pill 버튼 스타일과 맞추기 위해 <select> 대신 이 목록으로 pill 버튼 행을 그린다. */
-const SOURCE_TYPE_OPTIONS = [
-  { value: "pill_photo", label: "알약 사진" },
-  { value: "prescription", label: "처방전 PDF/이미지" },
-  { value: "medical_record", label: "진료기록" },
-  { value: "medication_guide", label: "복약안내문" },
-] as const;
+// 사진 등록 업로드 시 백엔드에 보내는 source_type 고정값. 알약 사진만 단독으로는 OCR 인식이
+// 잘 안 돼 안내 문구/선택지에서 뺐고(사용자 확인, 2026-07), 나머지 문서 유형(처방전/진료기록/
+// 복약안내문)은 어떤 값으로 보내도 서버 처리(_execute_ocr_logic)가 source_type에 따라
+// 갈라지지 않아 사용자에게 굳이 고르게 할 이유가 없다 — 그중 하나로 고정해서 보낸다.
+const PHOTO_SOURCE_TYPE = "prescription";
 
 /** 탭 버튼 — 활성 탭은 핑크 채움, 비활성은 흰 카드. */
 function tabStyle(isActive: boolean): React.CSSProperties {
@@ -351,9 +348,12 @@ export default function MedicationPage() {
     checkFoodInteractions,
   } = useMedication();
 
+  // 등록 방식 선택 — 가족 등록 화면(FamilyTrackerView)의 검색/사진 탭과 동일하게, 수동 검색
+  // 등록과 사진(OCR) 등록 중 하나만 골라 보여준다(둘 다 항상 같이 보이던 것을 정리).
+  const [regMode, setRegMode] = useState<"manual" | "photo">("manual");
+
   // 상태 관리
   const [file, setFile] = useState<File | null>(null);
-  const [sourceType, setSourceType] = useState("pill_photo");
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<RecognitionCandidate[]>([]);
@@ -611,7 +611,7 @@ export default function MedicationPage() {
       // currentJobId부터 비워서 폴링 useEffect 조건(currentJobId && pending)이 거짓이 되게 한다.
       setCurrentJobId(null);
       setJobStatus("pending");
-      const jobId = await uploadJob(file, sourceType);
+      const jobId = await uploadJob(file, PHOTO_SOURCE_TYPE);
       setCurrentJobId(jobId);
     } catch (err) {
       console.error(err);
@@ -855,497 +855,538 @@ export default function MedicationPage() {
 
         {activeTab === "schedule" && (
           <div>
-            {/* 1~3 단계: 분석 사진/처방전 업로드 — 가족 등록 화면(FamilyTrackerView)과 같은
-              pink 테두리 카드 + pill 버튼 스타일로 통일 */}
-            <div
-              style={{
-                border: `1.5px solid ${pinkTheme.primary}`,
-                borderRadius: 10,
-                padding: "12px 15px",
-                marginBottom: "15px",
-                background: pinkTheme.primarySoft,
-              }}
-            >
-              <div
+            {/* 등록 방식 선택 — 가족 등록 화면(FamilyTrackerView)의 검색/사진 탭과 같은 pill
+              버튼 스타일. 수동등록/사진등록 중 하나만 아래에 표시한다. */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 15 }}>
+              <button
+                type="button"
+                onClick={() => setRegMode("manual")}
                 style={{
-                  fontWeight: 700,
-                  fontSize: 14,
-                  color: pinkTheme.primary,
-                  marginBottom: 10,
+                  flex: 1,
+                  padding: "6px",
+                  border: `1px solid ${regMode === "manual" ? pinkTheme.primary : pinkTheme.border}`,
+                  borderRadius: 8,
+                  background: regMode === "manual" ? pinkTheme.primary : pinkTheme.cardBg,
+                  color: regMode === "manual" ? "#fff" : pinkTheme.textMuted,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
                 }}
               >
-                📷 처방전/알약 분석 시작
-              </div>
-              <form
-                onSubmit={handleUploadSubmit}
-                style={{ display: "flex", flexDirection: "column", gap: 8 }}
+                수동등록
+              </button>
+              <button
+                type="button"
+                onClick={() => setRegMode("photo")}
+                style={{
+                  flex: 1,
+                  padding: "6px",
+                  border: `1px solid ${regMode === "photo" ? pinkTheme.primary : pinkTheme.border}`,
+                  borderRadius: 8,
+                  background: regMode === "photo" ? pinkTheme.primary : pinkTheme.cardBg,
+                  color: regMode === "photo" ? "#fff" : pinkTheme.textMuted,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
               >
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {SOURCE_TYPE_OPTIONS.map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => setSourceType(opt.value)}
-                      style={{
-                        padding: "6px 12px",
-                        borderRadius: 999,
-                        border: `1.5px solid ${sourceType === opt.value ? pinkTheme.primary : pinkTheme.border}`,
-                        background: sourceType === opt.value ? pinkTheme.primary : pinkTheme.cardBg,
-                        color: sourceType === opt.value ? "#fff" : pinkTheme.text,
-                        fontSize: 12,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
-                  required
-                  style={{ fontSize: 12 }}
-                />
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  style={{
-                    padding: "8px 14px",
-                    border: "none",
-                    borderRadius: 8,
-                    background: pinkTheme.primary,
-                    color: "#fff",
-                    fontWeight: 600,
-                    fontSize: 13,
-                    cursor: isLoading ? "not-allowed" : "pointer",
-                    opacity: isLoading ? 0.6 : 1,
-                  }}
-                >
-                  {isLoading ? "업로드 중..." : "처방전/알약 분석하기"}
-                </button>
-              </form>
+                사진등록
+              </button>
             </div>
 
-            {/* 4단계: 분석 진행 상태 노출 */}
-            {jobStatus && (
-              <div
-                style={{
-                  border: `1px solid ${pinkTheme.border}`,
-                  borderRadius: 10,
-                  padding: "15px",
-                  marginBottom: "15px",
-                  backgroundColor: pinkTheme.pageBg,
-                }}
-              >
-                <h4>
-                  분석 상태:{" "}
-                  {jobStatus === "pending"
-                    ? "접수 대기 중..."
-                    : jobStatus === "processing"
-                      ? "이미지 분석 및 매칭 추출 중..."
-                      : jobStatus}
-                </h4>
-                {(jobStatus === "pending" || jobStatus === "processing") && (
-                  <div style={{ marginTop: 8 }}>
-                    <OcrProgressBar status={jobStatus} />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 5~8 단계: 분석 결과 확인 & 최종 매칭 정보 */}
-            {candidates.length > 0 && (
-              <div
-                style={{
-                  border: `1px solid ${pinkTheme.border}`,
-                  borderRadius: 10,
-                  padding: "15px",
-                  marginBottom: "15px",
-                }}
-              >
-                <h3>분석 결과 및 매칭 추천</h3>
-                <p
-                  style={{
-                    fontSize: "12px",
-                    color: pinkTheme.text,
-                    backgroundColor: pinkTheme.primarySoft,
-                    padding: "5px",
-                  }}
-                >
-                  <strong>인식된 raw 텍스트:</strong> {extractedFields?.ocr_raw_text}
-                </p>
-
+            {regMode === "photo" && (
+              <>
+                {/* 1~3 단계: 분석 사진/처방전 업로드 — 가족 등록 화면(FamilyTrackerView)과 같은
+                  pink 테두리 카드 + pill 버튼 스타일로 통일 */}
                 <div
                   style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "10px",
-                    margin: "10px 0",
+                    border: `1.5px solid ${pinkTheme.primary}`,
+                    borderRadius: 10,
+                    padding: "12px 15px",
+                    marginBottom: "15px",
+                    background: pinkTheme.primarySoft,
                   }}
                 >
-                  <strong>의약품 후보 선택 (처방전에 여러 약이 있으면 전부 선택 가능):</strong>
-                  {/* DurScreeningPage.tsx 화면2의 "찾지 못한 약품명" 요약(dur-list-summary)과 동일 —
-                    로컬 DUR DB 커버리지가 좁아 인식은 됐어도 못 찾는 약이 흔하므로, 조용히 비워두지
-                    않고 명시적으로 알려준다. */}
-                  {!durCheckLoading && durUnmatchedNames.length > 0 && (
-                    <div style={{ fontSize: 12.5, color: pinkTheme.textMuted }}>
-                      DUR 정보를 찾지 못한 약품명: {durUnmatchedNames.join(", ")}
-                    </div>
-                  )}
-                  {/* 카드형 약 목록 + pill 경고 — DurScreeningPage.tsx 화면2(dur-drug-card/dur-pill)와
-                    같은 틀을 쓰되, 색상은 그 페이지의 녹색 accent 대신 이 페이지의 pinkTheme로 칠했다. */}
-                  {candidates.map((c) => {
-                    const durInfo = durWarningsByName[c.drug_name];
-                    const activeFlags = durInfo?.dur_simple.filter((f) => f.present) ?? [];
-                    // 등록 여부는 등록약 목록(schedules)에서 이름으로 파생한다 — 등록약이 목록에서
-                    // 삭제되면 자동으로 다시 선택 가능해지고, 이미지를 다시 올릴 필요가 없다.
-                    const isRegistered = schedules.some((s) => s.item_seq === c.drug_code);
-                    const checked = !isRegistered && selectedDrugCodes.includes(c.drug_code);
-                    return (
-                      <label
-                        key={c.drug_code}
-                        style={{
-                          display: "flex",
-                          gap: 10,
-                          alignItems: "flex-start",
-                          border: `1px solid ${checked ? pinkTheme.primary : pinkTheme.border}`,
-                          borderRadius: 12,
-                          padding: 10,
-                          cursor: isRegistered ? "not-allowed" : "pointer",
-                          background: isRegistered ? pinkTheme.border : pinkTheme.cardBg,
-                          opacity: isRegistered ? 0.6 : 1,
-                          boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          value={c.drug_code}
-                          checked={checked}
-                          disabled={isRegistered}
-                          style={{ marginTop: 3 }}
-                          onChange={(e) =>
-                            setSelectedDrugCodes((prev) =>
-                              e.target.checked
-                                ? [...prev, c.drug_code]
-                                : prev.filter((code) => code !== c.drug_code),
-                            )
-                          }
-                        />
-                        <div
-                          style={{
-                            width: 40,
-                            height: 40,
-                            flex: "none",
-                            borderRadius: 10,
-                            background: pinkTheme.primarySoft,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: 18,
-                          }}
-                        >
-                          💊
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 700, fontSize: 14 }}>
-                            {c.drug_name}
-                            {isRegistered && (
-                              <span
-                                style={{
-                                  marginLeft: 8,
-                                  fontSize: 11,
-                                  fontWeight: 700,
-                                  color: pinkTheme.textMuted,
-                                  border: `1px solid ${pinkTheme.textMuted}`,
-                                  borderRadius: 999,
-                                  padding: "1px 8px",
-                                }}
-                              >
-                                등록됨
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ fontSize: 11.5, color: pinkTheme.textMuted }}>
-                            매칭률 {(c.match_rate * 100).toFixed(0)}%
-                            {c.match_rate < 0.6 && " · 마스터 DB 미등록, 신규 인식"}
-                          </div>
-                          {durCheckLoading && !durInfo && (
-                            <div style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}>
-                              DUR 주의사항 확인 중...
-                            </div>
-                          )}
-                          {!durCheckLoading &&
-                            !durInfo &&
-                            durUnmatchedNames.includes(c.drug_name) && (
-                              <div
-                                style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}
-                              >
-                                DUR 데이터베이스에서 이 약을 찾지 못해 주의사항을 확인할 수
-                                없습니다.
-                              </div>
-                            )}
-                          {durInfo &&
-                            (activeFlags.length > 0 ? (
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexWrap: "wrap",
-                                  gap: 6,
-                                  marginTop: 6,
-                                }}
-                              >
-                                {activeFlags.map((f) => (
-                                  <span
-                                    key={f.rule_code}
-                                    title={f.prohbt_content ?? undefined}
-                                    style={{
-                                      display: "inline-flex",
-                                      alignItems: "center",
-                                      gap: 5,
-                                      fontSize: 11.5,
-                                      fontWeight: 700,
-                                      padding: "4px 9px",
-                                      borderRadius: 999,
-                                      background: "#fdecea",
-                                      color: pinkTheme.danger,
-                                      border: `1px solid ${pinkTheme.danger}`,
-                                    }}
-                                  >
-                                    <span
-                                      style={{
-                                        width: 6,
-                                        height: 6,
-                                        borderRadius: "50%",
-                                        background: pinkTheme.danger,
-                                      }}
-                                    />
-                                    {f.rule_label}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <div
-                                style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}
-                              >
-                                DUR 주의 사항 없음
-                              </div>
-                            ))}
-                        </div>
-                      </label>
-                    );
-                  })}
-                </div>
-
-                {/* 상호작용 리포트 — DurScreeningPage.tsx 화면4(dur-stat 요약 + dur-intrc-* 카드)와
-                  같은 틀, pinkTheme 색상. 등록 확정 전에 인식된 후보끼리 미리 대조해서 보여준다. */}
-                {durCheckError && (
                   <div
                     style={{
-                      padding: "10px",
-                      marginBottom: "10px",
-                      backgroundColor: "#fdecea",
-                      border: "1px solid #f5c6cb",
-                      fontSize: "13px",
+                      fontWeight: 700,
+                      fontSize: 14,
+                      color: pinkTheme.primary,
+                      marginBottom: 10,
                     }}
                   >
-                    {durCheckError}
+                    📷 처방전/알약 분석 시작
+                  </div>
+                  <form
+                    onSubmit={handleUploadSubmit}
+                    style={{ display: "flex", flexDirection: "column", gap: 8 }}
+                  >
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={(e) => setFile(e.target.files?.[0] || null)}
+                      required
+                      style={{ fontSize: 12 }}
+                    />
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      style={{
+                        padding: "8px 14px",
+                        border: "none",
+                        borderRadius: 8,
+                        background: pinkTheme.primary,
+                        color: "#fff",
+                        fontWeight: 600,
+                        fontSize: 13,
+                        cursor: isLoading ? "not-allowed" : "pointer",
+                        opacity: isLoading ? 0.6 : 1,
+                      }}
+                    >
+                      {isLoading ? "업로드 중..." : "처방전/알약 분석하기"}
+                    </button>
+                  </form>
+                </div>
+
+                {/* 4단계: 분석 진행 상태 노출 */}
+                {jobStatus && (
+                  <div
+                    style={{
+                      border: `1px solid ${pinkTheme.border}`,
+                      borderRadius: 10,
+                      padding: "15px",
+                      marginBottom: "15px",
+                      backgroundColor: pinkTheme.pageBg,
+                    }}
+                  >
+                    <h4>
+                      분석 상태:{" "}
+                      {jobStatus === "pending"
+                        ? "접수 대기 중..."
+                        : jobStatus === "processing"
+                          ? "이미지 분석 및 매칭 추출 중..."
+                          : jobStatus}
+                    </h4>
+                    {(jobStatus === "pending" || jobStatus === "processing") && (
+                      <div style={{ marginTop: 8 }}>
+                        <OcrProgressBar status={jobStatus} />
+                      </div>
+                    )}
                   </div>
                 )}
-                {durInteractions &&
-                  (durInteractions.drug_intrc.interactions.length > 0 ||
-                    durInteractions.drug_intrc.recalls.length > 0) && (
-                    <div style={{ margin: "14px 0" }}>
-                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                        <div
-                          style={{
-                            flex: 1,
-                            textAlign: "center",
-                            padding: "10px 8px",
-                            borderRadius: 12,
-                            background: pinkTheme.cardBg,
-                            border: `1px solid ${pinkTheme.border}`,
-                          }}
-                        >
-                          <div style={{ fontSize: 20, fontWeight: 800, color: pinkTheme.danger }}>
-                            {durInteractions.drug_intrc.interactions.length}
-                          </div>
-                          <div style={{ fontSize: 10.5, color: pinkTheme.textMuted, marginTop: 2 }}>
-                            상호작용
-                          </div>
+
+                {/* 5~8 단계: 분석 결과 확인 & 최종 매칭 정보 */}
+                {candidates.length > 0 && (
+                  <div
+                    style={{
+                      border: `1px solid ${pinkTheme.border}`,
+                      borderRadius: 10,
+                      padding: "15px",
+                      marginBottom: "15px",
+                    }}
+                  >
+                    <h3>분석 결과 및 매칭 추천</h3>
+                    <p
+                      style={{
+                        fontSize: "12px",
+                        color: pinkTheme.text,
+                        backgroundColor: pinkTheme.primarySoft,
+                        padding: "5px",
+                      }}
+                    >
+                      <strong>인식된 raw 텍스트:</strong> {extractedFields?.ocr_raw_text}
+                    </p>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "10px",
+                        margin: "10px 0",
+                      }}
+                    >
+                      <strong>의약품 후보 선택 (처방전에 여러 약이 있으면 전부 선택 가능):</strong>
+                      {/* DurScreeningPage.tsx 화면2의 "찾지 못한 약품명" 요약(dur-list-summary)과 동일 —
+                    로컬 DUR DB 커버리지가 좁아 인식은 됐어도 못 찾는 약이 흔하므로, 조용히 비워두지
+                    않고 명시적으로 알려준다. */}
+                      {!durCheckLoading && durUnmatchedNames.length > 0 && (
+                        <div style={{ fontSize: 12.5, color: pinkTheme.textMuted }}>
+                          DUR 정보를 찾지 못한 약품명: {durUnmatchedNames.join(", ")}
                         </div>
-                        <div
-                          style={{
-                            flex: 1,
-                            textAlign: "center",
-                            padding: "10px 8px",
-                            borderRadius: 12,
-                            background: pinkTheme.cardBg,
-                            border: `1px solid ${pinkTheme.border}`,
-                          }}
-                        >
-                          <div style={{ fontSize: 20, fontWeight: 800, color: "#b26a00" }}>
-                            {durInteractions.drug_intrc.recalls.length}
-                          </div>
-                          <div style={{ fontSize: 10.5, color: pinkTheme.textMuted, marginTop: 2 }}>
-                            리콜
-                          </div>
-                        </div>
-                      </div>
-
-                      {durInteractions.drug_intrc.interactions.map((w, idx) => (
-                        <DurInteractionCard key={idx} warning={w} />
-                      ))}
-
-                      {durInteractions.drug_intrc.recalls.map((r) => (
-                        <DurRecallCard key={r.item_seq} recall={r} />
-                      ))}
-
-                      <small style={{ color: pinkTheme.textMuted }}>
-                        본 서비스는 정보 제공 도구이며, 의학적 진단·처방을 대체하지 않습니다. 출처:
-                        식약처 의약품안전나라(DUR)
-                      </small>
+                      )}
+                      {/* 카드형 약 목록 + pill 경고 — DurScreeningPage.tsx 화면2(dur-drug-card/dur-pill)와
+                    같은 틀을 쓰되, 색상은 그 페이지의 녹색 accent 대신 이 페이지의 pinkTheme로 칠했다. */}
+                      {candidates.map((c) => {
+                        const durInfo = durWarningsByName[c.drug_name];
+                        const activeFlags = durInfo?.dur_simple.filter((f) => f.present) ?? [];
+                        // 등록 여부는 등록약 목록(schedules)에서 이름으로 파생한다 — 등록약이 목록에서
+                        // 삭제되면 자동으로 다시 선택 가능해지고, 이미지를 다시 올릴 필요가 없다.
+                        const isRegistered = schedules.some((s) => s.item_seq === c.drug_code);
+                        const checked = !isRegistered && selectedDrugCodes.includes(c.drug_code);
+                        return (
+                          <label
+                            key={c.drug_code}
+                            style={{
+                              display: "flex",
+                              gap: 10,
+                              alignItems: "flex-start",
+                              border: `1px solid ${checked ? pinkTheme.primary : pinkTheme.border}`,
+                              borderRadius: 12,
+                              padding: 10,
+                              cursor: isRegistered ? "not-allowed" : "pointer",
+                              background: isRegistered ? pinkTheme.border : pinkTheme.cardBg,
+                              opacity: isRegistered ? 0.6 : 1,
+                              boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              value={c.drug_code}
+                              checked={checked}
+                              disabled={isRegistered}
+                              style={{ marginTop: 3 }}
+                              onChange={(e) =>
+                                setSelectedDrugCodes((prev) =>
+                                  e.target.checked
+                                    ? [...prev, c.drug_code]
+                                    : prev.filter((code) => code !== c.drug_code),
+                                )
+                              }
+                            />
+                            <div
+                              style={{
+                                width: 40,
+                                height: 40,
+                                flex: "none",
+                                borderRadius: 10,
+                                background: pinkTheme.primarySoft,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontSize: 18,
+                              }}
+                            >
+                              💊
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontWeight: 700, fontSize: 14 }}>
+                                {c.drug_name}
+                                {isRegistered && (
+                                  <span
+                                    style={{
+                                      marginLeft: 8,
+                                      fontSize: 11,
+                                      fontWeight: 700,
+                                      color: pinkTheme.textMuted,
+                                      border: `1px solid ${pinkTheme.textMuted}`,
+                                      borderRadius: 999,
+                                      padding: "1px 8px",
+                                    }}
+                                  >
+                                    등록됨
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ fontSize: 11.5, color: pinkTheme.textMuted }}>
+                                매칭률 {(c.match_rate * 100).toFixed(0)}%
+                                {c.match_rate < 0.6 && " · 마스터 DB 미등록, 신규 인식"}
+                              </div>
+                              {durCheckLoading && !durInfo && (
+                                <div
+                                  style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 4 }}
+                                >
+                                  DUR 주의사항 확인 중...
+                                </div>
+                              )}
+                              {!durCheckLoading &&
+                                !durInfo &&
+                                durUnmatchedNames.includes(c.drug_name) && (
+                                  <div
+                                    style={{
+                                      fontSize: 11,
+                                      color: pinkTheme.textMuted,
+                                      marginTop: 4,
+                                    }}
+                                  >
+                                    DUR 데이터베이스에서 이 약을 찾지 못해 주의사항을 확인할 수
+                                    없습니다.
+                                  </div>
+                                )}
+                              {durInfo &&
+                                (activeFlags.length > 0 ? (
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      flexWrap: "wrap",
+                                      gap: 6,
+                                      marginTop: 6,
+                                    }}
+                                  >
+                                    {activeFlags.map((f) => (
+                                      <span
+                                        key={f.rule_code}
+                                        title={f.prohbt_content ?? undefined}
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "center",
+                                          gap: 5,
+                                          fontSize: 11.5,
+                                          fontWeight: 700,
+                                          padding: "4px 9px",
+                                          borderRadius: 999,
+                                          background: "#fdecea",
+                                          color: pinkTheme.danger,
+                                          border: `1px solid ${pinkTheme.danger}`,
+                                        }}
+                                      >
+                                        <span
+                                          style={{
+                                            width: 6,
+                                            height: 6,
+                                            borderRadius: "50%",
+                                            background: pinkTheme.danger,
+                                          }}
+                                        />
+                                        {f.rule_label}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div
+                                    style={{
+                                      fontSize: 11,
+                                      color: pinkTheme.textMuted,
+                                      marginTop: 4,
+                                    }}
+                                  >
+                                    DUR 주의 사항 없음
+                                  </div>
+                                ))}
+                            </div>
+                          </label>
+                        );
+                      })}
                     </div>
-                  )}
 
-                {/* 9~10 단계: 복약 시간표 설정 */}
-                <div style={{ margin: "10px 0" }}>
-                  <DoseTimesInput value={confirmedTimes} onChange={setConfirmedTimes} />
-                </div>
+                    {/* 상호작용 리포트 — DurScreeningPage.tsx 화면4(dur-stat 요약 + dur-intrc-* 카드)와
+                  같은 틀, pinkTheme 색상. 등록 확정 전에 인식된 후보끼리 미리 대조해서 보여준다. */}
+                    {durCheckError && (
+                      <div
+                        style={{
+                          padding: "10px",
+                          marginBottom: "10px",
+                          backgroundColor: "#fdecea",
+                          border: "1px solid #f5c6cb",
+                          fontSize: "13px",
+                        }}
+                      >
+                        {durCheckError}
+                      </div>
+                    )}
+                    {durInteractions &&
+                      (durInteractions.drug_intrc.interactions.length > 0 ||
+                        durInteractions.drug_intrc.recalls.length > 0) && (
+                        <div style={{ margin: "14px 0" }}>
+                          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                            <div
+                              style={{
+                                flex: 1,
+                                textAlign: "center",
+                                padding: "10px 8px",
+                                borderRadius: 12,
+                                background: pinkTheme.cardBg,
+                                border: `1px solid ${pinkTheme.border}`,
+                              }}
+                            >
+                              <div
+                                style={{ fontSize: 20, fontWeight: 800, color: pinkTheme.danger }}
+                              >
+                                {durInteractions.drug_intrc.interactions.length}
+                              </div>
+                              <div
+                                style={{ fontSize: 10.5, color: pinkTheme.textMuted, marginTop: 2 }}
+                              >
+                                상호작용
+                              </div>
+                            </div>
+                            <div
+                              style={{
+                                flex: 1,
+                                textAlign: "center",
+                                padding: "10px 8px",
+                                borderRadius: 12,
+                                background: pinkTheme.cardBg,
+                                border: `1px solid ${pinkTheme.border}`,
+                              }}
+                            >
+                              <div style={{ fontSize: 20, fontWeight: 800, color: "#b26a00" }}>
+                                {durInteractions.drug_intrc.recalls.length}
+                              </div>
+                              <div
+                                style={{ fontSize: 10.5, color: pinkTheme.textMuted, marginTop: 2 }}
+                              >
+                                리콜
+                              </div>
+                            </div>
+                          </div>
 
-                <button
-                  onClick={handleConfirmSubmit}
-                  disabled={!currentJobId || selectedDrugCodes.length === 0 || isConfirmingJob}
-                  style={{
-                    width: "100%",
-                    padding: "10px",
-                    backgroundColor: "#4caf50",
-                    color: "#fff",
-                    border: "none",
-                    cursor: isConfirmingJob ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {isConfirmingJob
-                    ? "등록 중..."
-                    : `선택한 ${selectedDrugCodes.length}개 약품 복약 스케줄 등록 확정`}
-                </button>
-              </div>
+                          {durInteractions.drug_intrc.interactions.map((w, idx) => (
+                            <DurInteractionCard key={idx} warning={w} />
+                          ))}
+
+                          {durInteractions.drug_intrc.recalls.map((r) => (
+                            <DurRecallCard key={r.item_seq} recall={r} />
+                          ))}
+
+                          <small style={{ color: pinkTheme.textMuted }}>
+                            본 서비스는 정보 제공 도구이며, 의학적 진단·처방을 대체하지 않습니다.
+                            출처: 식약처 의약품안전나라(DUR)
+                          </small>
+                        </div>
+                      )}
+
+                    {/* 9~10 단계: 복약 시간표 설정 */}
+                    <div style={{ margin: "10px 0" }}>
+                      <DoseTimesInput value={confirmedTimes} onChange={setConfirmedTimes} />
+                    </div>
+
+                    <button
+                      onClick={handleConfirmSubmit}
+                      disabled={!currentJobId || selectedDrugCodes.length === 0 || isConfirmingJob}
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        backgroundColor: "#4caf50",
+                        color: "#fff",
+                        border: "none",
+                        cursor: isConfirmingJob ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {isConfirmingJob
+                        ? "등록 중..."
+                        : `선택한 ${selectedDrugCodes.length}개 약품 복약 스케줄 등록 확정`}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
 
-            {/* 수동 약품 등록 — "더보기 > 약품 검색"과 동일하게 먼저 검색하고, 검색 결과 목록에서
+            {regMode === "manual" && (
+              /* 수동 약품 등록 — "더보기 > 약품 검색"과 동일하게 먼저 검색하고, 검색 결과 목록에서
               하나를 선택해 등록한다(T-MED-1 DoD 2번: 등록 자체는 막히지 않아야 한다는 원칙은
               유지 — 검색 결과에 원하는 약이 없으면 입력한 이름 그대로 새로 등록하는 보조
-              수단을 아래에 남겨뒀다). */}
-            <div style={{ border: `1px solid ${pinkTheme.border}`, padding: "15px" }}>
-              <h3>수동 약품 등록</h3>
-              <p style={{ fontSize: "12px", color: pinkTheme.textMuted }}>
-                약품명을 검색해서 목록에서 선택하면 바로 복약 일정이 등록됩니다. 검색 결과에 원하는
-                약이 없으면, 입력한 이름 그대로 새로 등록할 수도 있습니다(마스터 DB에 없는 약도 등록
-                자체는 막히지 않습니다).
-              </p>
-              <div style={{ margin: "10px 0" }}>
-                <DoseTimesInput value={manualTimes} onChange={setManualTimes} />
-              </div>
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: "5px", margin: "10px 0" }}
-              >
-                <label>처방 병원명 (선택):</label>
-                <input
-                  type="text"
-                  value={hospitalName}
-                  onChange={(e) => setHospitalName(e.target.value)}
-                  placeholder="예: 서울건강내과"
-                />
-              </div>
-
-              <form
-                onSubmit={handleSearchMedications}
-                style={{ display: "flex", gap: "5px", marginBottom: "10px" }}
-              >
-                <input
-                  type="text"
-                  value={quickDrugName}
-                  onChange={(e) => {
-                    setQuickDrugName(e.target.value);
-                    setHasSearched(false);
-                    setManualCandidates([]);
-                    setSelectedManualCode(null);
-                  }}
-                  placeholder="약품명 검색 (예: 타이레놀)"
-                  style={{ flex: 1 }}
-                />
-                <button type="submit" disabled={searchLoading || !quickDrugName.trim()}>
-                  {searchLoading ? "검색 중..." : "검색"}
-                </button>
-              </form>
-
-              {hasSearched && !searchLoading && manualCandidates.length === 0 && (
-                <div style={{ marginBottom: "10px" }}>
-                  <p style={{ fontSize: "13px", color: pinkTheme.textMuted, margin: "0 0 5px" }}>
-                    검색 결과가 없습니다.
-                  </p>
-                  <button
-                    onClick={handleQuickRegister}
-                    disabled={isLoading || !quickDrugName.trim()}
-                    style={{
-                      fontSize: "12.5px",
-                      color: pinkTheme.textMuted,
-                      background: "none",
-                      border: "none",
-                      textDecoration: "underline",
-                      cursor: "pointer",
-                      padding: 0,
-                    }}
-                  >
-                    찾는 약이 없나요? &quot;{quickDrugName.trim()}&quot;(으)로 새로 등록
-                  </button>
+              수단을 아래에 남겨뒀다). */
+              <div style={{ border: `1px solid ${pinkTheme.border}`, padding: "15px" }}>
+                <h3>수동 약품 등록</h3>
+                <p style={{ fontSize: "12px", color: pinkTheme.textMuted }}>
+                  약품명을 검색해서 목록에서 선택하면 바로 복약 일정이 등록됩니다. 검색 결과에
+                  원하는 약이 없으면, 입력한 이름 그대로 새로 등록할 수도 있습니다(마스터 DB에 없는
+                  약도 등록 자체는 막히지 않습니다).
+                </p>
+                <div style={{ margin: "10px 0" }}>
+                  <DoseTimesInput value={manualTimes} onChange={setManualTimes} />
                 </div>
-              )}
-
-              {/* 후보 목록 — OCR 5~8단계와 동일한 DUR 확인 + 카드 UI, 다만 라디오로 하나만 고른다. */}
-              {manualCandidates.length > 0 && (
                 <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "10px",
-                    marginBottom: "10px",
-                  }}
+                  style={{ display: "flex", flexDirection: "column", gap: "5px", margin: "10px 0" }}
                 >
-                  {!manualDurCheckLoading && manualDurUnmatchedNames.length > 0 && (
-                    <div style={{ fontSize: 12.5, color: pinkTheme.textMuted }}>
-                      DUR 정보를 찾지 못한 약품명: {manualDurUnmatchedNames.join(", ")}
-                    </div>
-                  )}
-                  {manualCandidates.map((m) => (
-                    <MedicationSelectCard
-                      key={m.drug_code}
-                      name={m.medication_name}
-                      subtitle={m.form_type ?? undefined}
-                      selected={selectedManualCode === m.drug_code}
-                      onToggle={() => setSelectedManualCode(m.drug_code)}
-                      durInfo={manualDurWarningsByName[m.medication_name]}
-                      durLoading={manualDurCheckLoading}
-                      isUnmatched={manualDurUnmatchedNames.includes(m.medication_name)}
-                    />
-                  ))}
-                  <button
-                    onClick={handleConfirmManualSelection}
-                    disabled={!selectedManualCode}
+                  <label>처방 병원명 (선택):</label>
+                  <input
+                    type="text"
+                    value={hospitalName}
+                    onChange={(e) => setHospitalName(e.target.value)}
+                    placeholder="예: 서울건강내과"
+                  />
+                </div>
+
+                <form
+                  onSubmit={handleSearchMedications}
+                  style={{ display: "flex", gap: "5px", marginBottom: "10px" }}
+                >
+                  <input
+                    type="text"
+                    value={quickDrugName}
+                    onChange={(e) => {
+                      setQuickDrugName(e.target.value);
+                      setHasSearched(false);
+                      setManualCandidates([]);
+                      setSelectedManualCode(null);
+                    }}
+                    placeholder="약품명 검색 (예: 타이레놀)"
+                    style={{ flex: 1 }}
+                  />
+                  <button type="submit" disabled={searchLoading || !quickDrugName.trim()}>
+                    {searchLoading ? "검색 중..." : "검색"}
+                  </button>
+                </form>
+
+                {hasSearched && !searchLoading && manualCandidates.length === 0 && (
+                  <div style={{ marginBottom: "10px" }}>
+                    <p style={{ fontSize: "13px", color: pinkTheme.textMuted, margin: "0 0 5px" }}>
+                      검색 결과가 없습니다.
+                    </p>
+                    <button
+                      onClick={handleQuickRegister}
+                      disabled={isLoading || !quickDrugName.trim()}
+                      style={{
+                        fontSize: "12.5px",
+                        color: pinkTheme.textMuted,
+                        background: "none",
+                        border: "none",
+                        textDecoration: "underline",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      찾는 약이 없나요? &quot;{quickDrugName.trim()}&quot;(으)로 새로 등록
+                    </button>
+                  </div>
+                )}
+
+                {/* 후보 목록 — OCR 5~8단계와 동일한 DUR 확인 + 카드 UI, 다만 라디오로 하나만 고른다. */}
+                {manualCandidates.length > 0 && (
+                  <div
                     style={{
-                      width: "100%",
-                      padding: "10px",
-                      backgroundColor: "#4caf50",
-                      color: "#fff",
-                      border: "none",
-                      cursor: selectedManualCode ? "pointer" : "not-allowed",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                      marginBottom: "10px",
                     }}
                   >
-                    선택한 약품 복약 스케줄 등록 확정
-                  </button>
-                </div>
-              )}
-            </div>
+                    {!manualDurCheckLoading && manualDurUnmatchedNames.length > 0 && (
+                      <div style={{ fontSize: 12.5, color: pinkTheme.textMuted }}>
+                        DUR 정보를 찾지 못한 약품명: {manualDurUnmatchedNames.join(", ")}
+                      </div>
+                    )}
+                    {manualCandidates.map((m) => (
+                      <MedicationSelectCard
+                        key={m.drug_code}
+                        name={m.medication_name}
+                        subtitle={m.form_type ?? undefined}
+                        selected={selectedManualCode === m.drug_code}
+                        onToggle={() => setSelectedManualCode(m.drug_code)}
+                        durInfo={manualDurWarningsByName[m.medication_name]}
+                        durLoading={manualDurCheckLoading}
+                        isUnmatched={manualDurUnmatchedNames.includes(m.medication_name)}
+                      />
+                    ))}
+                    <button
+                      onClick={handleConfirmManualSelection}
+                      disabled={!selectedManualCode}
+                      style={{
+                        width: "100%",
+                        padding: "10px",
+                        backgroundColor: "#4caf50",
+                        color: "#fff",
+                        border: "none",
+                        cursor: selectedManualCode ? "pointer" : "not-allowed",
+                      }}
+                    >
+                      선택한 약품 복약 스케줄 등록 확정
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
