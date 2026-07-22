@@ -57,3 +57,6 @@ app/database/drugs_full.db
 scripts/drug_info_sync/progress_db.log
 scripts/drug_info_sync/download_db_mode/
 
+# 개인 로컬 백업(drugs_full.db 등 app/database/*.db 원본을 담은 zip) - 커밋 대상 아님
+app/database/database.zip
+

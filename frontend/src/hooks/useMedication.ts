@@ -5,6 +5,10 @@ import { apiFetch, apiFetchRaw, getAccessToken, tryRefreshAccessToken } from "..
 export interface MedicationSchedule {
   id: number;
   medication_id: number;
+  // (T-MED-16) item_seq 또는 AUTO_ 더미 코드 — OCR 후보(RecognitionCandidate.drug_code)와
+  // 같은 조인 키라 이름(drug_name)이 아니라 이 값으로 등록 여부를 비교해야 한다. 등록 시
+  // 마스터 DB 이름으로 보강되어 OCR 원문 표기와 문자열이 달라질 수 있기 때문(예: 괄호 성분명 추가).
+  item_seq: string;
   drug_name: string;
   times: string[];
   source_job_id?: string | null;

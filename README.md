@@ -101,31 +101,44 @@ docker-compose up -d --build
 #### ⚠️ 데이터 시딩 (최초 1회)
 
 `docker compose up`은 `alembic upgrade head`로 테이블만 생성할 뿐, 그 안의 데이터까지 채워주지는
-않습니다. `mysql_data` 볼륨이 없는 새 환경(신규 팀원 로컬, 새 dev/prod DB)에서는 필요에 따라
-아래 스크립트를 한 번 실행하세요. 볼륨이 살아있는 한(`docker compose down -v`로 지우지 않는 한)
-컨테이너를 껐다 켜도 다시 실행할 필요는 없습니다.
+않습니다. `mysql_data` 볼륨이 없는 새 환경(신규 팀원 로컬, 새 dev/prod DB, 새 EC2 인스턴스 등)에서는
+필요에 따라 아래 스크립트를 한 번 실행하세요. 볼륨이 살아있는 한(`docker compose down -v`로 지우지
+않는 한) 컨테이너를 껐다 켜도 다시 실행할 필요는 없습니다.
+
+> ⚠️ `seed_food_drug_interaction`/`seed_dur`(밑에서 계속 언급되는 이름)는 (T-MED-15 리팩터링 이후)
+> **"원본 데이터가 이미 운영 MySQL에 있다"고 가정하고 다른 MySQL(주로 테스트 DB)로 복사만 하는**
+> 스크립트로 바뀌었습니다 — 단독 실행하면 아무 것도 하지 않고 안내 메시지만 찍습니다. 운영 MySQL에
+> **처음으로** 데이터를 채워야 한다면(볼륨이 비어있는 신규 환경) 아래 `bootstrap_*` 스크립트를 대신
+> 쓰세요. 이 스크립트들만 원본 소스(SQLite/JSON)를 직접 읽습니다 — 요청을 처리하는 API 코드 경로는
+> 여전히 SQLite를 전혀 참조하지 않습니다.
 
 ```bash
-# 음식-약물 상호작용 참조 테이블 (식약처 가이드북 기반) — 매칭 기능이 실제로 동작하려면 필수
-docker compose exec fastapi uv run python -m app.scripts.seed_food_drug_interaction
+# 음식-약물 상호작용 참조 테이블 (식약처 가이드북 기반) — 매칭 기능이 실제로 동작하려면 필수.
+# food_drug_interaction_reference.json(git에 있음)을 직접 읽어 MySQL에 채운다.
+docker compose exec fastapi uv run python -m app.scripts.bootstrap_food_drug_from_json
 
 # DUR(의약품안전사용서비스) 참조 테이블 — app/database/drugs_full.db(공공데이터포털 API 24종
-# 전수 수집본, scripts/drug_info_sync/orchestrate_pipeline.py)가 있어야 실행 가능
-docker compose exec fastapi uv run python -m app.scripts.seed_dur
+# 전수 수집본, scripts/drug_info_sync/orchestrate_pipeline.py 산출물, git에는 없음 — 팀 백업이나
+# 파이프라인 재실행으로 구해야 함)를 직접 읽어 MySQL에 채운다.
+docker compose exec fastapi uv run python -m app.scripts.bootstrap_dur_from_sqlite
 
 # 개발/테스트용 데모 계정 3개 + 습관·복약·알림·AI상담 더미 데이터 — 기능 화면을 바로 확인하고 싶을 때(선택)
 docker compose exec fastapi uv run python -m app.scripts.seed_demo_data
 ```
 
-세 스크립트 모두 재실행해도 안전합니다(이미 있는 데이터는 건너뜀 — 단, `seed_food_drug_interaction`과
-`seed_dur`은 참조 테이블 전체를 지우고 다시 채우는 방식으로 "안전"합니다. 데모 계정과 달리 정적
-참조 데이터라 증분 갱신할 이유가 없기 때문).
+`bootstrap_food_drug_from_json`/`bootstrap_dur_from_sqlite` 모두 재실행해도 안전합니다 — 참조
+테이블 전체를 지우고 원본 소스 내용으로 다시 채우는 방식입니다(정적 참조 데이터라 증분 갱신할
+이유가 없기 때문). 운영 MySQL에 이미 데이터가 있는 환경(볼륨을 새로 만들지 않는 한 보통 여기 해당)
+이라면 이 두 스크립트를 다시 실행할 필요가 없고, 그 대신 테스트 DB 등 별도 DB로 데이터를 복사하고
+싶을 때만 `seed_food_drug_interaction`/`seed_dur`를 (스크립트가 아니라 함수로) 씁니다 —
+`app/tests/conftest.py`가 이미 그렇게 자동 호출합니다.
 
 `app/models/dur.py`에 새 컬럼/테이블을 추가하는 마이그레이션(예: `0027_expand_dur_tables.py`)이
-있는 경우, `seed_dur`가 새 컬럼까지 채우려면 **먼저 `alembic upgrade head`로 스키마를 반영한
-뒤에** `seed_dur`를 실행해야 합니다. `docker compose up`은 fastapi 컨테이너 기동 시 항상
+있는 경우, `bootstrap_dur_from_sqlite`가 새 컬럼까지 채우려면 **먼저 `alembic upgrade head`로
+스키마를 반영한 뒤에** 실행해야 합니다. `docker compose up`은 fastapi 컨테이너 기동 시 항상
 `alembic upgrade head`를 자동으로 실행하므로, 컨테이너를 재기동(`docker compose up -d --build
-fastapi` 또는 재시작)하면 스키마는 이미 최신입니다 — 그다음 위 `seed_dur` 커맨드만 실행하면 됩니다.
+fastapi` 또는 재시작)하면 스키마는 이미 최신입니다 — 그다음 위 `bootstrap_dur_from_sqlite` 커맨드만
+실행하면 됩니다.
 
 #### 🩹 (컨테이너 없이) 로컬 venv에서 직접 alembic/seed 실행하기
 
@@ -138,7 +151,7 @@ uv sync --group app
 # .env의 DB_HOST=mysql은 "컨테이너 안에서 mysql 컨테이너를 찾기 위한" 값이라, 호스트에서 직접
 # 실행할 땐 mysql이라는 호스트명을 못 찾는다. DB_EXPOSE_PORT로 열려있는 localhost로 덮어써야 한다.
 DB_HOST=localhost uv run --group app python -m alembic upgrade head
-DB_HOST=localhost uv run --group app python -m app.scripts.seed_dur
+DB_HOST=localhost uv run --group app python -m app.scripts.bootstrap_dur_from_sqlite
 ```
 
 **⚠️ `alembic upgrade head`가 `Table 'xxx' already exists`로 실패하는 경우**: `alembic_version`
