@@ -250,10 +250,13 @@ export function useMedication() {
     }
   };
 
+  const clearError = () => setError(null);
+
   return {
     schedules,
     isLoading,
     error,
+    clearError,
     fetchSchedules,
     createManualSchedule,
     quickRegister,
