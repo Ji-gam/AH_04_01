@@ -69,6 +69,11 @@ services:
     env_file: .env
     restart: always
     mem_limit: 4G
+    volumes:
+      # RAG 벡터스토어(ai_worker/ingest가 만든 chroma_data). 이름있는 볼륨이어야 컨테이너
+      # 재생성(재배포/OOM 재시작 등)을 견딘다 - 볼륨 없이는 재생성마다 색인이 통째로
+      # 사라져 매번 수동으로 다시 인제스트해야 한다(2026-07-22 EC2 장애로 확인됨).
+      - chroma_data:/app/ai_worker/chroma_data
     networks:
       - ws
     depends_on:
@@ -117,6 +122,8 @@ volumes:
     name: certbot-conf
   certbot-www:
     name: certbot-www
+  chroma_data:
+    name: chroma_data
 
 networks:
   ws:
