@@ -85,9 +85,7 @@ async def bootstrap_food_drug_from_json(json_path: Path = DEFAULT_JSON_PATH) -> 
 
             for ing in category_row["ingredients"]:
                 session.add(
-                    FoodDrugIngredient(
-                        category_id=category.id, name_ko=ing.get("name_ko"), name_en=ing.get("name_en")
-                    )
+                    FoodDrugIngredient(category_id=category.id, name_ko=ing.get("name_ko"), name_en=ing.get("name_en"))
                 )
                 ingredient_count += 1
 
@@ -103,9 +101,7 @@ async def bootstrap_food_drug_from_json(json_path: Path = DEFAULT_JSON_PATH) -> 
                     polarity = "timing_caution"
                 else:
                     polarity = "avoid"
-                session.add(
-                    FoodDrugFoodItem(category_id=category.id, food_name=name, detail=detail, polarity=polarity)
-                )
+                session.add(FoodDrugFoodItem(category_id=category.id, food_name=name, detail=detail, polarity=polarity))
                 food_item_count += 1
 
         unused_recommend = _RECOMMEND_OVERRIDES - matched_recommend_overrides
