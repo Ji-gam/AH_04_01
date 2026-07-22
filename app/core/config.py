@@ -53,6 +53,13 @@ class Config(BaseSettings):
     VAPID_PRIVATE_KEY: str | None = None
     VAPID_CLAIM_EMAIL: str = "mailto:admin@example.com"
 
+    # FCM(Firebase Cloud Messaging) - 웹/네이티브 공통 발송 채널. Firebase 콘솔 > 프로젝트
+    # 설정 > 서비스 계정 > "새 비공개 키 생성"으로 받은 json을
+    # app/secrets/firebase-service-account.json에 두고 여기 경로를 넣는다(레포 루트 기준
+    # 상대경로 - uv run은 항상 레포 루트에서 실행). 설정 안 하면 push_service.py가 FCM
+    # 발송만 건너뛰고(웹푸시는 그대로 동작) 조용히 넘어간다.
+    FIREBASE_CREDENTIALS_PATH: str | None = None
+
     # T-LLM-2-async-gateway: ai-worker 서비스 기본 URL (docker-compose 네트워크 내부 호스트명).
     # AIWorkerGateway가 여기에 /retrieve, /generate-structured 경로를 붙여 호출한다.
     AI_WORKER_BASE_URL: str = "http://ai-worker:8001"

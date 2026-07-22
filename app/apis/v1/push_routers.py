@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
 from app.dtos.push import (
+    FcmTokenRegisterRequest,
+    FcmTokenUnregisterRequest,
     PushSubscribeRequest,
     PushUnsubscribeRequest,
     ReduceFrequencyRequest,
@@ -15,6 +17,7 @@ from app.dtos.push import (
 from app.models.medication_model import MedicationSchedule
 from app.models.notification_schedules import NotificationSchedule
 from app.models.profiles import Profile
+from app.models.push_subscription import PushPlatform
 from app.services.push_scheduler import schedule_snooze
 from app.services.push_service import PushService
 
@@ -58,6 +61,34 @@ async def unsubscribe_push(
 ) -> None:
     service = PushService()
     await service.unsubscribe(session, body.endpoint)
+
+
+@push_router.post(
+    "/register-fcm-token",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="FCM 등록 토큰 저장",
+    description="Firebase JS SDK(`getToken()`)로 발급받은 FCM 등록 토큰을 저장한다(웹/네이티브 공통).",
+)
+async def register_fcm_token(
+    body: FcmTokenRegisterRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    service = PushService()
+    await service.subscribe_fcm(session, profile.id, PushPlatform(body.platform), body.device_token)
+
+
+@push_router.post(
+    "/unregister-fcm-token",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="FCM 등록 토큰 해제",
+)
+async def unregister_fcm_token(
+    body: FcmTokenUnregisterRequest,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    service = PushService()
+    await service.unsubscribe_fcm(session, body.device_token)
 
 
 @push_router.post(

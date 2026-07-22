@@ -8,6 +8,7 @@ import FamilyNotificationView from "../../components/family/FamilyNotificationVi
 import FamilySwitcher from "../../components/family/FamilySwitcher";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { pinkTheme as t } from "../../theme/pinkTheme";
+import { disableFcmWeb, enableFcmWeb } from "../../utils/fcmWeb";
 import { disableWebPush, enableWebPush, type PushSubscribeStatus } from "../../utils/webPush";
 import SchedulePage from "../SchedulePage/SchedulePage";
 
@@ -98,10 +99,14 @@ export default function AlarmPage() {
   async function handleEnablePush() {
     const status = await enableWebPush();
     setPushStatus(status);
+    // FCM은 실험적으로 추가한 별도 채널이라(.env에 Firebase 설정이 없으면 조용히
+    // 건너뜀), 실패해도 기존 웹푸시 상태 표시에는 영향을 주지 않는다.
+    void enableFcmWeb();
   }
 
   async function handleDisablePush() {
     await disableWebPush();
+    void disableFcmWeb();
     setPushStatus("idle");
   }
 

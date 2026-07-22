@@ -23,6 +23,19 @@ class VapidPublicKeyResult(BaseModel):
     public_key: str
 
 
+class FcmTokenRegisterRequest(BaseModel):
+    """Firebase JS SDK(`getToken()`)로 발급받은 FCM 등록 토큰을 저장한다. platform=WEB이면
+    브라우저(PWA), IOS/ANDROID면 나중에 네이티브 앱이 쓸 수 있다 - device_token 하나만
+    있으면 플랫폼과 무관하게 똑같은 방식으로 발송되므로 이 요청 하나로 셋 다 받는다."""
+
+    platform: Literal["WEB", "IOS", "ANDROID"]
+    device_token: str
+
+
+class FcmTokenUnregisterRequest(BaseModel):
+    device_token: str
+
+
 class SnoozeRequest(BaseModel):
     """알림의 "30분 후 다시" 액션 버튼 클릭 시 서비스워커가 보내는 요청. 서비스워커는
     앱이 완전히 꺼져있어도 실행되지만 로그인 세션(JWT는 페이지 메모리에만 있음)에 접근할
