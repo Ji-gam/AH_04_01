@@ -272,7 +272,14 @@ export default function NotificationSettingsPage() {
             </button>
 
             {testStatus && (
-              <p style={{ margin: "10px 0 0", fontSize: 13, color: t.textMuted, textAlign: "center" }}>
+              <p
+                style={{
+                  margin: "10px 0 0",
+                  fontSize: 13,
+                  color: t.textMuted,
+                  textAlign: "center",
+                }}
+              >
                 {testStatus}
               </p>
             )}
