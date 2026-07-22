@@ -1474,6 +1474,39 @@ class MedicationService:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
         return await self.check_food_interactions_pending(session, target_profile_id)
 
+    async def update_schedule_for_family(
+        self, session: AsyncSession, requester_profile_id: int, schedule_id: int, req: MedicationScheduleUpdateRequest
+    ) -> MedicationScheduleResponse:
+        """(가족관리) 보호자가 가족 구성원 몫 복약 스케줄을 수정한다 - update_schedule(본인용)과
+        delete_schedule_for_family(가족용 삭제)를 그대로 합친 패턴이다. 본인용은
+        `schedule.profile_id != profile_id`로 소유자만 확인하지만, 여기서는 소유자 자신이
+        아니라 "요청자가 그 소유자의 보호자인지"를 확인한다."""
+        schedule = await self._repository.get_schedule_by_id(session, schedule_id)
+        if not schedule:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 복약 스케줄을 찾을 수 없습니다.")
+        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, schedule.profile_id)
+        if not is_guardian:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="해당 복약 스케줄을 수정할 권한이 없습니다."
+            )
+
+        if req.times is not None:
+            schedule.times = req.times
+        if req.hospital_name is not None:
+            schedule.hospital_name = req.hospital_name
+        await session.commit()
+        await session.refresh(schedule)
+
+        names = await self._dur_drug_repository.get_names_by_item_seqs(session, {schedule.item_seq})
+        return MedicationScheduleResponse(
+            id=schedule.id,
+            item_seq=schedule.item_seq,
+            drug_name=schedule.display_name or names.get(schedule.item_seq, schedule.item_seq),
+            times=schedule.times,
+            source_job_id=schedule.source_job_id,
+            hospital_name=schedule.hospital_name,
+        )
+
     async def delete_schedule_for_family(
         self, session: AsyncSession, requester_profile_id: int, schedule_id: int
     ) -> None:

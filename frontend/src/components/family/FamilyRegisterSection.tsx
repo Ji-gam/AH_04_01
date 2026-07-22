@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { familyApi, type FamilyLinkItem } from "../../api/familyApi";
 import { familyMedicationApi, type MedicationSearchResult } from "../../api/familyMedicationApi";
 import { pinkTheme } from "../../theme/pinkTheme";
-import OcrProgressBar from "../ui/OcrProgressBar";
 
 const inputStyle: React.CSSProperties = {
   padding: "8px 10px",
@@ -70,10 +69,8 @@ export default function FamilyRegisterSection() {
           if (status.status === "done") {
             setCandidates(
               status.candidates.map((c) => ({
-                id: 0,
-                standard_code: c.drug_code,
+                item_seq: c.drug_code,
                 medication_name: c.drug_name,
-                form_type: null,
               })),
             );
             if (status.extracted_fields?.times?.length) {
@@ -118,7 +115,7 @@ export default function FamilyRegisterSection() {
     try {
       await familyMedicationApi.registerForFamily(
         selectedProfileId,
-        selectedDrug.standard_code,
+        selectedDrug.item_seq,
         parseTimes(),
       );
       setMessage(`${selectedDrug.medication_name} 등록 완료`);
@@ -155,7 +152,7 @@ export default function FamilyRegisterSection() {
       await familyMedicationApi.confirmForFamily(
         jobId,
         selectedProfileId,
-        candidate.standard_code,
+        candidate.item_seq,
         parseTimes(),
       );
       setMessage(`${candidate.medication_name} 등록 완료`);
@@ -287,21 +284,18 @@ export default function FamilyRegisterSection() {
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {results.map((r) => (
                         <button
-                          key={r.standard_code}
+                          key={r.item_seq}
                           type="button"
                           onClick={() => setSelectedDrug(r)}
                           style={{
                             padding: "6px 10px",
                             borderRadius: 999,
-                            border: `1.5px solid ${selectedDrug?.standard_code === r.standard_code ? pinkTheme.primary : pinkTheme.border}`,
+                            border: `1.5px solid ${selectedDrug?.item_seq === r.item_seq ? pinkTheme.primary : pinkTheme.border}`,
                             background:
-                              selectedDrug?.standard_code === r.standard_code
+                              selectedDrug?.item_seq === r.item_seq
                                 ? pinkTheme.primary
                                 : pinkTheme.cardBg,
-                            color:
-                              selectedDrug?.standard_code === r.standard_code
-                                ? "#fff"
-                                : pinkTheme.text,
+                            color: selectedDrug?.item_seq === r.item_seq ? "#fff" : pinkTheme.text,
                             fontSize: 12,
                             cursor: "pointer",
                           }}
@@ -349,15 +343,12 @@ export default function FamilyRegisterSection() {
                       ? "인식 중..."
                       : "업로드 및 인식"}
                   </button>
-                  {(jobStatus === "uploading" || jobStatus === "processing") && (
-                    <OcrProgressBar status={jobStatus} label="사진에서 약 정보를 읽는 중..." />
-                  )}
                   {jobStatus === "done" && candidates.length > 0 && (
                     <>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                         {candidates.map((c) => (
                           <button
-                            key={c.standard_code}
+                            key={c.item_seq}
                             type="button"
                             onClick={() => handleRegisterFromPhoto(c)}
                             disabled={isBusy}

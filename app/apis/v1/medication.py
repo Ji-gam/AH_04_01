@@ -484,6 +484,22 @@ async def check_food_interactions_pending_for_family(
     return await service.check_food_interactions_pending_for_family(session, profile.id, target_profile_id)
 
 
+@medication_router.patch(
+    "/medications/{schedule_id}/for-family",
+    response_model=MedicationScheduleResponse,
+    summary="가족 구성원 몫 복약 스케줄 부분 수정 (가족관리)",
+    description="보호자가 자신이 관리하는 가족 구성원의 복약 스케줄을 수정한다. 전달한 필드(복용 시간 목록, 병원명)만 부분 수정한다.",
+)
+async def update_medication_schedule_for_family(
+    schedule_id: int,
+    body: MedicationScheduleUpdateRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> MedicationScheduleResponse:
+    service = MedicationService()
+    return await service.update_schedule_for_family(session, profile.id, schedule_id, body)
+
+
 @medication_router.delete(
     "/medications/{schedule_id}/for-family",
     status_code=204,
