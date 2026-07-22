@@ -165,9 +165,9 @@ export function useMedication() {
 
   const searchMedications = async (query: string) => {
     try {
-      return await apiFetch<
-        Array<{ id: number; standard_code: string; medication_name: string; form_type: string }>
-      >(`/medications/search?query=${encodeURIComponent(query)}`);
+      return await apiFetch<Array<{ item_seq: string; medication_name: string }>>(
+        `/medications/search?query=${encodeURIComponent(query)}`,
+      );
     } catch (err) {
       console.error(err);
       return [];

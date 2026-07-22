@@ -650,9 +650,9 @@ export default function MedicationPage() {
       const results = await searchMedications(quickDrugName.trim());
       setManualCandidates(
         results.map((r) => ({
-          drug_code: r.standard_code,
+          drug_code: r.item_seq,
           medication_name: r.medication_name,
-          form_type: r.form_type,
+          form_type: null,
         })),
       );
       setHasSearched(true);
