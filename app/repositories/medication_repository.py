@@ -80,9 +80,7 @@ class MedicationRepository:
     async def get_cached_master_data(self, session: AsyncSession, query_name: str) -> dict | None:
         """`medication_open_api_client.fetch_medication_master_data()` write-back 캐시 조회
         (T-LLM-2-drug-gateway `DrugDataCache`와 동일 패턴 — query_name 정확매치)."""
-        result = await session.execute(
-            select(MedicationDataCache).where(MedicationDataCache.query_name == query_name)
-        )
+        result = await session.execute(select(MedicationDataCache).where(MedicationDataCache.query_name == query_name))
         cached = result.scalar_one_or_none()
         return cached.fields if cached else None
 
