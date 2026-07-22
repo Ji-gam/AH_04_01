@@ -44,7 +44,8 @@ export default function OcrProgressBar({ status, label }: OcrProgressBarProps) {
   if (!status) return null;
 
   const barColor = status === "failed" ? pinkTheme.danger : pinkTheme.primary;
-  const displayLabel = label ?? (isActive ? stage.label : status === "done" ? "분석 완료!" : "분석에 실패했습니다");
+  const displayLabel =
+    label ?? (isActive ? stage.label : status === "done" ? "분석 완료!" : "분석에 실패했습니다");
   const displayIcon = isActive ? stage.icon : status === "done" ? "✅" : "⚠️";
 
   return (
