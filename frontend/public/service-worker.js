@@ -12,8 +12,8 @@ self.addEventListener("push", (event) => {
     // 서버가 JSON이 아닌 형태로 보냈으면 기본 문구로 대체 - 알림 자체는 뜨게 한다.
   }
 
-  // actions/data가 있으면(복약알림 본인 몫 - push_service.py의 snooze_source) "30분/1시간
-  // 후 다시" 버튼을 붙인다. 없으면(가족에게 전달된 사본, 습관 달성 알림 등) 그냥 텍스트만.
+  // actions/data가 있으면(복약알림 본인 몫 - push_service.py의 snooze_source) "30분 후 다시"/
+  // "빈도 줄이기" 버튼을 붙인다. 없으면(가족에게 전달된 사본, 습관 달성 알림 등) 그냥 텍스트만.
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body,
@@ -23,22 +23,40 @@ self.addEventListener("push", (event) => {
   );
 });
 
-// 액션 버튼(스누즈) 클릭 시 로그인 세션 없이 백엔드에 재발송을 예약한다 - 서비스워커는 앱이
-// 완전히 꺼져있어도 실행되지만 페이지 메모리에만 있는 JWT엔 접근할 수 없다(app/dtos/push.py의
-// SnoozeRequest 주석 참고). 그 외(본문 클릭 등)는 기존대로 앱 포커스/열기만 한다.
+// 액션 버튼(스누즈/빈도줄이기) 클릭 시 로그인 세션 없이 백엔드에 요청한다 - 서비스워커는
+// 앱이 완전히 꺼져있어도 실행되지만 페이지 메모리에만 있는 JWT엔 접근할 수 없다
+// (app/dtos/push.py의 SnoozeRequest 주석 참고). 그 외(본문 클릭 등)는 기존대로 앱 포커스/
+// 열기만 한다.
 self.addEventListener("notificationclick", (event) => {
   const { action, notification } = event;
   notification.close();
 
-  if (action === "snooze_30" || action === "snooze_60") {
-    const minutes = action === "snooze_30" ? 30 : 60;
+  if (action === "snooze_30") {
     const { profile_id, source_type, source_id } = notification.data || {};
     if (profile_id && source_type && source_id) {
       event.waitUntil(
         fetch("/api/v1/push/snooze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ profile_id, source_type, source_id, minutes }),
+          body: JSON.stringify({ profile_id, source_type, source_id, minutes: 30 }),
+        }).catch(() => {
+          // 오프라인 등으로 실패해도 알림 자체는 이미 닫혔다 - 조용히 무시.
+        }),
+      );
+    }
+    return;
+  }
+
+  // "빈도 줄이기"(F-NTFY-3) - alarm_time까지 같이 보내야 medication_schedule의 여러 시각
+  // 중 정확히 이 알림이 울린 시각만 서버가 골라 뺄 수 있다.
+  if (action === "reduce_freq") {
+    const { profile_id, source_type, source_id, alarm_time } = notification.data || {};
+    if (profile_id && source_type && source_id) {
+      event.waitUntil(
+        fetch("/api/v1/push/reduce-frequency", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profile_id, source_type, source_id, alarm_time }),
         }).catch(() => {
           // 오프라인 등으로 실패해도 알림 자체는 이미 닫혔다 - 조용히 무시.
         }),

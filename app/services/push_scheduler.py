@@ -92,6 +92,7 @@ async def _send_due_notification_schedules(
                 title="복약 알림",
                 body=f"{schedule.medication_name} 드실 시간이에요!",
                 snooze_source=("notification_schedule", schedule.id),
+                alarm_time=current_hhmm,
             )
         except Exception:
             logger.exception("알림 발송 중 오류 (notification_schedule_id=%s)", schedule.id)
@@ -138,6 +139,7 @@ async def _send_due_medication_schedules(
                 title="복약 알림",
                 body=f"{drug_name} 드실 시간이에요!",
                 snooze_source=("medication_schedule", med_schedule.id),
+                alarm_time=current_hhmm,
             )
         except Exception:
             logger.exception("알림 발송 중 오류 (medication_schedule_id=%s)", med_schedule.id)
