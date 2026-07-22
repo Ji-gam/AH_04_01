@@ -266,6 +266,47 @@ async def test_quick_register_with_master_data_match_promotes_instead_of_auto_du
         assert body["schedule"]["drug_name"] == "게보린정"
 
 
+async def test_quick_register_public_api_item_not_in_local_master_shows_resolved_name(monkeypatch):
+    """(#OCR-DISPLAY-NAME) Tier3(공공 API)로 해석된 item_seq는 AUTO_ 접두사가 없어도 로컬
+    `dur_prod_master_list`엔 없을 수 있다 - 그 경우 목록 조회 시 이름 대신 item_seq
+    숫자 코드("200000001")가 그대로 노출되던 버그의 회귀 테스트."""
+    monkeypatch.setattr(medication_service, "DurDrugRepository", lambda: _FakeDurDrugRepository([]))
+
+    async def _fake_pill(item_name=None, **kwargs):
+        return [{"ITEM_SEQ": "200000001", "DRUG_SHAPE": "원형", "COLOR_CLASS1": "하양", "PRINT_FRONT": "ABC"}]
+
+    async def _empty(*args, **kwargs):
+        return []
+
+    monkeypatch.setattr(medication_open_api_client, "fetch_pill_identification", _fake_pill)
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_approval_info", _empty)
+    monkeypatch.setattr(medication_open_api_client, "fetch_drug_summary", _empty)
+    monkeypatch.setattr(medication_open_api_client, "fetch_dur_item_info", _empty)
+
+    async def _always_exists(self, session, item_seq):
+        return True
+
+    monkeypatch.setattr(MedicationRepository, "item_seq_exists", _always_exists)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "public_api_display_name@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        res = await client.post(
+            "/api/v1/medications/quick-register",
+            headers=headers,
+            json={"drug_name": "낫모르는약100mg", "times": ["08:00"]},
+        )
+        assert res.status_code == status.HTTP_200_OK
+        assert res.json()["schedule"]["drug_name"] == "낫모르는약100mg"
+
+        list_res = await client.get("/api/v1/medications", headers=headers)
+        assert list_res.status_code == status.HTTP_200_OK
+        names = [s["drug_name"] for s in list_res.json()]
+        assert "낫모르는약100mg" in names
+        assert "200000001" not in names
+
+
 async def test_delete_schedule_removes_it_from_list(monkeypatch):
     _seed_dummy_medications(monkeypatch)
 

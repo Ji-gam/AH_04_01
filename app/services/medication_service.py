@@ -1181,7 +1181,13 @@ class MedicationService:
 
             candidate = next((c for c in (job.candidates or []) if c["drug_code"] == item_seq), None)
             drug_name = candidate["drug_name"] if candidate else item_seq
-            display_name = drug_name if item_seq.startswith("AUTO_") else None
+            # (#OCR-DISPLAY-NAME) `item_seq.startswith("AUTO_")`만으로 "마스터 DB에 있다"고
+            # 가정하면 안 된다 - Tier3 공공 API로 해석된 item_seq(AUTO_ 아님)도 로컬
+            # `dur_prod_master_list`엔 없을 수 있어(커버리지 차이), `list_schedules`의
+            # `names.get(item_seq, item_seq)` 폴백이 숫자 코드 그대로("201501025") 노출됐다.
+            # 실제 마스터 존재 여부를 확인해 display_name을 채운다.
+            master_names = await self._dur_drug_repository.get_names_by_item_seqs(session, {item_seq})
+            display_name = None if item_seq in master_names else drug_name
 
             # 9~10번: 시간대가 적혀있다면 추출된 시간 사용, 없으면 기본 슬롯 추천
             times = ["09:00", "13:00", "19:00"]
@@ -1325,7 +1331,11 @@ class MedicationService:
             matched_drug, auto_created = await _resolve_manual_registration_medication(session, stripped_name)
             item_seq, item_name = matched_drug.item_seq, matched_drug.item_name
 
-        display_name = item_name if item_seq.startswith("AUTO_") else None
+        # (#OCR-DISPLAY-NAME) `_resolve_manual_registration_medication`이 Tier3 공공 API로
+        # 해석한 item_seq도 AUTO_ 접두사는 없지만 로컬 `dur_prod_master_list`엔 없을 수 있다 -
+        # 실제 마스터 존재 여부로 판단해야 조회 시 숫자 코드가 이름 대신 노출되지 않는다.
+        master_names = await self._dur_drug_repository.get_names_by_item_seqs(session, {item_seq})
+        display_name = None if item_seq in master_names else item_name
         schedule = MedicationSchedule(
             profile_id=profile_id,
             item_seq=item_seq,
