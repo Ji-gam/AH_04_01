@@ -635,7 +635,7 @@ export default function MedicationPage() {
     }
   };
 
-  // 약품명 검색 핸들러 — "더보기 > 약품 검색"과 같은 마스터 DB(MySQL 캐시 + Tier1 SQLite)를
+  // 약품명 검색 핸들러 — "더보기 > 약품 검색"과 같은 마스터 DB(MySQL dur_prod_master_list)를
   // 조회하는 /medications/search를 그대로 쓴다. 결과는 OCR 후보와 동일한 모양(drug_code/
   // medication_name/form_type)으로 담아 manualCandidates에 넣고, 아래에서 하나를 골라 확정한다.
   const handleSearchMedications = async (e: React.FormEvent) => {
@@ -963,7 +963,7 @@ export default function MedicationPage() {
                     const activeFlags = durInfo?.dur_simple.filter((f) => f.present) ?? [];
                     // 등록 여부는 등록약 목록(schedules)에서 이름으로 파생한다 — 등록약이 목록에서
                     // 삭제되면 자동으로 다시 선택 가능해지고, 이미지를 다시 올릴 필요가 없다.
-                    const isRegistered = schedules.some((s) => s.drug_name === c.drug_name);
+                    const isRegistered = schedules.some((s) => s.item_seq === c.drug_code);
                     const checked = !isRegistered && selectedDrugCodes.includes(c.drug_code);
                     return (
                       <label
