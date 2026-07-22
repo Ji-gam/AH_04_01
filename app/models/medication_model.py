@@ -33,6 +33,23 @@ class MedicationSchedule(Base):
     )
 
 
+class MedicationDataCache(Base):
+    """`medication_open_api_client.fetch_medication_master_data()`(낱알식별/허가정보/e약은요/DUR
+    품목정보 4개 API 병렬 호출) 결과의 write-back 캐시. `app/models/drug_data_cache_model.py`의
+    `DrugDataCache`(T-LLM-2-drug-gateway)와 동일한 패턴 — `query_name` 정확매치 키, 빈 응답은
+    저장하지 않는다(나중에 API에 데이터가 채워질 수 있어 재시도 여지를 남긴다)."""
+
+    __tablename__ = "medication_data_cache"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    query_name: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
+    fields: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
 class MedicationRecognitionJob(Base):
     """비동기 알약/처방전 OCR 분석 작업 기록 테이블."""
 

@@ -505,14 +505,26 @@ def _find_master_item_seq(tier1_results: list[tuple[str, str]], name: str) -> st
     return prefix_matches[0] if len(prefix_matches) == 1 else None
 
 
-async def _resolve_unmatched_name(name: str) -> tuple[str, bool]:
+async def _resolve_unmatched_name(db_session: AsyncSession, name: str) -> tuple[str, bool]:
     """마스터 DB(`dur_prod_master_list`)에 없는 약품명에 대해 Tier 3(공공 API)로 품목기준코드를
     조회 → 실패 시 AUTO_ 더미 코드 생성 순으로 item_seq를 확보한다(T-MED-4/T-MED-1: 등록 자체가
-    막히지 않아야 한다). 반환값: (item_seq 또는 AUTO_ 더미 코드, 더미 생성 여부)."""
-    try:
-        fields = await medication_open_api_client.fetch_medication_master_data(name)
-    except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
-        fields = None
+    막히지 않아야 한다). 반환값: (item_seq 또는 AUTO_ 더미 코드, 더미 생성 여부).
+
+    Tier3 호출 앞에 MySQL 캐시(`medication_data_cache`)를 둔다(T-LLM-2-drug-gateway
+    `DurDrugRepository.drug_data()`와 동일 패턴 — query_name 정확매치, 빈 응답은 캐싱 안 함) —
+    같은 약이 반복 조회될 때마다 낱알식별/허가정보/e약은요/DUR품목정보 4개 API를 매번 다시
+    부르는 낭비를 없앤다."""
+    query_name = name.strip()
+    medication_repo = MedicationRepository()
+
+    fields = await medication_repo.get_cached_master_data(db_session, query_name)
+    if fields is None:
+        try:
+            fields = await medication_open_api_client.fetch_medication_master_data(query_name)
+        except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
+            fields = None
+        if fields is not None:
+            await medication_repo.write_back_master_data(db_session, query_name, fields)
 
     item_seq = _extract_item_seq(fields.get("standard_code")) if fields else None
     if item_seq:
@@ -530,7 +542,7 @@ async def _resolve_manual_registration_medication(db_session: AsyncSession, name
     if tier1_item_seq:
         return MatchedDrug(item_seq=tier1_item_seq, item_name=name), False
 
-    item_seq, is_auto_dummy = await _resolve_unmatched_name(name)
+    item_seq, is_auto_dummy = await _resolve_unmatched_name(db_session, name)
     return MatchedDrug(item_seq=item_seq, item_name=name), is_auto_dummy
 
 
@@ -562,7 +574,7 @@ async def _resolve_or_create_drug_like_names(
                 resolved.append(MatchedDrug(item_seq=exact_item_seq, item_name=name))
             continue
 
-        item_seq, is_auto_dummy = await _resolve_unmatched_name(name)
+        item_seq, is_auto_dummy = await _resolve_unmatched_name(db_session, name)
         seen_ids.add(item_seq)
         if is_auto_dummy:
             auto_created_ids.add(item_seq)
@@ -722,7 +734,7 @@ async def _resolve_llm_suggested_names(
                 resolved.append(MatchedDrug(item_seq=exact_item_seq, item_name=name))
             continue
 
-        item_seq, is_auto_dummy = await _resolve_unmatched_name(name)
+        item_seq, is_auto_dummy = await _resolve_unmatched_name(db_session, name)
         seen_ids.add(item_seq)
         if is_auto_dummy:
             auto_created_ids.add(item_seq)
