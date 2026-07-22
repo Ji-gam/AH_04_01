@@ -57,6 +57,7 @@ class PushService:
         title: str,
         body: str,
         snooze_source: tuple[str, int] | None = None,
+        consult_url: str | None = None,
     ) -> None:
         """이 프로필이 구독해둔 모든 기기(WEB만 - IOS/ANDROID는 나중에 네이티브 패키징 시
         별도 발송 경로 추가 예정)에 푸시를 보낸다. 구독 하나가 실패해도(예: 브라우저에서
@@ -65,7 +66,11 @@ class PushService:
         snooze_source=(source_type, source_id)를 주면 알림에 "30분/1시간 후 다시" 액션
         버튼을 붙인다(service-worker.js가 payload.actions/data를 그대로 showNotification에
         넘긴다) - 복약알림 본인 몫에만 쓰고, 가족에게 전달하는 사본에는 안 붙인다(스누즈는
-        본인이 결정할 일이라 가족이 대신 미룰 수 있으면 안 된다)."""
+        본인이 결정할 일이라 가족이 대신 미룰 수 있으면 안 된다).
+
+        consult_url을 주면(F-NTFY-5 부작용 사전 안내 전용) "불편한 증상이 있어요" 액션
+        버튼을 붙인다 - service-worker.js가 클릭 시 이 URL(챗봇 자동 질문 딥링크)을 연다.
+        snooze_source와 동시에 쓰는 경우는 없다(용도가 겹치지 않음)."""
         if not config.VAPID_PRIVATE_KEY:
             logger.warning("VAPID 비밀키가 설정되지 않아 푸시 발송을 건너뜁니다.")
             return
@@ -78,6 +83,9 @@ class PushService:
                 {"action": "snooze_30", "title": "30분 후 다시"},
                 {"action": "snooze_60", "title": "1시간 후 다시"},
             ]
+        elif consult_url is not None:
+            payload["data"] = {"url": consult_url}
+            payload["actions"] = [{"action": "open_consult", "title": "불편한 증상이 있어요"}]
 
         subscriptions = await self._repo.list_web_subscriptions_for_profile(session, profile_id)
         for sub in subscriptions:

@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from urllib.parse import quote
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,15 @@ from app.services.quiet_hours import is_in_quiet_hours
 logger = logging.getLogger("app.side_effect_notification_service")
 
 _SIDE_EFFECT_SUMMARY_LIMIT = 60
+
+
+def _build_consult_url(drug_name: str) -> str:
+    """알림의 "불편한 증상이 있어요" 액션 버튼이 열 딥링크. 탭이 완전히 닫혀있어도
+    service-worker의 clients.openWindow(url)로 열리므로 React Router의 location.state를
+    못 쓴다 - 대신 쿼리 파라미터로 자동 질문 문구를 실어보내고, ChatPage.tsx가 마운트
+    시점에 이걸 읽어 자동 전송한다(기존 location.state 방식과 나란히 지원)."""
+    message = f"{drug_name} 복용 중인데 부작용이 걱정돼요. 어떤 증상을 조심해야 하나요?"
+    return f"/chat?autoMessage={quote(message)}"
 
 
 class SideEffectNotificationService:
@@ -50,7 +60,11 @@ class SideEffectNotificationService:
                 else side_effects[:_SIDE_EFFECT_SUMMARY_LIMIT] + "…"
             )
             await self._push_service.send_to_profile(
-                session, profile_id, title=f"⚠️ {drug_name} 복용 전 확인하세요", body=f"부작용: {summary}"
+                session,
+                profile_id,
+                title=f"⚠️ {drug_name} 복용 전 확인하세요",
+                body=f"부작용: {summary}",
+                consult_url=_build_consult_url(drug_name),
             )
         except Exception:
             logger.exception("부작용 사전 안내 알림 발송 실패 (profile_id=%s, drug_name=%s)", profile_id, drug_name)

@@ -47,6 +47,27 @@ self.addEventListener("notificationclick", (event) => {
     return;
   }
 
+  // "불편한 증상이 있어요"(F-NTFY-5 부작용 사전 안내 전용) - data.url로 챗봇 자동질문
+  // 딥링크를 받아 연다. 이미 열려있는 탭이 있으면 그 탭을 그 URL로 이동시키고, 없으면
+  // 새 창을 연다(탭이 완전히 닫혀있던 경우 - clients.openWindow만 가능).
+  if (action === "open_consult") {
+    const { url } = notification.data || {};
+    if (url) {
+      event.waitUntil(
+        self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+          for (const client of clientList) {
+            if ("navigate" in client && "focus" in client) {
+              return client.navigate(url).then(() => client.focus());
+            }
+          }
+          if (self.clients.openWindow) return self.clients.openWindow(url);
+          return undefined;
+        }),
+      );
+    }
+    return;
+  }
+
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
