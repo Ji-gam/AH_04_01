@@ -15,7 +15,12 @@ MySQL만 조회한다.
 `seed_dur.py`의 `_TABLE_SPECS`(sqlite 원본 컬럼명 -> 모델 속성명 매핑, 문서화 목적으로 이미 sqlite
 컬럼명을 키로 남겨두고 있음)를 그대로 재사용한다.
 
-실행: uv run python -m app.scripts.bootstrap_dur_from_sqlite [drugs_full.db 경로]
+배포 파이프라인에서 매 배포마다 조건 없이 돌려도 되도록, 첫 번째 테이블(`drugs_data` /
+`DrugMaster`)에 이미 행이 있으면 재적재 없이 스킵한다(`--force`로 강제 재실행 가능). 이 스크립트는
+전체 삭제 후 재삽입 방식이라 이미 채워진 환경에서 매번 다시 돌리면 100만 건 이상을 불필요하게
+지웠다가 다시 넣게 되어 배포 시간이 크게 늘어난다.
+
+실행: uv run python -m app.scripts.bootstrap_dur_from_sqlite [drugs_full.db 경로] [--force]
 """
 
 import asyncio
@@ -24,7 +29,7 @@ import sys
 from collections.abc import Iterator
 from pathlib import Path
 
-from sqlalchemy import delete, insert
+from sqlalchemy import delete, func, insert, select
 
 from app.core.db.databases import AsyncSessionLocal
 from app.scripts.seed_dur import _TABLE_SPECS, CHUNK_SIZE
@@ -43,9 +48,20 @@ def _iter_sqlite_chunks(conn: sqlite3.Connection, table: str, columns: list[str]
         yield rows
 
 
-async def bootstrap_dur_from_sqlite(sqlite_path: Path = DEFAULT_SQLITE_PATH) -> dict[str, int]:
+async def bootstrap_dur_from_sqlite(sqlite_path: Path = DEFAULT_SQLITE_PATH, force: bool = False) -> dict[str, int]:
     """운영 MySQL(`ai_health`)의 DUR 테이블을 `sqlite_path`(drugs_full.db) 내용으로 전체
-    삭제 후 재적재한다."""
+    삭제 후 재적재한다. `force=False`(기본값)면 이미 데이터가 있는 환경에서는 아무것도
+    하지 않고 빈 dict를 반환한다. 이미 시딩된 환경에는 `sqlite_path` 원본이 더 이상 없을 수
+    있으므로(수동 시딩 후 정리됨), 파일 존재 여부보다 스킵 체크를 먼저 한다 — 그래야 배포
+    파이프라인에서 매번 무조건 호출해도 sqlite 파일 없이도 안전하게 넘어간다."""
+    first_table, first_model, _ = _TABLE_SPECS[0]
+    async with AsyncSessionLocal() as session:
+        if not force:
+            existing = await session.scalar(select(func.count()).select_from(first_model))
+            if existing:
+                print(f"{first_table}에 이미 {existing:,}건이 있어 시딩을 건너뜁니다 (--force로 강제 실행 가능)")
+                return {}
+
     if not sqlite_path.exists():
         raise FileNotFoundError(
             f"{sqlite_path}가 없습니다 — scripts/drug_info_sync/orchestrate_pipeline.py로 만들거나 "
@@ -83,10 +99,13 @@ async def bootstrap_dur_from_sqlite(sqlite_path: Path = DEFAULT_SQLITE_PATH) -> 
 
 
 async def _main() -> None:
-    sqlite_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_SQLITE_PATH
-    counts = await bootstrap_dur_from_sqlite(sqlite_path)
-    total = sum(counts.values())
-    print(f"\nDUR 데이터 MySQL 부트스트랩 완료: 총 {total:,}건 ({len(counts)}개 테이블)")
+    args = [a for a in sys.argv[1:] if a != "--force"]
+    force = "--force" in sys.argv[1:]
+    sqlite_path = Path(args[0]) if args else DEFAULT_SQLITE_PATH
+    counts = await bootstrap_dur_from_sqlite(sqlite_path, force=force)
+    if counts:
+        total = sum(counts.values())
+        print(f"\nDUR 데이터 MySQL 부트스트랩 완료: 총 {total:,}건 ({len(counts)}개 테이블)")
 
 
 if __name__ == "__main__":

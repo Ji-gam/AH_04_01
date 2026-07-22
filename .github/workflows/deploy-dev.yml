@@ -58,6 +58,8 @@ jobs:
             cd ~/ai_project
             docker compose pull fastapi ai-worker
             docker compose run --rm fastapi uv run --no-sync alembic upgrade head
+            docker compose run --rm fastapi uv run --no-sync python -m app.scripts.bootstrap_dur_from_sqlite
+            docker compose run --rm fastapi uv run --no-sync python -m app.scripts.bootstrap_food_drug_from_json
             docker compose up -d fastapi ai-worker mysql redis nginx
             sleep 5
             docker compose restart nginx
