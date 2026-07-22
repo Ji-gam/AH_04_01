@@ -58,10 +58,17 @@ _CLOVA_OCR_RETRY_DELAY_SECONDS = 0.5
 
 # 약품명 후보로 볼 만한 OCR 텍스트 블록 판별 기준.
 # "정"/"캡슐" 같은 제형 접미사만으로는 "환자정보", "서방정"(잘린 조각) 등 일반 텍스트도
-# 걸려버려서, 반드시 (a) 용량 숫자+단위(mg/g/ml)가 붙어 있거나 (b) 처방전 약품 목록에서
-# 흔히 쓰이는 "*" 불릿 표시가 있거나 (c) 흔한 약품 제형 접미사로 끝나는 경우만 후보로
-# 인정한다. (c)는 최소 길이(_MIN_DRUG_NAME_LEN) 조건과 함께 적용되므로 "환자정보"/"서방정"
-# 같은 짧은 일반 텍스트 조각은 그 단계에서 이미 걸러진다.
+# 걸려버려서, 반드시 (a) 처방전 약품 목록에서 흔히 쓰이는 "*" 불릿 표시가 있거나 (b) 흔한
+# 약품 제형 접미사로 끝나는 경우만 후보로 인정한다. (b)는 최소 길이(_MIN_DRUG_NAME_LEN)
+# 조건과 함께 적용되므로 "환자정보"/"서방정" 같은 짧은 일반 텍스트 조각은 그 단계에서 이미
+# 걸러진다.
+#
+# (#128) 예전에는 용량 숫자+단위(mg/g/ml)가 붙어 있기만 해도 후보로 인정했는데, 실제
+# 처방전에는 브랜드명 카드 아래에 괄호 없이 "알마게이트 500mg"처럼 성분명+용량 줄이 그대로
+# 따라붙는 포맷이 있어(약국 영수증형 처방전), 이 줄도 용량 패턴만으로 별도 약품 후보가 되어
+# 브랜드명과 성분명이 각각 다른 약으로 중복 등록됐다(6개 약인데 14개로 등록됨). 제형 접미사가
+# 없는 용량줄은 더 이상 자체적으로 후보가 되지 않고, 대신 _fuzzy_match_unrecognized_fields의
+# 유사도 매칭 경로로 넘어가 실제 마스터 DB에 있는 약과 확실히 비슷할 때만 구제된다.
 _KOREAN_TOKEN_PATTERN = re.compile(r"[가-힣]{2,}")
 _DOSAGE_PATTERN = re.compile(r"\d+(mg|g|ml)", re.IGNORECASE)
 _MIN_DRUG_NAME_LEN = 5
@@ -341,13 +348,38 @@ def _extract_item_seq(standard_code: str | None) -> str | None:
     return item_seq or None
 
 
-_TRAILING_DOSAGE_PATTERN = re.compile(r"\s*\d+(\.\d+)?\s*(mg|g|ml)\s*$", re.IGNORECASE)
+_TRAILING_DOSAGE_PATTERN = re.compile(r"(?P<lead>\s*)(?P<amount>\d+(?:\.\d+)?)\s*(?P<unit>mg|g|ml)\s*$", re.IGNORECASE)
+
+# 공공데이터 API/MySQL의 정식 품목명은 'mg'가 아니라 '밀리그램'/'밀리그람' 등 한글 단위 표기를
+# 쓰는 경우가 많다 - 같은 단어인데도 소스 테이블마다 표기가 다르다(예: item_ingredient_map은
+# '밀리그램', dur_prod_master_list/drugs_data 품목명은 '밀리그람'을 쓴다 - 둘 다 실제 값으로
+# 확인됨). 접미사를 그냥 떼는 것보다, 두 표기를 모두 후보로 만들어 순서대로 재시도하면 용량
+# 정보를 잃지 않고 그 함량의 품목만 정확히 찾을 수 있다(예: "아스피린정100mg" ->
+# ["아스피린정100밀리그램", "아스피린정100밀리그람"]).
+_ENGLISH_UNIT_TO_KOREAN_VARIANTS: dict[str, list[str]] = {
+    "mg": ["밀리그램", "밀리그람"],
+    "g": ["그램", "그람"],
+    "ml": ["밀리리터"],
+}
+
+
+def _translate_trailing_dosage_to_korean(name: str) -> list[str]:
+    """이름 끝의 'NNmg' 형태 접미사를 DB 표기와 같은 한글 단위('NN밀리그램'/'NN밀리그람')로
+    바꾼 재시도용 이름 후보들을 반환한다. 접미사가 없으면 빈 리스트."""
+    match = _TRAILING_DOSAGE_PATTERN.search(name)
+    if not match:
+        return []
+    variants = _ENGLISH_UNIT_TO_KOREAN_VARIANTS[match["unit"].lower()]
+    candidates = [
+        _TRAILING_DOSAGE_PATTERN.sub(f"{match['lead']}{match['amount']}{korean_unit}", name) for korean_unit in variants
+    ]
+    return [candidate for candidate in candidates if candidate != name]
 
 
 def _strip_trailing_dosage(name: str) -> str | None:
-    """공공데이터 API의 정식 품목명은 'mg'가 아니라 '밀리그램' 등 한글 단위 표기를 쓰는 경우가
-    많아, OCR/사용자 입력이 'NNmg' 형태 접미사로 끝나면 그 부분을 뗀 이름으로도 재시도할 수 있게
-    한다. 접미사가 없으면 None."""
+    """한글 단위로 바꿔도(`_translate_trailing_dosage_to_korean`) 띄어쓰기/표기 차이로 여전히
+    매칭이 안 될 수 있어, 최후 수단으로 'NNmg' 접미사 자체를 뗀 이름도 시도할 수 있게 한다.
+    접미사가 없으면 None."""
     stripped = _TRAILING_DOSAGE_PATTERN.sub("", name).strip()
     return stripped if stripped and stripped != name else None
 
@@ -395,6 +427,14 @@ def _is_label_slash_without_digit(stripped: str) -> bool:
     return "/" in stripped and not any(ch.isdigit() for ch in stripped)
 
 
+def _is_bare_dosage_line(stripped: str) -> bool:
+    """(#128) "알마게이트 500mg"처럼 제형 접미사 없이 성분명+용량만 있는 줄은, 그 위 브랜드명
+    카드가 이미 별도 OCR 필드로 잡히므로 여기서 또 약품 후보로 잡히면 같은 약이 브랜드명/성분명
+    이름으로 중복 등록된다. 제형 접미사가 있으면(예: "노스판패취10ug/h") 오탈자 구제 대상으로
+    계속 남겨야 하므로, 접미사가 없고 용량 패턴만 있는 경우에만 제외한다."""
+    return bool(_DOSAGE_PATTERN.search(stripped)) and not _DRUG_FORM_SUFFIX_PATTERN.search(stripped)
+
+
 def _looks_like_drug_name(word: str) -> bool:
     stripped = word.lstrip("*").strip()
     if len(stripped) < _MIN_DRUG_NAME_LEN:
@@ -407,11 +447,7 @@ def _looks_like_drug_name(word: str) -> bool:
         return False
     if not _KOREAN_TOKEN_PATTERN.search(stripped):
         return False
-    return (
-        bool(_DOSAGE_PATTERN.search(stripped))
-        or word.strip().startswith("*")
-        or bool(_DRUG_FORM_SUFFIX_PATTERN.search(stripped))
-    )
+    return word.strip().startswith("*") or bool(_DRUG_FORM_SUFFIX_PATTERN.search(stripped))
 
 
 def _dedupe_drug_names(names: set[str]) -> list[str]:
@@ -508,6 +544,8 @@ async def _fuzzy_match_unrecognized_fields(
         stripped = field.text.lstrip("*").strip()
         if _is_annotation_line(stripped):
             continue  # 성분/제조사명 표기 줄은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
+        if _is_bare_dosage_line(stripped):
+            continue  # (#128) 제형 접미사 없는 성분명+용량 줄은 브랜드 카드 아래 붙는 설명이지 별도 약이 아니므로 제외
         if _INSTITUTION_SUFFIX_PATTERN.search(stripped):
             continue  # 약국/병원명은 브랜드 약품명이 아니므로 퍼지 매칭도 제외
         if _is_label_slash_without_digit(stripped):
@@ -583,15 +621,27 @@ async def _llm_extract_drug_names(ocr_raw_text: str) -> list[str]:
 
 
 async def _resolve_llm_suggested_names(
-    db_session: AsyncSession, dur_repo: DurDrugRepository, names: list[str], seen_ids: set[str]
+    db_session: AsyncSession,
+    dur_repo: DurDrugRepository,
+    names: list[str],
+    seen_ids: set[str],
+    seen_names: set[str],
 ) -> tuple[list[MatchedDrug], set[str]]:
     """LLM이 제안한 약품명 후보를 마스터 DB 정확일치 → Tier3(공공 API)/AUTO_ 더미 순으로 해석한다.
     OCR confidence 근거가 없는 경로라 호출부가 낮은 match_rate(`_NO_OCR_EVIDENCE_MATCH_RATE`)를
-    매기도록 confidence는 채우지 않는다."""
+    매기도록 confidence는 채우지 않는다.
+
+    `seen_names`(정규식/퍼지 경로가 이미 후보로 만든 약품명 문자열)에 이미 있는 이름은 건너뛴다 —
+    마스터 DB에 없는 약은 Tier3/AUTO_ 더미 경로에서 매번 새 item_seq(공공 API 결과 또는 랜덤 UUID)를
+    받기 때문에, seen_ids(item_seq 기준)만으로는 정규식 경로가 이미 만든 것과 같은 약품명을 LLM
+    경로가 또 별도 항목으로 중복 추가하는 걸 막지 못한다."""
     resolved: list[MatchedDrug] = []
     auto_created_ids: set[str] = set()
 
     for name in _dedupe_drug_names(set(names)):
+        if name in seen_names:
+            continue
+
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
         exact_item_seq = next((seq for seq, iname in tier1_results if iname == name), None)
         if exact_item_seq:
@@ -640,12 +690,15 @@ async def _match_or_create_medications(
         match_confidence.update(fuzzy_confidence)
 
     # 정규식/퍼지 매칭 결과가 있어도, 그 규칙들이 놓쳤을 수 있는 약을 추가로 구제하기 위해 매번
-    # LLM으로 한 번 더 보완한다. `seen_ids`로 이미 매칭된 약은 걸러지므로 중복 추가되지 않는다.
+    # LLM으로 한 번 더 보완한다. 마스터 DB에 있는 약은 `seen_ids`(item_seq)로 걸러지고, 마스터
+    # DB에 없는 약은 이름이 같아도 매번 새 item_seq(Tier3 API/AUTO_ 더미)를 받으므로 `seen_names`
+    # (약품명 문자열)로 따로 걸러야 정규식 경로가 이미 만든 후보를 LLM이 또 중복 추가하지 않는다.
     if llm_task is not None:
         llm_names = await llm_task
         if llm_names:
+            seen_names = {drug.item_name for drug in matched_drugs}
             llm_matched, llm_auto_created_ids = await _resolve_llm_suggested_names(
-                db_session, dur_repo, llm_names, seen_ids
+                db_session, dur_repo, llm_names, seen_ids, seen_names
             )
             matched_drugs.extend(llm_matched)
             auto_created_ids |= llm_auto_created_ids
@@ -805,10 +858,15 @@ async def _fetch_drug_summary_with_fallback(medication_name: str) -> list[dict]:
     """e약은요 `itemName` 파라미터는 정확/부분 일치라, OCR/사용자 입력의 'NNmg' 접미사가 실제
     품목명(대개 '밀리그램' 등 한글 단위 표기)과 안 맞으면 빈 결과가 흔하다(실 API로 확인 —
     "아스피린정 100mg"는 0건, "아스피린정"은 1건). `_fetch_master_data_with_fallback`과 동일한
-    패턴으로 접미사를 뗀 이름으로 한 번 더 시도한다."""
+    패턴으로 먼저 한글 단위로 바꾼 이름을, 그래도 안 되면 접미사를 뗀 이름으로 한 번 더 시도한다."""
     summaries = await medication_open_api_client.fetch_drug_summary(item_name=medication_name)
     if summaries:
         return summaries
+
+    for translated_name in _translate_trailing_dosage_to_korean(medication_name):
+        summaries = await medication_open_api_client.fetch_drug_summary(item_name=translated_name)
+        if summaries:
+            return summaries
 
     stripped_name = _strip_trailing_dosage(medication_name)
     if stripped_name:
@@ -826,11 +884,17 @@ _food_guide_card_cache: dict[str, GuideCard] = {}
 async def _fetch_food_intrc_from_local_db(session: AsyncSession, medication_name: str) -> str | None:
     """(T-DOC-5) 2단계: `drugs_data`(MySQL, e약은요 API를 미리 수집해둔 스냅샷, 4,758건)에서
     `intrc_qesitm`을 조회한다. 실시간 API 호출 없이 이미 저장된 범위 안이면 즉시 응답 가능하다.
-    실API와 마찬가지로 'NNmg' 접미사가 실제 품목명과 안 맞는 경우가 있어 접미사를 뗀 이름으로도
-    재시도한다. 반환값이 None이면 이 약이 스냅샷에 아예 없다는 뜻 — 그 경우에만 3단계(느린
-    실시간 API, `_build_food_interaction_guide_card_slow`) 호출이 필요하다."""
+    실API와 마찬가지로 'NNmg' 접미사가 실제 품목명과 안 맞는 경우가 있어 먼저 한글 단위로 바꾼
+    이름을, 그래도 안 되면 접미사를 뗀 이름으로도 재시도한다. 반환값이 None이면 이 약이 스냅샷에
+    아예 없다는 뜻 — 그 경우에만 3단계(느린 실시간 API, `_build_food_interaction_guide_card_slow`)
+    호출이 필요하다."""
     dur_repo = DurDrugRepository()
     text_value = await dur_repo.find_food_intrc_text(session, medication_name)
+    if text_value is None:
+        for translated_name in _translate_trailing_dosage_to_korean(medication_name):
+            text_value = await dur_repo.find_food_intrc_text(session, translated_name)
+            if text_value is not None:
+                break
     if text_value is None:
         stripped_name = _strip_trailing_dosage(medication_name)
         if stripped_name:

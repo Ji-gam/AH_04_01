@@ -23,7 +23,11 @@ from app.dtos.medication_dto import (
 from app.models.profiles import Profile
 from app.repositories.dur_drug_repository import DrugProfile, DurDrugRepository
 from app.services import medication_open_api_client
-from app.services.medication_service import MedicationService, _strip_trailing_dosage
+from app.services.medication_service import (
+    MedicationService,
+    _strip_trailing_dosage,
+    _translate_trailing_dosage_to_korean,
+)
 
 medication_router = APIRouter(tags=["Medications"])
 
@@ -177,11 +181,20 @@ async def check_medication_food_interactions_pending(
 
 
 async def _query_mysql_dur_profiles(
-    session: AsyncSession, dur_repo: DurDrugRepository, query: str, stripped_query: str | None
+    session: AsyncSession,
+    dur_repo: DurDrugRepository,
+    query: str,
+    translated_queries: list[str],
+    stripped_query: str | None,
 ) -> list[DrugProfile]:
-    """MySQL 품목명은 'mg'가 아니라 '밀리그램' 등 한글 단위 표기라, OCR/사용자 입력이
-    'NN mg' 접미사로 끝나면 그대로는 매칭이 안 될 수 있다 — 접미사를 뗀 이름으로 재시도한다."""
+    """MySQL 품목명은 'mg'가 아니라 '밀리그램'/'밀리그람' 등 한글 단위 표기라, OCR/사용자
+    입력이 'NN mg' 접미사로 끝나면 그대로는 매칭이 안 될 수 있다 — 먼저 한글 단위 후보들로,
+    그래도 안 되면 접미사를 뗀 이름으로 재시도한다."""
     profiles = await dur_repo.find_drug_info(session, query)
+    for translated_query in translated_queries:
+        if profiles:
+            break
+        profiles = await dur_repo.find_drug_info(session, translated_query)
     if not profiles and stripped_query:
         profiles = await dur_repo.find_drug_info(session, stripped_query)
     return profiles[:15]
@@ -233,10 +246,11 @@ async def search_medications_dur(
 
     start_time = time.perf_counter()
 
+    translated_queries = _translate_trailing_dosage_to_korean(query)
     stripped_query = _strip_trailing_dosage(query)
 
     dur_repo = DurDrugRepository()
-    profiles = await _query_mysql_dur_profiles(session, dur_repo, query, stripped_query)
+    profiles = await _query_mysql_dur_profiles(session, dur_repo, query, translated_queries, stripped_query)
     results = [_build_dur_result(p) for p in profiles]
 
     # MySQL 품목 마스터는 품목명 23,417건은 다 있지만 효능/주의사항 텍스트(drugs_data, e약은요
@@ -248,6 +262,10 @@ async def search_medications_dur(
         if config.PUBLIC_DATA_API_KEY:
             checked_public_api = True
             summary_items = await medication_open_api_client.fetch_drug_summary(item_name=query)
+            for translated_query in translated_queries:
+                if summary_items:
+                    break
+                summary_items = await medication_open_api_client.fetch_drug_summary(item_name=translated_query)
             if not summary_items and stripped_query:
                 summary_items = await medication_open_api_client.fetch_drug_summary(item_name=stripped_query)
             for item in summary_items:

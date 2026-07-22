@@ -9,6 +9,7 @@ from app.apis.v1.family_routers import family_router
 from app.apis.v1.habit_routers import habit_router
 from app.apis.v1.medication import medication_router
 from app.apis.v1.notification_routers import notification_router
+from app.apis.v1.push_routers import push_router
 from app.apis.v1.user_routers import user_router
 
 v1_routers = APIRouter(prefix="/api/v1")
@@ -22,3 +23,4 @@ v1_routers.include_router(disease_router)
 v1_routers.include_router(habit_router)
 v1_routers.include_router(dur_router)
 v1_routers.include_router(family_router)
+v1_routers.include_router(push_router)

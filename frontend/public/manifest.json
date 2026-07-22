@@ -1,7 +1,7 @@
 {
-  "name": "Re:Medi",
-  "short_name": "Re:Medi",
-  "description": "복약관리와 건강 상담을 한 곳에서",
+  "name": "ReMedi - 복약·건강관리",
+  "short_name": "ReMedi",
+  "description": "복약 알림, AI 건강 상담, 가족 건강관리를 한 곳에서.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

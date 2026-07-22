@@ -43,6 +43,33 @@ INGREDIENT_SOURCE_TABLES: list[str] = [
     "dur_prod_efcy_dplct",
 ]
 
+# item_ingredient_map.ingd_unit_cd는 공공데이터 API 원본(drug_prdt_mcpn_detail.INGD_UNIT_CD)을
+# 그대로 옮긴 값이라 'mg'가 아니라 '밀리그램' 같은 한글 단위 표기다. 이후 소비 코드(OCR/DUR
+# 로직)가 영어 단위(mg/g/ml 등)만 인식하므로, 이 리포지토리가 유일한 조회 경로라는 점을 이용해
+# 여기서 한 번에 영어로 정규화해 내려준다 - 매핑에 없는 값은 원본 그대로 반환(알 수 없는 단위를
+# 임의로 지우지 않는다).
+_KOREAN_UNIT_TO_ENGLISH: dict[str, str] = {
+    "밀리그램": "mg",
+    "밀리그람": "mg",  # 같은 단어의 다른 표기 - dur_prod_master_list/drugs_data 품목명 쪽은 '그람'을 쓴다
+    "그램": "g",
+    "그람": "g",
+    "킬로그램": "kg",
+    "킬로그람": "kg",
+    "마이크로그램": "mcg",
+    "마이크로그람": "mcg",
+    "밀리리터": "ml",
+    "리터": "L",
+    "국제단위": "IU",
+    "퍼센트": "%",
+}
+
+
+def _normalize_unit(unit: str | None) -> str | None:
+    if unit is None:
+        return None
+    return _KOREAN_UNIT_TO_ENGLISH.get(unit, unit)
+
+
 # 3단계: 성분(INGR_CODE) 기준 DUR 규칙 테이블. (테이블명, 한글 라벨, 규칙별 부가 수치/등급 컬럼명)
 # detail_column은 0027 마이그레이션에서 성분기준 테이블에만 추가된 CSV/API 원본 컬럼 -
 # 임부금기는 등급(GRADE), 특정연령대금기는 연령 기준(AGE_BASE), 용량주의는 최대 1일 용량
@@ -275,7 +302,9 @@ class DurScreeningRepository:
         )
         for row in direct_result.mappings().all():
             if row["ingr_code"]:
-                result[row["item_seq"]].add((row["ingr_code"], row["ingr_name"] or "", row["qnt"], row["unit"]))
+                result[row["item_seq"]].add(
+                    (row["ingr_code"], row["ingr_name"] or "", row["qnt"], _normalize_unit(row["unit"]))
+                )
 
         item_seqs = [seq for seq in item_seqs if not result[seq]]
         if not item_seqs:
