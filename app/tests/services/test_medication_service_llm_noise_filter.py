@@ -25,6 +25,14 @@ def test_is_plausible_llm_drug_name_accepts_real_drug_shapes():
     assert medication_service._is_plausible_llm_drug_name("글루코파지엑스알100mg서방정") is True
 
 
+def test_is_plausible_llm_drug_name_rejects_bare_ingredient_salt_with_dosage():
+    """(#OCR-LLM-3) 제형 접미사 없이 성분명(염산염/말레산염 등)+용량만 있는 줄은, 처방전에서
+    브랜드명 카드 아래 붙는 설명 줄이지 별도 약이 아니다 - 실제 사용자가 겪은
+    "클로르페니라민말레산염2mg", "슈도에페드린연산염60mg" 오등록 사례."""
+    assert medication_service._is_plausible_llm_drug_name("클로르페니라민말레산염2mg") is False
+    assert medication_service._is_plausible_llm_drug_name("슈도에페드린연산염60mg") is False
+
+
 def test_looks_like_drug_name_rejects_bulleted_receipt_caption():
     """(#OCR-LLM-2) "*" 불릿 조건은 제형 접미사 검사를 건너뛰므로, "*전액본인부담금이란"처럼
     영수증 설명 문구가 "*"와 함께 오인식되면 필터 없이 통과해 매 스캔마다 새 AUTO_ 더미로
