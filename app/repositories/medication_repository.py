@@ -2,7 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dur import DrugIdentification, DrugMaster, DurProdMasterList
-from app.models.medication_model import MedicationRecognitionJob, MedicationSchedule
+from app.models.medication_model import MedicationDataCache, MedicationRecognitionJob, MedicationSchedule
 
 
 class MedicationRepository:
@@ -76,3 +76,18 @@ class MedicationRepository:
             await session.commit()
             await session.refresh(job)
         return job
+
+    async def get_cached_master_data(self, session: AsyncSession, query_name: str) -> dict | None:
+        """`medication_open_api_client.fetch_medication_master_data()` write-back 캐시 조회
+        (T-LLM-2-drug-gateway `DrugDataCache`와 동일 패턴 — query_name 정확매치)."""
+        result = await session.execute(select(MedicationDataCache).where(MedicationDataCache.query_name == query_name))
+        cached = result.scalar_one_or_none()
+        return cached.fields if cached else None
+
+    async def write_back_master_data(self, session: AsyncSession, query_name: str, fields: dict) -> None:
+        """캐시 쓰기는 best-effort다 — 실패해도 이미 계산된 응답 회신을 막지 않는다."""
+        try:
+            session.add(MedicationDataCache(query_name=query_name, fields=fields))
+            await session.commit()
+        except Exception:
+            await session.rollback()
