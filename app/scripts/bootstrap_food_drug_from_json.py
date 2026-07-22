@@ -40,17 +40,25 @@ from app.scripts.build_food_drug_interaction_db import (
 DEFAULT_JSON_PATH = Path(__file__).parent.parent / "database" / "food_drug_interaction_reference.json"
 
 
+async def _skip_already_seeded(force: bool) -> bool:
+    """`force`가 아니고 이미 데이터가 있으면 True(스킵해야 함)를 반환한다."""
+    if force:
+        return False
+    async with AsyncSessionLocal() as session:
+        existing = await session.scalar(select(func.count()).select_from(FoodDrugCategory)) or 0
+    if not existing:
+        return False
+    print(f"food_drug_category에 이미 {existing:,}건이 있어 시딩을 건너뜁니다 (--force로 강제 실행 가능)")
+    return True
+
+
 async def bootstrap_food_drug_from_json(json_path: Path = DEFAULT_JSON_PATH, force: bool = False) -> int:
     """운영 MySQL(`ai_health`)의 음식-약물 참조 테이블을 `json_path` 내용으로 전체 삭제 후
     재적재한다. `force=False`(기본값)면 이미 데이터가 있는 환경에서는 아무것도 하지 않고
     0을 반환한다. 파일 존재 여부보다 스킵 체크를 먼저 해, 배포 파이프라인에서 매번 무조건
     호출해도 안전하게 넘어간다."""
-    async with AsyncSessionLocal() as session:
-        if not force:
-            existing = await session.scalar(select(func.count()).select_from(FoodDrugCategory))
-            if existing:
-                print(f"food_drug_category에 이미 {existing:,}건이 있어 시딩을 건너뜁니다 (--force로 강제 실행 가능)")
-                return 0
+    if await _skip_already_seeded(force):
+        return 0
 
     if not json_path.exists():
         raise FileNotFoundError(f"{json_path}가 없습니다 — 백업(database.zip)에서 복원하세요.")
