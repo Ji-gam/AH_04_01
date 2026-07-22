@@ -19,11 +19,13 @@ T-LLM-7-3-2: DUR 검색(`/retrieve`)과 논문 검색+답변(`/agent/paper-searc
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from datetime import datetime
 from typing import cast
 
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core import config
 from app.core.db.databases import AsyncSessionLocal
 from app.models.chat import MessageRole
 from app.repositories.chat_repository import ChatRepository
@@ -41,6 +43,7 @@ from app.services.chat_context_service import ChatContextService
 from app.services.dur_service import DurScreeningService
 from app.services.notification_settings_service import NotificationSettingsService
 from app.services.push_service import PushService
+from app.services.quiet_hours import is_in_quiet_hours
 
 logger = logging.getLogger("app.chat_service")
 
@@ -228,7 +231,8 @@ class ChatService:
         # 자체는 알림 문구에 담지 않는다(잠금화면 노출 등 프라이버시 고려).
         try:
             settings = await self._notification_settings_service.get_settings(session, profile_id)
-            if settings.chatbot_reply_enabled:
+            # 챗봇 답변 알림은 필수 알림(복약)이 아니라, 무음 시간대엔 보류한다(F-NTFY-6).
+            if settings.chatbot_reply_enabled and not is_in_quiet_hours(settings, datetime.now(tz=config.TIMEZONE)):
                 await self._push_service.send_to_profile(
                     session, profile_id, title="💬 AI 상담 답변 도착", body="질문하신 내용에 답변이 도착했어요."
                 )
