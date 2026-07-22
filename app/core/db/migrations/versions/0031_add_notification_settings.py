@@ -1,12 +1,13 @@
 """add notification_settings table (per-profile push customization)
 
-Revision ID: 0030
-Revises: 0029
+Revision ID: 0031
+Revises: 0030
 Create Date: 2026-07-21
 
-[주의] 로컬 dev가 이미 0029보다 앞서 있다면(다른 조원분 마이그레이션이 먼저 병합됐다면),
-`alembic heads`로 실제 최신 리비전을 확인하고 이 파일의 `down_revision`을 그 값으로
-바꿔주세요.
+[주의] 원래 0030으로 작성했으나, dev에 이미 병합된 push_send_logs 마이그레이션이 같은
+번호(0030)를 먼저 차지해서 0031로 재번호했다 - 로컬 dev가 이미 0030보다 앞서 있다면
+(다른 조원분 마이그레이션이 먼저 병합됐다면), `alembic heads`로 실제 최신 리비전을
+확인하고 이 파일의 `down_revision`을 그 값으로 바꿔주세요.
 """
 
 from typing import Sequence, Union
@@ -14,8 +15,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0030"
-down_revision: Union[str, None] = "0029"
+revision: str = "0031"
+down_revision: Union[str, None] = "0030"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
