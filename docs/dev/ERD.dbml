@@ -101,6 +101,14 @@ Table medication_recognition_jobs {
   updated_at datetime [not null]
 }
 
+Table medication_data_cache {
+  id bigint [pk, increment]
+  query_name varchar(150) [not null, unique, note: '조회 약품명 정확매치 키(trim만). fetch_medication_master_data() 외부 API write-back 캐시(T-MED-x-drug-gateway-cache) - drug_data_cache와 동일 패턴, 빈 응답은 캐싱 안 함']
+  fields json [not null]
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
 Table health_contents {
   id bigint [pk, increment]
   disease_code varchar(50) [not null]
