@@ -62,6 +62,7 @@ export interface NotificationSettingsResult {
   chatbot_reply_enabled: boolean;
   notice_enabled: boolean;
   marketing_enabled: boolean;
+  lifestyle_tip_enabled: boolean;
   quiet_mode_enabled: boolean;
   quiet_start: string; // "HH:MM:SS"
   quiet_end: string; // "HH:MM:SS"

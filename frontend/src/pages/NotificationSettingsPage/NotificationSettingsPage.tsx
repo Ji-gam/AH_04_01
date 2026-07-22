@@ -196,6 +196,12 @@ export default function NotificationSettingsPage() {
               checked={settings.marketing_enabled}
               onChange={() => toggle("marketing_enabled")}
             />
+            <ToggleRow
+              label="라이프스타일 팁 알림"
+              desc="맞춤 건강 콘텐츠가 새로 올라오면 알려드려요"
+              checked={settings.lifestyle_tip_enabled}
+              onChange={() => toggle("lifestyle_tip_enabled")}
+            />
 
             <p style={sectionTitleStyle}>무음 시간대</p>
             <ToggleRow

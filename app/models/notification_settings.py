@@ -24,6 +24,7 @@ class NotificationSetting(Base):
     chatbot_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notice_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     marketing_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    lifestyle_tip_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     quiet_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     quiet_start: Mapped[time] = mapped_column(Time, default=time(22, 0), nullable=False)
     quiet_end: Mapped[time] = mapped_column(Time, default=time(7, 0), nullable=False)
