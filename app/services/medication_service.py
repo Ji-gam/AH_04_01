@@ -98,7 +98,13 @@ _INSTITUTION_SUFFIX_PATTERN = re.compile(r"약국|병원|의원|한의원")
 # 실약품명("아스피린정")과 우연히 비슷해(1글자 차이) 임계값을 넘겨버릴 수 있다. 조사는 한국어에서
 # 띄어쓰기 없이 명사 바로 뒤에 붙으므로, 이런 조사로 끝나는 토큰은 완결된 약품명일 수 없다고 보고
 # 퍼지 매칭 대상에서 제외한다.
-_TRAILING_PARTICLE_PATTERN = re.compile(r"(?:에서|부터|까지|으로|처럼|이나|은|는|이|가|을|를|도|만|와|과|의|에|로|나)$")
+#
+# (#OCR-LLM-2) "전액본인부담금이란"처럼 영수증/문서에 박힌 설명 문구("~이란")도 "*" 불릿과 함께
+# OCR 오인식되면 마찬가지로 문장이 완결되지 않은 것으로 보고 제외한다 — "란"으로 끝나는 실제
+# 약품명은 없다고 봐도 안전하다.
+_TRAILING_PARTICLE_PATTERN = re.compile(
+    r"(?:에서|부터|까지|으로|처럼|이나|은|는|이|가|을|를|도|만|와|과|의|에|로|나|란)$"
+)
 
 # (#106) CLOVA OCR이 "패취"를 "매취"로 읽는 것처럼 글자 하나를 비슷한 글자로 잘못 읽으면,
 # 접미사/용량 패턴이 아예 안 맞아 _looks_like_drug_name을 통과하지 못한다. 이런 텍스트를
@@ -464,6 +470,11 @@ def _looks_like_drug_name(word: str) -> bool:
     # 복합제 처방전의 성분 breakdown 줄이 "*" 조건 하나만으로 제형 접미사 검사를 건너뛰어,
     # 화면에 성분명이 그대로 노출된다.
     if _is_ingredient_salt_name(stripped):
+        return False
+    # (#OCR-LLM-2) "*전액본인부담금이란"처럼 영수증/문서 설명 문구가 "*" 불릿과 함께 오인식되면,
+    # 제형 접미사가 없어도 "*" 조건 하나만으로 통과해버려 매번 새 AUTO_ 더미로 재등록됐다. 조사/
+    # 설명형 어미로 끝나는(완결되지 않은 문장 조각인) 텍스트는 "*"가 붙어 있어도 약품명일 수 없다.
+    if _TRAILING_PARTICLE_PATTERN.search(stripped):
         return False
     return word.strip().startswith("*") or bool(_DRUG_FORM_SUFFIX_PATTERN.search(stripped))
 
