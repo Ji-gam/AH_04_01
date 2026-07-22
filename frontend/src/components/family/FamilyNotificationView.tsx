@@ -13,6 +13,7 @@ import Modal from "../../pages/AlarmPage/components/Modal";
 import ToggleSwitch from "../../pages/AlarmPage/components/ToggleSwitch";
 import { toDateString } from "../../pages/AlarmPage/dateUtils";
 import { pinkTheme as t } from "../../theme/pinkTheme";
+import TimeInputField from "../ui/TimeInputField";
 
 interface RegisteredRow {
   key: string;
@@ -254,17 +255,7 @@ export default function FamilyNotificationView({
               fontSize: 14,
             }}
           />
-          <input
-            type="time"
-            value={alarmTime}
-            onChange={(e) => setAlarmTime(e.target.value)}
-            style={{
-              padding: "10px 12px",
-              border: `1px solid ${t.border}`,
-              borderRadius: 8,
-              fontSize: 14,
-            }}
-          />
+          <TimeInputField value={alarmTime} onChange={setAlarmTime} />
           {formError && <p style={{ margin: 0, fontSize: 12, color: t.danger }}>{formError}</p>}
           <button
             type="button"

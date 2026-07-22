@@ -8,9 +8,9 @@ import {
   type MedicationSearchResult,
 } from "../../api/familyMedicationApi";
 import { pinkTheme as t } from "../../theme/pinkTheme";
+import TimeInputField from "../ui/TimeInputField";
 
 import FamilyOcrProgressBar from "./FamilyOcrProgressBar";
-import FamilyTimeSlotRow from "./FamilyTimeSlotRow";
 
 const inputStyle: React.CSSProperties = {
   padding: "10px 12px",
@@ -387,7 +387,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {searchTimeSlots.map((slot, idx) => (
-                  <FamilyTimeSlotRow
+                  <TimeInputField
                     key={idx}
                     value={slot}
                     onChange={(v) => updateSearchSlot(idx, v)}
@@ -527,7 +527,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {timeSlots.map((slot, idx) => (
-                  <FamilyTimeSlotRow key={idx} value={slot} onChange={(v) => updateSlot(idx, v)} />
+                  <TimeInputField key={idx} value={slot} onChange={(v) => updateSlot(idx, v)} />
                 ))}
               </div>
 

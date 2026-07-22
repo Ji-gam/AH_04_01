@@ -1,23 +1,7 @@
 import { useState } from "react";
 
+import TimeInputField from "../../../components/ui/TimeInputField";
 import { pinkTheme as t } from "../../../theme/pinkTheme";
-
-interface TimeParts {
-  period: "오전" | "오후";
-  hour: number;
-  minute: number;
-}
-
-function parseTime(time: string): TimeParts {
-  const [hh, mm] = time.split(":").map(Number);
-  return { period: hh < 12 ? "오전" : "오후", hour: hh % 12 === 0 ? 12 : hh % 12, minute: mm };
-}
-
-function toTimeString(tp: TimeParts): string {
-  let h = tp.hour % 12;
-  if (tp.period === "오후") h += 12;
-  return `${String(h).padStart(2, "0")}:${String(tp.minute).padStart(2, "0")}:00`;
-}
 
 interface Props {
   medName: string;
@@ -37,10 +21,7 @@ export default function MedTimeForm({
   onCancel,
   onSubmit,
 }: Props) {
-  const initial = parseTime(initialTime);
-  const [period, setPeriod] = useState<"오전" | "오후">(initial.period);
-  const [hour, setHour] = useState(initial.hour);
-  const [minute, setMinute] = useState(initial.minute);
+  const [time, setTime] = useState(initialTime.slice(0, 5));
 
   return (
     <div
@@ -64,59 +45,7 @@ export default function MedTimeForm({
         복용 시각
       </label>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-        {(["오전", "오후"] as const).map((p) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => setPeriod(p)}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 999,
-              border: `1px solid ${t.border}`,
-              background: period === p ? t.primary : "white",
-              color: period === p ? "white" : t.text,
-              fontSize: 13,
-              cursor: "pointer",
-            }}
-          >
-            {p}
-          </button>
-        ))}
-        <input
-          type="number"
-          min={1}
-          max={12}
-          value={hour}
-          onChange={(e) => setHour(Math.min(12, Math.max(1, Number(e.target.value) || 1)))}
-          aria-label="시"
-          style={{
-            width: 56,
-            padding: "10px 8px",
-            borderRadius: 10,
-            border: `1px solid ${t.border}`,
-            outline: "none",
-            fontSize: 14,
-            textAlign: "center",
-          }}
-        />
-        <span style={{ color: t.textMuted }}>:</span>
-        <input
-          type="number"
-          min={0}
-          max={59}
-          value={minute}
-          onChange={(e) => setMinute(Math.min(59, Math.max(0, Number(e.target.value) || 0)))}
-          aria-label="분"
-          style={{
-            width: 56,
-            padding: "10px 8px",
-            borderRadius: 10,
-            border: `1px solid ${t.border}`,
-            outline: "none",
-            fontSize: 14,
-            textAlign: "center",
-          }}
-        />
+        <TimeInputField value={time} onChange={setTime} />
       </div>
 
       {errorMessage && (
@@ -126,7 +55,7 @@ export default function MedTimeForm({
       <div style={{ display: "flex", gap: 8 }}>
         <button
           type="button"
-          onClick={() => onSubmit(toTimeString({ period, hour, minute }))}
+          onClick={() => onSubmit(`${time}:00`)}
           disabled={isSaving}
           style={{
             flex: 1,

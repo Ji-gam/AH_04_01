@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import TimeInputField from "../../components/ui/TimeInputField";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 
 /** "해당없음" 을 나타내는 특수값. null(미선택)과 구분한다. */
@@ -34,18 +35,6 @@ const chipStyle = (active: boolean): React.CSSProperties => ({
   color: active ? "#fff" : t.text,
 });
 
-const numInput: React.CSSProperties = {
-  width: 60,
-  padding: "10px 8px",
-  borderRadius: 10,
-  border: `1px solid ${t.border}`,
-  outline: "none",
-  fontSize: 16,
-  fontWeight: 700,
-  textAlign: "center",
-  color: t.text,
-};
-
 export default function TimeSelectSection({
   label,
   help,
@@ -60,14 +49,6 @@ export default function TimeSelectSection({
   );
 
   const customTime = isCustom && value && value !== NONE_VALUE ? value : customDefault;
-  const [customHour, customMin] = customTime.split(":").map(Number);
-
-  // 시/분을 개별로 받아 "HH:MM"으로 합친다. 범위를 벗어난 입력은 잘라낸다.
-  const setCustomPart = (hour: number, min: number) => {
-    const hh = Math.min(23, Math.max(0, Number.isNaN(hour) ? 0 : hour));
-    const mm = Math.min(59, Math.max(0, Number.isNaN(min) ? 0 : min));
-    onChange(`${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`);
-  };
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -111,26 +92,8 @@ export default function TimeSelectSection({
       </div>
 
       {isCustom && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
-          <input
-            type="number"
-            min={0}
-            max={23}
-            value={customHour}
-            aria-label="시"
-            onChange={(e) => setCustomPart(Number(e.target.value), customMin)}
-            style={numInput}
-          />
-          <span style={{ fontSize: 18, fontWeight: 700, color: t.textMuted }}>:</span>
-          <input
-            type="number"
-            min={0}
-            max={59}
-            value={customMin}
-            aria-label="분"
-            onChange={(e) => setCustomPart(customHour, Number(e.target.value))}
-            style={numInput}
-          />
+        <div style={{ marginTop: 12 }}>
+          <TimeInputField value={customTime} onChange={onChange} />
         </div>
       )}
     </div>

@@ -11,9 +11,8 @@ interface TimeParts {
   minute: number;
 }
 
-/** "HH:MM"(24시간) → 오전/오후 + 12시간제 시/분. FamilyTrackerView의 timeSlots가 이
- * 형식(초 없음)을 그대로 쓰고 있어서 맞춰준다 - AlarmForm(본인 몫)의 "HH:MM:SS"랑은
- * 다르니 그쪽 로직을 그대로 재사용하면 안 된다(2026-07-21 스코프 분리 확인). */
+/** "HH:MM"(24시간, 초 없음) → 오전/오후 + 12시간제 시/분. 초가 붙은 값("HH:MM:SS")을 다루는
+ * 화면은 호출부에서 초를 떼고 넣고, 저장할 때 다시 붙인다 - 이 컴포넌트는 "HH:MM"만 안다. */
 function parseHHMM(value: string): TimeParts {
   const [hh, mm] = value.split(":").map(Number);
   return { period: hh < 12 ? "오전" : "오후", hour: hh % 12 === 0 ? 12 : hh % 12, minute: mm || 0 };
@@ -33,7 +32,11 @@ interface Props {
 const HOUR_OPTIONS = Array.from({ length: 12 }, (_, i) => i + 1);
 const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => i * 5);
 
-/** [실험용] 가족관리 - 처방전 인식 후 시간대 설정에서 쓰는 시간 입력 한 줄.
+/** 앱 전체에서 공용으로 쓰는 시간 입력 한 줄 - 오전/오후 토글 + 시/분 칸(타이핑도, 드롭다운
+ * 클릭도 가능) + 아날로그 시계 아이콘, 세 가지 입력 방식을 다 지원한다. 원래 가족관리
+ * 화면(처방전 인식 후 시간대 설정) 전용으로 만들었다가(2026-07-21), 앱 안의 모든 시간
+ * 입력 화면(복약알림 추가/수정, 무음시간대, 라이프스타일 설정 등)에 같은 방식을 쓰기로
+ * 하면서 공용 컴포넌트로 옮겼다(2026-07-23).
  *
  * <datalist>를 써봤는데, "이미 값이 입력된 칸은 지우고 화살표를 눌러야만 목록이 뜨는"
  * 브라우저 기본 동작이 있어서(개발자가 통제 불가) 자체 제작 드롭다운으로 교체했다:
@@ -43,9 +46,8 @@ const MINUTE_OPTIONS = Array.from({ length: 12 }, (_, i) => i * 5);
  *     도중(빈 문자열)엔 아직 반영 안 하고 화면에 빈 칸을 그대로 보여준다(숫자가 실제로
  *     입력됐을 때만 반영 - 예전에 "지우면 1로 튀는" 문제의 원인이었던 부분).
  *   - 목록 항목은 onMouseDown에서 처리한다 - onClick을 쓰면 그 전에 input의 onBlur가
- *     먼저 발동해서 목록이 닫혀버려 클릭이 씹히는 문제가 있다(흔한 콤보박스 구현 이슈).
- * 아날로그 시계 아이콘도 그대로 유지 - 타이핑/목록클릭/시계, 세 가지 다 지원. */
-export default function FamilyTimeSlotRow({ value, onChange }: Props) {
+ *     먼저 발동해서 목록이 닫혀버려 클릭이 씹히는 문제가 있다(흔한 콤보박스 구현 이슈). */
+export default function TimeInputField({ value, onChange }: Props) {
   const tp = parseHHMM(value);
   const [clockOpen, setClockOpen] = useState(false);
   const [hourListOpen, setHourListOpen] = useState(false);
