@@ -19,11 +19,11 @@ function pointOnCircle(angleDeg: number, r: number) {
   return { x: CENTER + r * Math.cos(rad), y: CENTER + r * Math.sin(rad) };
 }
 
-/** [실험용, 가족관리 화면 전용] 아날로그 시계 - Material Design 시간선택기와 비슷하게,
- * "시"를 먼저 고르면 자동으로 "분" 선택으로 넘어간다. 클릭/탭만으로 고르는 방식(드래그 아님)
- * - 손가락으로도 정확히 찍기 쉽고 구현도 단순해서 실험 단계엔 이게 더 안전하다고 판단했다.
- * 이 컴포넌트는 가족관리(components/family) 영역에서만 쓰인다 - 본인 몫 복약알림
- * (AlarmPage/AlarmForm)은 전혀 안 건드림(2026-07-21, 스코프 확인 후 분리 배치). */
+/** 아날로그 시계 - Material Design 시간선택기와 비슷하게, "시"를 먼저 고르면 자동으로
+ * "분" 선택으로 넘어간다. 클릭/탭만으로 고르는 방식(드래그 아님) - 손가락으로도 정확히
+ * 찍기 쉽고 구현도 단순해서 이렇게 만들었다. 원래 가족관리 화면 전용으로 만들었다가
+ * (2026-07-21), 시간 입력이 있는 모든 화면에서 같은 방식을 쓰기로 하면서 공용
+ * 컴포넌트로 옮겼다(2026-07-23) - `TimeInputField`가 이 컴포넌트를 감싸는 조합 UI다. */
 export default function AnalogClockPicker({
   hour,
   minute,

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { notificationSettingsApi } from "../../api/notificationSettingsApi";
 import type { NotificationSettingsResult } from "../../api/types";
+import TimeInputField from "../../components/ui/TimeInputField";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import ToggleSwitch from "../AlarmPage/components/ToggleSwitch";
 
@@ -52,16 +53,6 @@ const sectionTitleStyle: React.CSSProperties = {
   fontWeight: 700,
   color: t.textMuted,
   margin: "24px 0 4px",
-};
-
-const timeInputStyle: React.CSSProperties = {
-  padding: "8px 10px",
-  borderRadius: 10,
-  border: `1px solid ${t.border}`,
-  outline: "none",
-  fontSize: 14,
-  color: t.text,
-  background: "#fff",
 };
 
 interface ToggleRowProps {
@@ -220,20 +211,14 @@ export default function NotificationSettingsPage() {
                   borderBottom: `1px solid ${t.border}`,
                 }}
               >
-                <input
-                  type="time"
-                  aria-label="무음 시작 시간"
+                <TimeInputField
                   value={settings.quiet_start.slice(0, 5)}
-                  onChange={(e) => update("quiet_start", `${e.target.value}:00`)}
-                  style={timeInputStyle}
+                  onChange={(v) => update("quiet_start", `${v}:00`)}
                 />
                 <span style={{ color: t.textMuted, fontSize: 13 }}>~</span>
-                <input
-                  type="time"
-                  aria-label="무음 종료 시간"
+                <TimeInputField
                   value={settings.quiet_end.slice(0, 5)}
-                  onChange={(e) => update("quiet_end", `${e.target.value}:00`)}
-                  style={timeInputStyle}
+                  onChange={(v) => update("quiet_end", `${v}:00`)}
                 />
               </div>
             )}
