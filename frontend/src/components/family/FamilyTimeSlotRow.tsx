@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
+import Modal from "../../pages/AlarmPage/components/Modal";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 
 import AnalogClockPicker from "./AnalogClockPicker";
@@ -52,6 +53,16 @@ export default function FamilyTimeSlotRow({ value, onChange }: Props) {
 
   const [hourText, setHourText] = useState(String(tp.hour));
   const [minuteText, setMinuteText] = useState(String(tp.minute).padStart(2, "0"));
+
+  // 시계 아이콘으로 고르는 등 "바깥에서" 값이 바뀌면, 입력칸에 보이는 텍스트도 같이
+  // 맞춰준다 - 이게 없으면 시계로 골라도 실제 값은 바뀌는데 입력칸 글자는 그대로라
+  // "꼬여 보이는" 버그가 난다(2026-07-21 확인).
+  useEffect(() => {
+    setHourText(String(tp.hour));
+  }, [tp.hour]);
+  useEffect(() => {
+    setMinuteText(String(tp.minute).padStart(2, "0"));
+  }, [tp.minute]);
 
   const update = (patch: Partial<TimeParts>) => {
     onChange(toHHMM({ ...tp, ...patch }));
@@ -225,14 +236,14 @@ export default function FamilyTimeSlotRow({ value, onChange }: Props) {
         🕐
       </button>
       {clockOpen && (
-        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 6, zIndex: 20 }}>
+        <Modal onClose={() => setClockOpen(false)}>
           <AnalogClockPicker
             hour={tp.hour}
             minute={tp.minute}
             onChange={(h, m) => update({ hour: h, minute: m })}
             onClose={() => setClockOpen(false)}
           />
-        </div>
+        </Modal>
       )}
     </div>
   );

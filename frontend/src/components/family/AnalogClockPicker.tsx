@@ -50,13 +50,9 @@ export default function AnalogClockPicker({
   return (
     <div
       style={{
-        position: "absolute",
-        zIndex: 20,
         background: t.cardBg,
-        border: `1px solid ${t.border}`,
         borderRadius: 16,
-        padding: 16,
-        boxShadow: "0 8px 24px rgba(255, 111, 145, 0.25)",
+        padding: 4,
         width: 240,
       }}
     >
