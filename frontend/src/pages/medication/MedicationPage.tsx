@@ -39,6 +39,15 @@ function foodPolarityStyle(polarity: FoodItem["polarity"]) {
   return FOOD_POLARITY_STYLES[polarity ?? "avoid"];
 }
 
+/** 처방전/알약 분석 시작 카드의 "구분" 선택지 — 가족 등록 화면(FamilyTrackerView)의
+ * pill 버튼 스타일과 맞추기 위해 <select> 대신 이 목록으로 pill 버튼 행을 그린다. */
+const SOURCE_TYPE_OPTIONS = [
+  { value: "pill_photo", label: "알약 사진" },
+  { value: "prescription", label: "처방전 PDF/이미지" },
+  { value: "medical_record", label: "진료기록" },
+  { value: "medication_guide", label: "복약안내문" },
+] as const;
+
 /** 탭 버튼 — 활성 탭은 핑크 채움, 비활성은 흰 카드. */
 function tabStyle(isActive: boolean): React.CSSProperties {
   return {
@@ -330,6 +339,7 @@ export default function MedicationPage() {
     schedules,
     isLoading,
     error,
+    clearError,
     fetchSchedules,
     createManualSchedule,
     quickRegister,
@@ -845,46 +855,71 @@ export default function MedicationPage() {
 
         {activeTab === "schedule" && (
           <div>
-            {/* 1~3 단계: 분석 사진/처방전 업로드 */}
+            {/* 1~3 단계: 분석 사진/처방전 업로드 — 가족 등록 화면(FamilyTrackerView)과 같은
+              pink 테두리 카드 + pill 버튼 스타일로 통일 */}
             <div
               style={{
-                border: `1px solid ${pinkTheme.border}`,
-                padding: "15px",
+                border: `1.5px solid ${pinkTheme.primary}`,
+                borderRadius: 10,
+                padding: "12px 15px",
                 marginBottom: "15px",
+                background: pinkTheme.primarySoft,
               }}
             >
-              <h3>처방전/알약 분석 시작</h3>
+              <div
+                style={{
+                  fontWeight: 700,
+                  fontSize: 14,
+                  color: pinkTheme.primary,
+                  marginBottom: 10,
+                }}
+              >
+                📷 처방전/알약 분석 시작
+              </div>
               <form
                 onSubmit={handleUploadSubmit}
-                style={{ display: "flex", flexDirection: "column", gap: "10px" }}
+                style={{ display: "flex", flexDirection: "column", gap: 8 }}
               >
-                <div>
-                  <label>구분: </label>
-                  <select value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
-                    <option value="pill_photo">알약 사진</option>
-                    <option value="prescription">처방전 PDF/이미지</option>
-                    <option value="medical_record">진료기록</option>
-                    <option value="medication_guide">복약안내문</option>
-                  </select>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {SOURCE_TYPE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setSourceType(opt.value)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 999,
+                        border: `1.5px solid ${sourceType === opt.value ? pinkTheme.primary : pinkTheme.border}`,
+                        background: sourceType === opt.value ? pinkTheme.primary : pinkTheme.cardBg,
+                        color: sourceType === opt.value ? "#fff" : pinkTheme.text,
+                        fontSize: 12,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <input
-                    type="file"
-                    accept="image/*,application/pdf"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
-                    required
-                  />
-                </div>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  required
+                  style={{ fontSize: 12 }}
+                />
                 <button
                   type="submit"
                   disabled={isLoading}
                   style={{
-                    background: "#fff",
-                    border: `1px solid ${pinkTheme.border}`,
+                    padding: "8px 14px",
+                    border: "none",
                     borderRadius: 8,
-                    padding: "8px 12px",
-                    color: pinkTheme.text,
+                    background: pinkTheme.primary,
+                    color: "#fff",
+                    fontWeight: 600,
+                    fontSize: 13,
                     cursor: isLoading ? "not-allowed" : "pointer",
+                    opacity: isLoading ? 0.6 : 1,
                   }}
                 >
                   {isLoading ? "업로드 중..." : "처방전/알약 분석하기"}
@@ -897,6 +932,7 @@ export default function MedicationPage() {
               <div
                 style={{
                   border: `1px solid ${pinkTheme.border}`,
+                  borderRadius: 10,
                   padding: "15px",
                   marginBottom: "15px",
                   backgroundColor: pinkTheme.pageBg,
@@ -923,6 +959,7 @@ export default function MedicationPage() {
               <div
                 style={{
                   border: `1px solid ${pinkTheme.border}`,
+                  borderRadius: 10,
                   padding: "15px",
                   marginBottom: "15px",
                 }}
@@ -1654,9 +1691,49 @@ export default function MedicationPage() {
             )}
           </div>
         )}
-
-        {error && <p style={{ color: pinkTheme.danger, marginTop: "15px" }}>에러: {error}</p>}
       </div>
+
+      {error && (
+        <Modal onClose={clearError}>
+          <div
+            style={{
+              background: pinkTheme.cardBg,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 16,
+              padding: 20,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <span style={{ fontSize: 20 }}>⚠️</span>
+              <p style={{ margin: 0, fontSize: 16, fontWeight: 700, color: pinkTheme.danger }}>
+                오류가 발생했어요
+              </p>
+            </div>
+            <p style={{ margin: "0 0 18px", fontSize: 14, lineHeight: 1.6, color: pinkTheme.text }}>
+              {error}
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={clearError}
+                style={{
+                  padding: "9px 20px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: pinkTheme.primary,
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                확인
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {openFoodDetail && (
         <Modal onClose={() => setOpenFoodDetail(null)}>
