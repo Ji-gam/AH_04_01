@@ -1,12 +1,15 @@
 import logging
+from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import config
 from app.dtos.notice import NoticeCreateRequest
 from app.models.notice import Notice, NoticeKind
 from app.repositories.notice_repository import NoticeRepository
 from app.repositories.notification_settings_repository import NotificationSettingsRepository
 from app.services.push_service import PushService
+from app.services.quiet_hours import is_in_quiet_hours
 
 logger = logging.getLogger("app.notice_service")
 
@@ -31,15 +34,19 @@ class NoticeService:
     async def _broadcast(self, session: AsyncSession, kind: NoticeKind, title: str) -> None:
         try:
             if kind == NoticeKind.NOTICE:
-                profile_ids = await self._settings_repo.list_profile_ids_with_notice_enabled(session)
+                settings_list = await self._settings_repo.list_settings_with_notice_enabled(session)
                 push_title = "📢 새 공지사항"
             else:
-                profile_ids = await self._settings_repo.list_profile_ids_with_marketing_enabled(session)
+                settings_list = await self._settings_repo.list_settings_with_marketing_enabled(session)
                 push_title = "🎁 새 소식"
-            for profile_id in profile_ids:
+            now = datetime.now(tz=config.TIMEZONE)
+            for setting in settings_list:
+                # 공지/마케팅은 필수 알림이 아니라 무음 시간대엔 보류한다(F-NTFY-6).
+                if is_in_quiet_hours(setting, now):
+                    continue
                 try:
-                    await self._push_service.send_to_profile(session, profile_id, title=push_title, body=title)
+                    await self._push_service.send_to_profile(session, setting.profile_id, title=push_title, body=title)
                 except Exception:
-                    logger.exception("공지 알림 발송 실패 (profile_id=%s)", profile_id)
+                    logger.exception("공지 알림 발송 실패 (profile_id=%s)", setting.profile_id)
         except Exception:
             logger.exception("공지 알림 브로드캐스트 실패")
