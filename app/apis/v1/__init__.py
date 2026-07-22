@@ -8,6 +8,7 @@ from app.apis.v1.dur import dur_router
 from app.apis.v1.family_routers import family_router
 from app.apis.v1.habit_routers import habit_router
 from app.apis.v1.medication import medication_router
+from app.apis.v1.notice_routers import notice_router
 from app.apis.v1.notification_routers import notification_router
 from app.apis.v1.notification_settings_routers import notification_settings_router
 from app.apis.v1.push_routers import push_router
@@ -21,6 +22,7 @@ v1_routers.include_router(content_router)
 v1_routers.include_router(medication_router)
 v1_routers.include_router(notification_router)
 v1_routers.include_router(notification_settings_router)
+v1_routers.include_router(notice_router)
 v1_routers.include_router(push_router)
 v1_routers.include_router(disease_router)
 v1_routers.include_router(habit_router)

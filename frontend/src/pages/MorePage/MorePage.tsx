@@ -344,6 +344,25 @@ export default function MorePage() {
               ›
             </span>
           </Link>
+
+          <Link to="/notices/admin" style={menuCardStyle}>
+            <span>
+              🛠️ 관리자 공지등록
+              <span
+                style={{
+                  display: "block",
+                  fontSize: 12,
+                  color: pinkTheme.textMuted,
+                  marginTop: 2,
+                }}
+              >
+                공지/마케팅 소식을 등록하고 알림설정을 켜둔 사용자에게 즉시 푸시해요
+              </span>
+            </span>
+            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+              ›
+            </span>
+          </Link>
         </div>
 
         {/* "내 정보" 모달 - 개인건강정보/생활습관정보/복약스케줄 모아보기 */}
