@@ -669,7 +669,12 @@ def _is_plausible_llm_drug_name(name: str) -> bool:
     프롬프트가 제외를 지시한 환자 정보/영수증 문구/숫자 코드(예: "전액본인부담금이란",
     "201501025")가 그대로 섞여 들어와도 막을 방법이 없었다. 실제 약품명이라면 제형 접미사
     (정/캡슐/...) 또는 용량 표기(mg/g/ml) 중 최소 하나는 있어야 하므로, 정규식 경로와 동일한
-    최소 형태 조건으로 걸러낸다."""
+    최소 형태 조건으로 걸러낸다.
+
+    (#OCR-LLM-3) "클로르페니라민말레산염2mg"처럼 제형 접미사 없이 성분명+용량만 있는 줄도
+    용량 표기 조건만으로는 걸러지지 않아, 처방전에 나란히 적힌 브랜드명 카드 아래 성분명
+    설명 줄까지 별도 약으로 노출됐다(#128에서 정규식/퍼지 경로는 이미 막은 것과 같은 문제) -
+    `_is_ingredient_salt_name`/`_is_bare_dosage_line`로 정규식 경로와 동일하게 제외한다."""
     if not _KOREAN_TOKEN_PATTERN.search(name):
         return False
     if _is_annotation_line(name):
@@ -677,6 +682,10 @@ def _is_plausible_llm_drug_name(name: str) -> bool:
     if _INSTITUTION_SUFFIX_PATTERN.search(name):
         return False
     if _is_label_slash_without_digit(name):
+        return False
+    if _is_ingredient_salt_name(name):
+        return False
+    if _is_bare_dosage_line(name):
         return False
     return bool(_DRUG_FORM_SUFFIX_PATTERN.search(name) or _DOSAGE_PATTERN.search(name))
 
