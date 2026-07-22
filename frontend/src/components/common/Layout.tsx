@@ -18,13 +18,33 @@ export default function Layout() {
       <nav
         style={{
           display: "flex",
-          justifyContent: "flex-end",
+          justifyContent: "space-between",
           padding: "8px 12px",
           borderBottom: `1px solid ${pinkTheme.border}`,
           background: pinkTheme.cardBg,
           alignItems: "center",
         }}
       >
+        <button
+          type="button"
+          aria-label="홈으로 이동"
+          onClick={() => navigate("/")}
+          style={{
+            border: "none",
+            background: "none",
+            padding: 0,
+            cursor: "pointer",
+            lineHeight: 0,
+          }}
+        >
+          <img
+            src="/icons/icon-192.png"
+            alt=""
+            width={28}
+            height={28}
+            style={{ borderRadius: 8 }}
+          />
+        </button>
         <button
           type="button"
           aria-label="더보기 메뉴 열기"

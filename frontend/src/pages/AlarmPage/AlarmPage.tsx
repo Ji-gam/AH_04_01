@@ -286,24 +286,9 @@ export default function AlarmPage() {
       .catch((e: Error) => setError(`알림 삭제에 실패했습니다. (${e.message})`));
   };
 
-  // 약 자체(마스터 등록)는 그대로 두고, 그 약의 여러 복용 시각 중 이 시각 하나만 스케줄에서
-  // 뺀다 - handleUpdateMedTime과 같은 PATCH를 재사용하되 새 시각으로 바꾸는 대신 제거한다.
-  const handleDeleteMedTime = (med: MedicationSchedule, time: string) => {
-    if (!window.confirm(`"${med.drug_name}" ${time.slice(0, 5)} 알림을 삭제할까요?`)) return;
-    const hhmm = time.slice(0, 5);
-    const newTimes = med.times.filter((t) => t.slice(0, 5) !== hhmm);
-    apiFetch(`/medications/${med.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ times: newTimes }),
-    })
-      .then(loadSchedules)
-      .catch((e: Error) => setError(`알림 삭제에 실패했습니다. (${e.message})`));
-  };
-
   // 트랙커(복약 관리)에서 등록한 약은 원래 여기서 지울 방법이 없었다(토글/시간수정만 있고
   // 삭제가 아예 빠져있었음 - 본인이 직접 등록했든 가족이 등록해줬든 동일). 알림(row.alarm)에
-  // 이미 있는 것과 같은 패턴으로 추가한다. 위 handleDeleteMedTime(이 시각만)과 달리 약 등록
-  // 자체(모든 시각)를 지운다 - 두 동작을 ✂️(이 시각만)/🗑️(전체) 아이콘으로 구분해서 같이 제공.
+  // 이미 있는 것과 같은 패턴으로 추가한다 - 약 등록 자체(모든 시각)를 지운다.
   const handleDeleteMed = (med: MedicationSchedule) => {
     if (!window.confirm(`"${med.drug_name}" 등록을 삭제할까요?`)) return;
     apiFetchRaw(`/medications/${med.id}`, { method: "DELETE" })
@@ -723,21 +708,6 @@ export default function AlarmPage() {
                             }}
                           >
                             ✏️
-                          </button>
-                          <button
-                            type="button"
-                            aria-label={`${row.name} 이 시각만 삭제`}
-                            title="이 시각만 삭제"
-                            onClick={() => handleDeleteMedTime(row.med!, row.time)}
-                            style={{
-                              border: "none",
-                              background: "none",
-                              color: t.textMuted,
-                              cursor: "pointer",
-                              fontSize: 14,
-                            }}
-                          >
-                            ✂️
                           </button>
                           <button
                             type="button"
