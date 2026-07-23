@@ -55,6 +55,43 @@ const sectionTitleStyle: React.CSSProperties = {
   margin: "24px 0 4px",
 };
 
+const WEEKDAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
+
+interface DayOfWeekPickerProps {
+  value: number;
+  onChange: (day: number) => void;
+}
+
+/** F-ADH-2 - 주간 순응도 피드백을 받을 요일 선택(기본값 토=5). Python date.weekday() 기준
+ * (월=0~일=6)으로 백엔드와 그대로 맞춘다. */
+function DayOfWeekPicker({ value, onChange }: DayOfWeekPickerProps) {
+  return (
+    <div style={{ display: "flex", gap: 6 }}>
+      {WEEKDAY_LABELS.map((label, day) => (
+        <button
+          key={label}
+          type="button"
+          onClick={() => onChange(day)}
+          aria-pressed={value === day}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            border: `1px solid ${value === day ? t.primary : t.border}`,
+            background: value === day ? t.primary : t.cardBg,
+            color: value === day ? "#fff" : t.text,
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface ToggleRowProps {
   label: string;
   desc: string;
@@ -193,6 +230,17 @@ export default function NotificationSettingsPage() {
               checked={settings.lifestyle_tip_enabled}
               onChange={() => toggle("lifestyle_tip_enabled")}
             />
+
+            <p style={sectionTitleStyle}>주간 순응도 피드백</p>
+            <div style={{ padding: "10px 0 14px" }}>
+              <p style={{ ...rowDescStyle, margin: "0 0 10px" }}>
+                이 요일마다 지난 한 주 복약 순응도를 알려드려요
+              </p>
+              <DayOfWeekPicker
+                value={settings.adherence_feedback_day_of_week}
+                onChange={(day) => update("adherence_feedback_day_of_week", day)}
+              />
+            </div>
 
             <p style={sectionTitleStyle}>무음 시간대</p>
             <ToggleRow

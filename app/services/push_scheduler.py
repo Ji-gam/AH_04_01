@@ -11,9 +11,16 @@ from app.models.medication_model import MedicationSchedule
 from app.models.notification_schedules import DayOfWeek, FrequencyType, NotificationSchedule
 from app.models.notification_settings import NotificationSetting
 from app.repositories.dur_drug_repository import DurDrugRepository
+from app.repositories.habit_repository import HabitRepository
 from app.repositories.push_send_log_repository import PushSendLogRepository
 from app.services.notification_settings_service import NotificationSettingsService
+from app.services.periodic_report_service import PeriodicReportService
 from app.services.push_service import PushService
+
+# F-ADH-2(주간 피드백)/F-GOAL-3(월간 리포트)를 매분 틱마다 계산하지 않도록, 하루 중 이
+# 시각의 틱에서만 요일/월말 여부를 확인한다(다른 복약 알림처럼 "정확히 이 분"에만 발송해야
+# 하는 건 아니지만, 하루 한 번이면 충분해 굳이 매분 반복 조회할 필요가 없다).
+_REPORT_SEND_HHMM = "09:00"
 
 logger = logging.getLogger("app.push_scheduler")
 
@@ -145,6 +152,72 @@ async def _send_due_medication_schedules(
             logger.exception("알림 발송 중 오류 (medication_schedule_id=%s)", med_schedule.id)
 
 
+async def _send_weekly_adherence_feedback_if_due(
+    session: AsyncSession,
+    settings: _SettingsCache,
+    send_log_repo: PushSendLogRepository,
+    report_service: PeriodicReportService,
+    now: datetime,
+    current_hhmm: str,
+) -> None:
+    """F-ADH-2 - 프로필마다 고른 요일(기본 토요일, NotificationSetting.adherence_feedback_day_of_week)
+    09시에 지난 7일 복약 순응도 피드백을 보낸다. 복약 스케줄이 하나도 없는 프로필은 볼 것도
+    없으니 건너뛴다."""
+    if current_hhmm != _REPORT_SEND_HHMM:
+        return
+    today = now.date()
+    result = await session.execute(select(MedicationSchedule.profile_id).distinct())
+    week_start, week_end = today - timedelta(days=6), today
+    for profile_id in result.scalars().all():
+        setting = await settings.get(profile_id)
+        if not _should_send(setting):
+            continue
+        if today.weekday() != setting.adherence_feedback_day_of_week:
+            continue
+        if not await send_log_repo.try_claim("adherence_weekly_feedback", profile_id, today, current_hhmm):
+            continue
+        try:
+            await report_service.send_weekly_adherence_feedback(session, profile_id, week_start, week_end)
+        except Exception:
+            logger.exception("주간 순응도 피드백 발송 중 오류 (profile_id=%s)", profile_id)
+
+
+async def _send_monthly_goal_report_if_due(
+    session: AsyncSession,
+    settings: _SettingsCache,
+    send_log_repo: PushSendLogRepository,
+    report_service: PeriodicReportService,
+    now: datetime,
+    current_hhmm: str,
+) -> None:
+    """F-GOAL-3 - 매월 마지막 날 09시에 그 달 복약 순응도 + 습관 달성률 리포트를 보낸다.
+    실제 "목표"(F-GOAL-1) 기능이 아직 없어, 복약 스케줄이 있거나 이번 달 습관을 하나라도
+    고른 프로필을 대상으로 한다(팀 결정: 두 지표 모두 리포트에 포함)."""
+    if current_hhmm != _REPORT_SEND_HHMM:
+        return
+    today = now.date()
+    if (today + timedelta(days=1)).day != 1:
+        return
+    month_start, month_end = today.replace(day=1), today
+
+    med_result = await session.execute(select(MedicationSchedule.profile_id).distinct())
+    habit_profile_ids = await HabitRepository().list_profile_ids_with_selections_in_range(
+        session, month_start, month_end
+    )
+    profile_ids = set(med_result.scalars().all()) | set(habit_profile_ids)
+
+    for profile_id in profile_ids:
+        setting = await settings.get(profile_id)
+        if not _should_send(setting):
+            continue
+        if not await send_log_repo.try_claim("goal_monthly_report", profile_id, today, current_hhmm):
+            continue
+        try:
+            await report_service.send_monthly_goal_report(session, profile_id, month_start, month_end)
+        except Exception:
+            logger.exception("월간 달성 리포트 발송 중 오류 (profile_id=%s)", profile_id)
+
+
 async def _check_and_send_due_notifications() -> None:
     now = datetime.now(tz=config.TIMEZONE)
     js_weekday = now.isoweekday() % 7  # Python isoweekday: 월=1~일=7 -> JS 기준(일=0~토=6)으로 변환
@@ -154,10 +227,13 @@ async def _check_and_send_due_notifications() -> None:
         push_service = PushService()
         settings = _SettingsCache(session)
         send_log_repo = PushSendLogRepository()
+        report_service = PeriodicReportService()
         await _send_due_notification_schedules(
             session, push_service, settings, send_log_repo, now, js_weekday, current_hhmm
         )
         await _send_due_medication_schedules(session, push_service, settings, send_log_repo, now, current_hhmm)
+        await _send_weekly_adherence_feedback_if_due(session, settings, send_log_repo, report_service, now, current_hhmm)
+        await _send_monthly_goal_report_if_due(session, settings, send_log_repo, report_service, now, current_hhmm)
 
 
 async def _send_snoozed_notification(profile_id: int, source_type: str, source_id: int) -> None:
