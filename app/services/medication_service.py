@@ -1424,9 +1424,19 @@ class MedicationService:
             background_tasks.add_task(_notify_side_effects_task, profile_id, drug_name)
 
         # 13번: 음식(T-DOC-2) — 등록된 약의 e약은요 상호작용 문항에서 음식/음주 주의사항을 안내한다.
+        # (#CONFIRM-FOOD-CARD-SLOW) 프론트(MedicationPage.tsx handleConfirmSubmit)는 여러 약을
+        # Promise.allSettled로 병렬 confirm한 뒤 이 guide_cards 응답을 실제로 화면에 쓰지 않는다
+        # (성공/실패 카운트만 확인) - 음식 상호작용은 별도의 "음식" 탭이 fast/pending 2단계
+        # API(check_food_interactions[_pending])로 채운다. 그런데도 여기서 로컬 데이터로 못 찾으면
+        # 실시간 e약은요 API를 최대 3회 순차 호출하는 느린 경로(_build_food_interaction_guide_card_slow)
+        # 까지 타서, 아무도 안 보는 값을 위해 confirm 응답 자체가 최대 30초까지 느려졌다 - 로컬
+        # 데이터(참조테이블/MySQL 스냅샷)로 즉시 확인 가능한 경우만 채우고, 못 찾으면 그냥 비워서
+        # "음식" 탭의 기존 pending 조회에 맡긴다.
         guide_cards = []
         if drug_name:
-            guide_cards.append(await _build_food_interaction_guide_card(session, drug_name))
+            fast_card = await _build_food_interaction_guide_card_fast(session, drug_name)
+            if fast_card is not None:
+                guide_cards.append(fast_card)
 
         return RecognitionConfirmResult(status="confirmed", guide_cards=guide_cards)
 
