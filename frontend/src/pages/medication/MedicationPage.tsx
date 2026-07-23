@@ -840,10 +840,10 @@ export default function MedicationPage() {
             onClick={() => setActiveTab("interaction")}
             style={tabStyle(activeTab === "interaction")}
           >
-            조합 (12번)
+            약품 궁합
           </button>
           <button onClick={() => setActiveTab("food")} style={tabStyle(activeTab === "food")}>
-            음식 (13번)
+            음식 궁합
           </button>
         </div>
 
