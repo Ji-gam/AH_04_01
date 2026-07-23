@@ -24,6 +24,23 @@ class MedicationRepository:
         )
         return result.first() is not None
 
+    async def find_item_seq_by_exact_name(self, session: AsyncSession, item_name: str) -> str | None:
+        """(#PLAVIX-MATCH-GAP) `DurDrugRepository.search_item_names`의 Tier1 검색은
+        `dur_prod_master_list` 한 곳만 보는데, 이 테이블엔 없지만 `drugs_data`/
+        `drug_identification`엔 이미 있는 약이 있다(세 마스터 테이블 커버리지가 서로 다름 -
+        예: "플라빅스정75밀리그램(...)"은 `drug_identification`에만 있음). Tier1이 놓친 이름을
+        Tier3 실시간 공공 API로 넘기기 전에, 이미 로컬에 있는 다른 두 마스터 테이블에서 정확
+        일치를 한 번 더 확인해 불필요한 API 호출과 매번 다른 item_seq 재발급을 줄인다."""
+        result = await session.execute(select(DrugMaster.item_seq).where(DrugMaster.item_name == item_name).limit(1))
+        row = result.first()
+        if row is not None:
+            return row[0]
+        result = await session.execute(
+            select(DrugIdentification.item_seq).where(DrugIdentification.item_name == item_name).limit(1)
+        )
+        row = result.first()
+        return row[0] if row is not None else None
+
     async def create_schedule(self, session: AsyncSession, schedule: MedicationSchedule) -> MedicationSchedule:
         session.add(schedule)
         await session.commit()

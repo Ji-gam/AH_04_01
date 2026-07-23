@@ -510,12 +510,20 @@ async def _resolve_unmatched_name(db_session: AsyncSession, name: str) -> tuple[
     조회 → 실패 시 AUTO_ 더미 코드 생성 순으로 item_seq를 확보한다(T-MED-4/T-MED-1: 등록 자체가
     막히지 않아야 한다). 반환값: (item_seq 또는 AUTO_ 더미 코드, 더미 생성 여부).
 
-    Tier3 호출 앞에 MySQL 캐시(`medication_data_cache`)를 둔다(T-LLM-2-drug-gateway
-    `DurDrugRepository.drug_data()`와 동일 패턴 — query_name 정확매치, 빈 응답은 캐싱 안 함) —
-    같은 약이 반복 조회될 때마다 낱알식별/허가정보/e약은요/DUR품목정보 4개 API를 매번 다시
-    부르는 낭비를 없앤다."""
+    Tier3(실시간 공공 API) 호출 앞에 두 단계를 둔다:
+    1) (#PLAVIX-MATCH-GAP) `dur_prod_master_list` Tier1 검색이 놓친 이름도 `drugs_data`/
+       `drug_identification`엔 이미 있을 수 있다(세 마스터 테이블 커버리지가 서로 다름) - 정확
+       일치가 있으면 그 item_seq를 그대로 재사용해 불필요한 API 호출과 매번 다른 item_seq
+       재발급을 피한다.
+    2) MySQL 캐시(`medication_data_cache`, T-LLM-2-drug-gateway `DurDrugRepository.drug_data()`와
+       동일 패턴 — query_name 정확매치, 빈 응답은 캐싱 안 함) — 같은 약이 반복 조회될 때마다
+       낱알식별/허가정보/e약은요/DUR품목정보 4개 API를 매번 다시 부르는 낭비를 없앤다."""
     query_name = name.strip()
     medication_repo = MedicationRepository()
+
+    local_item_seq = await medication_repo.find_item_seq_by_exact_name(db_session, query_name)
+    if local_item_seq:
+        return local_item_seq, False
 
     fields = await medication_repo.get_cached_master_data(db_session, query_name)
     if fields is None:
@@ -1127,14 +1135,18 @@ async def run_ocr_task(
         await db_session.commit()
 
 
-async def _require_item_seq(session: AsyncSession, repo: MedicationRepository, item_seq: str) -> None:
-    """(T-MED-16) `medication_schedules.item_seq`는 DB FK가 없으므로, 스케줄을 만들기 전
-    앱 레벨에서 마스터 데이터 존재를 확인한다. AUTO_ 더미 코드는 마스터 데이터에 없는 게
-    당연하므로(T-MED-1: 등록 자체가 막히지 않아야 한다) 검증을 건너뛴다."""
+async def _check_master_data_available(session: AsyncSession, repo: MedicationRepository, item_seq: str) -> bool:
+    """(T-MED-16, #DRUG-REG-BLOCKED-BUG) 마스터 데이터 존재 여부는 참고 정보일 뿐, 등록을
+    막는 조건이 되어서는 안 된다(T-MED-1: 등록 자체가 막히지 않아야 한다) — 처방전에 적힌 약은
+    로컬 마스터 3테이블(`dur_prod_master_list`/`drugs_data`/`drug_identification`) 커버리지가
+    좁아 못 찾는 경우가 흔한데(공공 API 원본에 아예 없는 브랜드/용량이거나, Tier3 실시간 조회가
+    로컬 스냅샷에 없는 item_seq를 반환하는 경우), 예전엔 이때 404로 confirm 전체를 막아 정상
+    처방약까지 등록이 실패했다. 이제는 존재 여부만 반환하고, 호출부는 결과와 무관하게 등록을
+    계속 진행하며 이 값을 안내 메시지 표시에만 쓴다. AUTO_ 더미 코드는 확인할 필요도 없이
+    False."""
     if item_seq.startswith("AUTO_"):
-        return
-    if not await repo.item_seq_exists(session, item_seq):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 약품 정보를 찾을 수 없습니다.")
+        return False
+    return await repo.item_seq_exists(session, item_seq)
 
 
 class MedicationService:
@@ -1213,7 +1225,12 @@ class MedicationService:
         drug_name: str | None = None
         if selected_candidate_drug_code:
             item_seq = selected_candidate_drug_code
-            await _require_item_seq(session, self._repository, item_seq)
+            # (#DRUG-REG-BLOCKED-BUG) 예전엔 여기서 마스터 데이터에 없으면 404를 던져 confirm
+            # 전체(Promise.all로 여러 약을 동시에 등록하는 프론트 흐름 포함)를 막았다 - 처방전에
+            # 실제로 적힌 약인데 로컬 마스터 커버리지가 좁아 없는 경우까지 등록 자체가 실패했다.
+            # 이제는 결과와 무관하게 등록을 계속 진행하고, 커버리지 갭 파악용으로만 로그를 남긴다.
+            if not await _check_master_data_available(session, self._repository, item_seq):
+                logger.warning("마스터 데이터에 없는 item_seq로 복약 스케줄 등록: item_seq=%s", item_seq)
 
             candidate = next((c for c in (job.candidates or []) if c["drug_code"] == item_seq), None)
             drug_name = candidate["drug_name"] if candidate else item_seq
@@ -1301,7 +1318,8 @@ class MedicationService:
         self, session: AsyncSession, profile_id: int, req: MedicationScheduleCreateRequest
     ) -> MedicationScheduleResponse:
         item_seq = req.drug_code
-        await _require_item_seq(session, self._repository, item_seq)
+        if not await _check_master_data_available(session, self._repository, item_seq):
+            logger.warning("마스터 데이터에 없는 item_seq로 복약 스케줄 수동 등록: item_seq=%s", item_seq)
         names = await self._dur_drug_repository.get_names_by_item_seqs(session, {item_seq})
         drug_name = names.get(item_seq, item_seq)
 
@@ -1495,7 +1513,10 @@ class MedicationService:
         drug_name: str | None = None
         if selected_candidate_drug_code:
             item_seq = selected_candidate_drug_code
-            await _require_item_seq(session, self._repository, item_seq)
+            # (#DRUG-REG-BLOCKED-BUG) confirm_recognition_job과 동일하게, 마스터 데이터 부재는
+            # 등록을 막지 않고 로그만 남긴다.
+            if not await _check_master_data_available(session, self._repository, item_seq):
+                logger.warning("마스터 데이터에 없는 item_seq로 가족 복약 스케줄 등록: item_seq=%s", item_seq)
 
             candidate = next((c for c in (job.candidates or []) if c["drug_code"] == item_seq), None)
             drug_name = candidate["drug_name"] if candidate else item_seq
