@@ -1218,6 +1218,22 @@ async def run_ocr_task(
         await _mark_recognition_job_failed(job_id)
 
 
+async def _notify_side_effects_task(profile_id: int, drug_name: str) -> None:
+    """등록 응답 반환 후 실행되는 백그라운드 태스크. 요청 스코프 세션은 응답 전송 시 닫히므로
+    (BE-2와 동일한 이유), 여기서도 자체 세션을 새로 연다. 부작용 확인이 e약은요 실시간 API를
+    타면 최대 10초까지 걸릴 수 있는데, 이건 등록 자체와 무관한 1회성 참고 알림(F-NTFY-5)이라
+    등록 응답을 그만큼 지연시킬 이유가 없다 - 등록 확정/수동/빠른등록 응답은 즉시 반환하고,
+    알림은 이 태스크가 응답 반환 후 비동기로 조회·발송한다."""
+    try:
+        async with AsyncSessionLocal() as session:
+            await SideEffectNotificationService().notify_if_side_effects(session, profile_id, drug_name)
+            await session.commit()
+    except Exception:
+        logger.exception(
+            "부작용 사전 안내 백그라운드 태스크 실패 (profile_id=%s, drug_name=%s)", profile_id, drug_name
+        )
+
+
 async def _check_master_data_available(session: AsyncSession, repo: MedicationRepository, item_seq: str) -> bool:
     """(T-MED-16, #DRUG-REG-BLOCKED-BUG) 마스터 데이터 존재 여부는 참고 정보일 뿐, 등록을
     막는 조건이 되어서는 안 된다(T-MED-1: 등록 자체가 막히지 않아야 한다) — 처방전에 적힌 약은
@@ -1320,6 +1336,7 @@ class MedicationService:
         profile_id: int,
         selected_candidate_drug_code: str | None,
         confirmed_fields: dict | None,
+        background_tasks: BackgroundTasks,
     ) -> RecognitionConfirmResult:
         job = await self._repository.get_recognition_job(session, job_id)
         if not job or job.profile_id != profile_id:
@@ -1365,7 +1382,7 @@ class MedicationService:
                 source_job_id=job_id,
             )
             await self._repository.create_schedule(session, schedule)
-            await self._side_effect_notification_service.notify_if_side_effects(session, profile_id, drug_name)
+            background_tasks.add_task(_notify_side_effects_task, profile_id, drug_name)
 
         # 13번: 음식(T-DOC-2) — 등록된 약의 e약은요 상호작용 문항에서 음식/음주 주의사항을 안내한다.
         guide_cards = []
@@ -1405,7 +1422,11 @@ class MedicationService:
         await self._repository.delete_schedule(session, schedule)
 
     async def create_manual_schedule(
-        self, session: AsyncSession, profile_id: int, req: MedicationScheduleCreateRequest
+        self,
+        session: AsyncSession,
+        profile_id: int,
+        req: MedicationScheduleCreateRequest,
+        background_tasks: BackgroundTasks,
     ) -> MedicationScheduleResponse:
         item_seq = req.drug_code
         if not await _check_master_data_available(session, self._repository, item_seq):
@@ -1429,7 +1450,7 @@ class MedicationService:
             profile_id=owner_profile_id, item_seq=item_seq, times=req.times, hospital_name=req.hospital_name
         )
         await self._repository.create_schedule(session, schedule)
-        await self._side_effect_notification_service.notify_if_side_effects(session, owner_profile_id, drug_name)
+        background_tasks.add_task(_notify_side_effects_task, owner_profile_id, drug_name)
 
         return self._schedule_to_response(schedule, drug_name)
 
@@ -1439,6 +1460,7 @@ class MedicationService:
         profile_id: int,
         drug_name: str,
         times: list[str],
+        background_tasks: BackgroundTasks,
         hospital_name: str | None = None,
     ) -> QuickRegisterResult:
         """약품명을 직접 입력해 검색 단계 없이 한 번에 등록한다(T-MED-3).
@@ -1482,7 +1504,7 @@ class MedicationService:
             hospital_name=hospital_name,
         )
         schedule = await self._repository.create_schedule(session, schedule)
-        await self._side_effect_notification_service.notify_if_side_effects(session, profile_id, item_name)
+        background_tasks.add_task(_notify_side_effects_task, profile_id, item_name)
 
         return QuickRegisterResult(
             status="registered",
