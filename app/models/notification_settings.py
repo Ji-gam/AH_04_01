@@ -1,6 +1,6 @@
 from datetime import datetime, time
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Time, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, Time, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
@@ -28,6 +28,9 @@ class NotificationSetting(Base):
     quiet_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     quiet_start: Mapped[time] = mapped_column(Time, default=time(22, 0), nullable=False)
     quiet_end: Mapped[time] = mapped_column(Time, default=time(7, 0), nullable=False)
+    # F-ADH-2: 주간 순응도 피드백 발송 요일. Python date.weekday() 기준(월=0~일=6), 기본값
+    # 5(토요일). 사용자가 알림설정 화면에서 바꿀 수 있다.
+    adherence_feedback_day_of_week: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     sound_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     vibration_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     popup_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

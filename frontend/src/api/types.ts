@@ -69,6 +69,7 @@ export interface NotificationSettingsResult {
   sound_enabled: boolean;
   vibration_enabled: boolean;
   popup_enabled: boolean;
+  adherence_feedback_day_of_week: number; // 0=월 ~ 6=일 (F-ADH-2)
 }
 
 export type NotificationSettingsUpdateRequest = Partial<NotificationSettingsResult>;

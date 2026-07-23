@@ -97,6 +97,43 @@ class HabitRepository:
         )
         return list(result.scalars().all())
 
+    async def list_selections_for_range(
+        self, session: AsyncSession, profile_id: int, start_date: date, end_date: date
+    ) -> list[HabitSelection]:
+        """F-GOAL-3 월간 리포트용 - 이 기간에 하루라도 선택된 (날짜, habit_key) 전체."""
+        result = await session.execute(
+            select(HabitSelection).where(
+                HabitSelection.profile_id == profile_id,
+                HabitSelection.select_date >= start_date,
+                HabitSelection.select_date <= end_date,
+            )
+        )
+        return list(result.scalars().all())
+
+    async def list_logs_for_range(
+        self, session: AsyncSession, profile_id: int, start_date: date, end_date: date
+    ) -> list[HabitLog]:
+        """F-GOAL-3 월간 리포트용 - 이 기간의 진행량 전체."""
+        result = await session.execute(
+            select(HabitLog).where(
+                HabitLog.profile_id == profile_id,
+                HabitLog.log_date >= start_date,
+                HabitLog.log_date <= end_date,
+            )
+        )
+        return list(result.scalars().all())
+
+    async def list_profile_ids_with_selections_in_range(
+        self, session: AsyncSession, start_date: date, end_date: date
+    ) -> list[int]:
+        """F-GOAL-3 스케줄러용 - 이 기간에 습관을 하나라도 고른 프로필 id 목록."""
+        result = await session.execute(
+            select(HabitSelection.profile_id)
+            .where(HabitSelection.select_date >= start_date, HabitSelection.select_date <= end_date)
+            .distinct()
+        )
+        return list(result.scalars().all())
+
     async def get_log(self, session: AsyncSession, profile_id: int, log_date: date, habit_key: str) -> HabitLog | None:
         result = await session.execute(
             select(HabitLog).where(

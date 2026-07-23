@@ -20,6 +20,10 @@ class NotificationSettingsUpdateRequest(BaseModel):
     sound_enabled: Annotated[bool | None, Field(None, description="알림 소리 on/off")]
     vibration_enabled: Annotated[bool | None, Field(None, description="알림 진동 on/off")]
     popup_enabled: Annotated[bool | None, Field(None, description="알림 팝업 on/off")]
+    adherence_feedback_day_of_week: Annotated[
+        int | None,
+        Field(None, ge=0, le=6, description="주간 순응도 피드백 발송 요일 (0=월 ~ 6=일)"),
+    ]
 
 
 class NotificationSettingsResponse(BaseSerializerModel):
@@ -34,3 +38,4 @@ class NotificationSettingsResponse(BaseSerializerModel):
     sound_enabled: Annotated[bool, Field(description="알림 소리 on/off")]
     vibration_enabled: Annotated[bool, Field(description="알림 진동 on/off")]
     popup_enabled: Annotated[bool, Field(description="알림 팝업 on/off")]
+    adherence_feedback_day_of_week: Annotated[int, Field(description="주간 순응도 피드백 발송 요일 (0=월 ~ 6=일)")]
