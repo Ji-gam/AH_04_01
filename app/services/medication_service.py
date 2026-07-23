@@ -179,6 +179,9 @@ _AUTO_CREATED_MATCH_RATE_CAP = 0.5
 # T-MED-13: dummy_mode(T-MED-3)는 confidence와 마찬가지로 용법 정보도 없는 결정적 테스트 데이터라,
 # 실제 인식과 동일한 흐름을 태우기 위해 대표적인 예시값을 그대로 둔다. `dummy_mode` 플래그로 이미
 # 실인식과 명시적으로 구분되므로, 실제 값처럼 오인될 위험이 없다.
+# OCR/확정 등록 시 처방전에서 복용 시간을 파싱하지 못했을 때 추천하는 기본 슬롯(아침/점심/저녁).
+_DEFAULT_SCHEDULE_TIMES = ["09:00", "13:00", "19:00"]
+
 _DUMMY_DOSAGE = "1정"
 _DUMMY_TIMES = ["09:00", "13:00", "19:00"]
 _DUMMY_DURATION = "3일"
@@ -389,6 +392,16 @@ def _strip_trailing_dosage(name: str) -> str | None:
     접미사가 없으면 None."""
     stripped = _TRAILING_DOSAGE_PATTERN.sub("", name).strip()
     return stripped if stripped and stripped != name else None
+
+
+def _dosage_name_variants(name: str) -> list[str]:
+    """이름을 조회 재시도 순서(원본 → 한글 단위 변환 → 'NNmg' 접미사 제거)대로 나열한다.
+    e약은요/로컬 스냅샷 조회가 용량 단위 표기 차이로 빈 결과를 내는 문제를 한 곳에서 다룬다."""
+    variants = [name, *_translate_trailing_dosage_to_korean(name)]
+    stripped = _strip_trailing_dosage(name)
+    if stripped:
+        variants.append(stripped)
+    return variants
 
 
 async def _find_interaction_warnings(item_seqs: set[str], names: dict[str, str]) -> list[InteractionWarning]:
@@ -789,7 +802,7 @@ async def _resolve_llm_suggested_names(
 
 
 async def _match_or_create_medications(
-    db_session: AsyncSession, dur_repo: DurDrugRepository, ocr_fields: list[OcrField]
+    db_session: AsyncSession, dur_repo: DurDrugRepository, ocr_fields: list[OcrField], ocr_raw_text: str
 ) -> tuple[list[MatchedDrug], set[str], dict[str, float]]:
     """OCR 텍스트에서 약품명으로 보이는 조각을 마스터 DB와 매칭하고, 없으면 새로 생성한다.
     반환값: (매칭/생성된 약 목록, 이번에 새로 생성된 약의 item_seq 집합, item_seq별 OCR confidence)"""
@@ -803,7 +816,6 @@ async def _match_or_create_medications(
     # 매번 순차적으로 맨 마지막에 기다리면 등록 전체 시간에 그대로 더해져 느려진다.
     llm_task: asyncio.Task[list[str]] | None = None
     if ocr_fields:
-        ocr_raw_text = " ".join(f.text for f in ocr_fields)
         llm_task = asyncio.create_task(_llm_extract_drug_names(ocr_raw_text))
 
     try:
@@ -929,11 +941,17 @@ async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[OcrField]:
     assert config.CLOVA_OCR_INVOKE_URL is not None
     payload, headers = _build_clova_ocr_request(file_bytes, file_name)
 
+    # 재시도마다 새 클라이언트를 만들면 커넥션을 매번 새로 맺어 그만큼 느려지므로,
+    # 하나의 클라이언트를 열어 모든 시도에서 재사용한다.
+    async with httpx.AsyncClient() as client:
+        return await _post_clova_ocr_with_retries(client, payload, headers)
+
+
+async def _post_clova_ocr_with_retries(client: httpx.AsyncClient, payload: dict, headers: dict) -> list[OcrField]:
     for attempt in range(1, _CLOVA_OCR_MAX_ATTEMPTS + 1):
         is_last_attempt = attempt == _CLOVA_OCR_MAX_ATTEMPTS
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(config.CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
+            response = await client.post(config.CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
         except httpx.TimeoutException as exc:
             logger.warning("CLOVA OCR 호출 타임아웃 (attempt=%d/%d): %s", attempt, _CLOVA_OCR_MAX_ATTEMPTS, exc)
             if is_last_attempt:
@@ -1003,18 +1021,11 @@ async def _fetch_drug_summary_with_fallback(medication_name: str) -> list[dict]:
     품목명(대개 '밀리그램' 등 한글 단위 표기)과 안 맞으면 빈 결과가 흔하다(실 API로 확인 —
     "아스피린정 100mg"는 0건, "아스피린정"은 1건). `_fetch_master_data_with_fallback`과 동일한
     패턴으로 먼저 한글 단위로 바꾼 이름을, 그래도 안 되면 접미사를 뗀 이름으로 한 번 더 시도한다."""
-    summaries = await medication_open_api_client.fetch_drug_summary(item_name=medication_name)
-    if summaries:
-        return summaries
-
-    for translated_name in _translate_trailing_dosage_to_korean(medication_name):
-        summaries = await medication_open_api_client.fetch_drug_summary(item_name=translated_name)
+    summaries: list[dict] = []
+    for candidate in _dosage_name_variants(medication_name):
+        summaries = await medication_open_api_client.fetch_drug_summary(item_name=candidate)
         if summaries:
             return summaries
-
-    stripped_name = _strip_trailing_dosage(medication_name)
-    if stripped_name:
-        return await medication_open_api_client.fetch_drug_summary(item_name=stripped_name)
     return summaries
 
 
@@ -1036,16 +1047,11 @@ async def _fetch_food_intrc_from_local_db(session: AsyncSession, medication_name
     아예 없다는 뜻 — 그 경우에만 3단계(느린 실시간 API, `_build_food_interaction_guide_card_slow`)
     호출이 필요하다."""
     dur_repo = DurDrugRepository()
-    text_value = await dur_repo.find_food_intrc_text(session, medication_name)
-    if text_value is None:
-        for translated_name in _translate_trailing_dosage_to_korean(medication_name):
-            text_value = await dur_repo.find_food_intrc_text(session, translated_name)
-            if text_value is not None:
-                break
-    if text_value is None:
-        stripped_name = _strip_trailing_dosage(medication_name)
-        if stripped_name:
-            text_value = await dur_repo.find_food_intrc_text(session, stripped_name)
+    text_value: str | None = None
+    for candidate in _dosage_name_variants(medication_name):
+        text_value = await dur_repo.find_food_intrc_text(session, candidate)
+        if text_value is not None:
+            return text_value
     return text_value
 
 
@@ -1152,7 +1158,7 @@ async def _execute_ocr_logic(
     }
 
     matched_drugs, auto_created_ids, match_confidence = await _match_or_create_medications(
-        db_session, dur_repo, ocr_fields
+        db_session, dur_repo, ocr_fields, ocr_raw_text
     )
 
     for drug in matched_drugs:
@@ -1236,6 +1242,28 @@ class MedicationService:
         self._family_repository = FamilyRepository()  # (가족관리) 대상자 권한검증용
         self._side_effect_notification_service = side_effect_notification_service or SideEffectNotificationService()
 
+    async def _assert_guardian(
+        self,
+        session: AsyncSession,
+        requester_profile_id: int,
+        target_profile_id: int,
+        detail: str = "해당 프로필에 대한 권한이 없습니다.",
+    ) -> None:
+        """(가족관리) 요청자가 대상 프로필의 보호자로 등록돼 있지 않으면 403을 던진다."""
+        if not await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+    @staticmethod
+    def _schedule_to_response(schedule: MedicationSchedule, drug_name: str) -> MedicationScheduleResponse:
+        return MedicationScheduleResponse(
+            id=schedule.id,
+            item_seq=schedule.item_seq,
+            drug_name=drug_name,
+            times=schedule.times,
+            source_job_id=schedule.source_job_id,
+            hospital_name=schedule.hospital_name,
+        )
+
     async def create_recognition_job(
         self,
         session: AsyncSession,
@@ -1318,7 +1346,7 @@ class MedicationService:
             display_name = None if item_seq in master_names else drug_name
 
             # 9~10번: 시간대가 적혀있다면 추출된 시간 사용, 없으면 기본 슬롯 추천
-            times = ["09:00", "13:00", "19:00"]
+            times = _DEFAULT_SCHEDULE_TIMES
             if confirmed_fields and "times" in confirmed_fields:
                 times = confirmed_fields["times"]
             elif job.extracted_fields and job.extracted_fields.get("times"):
@@ -1347,17 +1375,7 @@ class MedicationService:
     async def list_schedules(self, session: AsyncSession, profile_id: int) -> list[MedicationScheduleResponse]:
         schedules = await self._repository.list_schedules_by_profile(session, profile_id)
         names = await self._dur_drug_repository.get_names_by_item_seqs(session, {s.item_seq for s in schedules})
-        return [
-            MedicationScheduleResponse(
-                id=s.id,
-                item_seq=s.item_seq,
-                drug_name=s.display_name or names.get(s.item_seq, s.item_seq),
-                times=s.times,
-                source_job_id=s.source_job_id,
-                hospital_name=s.hospital_name,
-            )
-            for s in schedules
-        ]
+        return [self._schedule_to_response(s, s.display_name or names.get(s.item_seq, s.item_seq)) for s in schedules]
 
     async def update_schedule(
         self, session: AsyncSession, profile_id: int, schedule_id: int, req: MedicationScheduleUpdateRequest
@@ -1374,13 +1392,8 @@ class MedicationService:
         await session.refresh(schedule)
 
         names = await self._dur_drug_repository.get_names_by_item_seqs(session, {schedule.item_seq})
-        return MedicationScheduleResponse(
-            id=schedule.id,
-            item_seq=schedule.item_seq,
-            drug_name=schedule.display_name or names.get(schedule.item_seq, schedule.item_seq),
-            times=schedule.times,
-            source_job_id=schedule.source_job_id,
-            hospital_name=schedule.hospital_name,
+        return self._schedule_to_response(
+            schedule, schedule.display_name or names.get(schedule.item_seq, schedule.item_seq)
         )
 
     async def delete_schedule(self, session: AsyncSession, profile_id: int, schedule_id: int) -> None:
@@ -1416,13 +1429,7 @@ class MedicationService:
         await self._repository.create_schedule(session, schedule)
         await self._side_effect_notification_service.notify_if_side_effects(session, owner_profile_id, drug_name)
 
-        return MedicationScheduleResponse(
-            id=schedule.id,
-            item_seq=schedule.item_seq,
-            drug_name=drug_name,
-            times=schedule.times,
-            hospital_name=schedule.hospital_name,
-        )
+        return self._schedule_to_response(schedule, drug_name)
 
     async def quick_register_medication(
         self,
@@ -1477,13 +1484,7 @@ class MedicationService:
 
         return QuickRegisterResult(
             status="registered",
-            schedule=MedicationScheduleResponse(
-                id=schedule.id,
-                item_seq=schedule.item_seq,
-                drug_name=item_name,
-                times=schedule.times,
-                hospital_name=schedule.hospital_name,
-            ),
+            schedule=self._schedule_to_response(schedule, item_name),
             auto_created=auto_created,
         )
 
@@ -1624,33 +1625,25 @@ class MedicationService:
     ) -> list[MedicationScheduleResponse]:
         """(가족관리) 보호자가 가족 구성원의 복약 스케줄 전체를 조회 - 복약알림/트랙커의
         가족 화면에서 달력·목록에 쓴다."""
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
-        if not is_guardian:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        await self._assert_guardian(session, requester_profile_id, target_profile_id)
         return await self.list_schedules(session, target_profile_id)
 
     async def check_interactions_for_family(
         self, session: AsyncSession, requester_profile_id: int, target_profile_id: int
     ) -> InteractionCheckResult:
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
-        if not is_guardian:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        await self._assert_guardian(session, requester_profile_id, target_profile_id)
         return await self.check_interactions(session, target_profile_id)
 
     async def check_food_interactions_for_family(
         self, session: AsyncSession, requester_profile_id: int, target_profile_id: int
     ) -> FoodInteractionCheckResult:
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
-        if not is_guardian:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        await self._assert_guardian(session, requester_profile_id, target_profile_id)
         return await self.check_food_interactions(session, target_profile_id)
 
     async def check_food_interactions_pending_for_family(
         self, session: AsyncSession, requester_profile_id: int, target_profile_id: int
     ) -> FoodInteractionCheckResult:
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
-        if not is_guardian:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        await self._assert_guardian(session, requester_profile_id, target_profile_id)
         return await self.check_food_interactions_pending(session, target_profile_id)
 
     async def update_schedule_for_family(
@@ -1663,11 +1656,9 @@ class MedicationService:
         schedule = await self._repository.get_schedule_by_id(session, schedule_id)
         if not schedule:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 복약 스케줄을 찾을 수 없습니다.")
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, schedule.profile_id)
-        if not is_guardian:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="해당 복약 스케줄을 수정할 권한이 없습니다."
-            )
+        await self._assert_guardian(
+            session, requester_profile_id, schedule.profile_id, detail="해당 복약 스케줄을 수정할 권한이 없습니다."
+        )
 
         if req.times is not None:
             schedule.times = req.times
@@ -1693,9 +1684,7 @@ class MedicationService:
         schedule = await self._repository.get_schedule_by_id(session, schedule_id)
         if not schedule:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 복약 스케줄을 찾을 수 없습니다.")
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, schedule.profile_id)
-        if not is_guardian:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="해당 복약 스케줄을 삭제할 권한이 없습니다."
-            )
+        await self._assert_guardian(
+            session, requester_profile_id, schedule.profile_id, detail="해당 복약 스케줄을 삭제할 권한이 없습니다."
+        )
         await self._repository.delete_schedule(session, schedule)
