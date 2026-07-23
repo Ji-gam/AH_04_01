@@ -1118,6 +1118,18 @@ async def _execute_ocr_logic(
     )
 
 
+async def _mark_recognition_job_failed(job_id: str) -> None:
+    """OCR 태스크가 예외로 중단됐을 때, job이 "processing"에 영구 고착되지 않도록 별도
+    세션에서 상태만 "failed"로 확정한다. 실패를 기록하는 이 경로마저 실패하면(예: DB 자체가
+    내려간 경우) 프론트 폴링 상한이 최종 방어선이므로, 여기서는 로그만 남기고 삼킨다."""
+    try:
+        async with AsyncSessionLocal() as failure_session:
+            await MedicationRepository().update_recognition_job(failure_session, job_id, "failed")
+            await failure_session.commit()
+    except Exception:
+        logger.exception("OCR job 실패 상태 기록마저 실패: job_id=%s", job_id)
+
+
 async def run_ocr_task(
     job_id: str,
     source_type: str,
@@ -1129,10 +1141,17 @@ async def run_ocr_task(
     비동기 OCR 및 약품 매칭 백그라운드 태스크.
     요청 스코프 세션은 응답 전송 시 닫히므로, 항상 자체 세션을 새로 열어 사용한다(BE-2).
     dummy_mode=True면 실제 OCR 호출 없이 결정적인 더미 인식 결과를 반환한다(T-MED-3).
+
+    처리 중 예외가 나면(DB 오류/공공 API 예외 등) job을 "failed"로 확정한다 — 그러지 않으면
+    초기 "processing" 상태 그대로 남아 프론트가 무한 폴링하고 진행 애니메이션이 영구 정체한다.
     """
-    async with AsyncSessionLocal() as db_session:
-        await _execute_ocr_logic(db_session, job_id, source_type, file_bytes, file_name, dummy_mode)
-        await db_session.commit()
+    try:
+        async with AsyncSessionLocal() as db_session:
+            await _execute_ocr_logic(db_session, job_id, source_type, file_bytes, file_name, dummy_mode)
+            await db_session.commit()
+    except Exception:
+        logger.exception("OCR 백그라운드 태스크 실패, job을 failed로 처리합니다: job_id=%s", job_id)
+        await _mark_recognition_job_failed(job_id)
 
 
 async def _check_master_data_available(session: AsyncSession, repo: MedicationRepository, item_seq: str) -> bool:

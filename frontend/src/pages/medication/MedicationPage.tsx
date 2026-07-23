@@ -500,8 +500,13 @@ export default function MedicationPage() {
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | undefined;
     if (currentJobId && (jobStatus === "pending" || jobStatus === "processing")) {
+      // 백엔드가 어떤 이유로든 job을 done/failed로 확정하지 못해 계속 processing으로 남으면
+      // 여기서 무한 폴링하게 되므로, 최대 시도 횟수를 방어선으로 둔다(1초 간격 × 90 = 90초).
+      const MAX_POLLS = 90;
+      let polls = 0;
       intervalId = setInterval(async () => {
         try {
+          polls += 1;
           const res = await getJobStatus(currentJobId);
           setJobStatus(res.status);
           if (res.status === "done") {
@@ -514,6 +519,10 @@ export default function MedicationPage() {
             clearInterval(intervalId);
           } else if (res.status === "failed") {
             clearInterval(intervalId);
+          } else if (polls >= MAX_POLLS) {
+            // 상한 초과: 응답이 안 오는 것으로 보고 실패 처리해 기존 실패 UI로 넘긴다.
+            clearInterval(intervalId);
+            setJobStatus("failed");
           }
         } catch (err) {
           console.error(err);
