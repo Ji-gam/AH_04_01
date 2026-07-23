@@ -31,7 +31,7 @@ let lastRegisteredToken: string | null = null;
  * service-worker.js를 그대로 재사용한다(getToken()의 serviceWorkerRegistration 옵션) -
  * FCM 웹푸시도 결국 표준 브라우저 Push API를 타므로, service-worker.js의 기존 'push'
  * 이벤트 리스너가 그대로 받아 처리한다. 이렇게 하면 Firebase SDK 코드를 서비스워커 안에
- * 넣지 않아도 되어, 기존 스누즈/빈도줄이기/부작용알림 액션 버튼 처리 로직과 충돌할
+ * 넣지 않아도 되어, 기존 복용완료/빈도줄이기/부작용알림 액션 버튼 처리 로직과 충돌할
  * 위험(중복 알림, notificationclick 핸들러 덮어쓰기 - firebase-js-sdk 이슈로 보고된 바 있음)이
  * 없다.
  *
