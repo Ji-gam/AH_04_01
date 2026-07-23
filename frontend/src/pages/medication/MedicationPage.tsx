@@ -623,17 +623,34 @@ export default function MedicationPage() {
       // (T-MED, #195) 약품 개수만큼 confirm을 순차 대기하면, 약이 여러 개일수록 등록 시간이
       // 그대로 배로 늘어난다 — 서로 독립된 확정 요청이라 병렬로 보내고, 목록 재조회도
       // confirmJob마다가 아니라 전체가 끝난 뒤 한 번만 한다.
-      await Promise.all(
+      // (#DRUG-REG-BLOCKED-BUG) Promise.all은 하나라도 실패하면 전체가 reject되어, 나머지
+      // 정상 약까지 등록 안 된 것처럼 보이고 체크박스도 그대로 남았다 — allSettled로 바꿔
+      // 성공한 약은 그대로 등록되게 하고, 실패한 약만 선택 상태를 남겨 재시도할 수 있게 한다.
+      const results = await Promise.allSettled(
         selectedDrugCodes.map((drugCode) =>
           confirmJob(currentJobId, drugCode, { times: timesArray }),
         ),
       );
+      const failedCodes = selectedDrugCodes.filter((_, i) => results[i].status === "rejected");
       await fetchSchedules();
-      alert(`${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`);
-      // currentJobId/candidates는 그대로 둔다 — 후보별 등록 여부는 등록약 목록(schedules)에서
-      // 파생되므로(아래 isRegistered), 등록 목록에서 삭제하면 같은 후보를 재업로드 없이 다시
-      // 선택해 등록할 수 있어야 한다. 방금 제출한 선택 상태만 비운다.
-      setSelectedDrugCodes([]);
+
+      if (failedCodes.length === 0) {
+        alert(`${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`);
+        // currentJobId/candidates는 그대로 둔다 — 후보별 등록 여부는 등록약 목록(schedules)에서
+        // 파생되므로(아래 isRegistered), 등록 목록에서 삭제하면 같은 후보를 재업로드 없이 다시
+        // 선택해 등록할 수 있어야 한다. 방금 제출한 선택 상태만 비운다.
+        setSelectedDrugCodes([]);
+      } else {
+        const succeededCount = selectedDrugCodes.length - failedCodes.length;
+        const failedNames = failedCodes.map(
+          (code) => candidates.find((c) => c.drug_code === code)?.drug_name ?? code,
+        );
+        alert(
+          `${succeededCount}개 약품은 등록되었지만, 다음 약품은 실패했습니다: ${failedNames.join(", ")}`,
+        );
+        // 실패한 약만 선택 상태로 남겨 재시도할 수 있게 한다.
+        setSelectedDrugCodes(failedCodes);
+      }
     } catch (err) {
       console.error(err);
     } finally {
