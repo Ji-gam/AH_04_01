@@ -74,6 +74,7 @@ export default function HomePage() {
   const [meds, setMeds] = useState<MedicationSchedule[]>([]);
   const [alarms, setAlarms] = useState<NotificationScheduleResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [checkedToday, setCheckedToday] = useState<Set<string>>(new Set());
 
   // 오늘의 습관 트래커 — 기본 세트(물/산책) + 등록 질환별 맞춤 습관(날짜 기준 하루 3개 로테이션).
   // 홈에는 미리보기 카드만 두고, 클릭하면 모달에서 실제로 체크한다.
@@ -107,6 +108,7 @@ export default function HomePage() {
         // 홈의 건강 카드는 참고용 요약이라, 실패해도 화면 전체를 막지 않고 카드만 조용히 숨긴다.
       })
       .finally(() => setLoading(false));
+    loadChecked(toDateString(new Date())).then(setCheckedToday);
   }, []);
 
   useEffect(() => {
@@ -204,9 +206,8 @@ export default function HomePage() {
   const today = new Date();
   const groups = buildGroups(meds, alarms, today);
   const totalCount = groups.reduce((n, g) => n + g.items.length, 0);
-  const checked = loadChecked(toDateString(today));
   const doneCount = groups.reduce(
-    (n, g) => n + g.items.filter((i) => checked.has(i.key)).length,
+    (n, g) => n + g.items.filter((i) => checkedToday.has(i.key)).length,
     0,
   );
 
@@ -456,9 +457,16 @@ export default function HomePage() {
           </button>
         )}
 
-        {/* 오늘의 건강 카드를 누르면 페이지 이동 대신 복약 시간표를 모달로 띄운다 */}
+        {/* 오늘의 건강 카드를 누르면 페이지 이동 대신 복약 시간표를 모달로 띄운다. 모달
+        안에서 체크한 게 서버에 반영되므로, 닫을 때 다시 불러와야 도넛 위젯 숫자가
+        최신으로 갱신된다(안 하면 모달에서 체크해도 뒤 카드 숫자가 그대로 남는다). */}
         {showScheduleModal && (
-          <Modal onClose={() => setShowScheduleModal(false)}>
+          <Modal
+            onClose={() => {
+              setShowScheduleModal(false);
+              loadChecked(toDateString(new Date())).then(setCheckedToday);
+            }}
+          >
             <SchedulePage embedded />
           </Modal>
         )}
