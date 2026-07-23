@@ -121,7 +121,10 @@ async def test_fuzzy_match_rescues_clova_character_misread():
 
     matched_item_seqs = {d.item_seq for d in matched}
     assert "KD_NOSP002" in matched_item_seqs
-    assert match_confidence["KD_NOSP002"] == 0.9
+    # 퍼지 경로는 OCR이 잘못 읽은 텍스트를 마스터명으로 교정 매칭한 것이므로, match_rate는
+    # OCR confidence(0.9)를 그대로 쓰지 않고 교정 유사도(ratio 0.8)와의 보수적 최솟값이어야
+    # 한다 — "OCR이 틀린 글자를 확신했다"가 "매칭이 정확하다"로 둔갑하지 않게 한다.
+    assert match_confidence["KD_NOSP002"] == 0.8
 
 
 async def test_unparenthesized_ingredient_line_is_not_treated_as_a_drug_name():
