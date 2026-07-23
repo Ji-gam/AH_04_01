@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.apis.v1.auth_routers import auth_router
 from app.apis.v1.chat_routers import chat_router
 from app.apis.v1.content_routers import content_router
+from app.apis.v1.diet_routers import diet_router
 from app.apis.v1.disease_routers import disease_router
 from app.apis.v1.dur import dur_router
 from app.apis.v1.family_routers import family_router
@@ -30,3 +31,4 @@ v1_routers.include_router(habit_router)
 v1_routers.include_router(dur_router)
 v1_routers.include_router(family_router)
 v1_routers.include_router(intake_router)
+v1_routers.include_router(diet_router)

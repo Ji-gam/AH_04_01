@@ -263,6 +263,59 @@ export interface HabitRecommendationsResult {
   selected_keys: string[];
 }
 
+// 백엔드 app/dtos/diet_dto.py와 1:1로 수동 동기화 (F-DIET-1/2). 마이다이어리 > 식단 기록.
+export interface FoodSearchResultItem {
+  food_name: string;
+  serving_size_g: number;
+  calorie_kcal_per_100g: number;
+  protein_g_per_100g: number;
+  carb_g_per_100g: number;
+  fat_g_per_100g: number;
+}
+
+export interface FoodSearchResult {
+  results: FoodSearchResultItem[];
+}
+
+export interface DietLogCreateRequest {
+  food_name: string;
+  serving_size_g: number;
+  serving_multiplier: number;
+  calorie_kcal_per_100g: number;
+  protein_g_per_100g: number;
+  carb_g_per_100g: number;
+  fat_g_per_100g: number;
+}
+
+export interface DietLogItemResult {
+  id: number;
+  food_name: string;
+  serving_grams: number;
+  calorie_kcal: number;
+  protein_g: number;
+  carb_g: number;
+  fat_g: number;
+  logged_at: string;
+}
+
+export interface DietTodayResult {
+  logs: DietLogItemResult[];
+  total_kcal: number;
+  total_protein_g: number;
+  total_carb_g: number;
+  total_fat_g: number;
+  reference_kcal: number;
+}
+
+export interface DietRecentDayResult {
+  log_date: string;
+  total_kcal: number;
+}
+
+export interface DietRecentResult {
+  days: DietRecentDayResult[];
+}
+
 // 백엔드 app/dtos/dur_dto.py와 1:1로 수동 동기화 (T-MED-14). 처방/약품명 배열을 넣으면 DUR(의약품
 // 안전사용) 정보를 3단계로 내려주는 스크리닝 API. drug_names만 보내면 되고 로그인 불필요.
 

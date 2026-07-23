@@ -134,8 +134,8 @@ export default function MorePage() {
     },
     {
       key: "lifestyle",
-      label: "생활습관 추천",
-      icon: "🎉",
+      label: "마이다이어리",
+      icon: "📖",
       bg: "#FCEFD1",
       onClick: () => navigate("/habit-selection"),
     },
