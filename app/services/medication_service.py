@@ -128,9 +128,10 @@ def _korean_only(text: str) -> str:
     return "".join(_KOREAN_TOKEN_PATTERN.findall(text))
 
 
-def _best_fuzzy_candidate(query: str, candidates: list[tuple[str, str]], threshold: float) -> str | None:
+def _best_fuzzy_candidate(query: str, candidates: list[tuple[str, str]], threshold: float) -> tuple[str, float] | None:
     """`candidates`((item_seq, 이름)) 중 `query`(한글만 남긴 OCR 텍스트)와 가장 유사하면서
-    임계값 이상인 것의 item_seq를 반환한다.
+    임계값 이상인 것의 (item_seq, 유사도)를 반환한다. 호출부가 이 유사도를 match_rate 계산에
+    쓸 수 있게 ratio도 함께 돌려준다.
 
     (#120) 후보와 길이가 같은 것만 비교한다 — 이 함수의 목적은 "글자 하나가 비슷한 다른 글자로
     잘못 읽힌" 같은-길이 치환 오류 구제(T-MED-9)이지, "성분명만 언급되고 제형 접미사가 없는"
@@ -146,7 +147,7 @@ def _best_fuzzy_candidate(query: str, candidates: list[tuple[str, str]], thresho
         ratio = difflib.SequenceMatcher(None, query, korean_name).ratio()
         if ratio > best_ratio:
             best_ratio, best_key = ratio, key
-    return best_key if best_ratio >= threshold else None
+    return (best_key, best_ratio) if best_key is not None and best_ratio >= threshold else None
 
 
 class MatchedDrug(NamedTuple):
@@ -620,28 +621,39 @@ async def _fuzzy_match_unrecognized_fields(
         if len(query) < _FUZZY_MATCH_MIN_KOREAN_LEN:
             continue
 
-        matched_drug = await _fuzzy_match_one_field(db_session, dur_repo, query, seen_ids)
-        if matched_drug is None:
+        match_result = await _fuzzy_match_one_field(db_session, dur_repo, query, seen_ids)
+        if match_result is None:
             continue
+        matched_drug, fuzzy_ratio = match_result
         seen_ids.add(matched_drug.item_seq)
         matched.append(matched_drug)
-        confidences[matched_drug.item_seq] = max(confidences.get(matched_drug.item_seq, 0.0), field.confidence)
+        # 퍼지 경로는 OCR이 (오탈자로) 잘못 읽은 텍스트를 마스터 약품명으로 "교정 매칭"한
+        # 것이므로, match_rate에 OCR field confidence를 그대로 쓰면 "OCR이 틀린 글자를 확신했다"는
+        # 사실이 "매칭이 정확하다"로 둔갑한다. 실제 근거는 (a) OCR이 그 텍스트를 얼마나 확신했나와
+        # (b) 교정 대상과 얼마나 비슷한가 둘 다이므로, 더 보수적인 쪽(min)을 match_rate로 삼아
+        # 교정이 개입한 만큼 사용자 확인을 더 유도한다.
+        match_rate = min(field.confidence, fuzzy_ratio)
+        confidences[matched_drug.item_seq] = max(confidences.get(matched_drug.item_seq, 0.0), match_rate)
 
     return matched, confidences
 
 
 async def _fuzzy_match_one_field(
     db_session: AsyncSession, dur_repo: DurDrugRepository, query: str, seen_ids: set[str]
-) -> MatchedDrug | None:
-    """OCR 텍스트(한글만 남긴 것) 하나에 대해 마스터 DB 접두어 후보 안에서 가장 비슷한 것을 찾는다."""
+) -> tuple[MatchedDrug, float] | None:
+    """OCR 텍스트(한글만 남긴 것) 하나에 대해 마스터 DB 접두어 후보 안에서 가장 비슷한 것을
+    찾아 (매칭된 약, 유사도)를 반환한다. 유사도는 호출부의 match_rate 계산에 쓰인다."""
     tier1_candidates = await dur_repo.search_item_names_by_prefix(
         db_session, query[:_FUZZY_TIER1_PREFIX_LEN], _FUZZY_TIER1_CANDIDATE_LIMIT
     )
-    best_item_seq = _best_fuzzy_candidate(query, tier1_candidates, _FUZZY_MATCH_THRESHOLD)
-    if best_item_seq is None or best_item_seq in seen_ids:
+    best = _best_fuzzy_candidate(query, tier1_candidates, _FUZZY_MATCH_THRESHOLD)
+    if best is None:
+        return None
+    best_item_seq, fuzzy_ratio = best
+    if best_item_seq in seen_ids:
         return None
     item_name = next(name for seq, name in tier1_candidates if seq == best_item_seq)
-    return MatchedDrug(item_seq=best_item_seq, item_name=item_name)
+    return MatchedDrug(item_seq=best_item_seq, item_name=item_name), fuzzy_ratio
 
 
 _LLM_DRUG_NAME_SYSTEM_PROMPT = (
