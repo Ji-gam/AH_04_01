@@ -1518,9 +1518,7 @@ export default function MedicationPage() {
                             복용 시간: {s.times.join(", ")}
                           </div>
                           {s.source_job_id && (
-                            <div
-                              style={{ fontSize: 11, color: pinkTheme.success, marginTop: 4 }}
-                            >
+                            <div style={{ fontSize: 11, color: pinkTheme.success, marginTop: 4 }}>
                               ✓ OCR 인식을 통해 자동 등록됨
                             </div>
                           )}
