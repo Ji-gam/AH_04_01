@@ -710,6 +710,27 @@ def _is_plausible_llm_drug_name(name: str) -> bool:
     return bool(_DRUG_FORM_SUFFIX_PATTERN.search(name) or _DOSAGE_PATTERN.search(name))
 
 
+def _is_duplicate_of_seen_name(name: str, seen_names: set[str]) -> bool:
+    """LLM 교정명이 정규식/퍼지 경로가 이미 후보로 만든 약품명과 (오탈자 한 글자 차이 수준으로)
+    거의 같으면 같은 약으로 보고 중복 추가를 막는다.
+
+    문자열 완전일치만으로는 부족하다 — 마스터 DB에 없는 약은 정규식 경로가 OCR 원문
+    표기("노스판매취10ug/h")로, LLM 경로가 교정 표기("노스판패취10ug/h")로 각각 후보를
+    만드는데, 둘은 문자열이 다르고 각자 별도 item_seq(Tier3/AUTO_ 더미)를 받아 seen_ids로도
+    안 걸러져 같은 약이 2번 등록됐다. 한글만 남긴 뒤 편집거리로 비교해, LLM이 오탈자를
+    교정한 것뿐인 경우를 같은 약으로 인식한다."""
+    if name in seen_names:
+        return True
+    query = _korean_only(name)
+    if not query:
+        return False
+    for seen in seen_names:
+        seen_korean = _korean_only(seen)
+        if seen_korean and difflib.SequenceMatcher(None, query, seen_korean).ratio() >= _FUZZY_MATCH_THRESHOLD:
+            return True
+    return False
+
+
 async def _resolve_llm_suggested_names(
     db_session: AsyncSession,
     dur_repo: DurDrugRepository,
@@ -731,7 +752,10 @@ async def _resolve_llm_suggested_names(
     for name in _dedupe_drug_names(set(names)):
         if not _is_plausible_llm_drug_name(name):
             continue
-        if name in seen_names:
+        # 이미 정규식/퍼지 경로가 만든 후보(또는 이 루프에서 앞서 채택한 LLM 후보)와 오탈자
+        # 수준으로 같은 이름이면 건너뛴다. 채택한 이름은 seen_names에 넣어 LLM 후보끼리의
+        # 근사 중복도 같은 기준으로 걸러지게 한다.
+        if _is_duplicate_of_seen_name(name, seen_names):
             continue
 
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
@@ -739,11 +763,13 @@ async def _resolve_llm_suggested_names(
         if exact_item_seq:
             if exact_item_seq not in seen_ids:
                 seen_ids.add(exact_item_seq)
+                seen_names.add(name)
                 resolved.append(MatchedDrug(item_seq=exact_item_seq, item_name=name))
             continue
 
         item_seq, is_auto_dummy = await _resolve_unmatched_name(db_session, name)
         seen_ids.add(item_seq)
+        seen_names.add(name)
         if is_auto_dummy:
             auto_created_ids.add(item_seq)
         resolved.append(MatchedDrug(item_seq=item_seq, item_name=name))

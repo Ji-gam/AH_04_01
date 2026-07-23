@@ -46,6 +46,21 @@ def test_looks_like_drug_name_still_accepts_bulleted_brand_names():
     assert medication_service._looks_like_drug_name("*노스판패취10ug/h") is True
 
 
+def test_is_duplicate_of_seen_name_catches_ocr_typo_vs_llm_correction():
+    """마스터 DB에 없는 약은 정규식 경로가 OCR 원문 오탈자("노스판매취10ug/h")로, LLM 경로가
+    교정 표기("노스판패취10ug/h")로 각각 후보를 만들면 문자열이 달라 완전일치로는 안 걸리고
+    각자 별도 item_seq를 받아 같은 약이 2번 등록됐다. 한글 편집거리로 같은 약임을 인식해야 한다."""
+    seen = {"노스판매취10ug/h"}
+    assert medication_service._is_duplicate_of_seen_name("노스판패취10ug/h", seen) is True
+
+
+def test_is_duplicate_of_seen_name_allows_distinct_drugs():
+    """서로 다른 약은 억제하지 않는다 — 한 처방전에 함께 있어도 각각 등록돼야 한다."""
+    seen = {"리피로우정20mg"}
+    assert medication_service._is_duplicate_of_seen_name("아스피린정100mg", seen) is False
+    assert medication_service._is_duplicate_of_seen_name("리피로우정20mg", seen) is True
+
+
 async def test_resolve_llm_suggested_names_filters_out_noise_before_registering():
     """(#OCR-LLM) `_resolve_llm_suggested_names`가 노이즈 이름을 마스터 DB/AUTO_ 더미 생성
     단계까지 보내지 않고 그 전에 걸러야 한다."""
