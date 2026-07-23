@@ -39,6 +39,9 @@ interface DayCell {
  * 합친다 - 서버는 "언제 몇 번 예정돼 있었는지"의 반복 규칙을 모르기 때문이다. */
 export default function AdherenceHeatmapSection() {
   const [cells, setCells] = useState<DayCell[] | null>(null);
+  // 모바일에서는 title 속성(마우스 호버 전용)이 사실상 동작하지 않아서(길게 눌러도 안 뜸),
+  // 칸을 탭하면 바로 아래 문구가 바뀌는 방식으로 바꿨다(2026-07-23, 실기기 테스트 피드백).
+  const [selected, setSelected] = useState<DayCell | null>(null);
 
   useEffect(() => {
     const end = new Date();
@@ -67,6 +70,7 @@ export default function AdherenceHeatmapSection() {
           };
         });
         setCells(result);
+        setSelected(result[result.length - 1]); // 기본으로 오늘 칸 정보를 보여준다
       })
       .catch(() => setCells([]));
   }, []);
@@ -93,27 +97,51 @@ export default function AdherenceHeatmapSection() {
       <p style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 700, color: t.primary }}>
         🗓️ 복약 순응도
       </p>
-      <p style={{ margin: "0 0 14px", fontSize: 12, color: t.textMuted }}>
+      <p style={{ margin: "0 0 10px", fontSize: 12, color: t.textMuted }}>
         최근 {WEEKS}주간 복용 체크 기록이에요. 색이 진할수록 그날 잘 챙겨 드신 거예요.
       </p>
 
-      <div style={{ display: "flex", gap: 3, overflowX: "auto", paddingBottom: 4 }}>
+      {/* 칸을 탭하면 여기가 바뀐다 - 모바일에서 title(호버 전용) 툴팁이 안 먹혀서 대신 뒀다. */}
+      <p
+        style={{
+          margin: "0 0 10px",
+          fontSize: 13,
+          fontWeight: 600,
+          color: t.text,
+          minHeight: 18,
+        }}
+      >
+        {selected &&
+          (selected.rate === null
+            ? `${selected.dateStr} · 예정된 복용 없음`
+            : `${selected.dateStr} · ${selected.done}/${selected.total} 복용 (${Math.round(selected.rate * 100)}%)`)}
+      </p>
+
+      <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 4 }}>
         {weeks.map((week, wi) => (
-          <div key={wi} style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          <div key={wi} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {week.map((cell) => (
-              <div
+              <button
                 key={cell.dateStr}
-                title={
+                type="button"
+                aria-label={
                   cell.rate === null
-                    ? `${cell.dateStr}: 예정된 복용 없음`
-                    : `${cell.dateStr}: ${cell.done}/${cell.total} 복용 (${Math.round(cell.rate * 100)}%)`
+                    ? `${cell.dateStr} 예정된 복용 없음`
+                    : `${cell.dateStr} ${cell.done}/${cell.total} 복용`
                 }
+                onClick={() => setSelected(cell)}
                 style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: 3,
+                  width: 20,
+                  height: 20,
+                  padding: 0,
+                  borderRadius: 5,
+                  border:
+                    selected?.dateStr === cell.dateStr
+                      ? `2px solid ${t.primary}`
+                      : "2px solid transparent",
                   background: colorForRate(cell.rate),
                   flexShrink: 0,
+                  cursor: "pointer",
                 }}
               />
             ))}
