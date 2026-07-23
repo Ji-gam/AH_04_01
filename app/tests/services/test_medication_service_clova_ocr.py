@@ -44,8 +44,10 @@ _original_sleep = asyncio.sleep
 
 
 def _patch_clova_client(monkeypatch, plan: list):
-    monkeypatch.setattr(medication_service, "CLOVA_OCR_SECRET_KEY", "test_secret")
-    monkeypatch.setattr(medication_service, "CLOVA_OCR_INVOKE_URL", "https://example.test/ocr")
+    # CLOVA 키/URL은 이제 Config(app.core.config)에서 읽는다 — 모듈 전역이 아니라 config
+    # 인스턴스 속성을 오버라이드한다.
+    monkeypatch.setattr(medication_service.config, "CLOVA_OCR_SECRET_KEY", "test_secret")
+    monkeypatch.setattr(medication_service.config, "CLOVA_OCR_INVOKE_URL", "https://example.test/ocr")
     monkeypatch.setattr(httpx, "AsyncClient", lambda: _FakeAsyncClient(plan))
     # 재시도 사이 sleep으로 테스트가 느려지지 않게 한다.
     monkeypatch.setattr(asyncio, "sleep", lambda *_args, **_kwargs: _original_sleep(0))

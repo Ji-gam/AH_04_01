@@ -3,7 +3,6 @@ import base64
 import difflib
 import io
 import logging
-import os
 import re
 import time
 import uuid
@@ -15,6 +14,7 @@ from PIL import Image
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import config
 from app.core.db.databases import AsyncSessionLocal
 from app.dtos.medication_dto import (
     FoodInteractionCheckResult,
@@ -48,9 +48,6 @@ from app.services.food_item_extraction import extract_food_items
 from app.services.side_effect_notification_service import SideEffectNotificationService
 
 logger = logging.getLogger("app.medication_service")
-
-CLOVA_OCR_SECRET_KEY = os.getenv("CLOVA_OCR_SECRET_KEY")
-CLOVA_OCR_INVOKE_URL = os.getenv("CLOVA_OCR_INVOKE_URL")
 
 # 타임아웃/5xx처럼 재시도하면 성공할 여지가 있는 실패에 한해서만 재시도한다.
 # 401/403 같은 인증 오류나 응답 파싱 실패는 재시도해도 결과가 같으므로 즉시 실패 처리한다.
@@ -876,7 +873,7 @@ def _build_clova_ocr_request(file_bytes: bytes, file_name: str) -> tuple[dict, d
         "timestamp": int(time.time() * 1000),
         "version": "V2",
     }
-    headers = {"X-OCR-SECRET": CLOVA_OCR_SECRET_KEY, "Content-Type": "application/json"}
+    headers = {"X-OCR-SECRET": config.CLOVA_OCR_SECRET_KEY, "Content-Type": "application/json"}
     return payload, headers
 
 
@@ -915,15 +912,17 @@ async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[OcrField]:
     타임아웃/네트워크 오류/5xx는 일시적일 수 있어 짧게 재시도하고, 인증 오류(401/403) 같은
     4xx는 재시도해도 결과가 같으므로 즉시 포기한다. 모든 실패 경로에 로그를 남겨 조용히
     더미 폴백으로 넘어가는 일이 없도록 한다(운영 중 CLOVA 키 만료 등을 감지하기 위함)."""
-    assert CLOVA_OCR_SECRET_KEY is not None
-    assert CLOVA_OCR_INVOKE_URL is not None
+    assert config.CLOVA_OCR_SECRET_KEY is not None
+    assert config.CLOVA_OCR_INVOKE_URL is not None
     payload, headers = _build_clova_ocr_request(file_bytes, file_name)
 
     for attempt in range(1, _CLOVA_OCR_MAX_ATTEMPTS + 1):
         is_last_attempt = attempt == _CLOVA_OCR_MAX_ATTEMPTS
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
+                response = await client.post(
+                    config.CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0
+                )
         except httpx.TimeoutException as exc:
             logger.warning("CLOVA OCR 호출 타임아웃 (attempt=%d/%d): %s", attempt, _CLOVA_OCR_MAX_ATTEMPTS, exc)
             if is_last_attempt:
@@ -957,7 +956,11 @@ async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[OcrField]:
 
 
 def _clova_configured() -> bool:
-    return bool(CLOVA_OCR_SECRET_KEY and CLOVA_OCR_INVOKE_URL and not CLOVA_OCR_SECRET_KEY.startswith("your_"))
+    return bool(
+        config.CLOVA_OCR_SECRET_KEY
+        and config.CLOVA_OCR_INVOKE_URL
+        and not config.CLOVA_OCR_SECRET_KEY.startswith("your_")
+    )
 
 
 def _dummy_ocr_fields() -> list[OcrField]:
