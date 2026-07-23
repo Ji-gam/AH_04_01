@@ -16,6 +16,7 @@ T-LLM-2-drug-gateway: `drug_data()`는 위 MySQL 조회 위에 캐시(같은 MyS
 write-back한다(빈 응답을 캐싱하면 나중에 API에 데이터가 채워져도 영영 못 찾으므로).
 """
 
+from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from enum import StrEnum
 
@@ -105,6 +106,17 @@ def _merge_profiles(base: list[DrugProfile], enrich: list[DrugProfile]) -> list[
     return merged
 
 
+@dataclass
+class _ProfileExtras:
+    """`find_drug_info`가 매칭한 제품 전체를 대상으로 한 번에 모아온 성분/식별정보/리콜/DUR규칙을
+    item_seq 기준으로 묶어 보관한다."""
+
+    ingredients_by_seq: dict[str, list[str]]
+    identification_by_seq: dict[str, dict]
+    recalls_by_seq: dict[str, list[dict]]
+    dur_rules_by_seq: dict[str, list[dict]]
+
+
 def _profile_from_api_item(item: dict) -> DrugProfile:
     precaution_parts = [item.get("atpnQesitm"), item.get("atpnWarnQesitm"), item.get("intrcQesitm")]
     precautions = " ".join(p.strip() for p in precaution_parts if p and p.strip()) or None
@@ -159,7 +171,13 @@ class DurDrugRepository:
     async def find_drug_info(self, session: AsyncSession, item_name: str) -> list[DrugProfile]:
         """제품명 부분 일치로 검색해, 매칭된 제품마다 관련 데이터를 모두 모아 반환한다.
         품목 마스터(`dur_prod_master_list`)로 이름을 찾고, 효능/용법 텍스트는 있으면(`drugs_data`,
-        e약은요 API 커버리지 4,758건뿐) LEFT JOIN으로 보완한다."""
+        e약은요 API 커버리지 4,758건뿐) LEFT JOIN으로 보완한다.
+
+        (#N+1) 매칭된 제품이 여러 건이면(부분일치라 흔함) 예전엔 제품마다 성분/식별정보/리콜/
+        DUR규칙 6테이블을 순차 조회해(행당 9회 왕복) 매칭 건수에 비례해 느려졌다. AsyncSession은
+        커넥션 하나를 물고 있어 같은 세션에서 쿼리를 동시에(asyncio.gather 등으로) 실행할 수
+        없으므로 - 진짜 병렬화 대신 이 4종을 `item_seq IN (...)`으로 한 번에 모아 조회하고
+        (`_fetch_profile_extras`), 매칭 건수와 무관하게 항상 고정 9회 왕복으로 끝낸다."""
         result = await session.execute(
             text(
                 """
@@ -174,56 +192,78 @@ class DurDrugRepository:
             {"q": f"%{item_name}%"},
         )
         rows = result.mappings().all()
-        return [await self._build_profile(session, row) for row in rows]
+        if not rows:
+            return []
 
-    async def _build_profile(self, session: AsyncSession, row) -> DrugProfile:
-        item_seq = row["item_seq"]
+        item_seqs = [row["item_seq"] for row in rows]
+        extras = await self._fetch_profile_extras(session, item_seqs)
+        return [self._assemble_profile(row, extras) for row in rows]
+
+    async def _fetch_profile_extras(self, session: AsyncSession, item_seqs: list[str]) -> "_ProfileExtras":
+        """`find_drug_info`가 찾은 제품 전체(item_seqs)를 대상으로 성분/식별정보/리콜/DUR규칙을
+        `IN (...)`으로 한 번씩만 조회해 item_seq별로 묶어 돌려준다."""
+        seqs_param = {"seqs": item_seqs}
 
         ingr_result = await session.execute(
-            text("SELECT ingr_name FROM item_ingredient_map WHERE item_seq = :seq"), {"seq": item_seq}
+            text("SELECT item_seq, ingr_name FROM item_ingredient_map WHERE item_seq IN :seqs").bindparams(
+                bindparam("seqs", expanding=True)
+            ),
+            seqs_param,
         )
-        ingredients = [r[0] for r in ingr_result.all() if r[0]]
+        ingredients_by_seq: dict[str, list[str]] = defaultdict(list)
+        for row in ingr_result.all():
+            if row.ingr_name:
+                ingredients_by_seq[row.item_seq].append(row.ingr_name)
 
         ident_result = await session.execute(
             text(
-                "SELECT chart, form_code_name, color_class1, color_class2, item_image "
-                "FROM drug_identification WHERE item_seq = :seq"
-            ),
-            {"seq": item_seq},
+                "SELECT item_seq, chart, form_code_name, color_class1, color_class2, item_image "
+                "FROM drug_identification WHERE item_seq IN :seqs"
+            ).bindparams(bindparam("seqs", expanding=True)),
+            seqs_param,
         )
-        ident_row = ident_result.first()
-        identification = (
-            {
-                "chart": ident_row[0],
-                "form_name": ident_row[1],
-                "color_class1": ident_row[2],
-                "color_class2": ident_row[3],
-                "drug_image_url": ident_row[4],
-            }
-            if ident_row
-            else None
-        )
+        identification_by_seq: dict[str, dict] = {}
+        for row in ident_result.all():
+            # 원래 코드(.first())와 동일하게 item_seq당 첫 행만 채택한다.
+            identification_by_seq.setdefault(
+                row.item_seq,
+                {
+                    "chart": row.chart,
+                    "form_name": row.form_code_name,
+                    "color_class1": row.color_class1,
+                    "color_class2": row.color_class2,
+                    "drug_image_url": row.item_image,
+                },
+            )
 
         recalls_result = await session.execute(
-            text("SELECT rtrvl_resn, recall_command_date FROM medicine_recalls WHERE item_seq = :seq"),
-            {"seq": item_seq},
+            text(
+                "SELECT item_seq, rtrvl_resn, recall_command_date FROM medicine_recalls WHERE item_seq IN :seqs"
+            ).bindparams(bindparam("seqs", expanding=True)),
+            seqs_param,
         )
-        recalls = [{"reason": r[0], "recall_date": r[1]} for r in recalls_result.all()]
+        recalls_by_seq: dict[str, list[dict]] = defaultdict(list)
+        for row in recalls_result.all():
+            recalls_by_seq[row.item_seq].append({"reason": row.rtrvl_resn, "recall_date": row.recall_command_date})
 
-        dur_rules: list[dict] = []
+        dur_rules_by_seq: dict[str, list[dict]] = defaultdict(list)
         for table, _code, label in SINGLE_DRUG_RULE_TABLES:
             # dur_prod_seobang_partition은 ingr_name 컬럼이 없다(제형 속성이라 성분 무관,
             # dur_repository.py의 INGREDIENT_SOURCE_TABLES 주석과 동일 이유).
             ingr_name_col = "NULL" if table == "dur_prod_seobang_partition" else "ingr_name"
             rule_result = await session.execute(
-                text(f"SELECT {ingr_name_col}, prohbt_content FROM {table} WHERE item_seq = :seq"), {"seq": item_seq}
+                text(
+                    f"SELECT item_seq, {ingr_name_col} AS ingr_name, prohbt_content FROM {table} "
+                    "WHERE item_seq IN :seqs"
+                ).bindparams(bindparam("seqs", expanding=True)),
+                seqs_param,
             )
-            for ingr_name, prohbt_content in rule_result.all():
-                dur_rules.append(
+            for row in rule_result.all():
+                dur_rules_by_seq[row.item_seq].append(
                     {
                         "rule_type": label,
-                        "ingr_name": ingr_name,
-                        "prohbt_content": prohbt_content,
+                        "ingr_name": row.ingr_name,
+                        "prohbt_content": row.prohbt_content,
                         # 1일최대투여량(max_dosage/max_term)은 모듈 docstring에 적은 대로
                         # 성분코드<->CPNT_CD 매핑이 없어 재구성 불가 - 항상 None.
                         "max_dosage": None,
@@ -231,6 +271,15 @@ class DurDrugRepository:
                     }
                 )
 
+        return _ProfileExtras(
+            ingredients_by_seq=ingredients_by_seq,
+            identification_by_seq=identification_by_seq,
+            recalls_by_seq=recalls_by_seq,
+            dur_rules_by_seq=dur_rules_by_seq,
+        )
+
+    def _assemble_profile(self, row, extras: "_ProfileExtras") -> DrugProfile:
+        item_seq = row["item_seq"]
         precaution_parts = [row["atpn_qesitm"], row["atpn_warn_qesitm"], row["intrc_qesitm"]]
         precautions = " ".join(p.strip() for p in precaution_parts if p and p.strip()) or None
 
@@ -238,15 +287,15 @@ class DurDrugRepository:
             item_seq=item_seq,
             item_name=row["item_name"],
             entp_name=row["entp_name"] or "",
-            ingredients=ingredients,
+            ingredients=extras.ingredients_by_seq.get(item_seq, []),
             efficacy=row["efcy_qesitm"] or None,
             usage_method=row["use_method_qesitm"] or None,
             precautions=precautions,
             side_effects=row["se_qesitm"] or None,
             max_dosages=[],
-            identification=identification,
-            recalls=recalls,
-            dur_rules=dur_rules,
+            identification=extras.identification_by_seq.get(item_seq),
+            recalls=extras.recalls_by_seq.get(item_seq, []),
+            dur_rules=extras.dur_rules_by_seq.get(item_seq, []),
         )
 
     async def find_food_intrc_text(self, session: AsyncSession, item_name: str) -> str | None:
