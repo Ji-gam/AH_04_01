@@ -1229,9 +1229,7 @@ async def _notify_side_effects_task(profile_id: int, drug_name: str) -> None:
             await SideEffectNotificationService().notify_if_side_effects(session, profile_id, drug_name)
             await session.commit()
     except Exception:
-        logger.exception(
-            "부작용 사전 안내 백그라운드 태스크 실패 (profile_id=%s, drug_name=%s)", profile_id, drug_name
-        )
+        logger.exception("부작용 사전 안내 백그라운드 태스크 실패 (profile_id=%s, drug_name=%s)", profile_id, drug_name)
 
 
 async def _check_master_data_available(session: AsyncSession, repo: MedicationRepository, item_seq: str) -> bool:
