@@ -558,7 +558,7 @@ export default function MedicationPage() {
         ]);
         const byName: Record<string, DurBasicScreeningResult> = {};
         basic.results.forEach((r) => {
-          byName[r.drug_detail.item_name] = r;
+          byName[r.queried_name] = r;
         });
         setDurWarningsByName(byName);
         setDurInteractions(interaction);
@@ -591,7 +591,7 @@ export default function MedicationPage() {
         const basic = await durApi.screenBasic(names);
         const byName: Record<string, DurBasicScreeningResult> = {};
         basic.results.forEach((r) => {
-          byName[r.drug_detail.item_name] = r;
+          byName[r.queried_name] = r;
         });
         setManualDurWarningsByName(byName);
         setManualDurUnmatchedNames(basic.unmatched_drug_names);
@@ -1449,63 +1449,101 @@ export default function MedicationPage() {
                     선택 삭제 ({selectedScheduleIds.length})
                   </button>
                 </div>
-                {schedules.map((s) => (
-                  <div
-                    key={s.id}
-                    style={{
-                      border: `1px solid ${
-                        selectedScheduleIds.includes(s.id) ? pinkTheme.primary : pinkTheme.border
-                      }`,
-                      padding: "10px",
-                      borderRadius: "4px",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      gap: 10,
-                    }}
-                  >
-                    <label
+                {schedules.map((s) => {
+                  const checked = selectedScheduleIds.includes(s.id);
+                  return (
+                    <div
+                      key={s.id}
                       style={{
+                        border: `1px solid ${checked ? pinkTheme.primary : pinkTheme.border}`,
+                        borderRadius: 12,
+                        padding: 10,
                         display: "flex",
-                        gap: 10,
+                        justifyContent: "space-between",
                         alignItems: "flex-start",
-                        cursor: "pointer",
+                        gap: 10,
+                        background: pinkTheme.cardBg,
+                        boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
                       }}
                     >
-                      <input
-                        type="checkbox"
-                        checked={selectedScheduleIds.includes(s.id)}
-                        onChange={() => toggleScheduleSelection(s.id)}
-                        style={{ marginTop: 4 }}
-                      />
-                      <div>
-                        <strong>{s.drug_name}</strong>
-                        <p style={{ margin: "5px 0 0 0", fontSize: "14px" }}>
-                          복용 시간: {s.times.join(", ")}
-                        </p>
-                        {s.source_job_id && (
-                          <span style={{ fontSize: "11px", color: pinkTheme.success }}>
-                            ✓ OCR 인식을 통해 자동 등록됨
-                          </span>
-                        )}
-                      </div>
-                    </label>
-                    <button
-                      onClick={() => handleDeleteSchedule(s.id)}
-                      disabled={isLoading}
-                      style={{
-                        backgroundColor: pinkTheme.danger,
-                        color: "#fff",
-                        border: "none",
-                        padding: "5px 10px",
-                        borderRadius: "4px",
-                        cursor: "pointer",
-                      }}
-                    >
-                      삭제
-                    </button>
-                  </div>
-                ))}
+                      <label
+                        style={{
+                          display: "flex",
+                          gap: 10,
+                          alignItems: "flex-start",
+                          cursor: "pointer",
+                          flex: 1,
+                          minWidth: 0,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleScheduleSelection(s.id)}
+                          style={{ marginTop: 3 }}
+                        />
+                        <div
+                          style={{
+                            width: 40,
+                            height: 40,
+                            flex: "none",
+                            borderRadius: 10,
+                            background: pinkTheme.primarySoft,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 18,
+                          }}
+                        >
+                          💊
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: 14 }}>
+                            {s.drug_name}
+                            <span
+                              style={{
+                                marginLeft: 8,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                color: pinkTheme.textMuted,
+                                border: `1px solid ${pinkTheme.textMuted}`,
+                                borderRadius: 999,
+                                padding: "1px 8px",
+                              }}
+                            >
+                              등록됨
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 11.5, color: pinkTheme.textMuted }}>
+                            복용 시간: {s.times.join(", ")}
+                          </div>
+                          {s.source_job_id && (
+                            <div
+                              style={{ fontSize: 11, color: pinkTheme.success, marginTop: 4 }}
+                            >
+                              ✓ OCR 인식을 통해 자동 등록됨
+                            </div>
+                          )}
+                        </div>
+                      </label>
+                      <button
+                        onClick={() => handleDeleteSchedule(s.id)}
+                        disabled={isLoading}
+                        style={{
+                          backgroundColor: pinkTheme.danger,
+                          color: "#fff",
+                          border: "none",
+                          padding: "5px 10px",
+                          borderRadius: "4px",
+                          cursor: "pointer",
+                          flex: "none",
+                        }}
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
