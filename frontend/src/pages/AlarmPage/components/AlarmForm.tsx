@@ -6,11 +6,11 @@ import { pinkTheme as t } from "../../../theme/pinkTheme";
 
 const DAYS: DayOfWeek[] = ["일", "월", "화", "수", "목", "금", "토"];
 
-/** 하루 복용 횟수 선택지 — 임상 표기(qd/bid/tid)를 같이 보여준다. */
+/** 하루 복용 횟수 선택지. */
 const DOSE_OPTIONS = [
-  { count: 1, label: "1회 (qd)" },
-  { count: 2, label: "2회 (bid)" },
-  { count: 3, label: "3회 (tid)" },
+  { count: 1, label: "1회" },
+  { count: 2, label: "2회" },
+  { count: 3, label: "3회" },
 ] as const;
 
 /** 횟수를 바꿨을 때 시간칸에 채워줄 기본 시각 (아침/저녁, 아침/점심/저녁). */

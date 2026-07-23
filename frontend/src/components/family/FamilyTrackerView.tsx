@@ -36,10 +36,10 @@ type Tab = "register" | "list" | "interactions" | "food";
  * 수동으로 바꿀 수 있게 버튼으로 노출한다(2026-07-21, "+ 시간 추가" 방식은 인식이 잘못됐을
  * 때 몇 번을 눌러야 할지 감이 안 온다는 피드백으로 교체). */
 const DOSE_COUNT_OPTIONS = [
-  { count: 1, label: "1회 (qd)" },
-  { count: 2, label: "2회 (bid)" },
-  { count: 3, label: "3회 (tid)" },
-  { count: 4, label: "4회 (qid)" },
+  { count: 1, label: "1회" },
+  { count: 2, label: "2회" },
+  { count: 3, label: "3회" },
+  { count: 4, label: "4회" },
 ] as const;
 
 const DEFAULT_TIMES_BY_COUNT: Record<number, string[]> = {

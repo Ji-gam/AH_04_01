@@ -23,12 +23,8 @@ function dayLabel(schedule: NotificationScheduleResult): string {
   return schedule.frequency_type === "DAILY" ? "매일" : `매주 ${schedule.target_day_of_week}요일`;
 }
 
-/** 하루 복용 횟수의 임상 표기. 4회 이상은 표기 없이 횟수만 보여준다. */
-const DOSE_NOTATION: Record<number, string> = { 1: "qd", 2: "bid", 3: "tid", 4: "qid" };
-
 function doseLabel(count: number): string {
-  const notation = DOSE_NOTATION[count];
-  return notation ? `하루 ${count}회 (${notation})` : `하루 ${count}회`;
+  return `하루 ${count}회`;
 }
 
 /** 같은 약을 하루 몇 번 먹는지 — 약 이름+반복 조건이 같은 알림 개수를 센다. */
