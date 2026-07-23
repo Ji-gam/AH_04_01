@@ -944,14 +944,16 @@ async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[OcrField]:
     # 재시도마다 새 클라이언트를 만들면 커넥션을 매번 새로 맺어 그만큼 느려지므로,
     # 하나의 클라이언트를 열어 모든 시도에서 재사용한다.
     async with httpx.AsyncClient() as client:
-        return await _post_clova_ocr_with_retries(client, payload, headers)
+        return await _post_clova_ocr_with_retries(client, config.CLOVA_OCR_INVOKE_URL, payload, headers)
 
 
-async def _post_clova_ocr_with_retries(client: httpx.AsyncClient, payload: dict, headers: dict) -> list[OcrField]:
+async def _post_clova_ocr_with_retries(
+    client: httpx.AsyncClient, invoke_url: str, payload: dict, headers: dict
+) -> list[OcrField]:
     for attempt in range(1, _CLOVA_OCR_MAX_ATTEMPTS + 1):
         is_last_attempt = attempt == _CLOVA_OCR_MAX_ATTEMPTS
         try:
-            response = await client.post(config.CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
+            response = await client.post(invoke_url, json=payload, headers=headers, timeout=10.0)
         except httpx.TimeoutException as exc:
             logger.warning("CLOVA OCR 호출 타임아웃 (attempt=%d/%d): %s", attempt, _CLOVA_OCR_MAX_ATTEMPTS, exc)
             if is_last_attempt:
