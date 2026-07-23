@@ -1,11 +1,13 @@
 import asyncio
 import base64
+import contextlib
 import difflib
 import io
 import logging
 import re
 import time
 import uuid
+from collections import OrderedDict
 from typing import NamedTuple, cast
 
 import httpx
@@ -804,33 +806,44 @@ async def _match_or_create_medications(
         ocr_raw_text = " ".join(f.text for f in ocr_fields)
         llm_task = asyncio.create_task(_llm_extract_drug_names(ocr_raw_text))
 
-        resolved, auto_created_ids, resolved_confidence = await _resolve_or_create_drug_like_names(
-            db_session, dur_repo, ocr_fields, seen_ids
-        )
-        matched_drugs.extend(resolved)
-        match_confidence.update(resolved_confidence)
-
-        fuzzy_matched, fuzzy_confidence = await _fuzzy_match_unrecognized_fields(
-            db_session, dur_repo, ocr_fields, seen_ids
-        )
-        matched_drugs.extend(fuzzy_matched)
-        match_confidence.update(fuzzy_confidence)
-
-    # 정규식/퍼지 매칭 결과가 있어도, 그 규칙들이 놓쳤을 수 있는 약을 추가로 구제하기 위해 매번
-    # LLM으로 한 번 더 보완한다. 마스터 DB에 있는 약은 `seen_ids`(item_seq)로 걸러지고, 마스터
-    # DB에 없는 약은 이름이 같아도 매번 새 item_seq(Tier3 API/AUTO_ 더미)를 받으므로 `seen_names`
-    # (약품명 문자열)로 따로 걸러야 정규식 경로가 이미 만든 후보를 LLM이 또 중복 추가하지 않는다.
-    if llm_task is not None:
-        llm_names = await llm_task
-        if llm_names:
-            seen_names = {drug.item_name for drug in matched_drugs}
-            llm_matched, llm_auto_created_ids = await _resolve_llm_suggested_names(
-                db_session, dur_repo, llm_names, seen_ids, seen_names
+    try:
+        if ocr_fields:
+            resolved, auto_created_ids, resolved_confidence = await _resolve_or_create_drug_like_names(
+                db_session, dur_repo, ocr_fields, seen_ids
             )
-            matched_drugs.extend(llm_matched)
-            auto_created_ids |= llm_auto_created_ids
-            for drug in llm_matched:
-                match_confidence[drug.item_seq] = _NO_OCR_EVIDENCE_MATCH_RATE
+            matched_drugs.extend(resolved)
+            match_confidence.update(resolved_confidence)
+
+            fuzzy_matched, fuzzy_confidence = await _fuzzy_match_unrecognized_fields(
+                db_session, dur_repo, ocr_fields, seen_ids
+            )
+            matched_drugs.extend(fuzzy_matched)
+            match_confidence.update(fuzzy_confidence)
+
+        # 정규식/퍼지 매칭 결과가 있어도, 그 규칙들이 놓쳤을 수 있는 약을 추가로 구제하기 위해 매번
+        # LLM으로 한 번 더 보완한다. 마스터 DB에 있는 약은 `seen_ids`(item_seq)로 걸러지고, 마스터
+        # DB에 없는 약은 이름이 같아도 매번 새 item_seq(Tier3 API/AUTO_ 더미)를 받으므로 `seen_names`
+        # (약품명 문자열)로 따로 걸러야 정규식 경로가 이미 만든 후보를 LLM이 또 중복 추가하지 않는다.
+        if llm_task is not None:
+            llm_names = await llm_task
+            llm_task = None  # 정상 소비 완료 — 아래 finally에서 취소 대상이 되지 않도록 비운다.
+            if llm_names:
+                seen_names = {drug.item_name for drug in matched_drugs}
+                llm_matched, llm_auto_created_ids = await _resolve_llm_suggested_names(
+                    db_session, dur_repo, llm_names, seen_ids, seen_names
+                )
+                matched_drugs.extend(llm_matched)
+                auto_created_ids |= llm_auto_created_ids
+                for drug in llm_matched:
+                    match_confidence[drug.item_seq] = _NO_OCR_EVIDENCE_MATCH_RATE
+    finally:
+        # DB 매칭 패스가 예외로 중단되면 위에서 create_task로 띄운 LLM 태스크가 await되지 못해
+        # "Task was destroyed but it is pending" 경고와 불필요한 게이트웨이 호출이 남는다.
+        # 아직 정상 소비되지 않았으면(위에서 None으로 비우지 못한 경우) 취소하고 정리한다.
+        if llm_task is not None:
+            llm_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await llm_task
 
     # 그래도 후보가 하나도 없으면(약품명으로 보이는 텍스트조차 없었던 경우)
     # 마스터 DB 상위 몇 개를 참고용으로 보여준다 — 이 경우엔 수동 검색으로의 전환을 기대한다.
@@ -1009,7 +1022,10 @@ async def _fetch_drug_summary_with_fallback(medication_name: str) -> list[dict]:
 # 1건마다, 그리고 "음식(13번)" 탭을 열 때마다 등록약 전부에 대해 매번 다시 부르는 게 느린 원인
 # 중 하나였다. 프로세스 메모리에 약품명 기준으로 캐싱해 반복 조회를 없앤다. 3단계(느린 실시간
 # e약은요 API) 결과만 캐싱한다 — 1,2단계는 MySQL 조회라 이미 충분히 빠르다.
-_food_guide_card_cache: dict[str, GuideCard] = {}
+# 서로 다른 약품명이 계속 들어오면 프로세스 메모리에 무한히 쌓이므로, 최근 사용 항목만 유지하는
+# 상한(_FOOD_GUIDE_CARD_CACHE_MAX)을 둔다 — 정적 데이터라 밀려난 항목은 다음 조회 때 다시 채워진다.
+_FOOD_GUIDE_CARD_CACHE_MAX = 512
+_food_guide_card_cache: OrderedDict[str, GuideCard] = OrderedDict()
 
 
 async def _fetch_food_intrc_from_local_db(session: AsyncSession, medication_name: str) -> str | None:
@@ -1088,9 +1104,12 @@ async def _build_food_interaction_guide_card_slow(medication_name: str) -> Guide
 async def _build_food_interaction_guide_card_slow_cached(medication_name: str) -> GuideCard:
     cached = _food_guide_card_cache.get(medication_name)
     if cached is not None:
+        _food_guide_card_cache.move_to_end(medication_name)  # 최근 사용으로 표시(LRU)
         return cached
     card = await _build_food_interaction_guide_card_slow(medication_name)
     _food_guide_card_cache[medication_name] = card
+    if len(_food_guide_card_cache) > _FOOD_GUIDE_CARD_CACHE_MAX:
+        _food_guide_card_cache.popitem(last=False)  # 가장 오래된 항목 제거
     return card
 
 
@@ -1109,7 +1128,6 @@ async def _build_food_interaction_guide_card(session: AsyncSession, medication_n
 async def _execute_ocr_logic(
     db_session: AsyncSession,
     job_id: str,
-    source_type: str,
     file_bytes: bytes,
     file_name: str,
     dummy_mode: bool = False,
@@ -1171,7 +1189,6 @@ async def _mark_recognition_job_failed(job_id: str) -> None:
 
 async def run_ocr_task(
     job_id: str,
-    source_type: str,
     file_bytes: bytes,
     file_name: str = "image.jpg",
     dummy_mode: bool = False,
@@ -1186,7 +1203,7 @@ async def run_ocr_task(
     """
     try:
         async with AsyncSessionLocal() as db_session:
-            await _execute_ocr_logic(db_session, job_id, source_type, file_bytes, file_name, dummy_mode)
+            await _execute_ocr_logic(db_session, job_id, file_bytes, file_name, dummy_mode)
             await db_session.commit()
     except Exception:
         logger.exception("OCR 백그라운드 태스크 실패, job을 failed로 처리합니다: job_id=%s", job_id)
@@ -1244,7 +1261,7 @@ class MedicationService:
         await self._repository.create_recognition_job(session, job)
 
         # 백그라운드 태스크 등록 (요청 세션은 넘기지 않고, 태스크 내부에서 자체 세션을 생성한다)
-        background_tasks.add_task(run_ocr_task, job_id, source_type, file_bytes, file_name, dummy_mode=dummy_mode)
+        background_tasks.add_task(run_ocr_task, job_id, file_bytes, file_name, dummy_mode=dummy_mode)
 
         return RecognitionJobCreateResult(job_id=job_id, status="pending")
 
