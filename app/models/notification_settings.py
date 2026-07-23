@@ -25,6 +25,18 @@ class NotificationSetting(Base):
     notice_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     marketing_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     lifestyle_tip_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # F-NTFY-6: 라이프스타일 팁 전용 시간대 - 기존 quiet_start/quiet_end(전체 비필수 알림
+    # 공용 무음시간대)와 별개로, 팁만 더 좁혀 받고 싶은 사용자를 위한 추가 옵션. 기본값 꺼짐
+    # (꺼져있으면 quiet_start/quiet_end만 적용되어 기존 동작과 동일).
+    lifestyle_tip_window_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    lifestyle_tip_start: Mapped[time] = mapped_column(Time, default=time(9, 0), nullable=False)
+    lifestyle_tip_end: Mapped[time] = mapped_column(Time, default=time(21, 0), nullable=False)
+    # F-NTFY-6: 라이프스타일 팁 수신 빈도 - 마지막으로 받은 지 이 일수가 지나야 다음 팁을
+    # 받는다. 0이면(기본값) 제한 없음(콘텐츠가 생성될 때마다 매번 받음).
+    lifestyle_tip_min_interval_days: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # 위 빈도 제한 판정용 - 사용자가 직접 설정하는 값이 아니라 발송 시점마다 서버가
+    # 갱신하는 내부 기록이라 API 응답/수정 대상에는 포함하지 않는다.
+    lifestyle_tip_last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     quiet_mode_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     quiet_start: Mapped[time] = mapped_column(Time, default=time(22, 0), nullable=False)
     quiet_end: Mapped[time] = mapped_column(Time, default=time(7, 0), nullable=False)

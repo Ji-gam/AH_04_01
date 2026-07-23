@@ -92,6 +92,42 @@ function DayOfWeekPicker({ value, onChange }: DayOfWeekPickerProps) {
   );
 }
 
+const FREQUENCY_OPTIONS = [
+  { value: 0, label: "제한 없음" },
+  { value: 1, label: "하루 한 번" },
+  { value: 3, label: "3일에 한 번" },
+  { value: 7, label: "일주일에 한 번" },
+];
+
+interface FrequencySelectProps {
+  value: number;
+  onChange: (days: number) => void;
+}
+
+/** F-NTFY-6 - 라이프스타일 팁 최소 수신 간격(일) 선택. 0 = 제한 없음(콘텐츠가 생길 때마다). */
+function FrequencySelect({ value, onChange }: FrequencySelectProps) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      style={{
+        padding: "8px 10px",
+        borderRadius: 8,
+        border: `1px solid ${t.border}`,
+        background: t.cardBg,
+        color: t.text,
+        fontSize: 13,
+      }}
+    >
+      {FREQUENCY_OPTIONS.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 interface ToggleRowProps {
   label: string;
   desc: string;
@@ -230,6 +266,47 @@ export default function NotificationSettingsPage() {
               checked={settings.lifestyle_tip_enabled}
               onChange={() => toggle("lifestyle_tip_enabled")}
             />
+            {settings.lifestyle_tip_enabled && (
+              <>
+                <ToggleRow
+                  label="팁 전용 시간대"
+                  desc="무음 시간대와 별개로, 이 시간에만 팁을 받아요"
+                  checked={settings.lifestyle_tip_window_enabled}
+                  onChange={() => toggle("lifestyle_tip_window_enabled")}
+                />
+                {settings.lifestyle_tip_window_enabled && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "14px 0",
+                      borderBottom: `1px solid ${t.border}`,
+                    }}
+                  >
+                    <TimeInputField
+                      value={settings.lifestyle_tip_start.slice(0, 5)}
+                      onChange={(v) => update("lifestyle_tip_start", `${v}:00`)}
+                    />
+                    <span style={{ color: t.textMuted, fontSize: 13 }}>~</span>
+                    <TimeInputField
+                      value={settings.lifestyle_tip_end.slice(0, 5)}
+                      onChange={(v) => update("lifestyle_tip_end", `${v}:00`)}
+                    />
+                  </div>
+                )}
+                <div style={rowStyle}>
+                  <span>
+                    <p style={rowLabelStyle}>수신 빈도</p>
+                    <p style={rowDescStyle}>너무 자주 오면 며칠에 한 번만 받도록 줄일 수 있어요</p>
+                  </span>
+                  <FrequencySelect
+                    value={settings.lifestyle_tip_min_interval_days}
+                    onChange={(days) => update("lifestyle_tip_min_interval_days", days)}
+                  />
+                </div>
+              </>
+            )}
 
             <p style={sectionTitleStyle}>주간 순응도 피드백</p>
             <div style={{ padding: "10px 0 14px" }}>

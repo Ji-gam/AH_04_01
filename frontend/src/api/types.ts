@@ -63,6 +63,10 @@ export interface NotificationSettingsResult {
   notice_enabled: boolean;
   marketing_enabled: boolean;
   lifestyle_tip_enabled: boolean;
+  lifestyle_tip_window_enabled: boolean; // F-NTFY-6
+  lifestyle_tip_start: string; // "HH:MM:SS"
+  lifestyle_tip_end: string; // "HH:MM:SS"
+  lifestyle_tip_min_interval_days: number; // 0 = 제한 없음
   quiet_mode_enabled: boolean;
   quiet_start: string; // "HH:MM:SS"
   quiet_end: string; // "HH:MM:SS"
