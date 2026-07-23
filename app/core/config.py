@@ -47,6 +47,13 @@ class Config(BaseSettings):
     # app/services/medication_open_api_client.py가 빈 리스트를 반환한다.
     PUBLIC_DATA_API_KEY: str | None = None
 
+    # T-MED-1: CLOVA OCR(네이버 클라우드) - 처방전/약봉투 이미지 인식. 둘 다 설정돼야 실제
+    # 호출한다(medication_service._clova_configured). 미설정이면 실제 OCR 없이 인식 실패로
+    # 처리되고, dummy_mode 명시 요청 시에만 결정적 더미 결과를 낸다. SECRET_KEY가 "your_"로
+    # 시작하면 .env 예시의 미교체 플레이스홀더로 보고 미설정으로 취급한다.
+    CLOVA_OCR_SECRET_KEY: str | None = None
+    CLOVA_OCR_INVOKE_URL: str | None = None
+
     # 웹푸시(Web Push) - VAPID 키쌍. 한 번 생성하면 이후 계속 재사용(교체하면 기존 구독이
     # 전부 무효화됨). app/scripts/generate_vapid_keys.py로 1회 생성해서 .env에 넣어둔다.
     VAPID_PUBLIC_KEY: str | None = None
