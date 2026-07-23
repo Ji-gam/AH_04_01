@@ -518,39 +518,69 @@ def _find_master_item_seq(tier1_results: list[tuple[str, str]], name: str) -> st
     return prefix_matches[0] if len(prefix_matches) == 1 else None
 
 
-async def _resolve_unmatched_name(db_session: AsyncSession, name: str) -> tuple[str, bool]:
-    """마스터 DB(`dur_prod_master_list`)에 없는 약품명에 대해 Tier 3(공공 API)로 품목기준코드를
-    조회 → 실패 시 AUTO_ 더미 코드 생성 순으로 item_seq를 확보한다(T-MED-4/T-MED-1: 등록 자체가
-    막히지 않아야 한다). 반환값: (item_seq 또는 AUTO_ 더미 코드, 더미 생성 여부).
+async def _fetch_master_data_safe(query_name: str) -> dict | None:
+    try:
+        return await medication_open_api_client.fetch_medication_master_data(query_name)
+    except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
+        return None
 
-    Tier3(실시간 공공 API) 호출 앞에 두 단계를 둔다:
-    1) (#PLAVIX-MATCH-GAP) `dur_prod_master_list` Tier1 검색이 놓친 이름도 `drugs_data`/
-       `drug_identification`엔 이미 있을 수 있다(세 마스터 테이블 커버리지가 서로 다름) - 정확
-       일치가 있으면 그 item_seq를 그대로 재사용해 불필요한 API 호출과 매번 다른 item_seq
-       재발급을 피한다.
-    2) MySQL 캐시(`medication_data_cache`, T-LLM-2-drug-gateway `DurDrugRepository.drug_data()`와
-       동일 패턴 — query_name 정확매치, 빈 응답은 캐싱 안 함) — 같은 약이 반복 조회될 때마다
-       낱알식별/허가정보/e약은요/DUR품목정보 4개 API를 매번 다시 부르는 낭비를 없앤다."""
-    query_name = name.strip()
+
+async def _resolve_unmatched_names_batch(db_session: AsyncSession, names: list[str]) -> dict[str, tuple[str, bool]]:
+    """마스터 DB(`dur_prod_master_list`)에 없는 약품명 여러 개를 한 번에 처리한다. 반환값:
+    {원본 name: (item_seq 또는 AUTO_ 더미 코드, 더미 생성 여부)}.
+
+    (#OCR-SEQ-API) 처방전 한 장에 마스터 DB에 없는 약이 여러 개면, 예전엔 이름마다
+    `_resolve_unmatched_name`을 순차 호출해 Tier3 API(약품당 최대 4개 호출) 대기가 약 개수만큼
+    그대로 누적됐다. DB 조회(로컬 정확일치/캐시)는 AsyncSession 하나를 공유해 동시 실행이
+    안전하지 않으므로 순차로 두되, 실제 지연의 원인인 Tier3 API 호출(이름마다 독립된 네트워크
+    요청, DB 세션과 무관)만 asyncio.gather로 한꺼번에 실행해 대기 시간을 이름 개수와 무관하게
+    가장 느린 API 응답 1건 수준으로 줄인다."""
     medication_repo = MedicationRepository()
+    results: dict[str, tuple[str, bool]] = {}
+    fields_by_name: dict[str, dict | None] = {}
+    need_api: list[str] = []
 
-    local_item_seq = await medication_repo.find_item_seq_by_exact_name(db_session, query_name)
-    if local_item_seq:
-        return local_item_seq, False
+    # 1단계(순차, DB 전용): 로컬 정확일치/캐시로 해결되는 이름은 Tier3 API 호출 없이 끝낸다.
+    for name in names:
+        query_name = name.strip()
+        local_item_seq = await medication_repo.find_item_seq_by_exact_name(db_session, query_name)
+        if local_item_seq:
+            results[name] = (local_item_seq, False)
+            continue
+        cached_fields = await medication_repo.get_cached_master_data(db_session, query_name)
+        if cached_fields is not None:
+            fields_by_name[name] = cached_fields
+        else:
+            need_api.append(name)
 
-    fields = await medication_repo.get_cached_master_data(db_session, query_name)
-    if fields is None:
-        try:
-            fields = await medication_open_api_client.fetch_medication_master_data(query_name)
-        except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
-            fields = None
+    # 2단계(동시, 네트워크 전용): DB 세션을 쓰지 않으므로 안전하게 병렬 호출 가능.
+    if need_api:
+        api_results = await asyncio.gather(*(_fetch_master_data_safe(name.strip()) for name in need_api))
+        for name, fields in zip(need_api, api_results, strict=True):
+            fields_by_name[name] = fields
+
+    # 3단계(순차, DB 전용): API가 실제로 채운 결과만 캐시에 write-back한다.
+    for name in need_api:
+        fields = fields_by_name.get(name)
         if fields is not None:
-            await medication_repo.write_back_master_data(db_session, query_name, fields)
+            await medication_repo.write_back_master_data(db_session, name.strip(), fields)
 
-    item_seq = _extract_item_seq(fields.get("standard_code")) if fields else None
-    if item_seq:
-        return item_seq, False
-    return f"AUTO_{uuid.uuid4().hex[:10].upper()}", True
+    for name in names:
+        if name in results:
+            continue
+        fields = fields_by_name.get(name)
+        item_seq = _extract_item_seq(fields.get("standard_code")) if fields else None
+        results[name] = (item_seq, False) if item_seq else (f"AUTO_{uuid.uuid4().hex[:10].upper()}", True)
+
+    return results
+
+
+async def _resolve_unmatched_name(db_session: AsyncSession, name: str) -> tuple[str, bool]:
+    """`_resolve_unmatched_names_batch`의 이름 1개짜리 얇은 래퍼 - 수동/빠른 등록
+    (`_resolve_manual_registration_medication`, 항상 이름 1개)에서만 쓴다. 이름이 여러 개면
+    (OCR 등록 경로) 배치 함수를 직접 호출해야 Tier3 API가 병렬로 실행된다."""
+    results = await _resolve_unmatched_names_batch(db_session, [name])
+    return results[name]
 
 
 async def _resolve_manual_registration_medication(db_session: AsyncSession, name: str) -> tuple[MatchedDrug, bool]:
@@ -584,23 +614,31 @@ async def _resolve_or_create_drug_like_names(
         name = field.text.lstrip("*").strip()
         name_confidence[name] = max(name_confidence.get(name, 0.0), field.confidence)
 
+    # 1단계(순차, DB 전용): 마스터 DB 정확매치로 바로 풀리는 이름은 여기서 끝낸다. 여기서 못
+    # 찾은 이름만 Tier3 API가 필요한 후보로 모아 2단계에서 한 번에(병렬) 처리한다 — 이름
+    # 개수만큼 API 대기가 순차로 쌓이던 지연(#OCR-SEQ-API)을 없앤다.
+    unmatched_names: list[str] = []
     for name in _dedupe_drug_names(set(name_confidence)):
-        confidence = name_confidence[name]
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
         exact_item_seq = _find_master_item_seq(tier1_results, name)
         if exact_item_seq:
+            confidence = name_confidence[name]
             confidences[exact_item_seq] = max(confidences.get(exact_item_seq, 0.0), confidence)
             if exact_item_seq not in seen_ids:
                 seen_ids.add(exact_item_seq)
                 resolved.append(MatchedDrug(item_seq=exact_item_seq, item_name=name))
-            continue
+        else:
+            unmatched_names.append(name)
 
-        item_seq, is_auto_dummy = await _resolve_unmatched_name(db_session, name)
-        seen_ids.add(item_seq)
-        if is_auto_dummy:
-            auto_created_ids.add(item_seq)
-        resolved.append(MatchedDrug(item_seq=item_seq, item_name=name))
-        confidences[item_seq] = confidence
+    if unmatched_names:
+        batch_results = await _resolve_unmatched_names_batch(db_session, unmatched_names)
+        for name in unmatched_names:
+            item_seq, is_auto_dummy = batch_results[name]
+            seen_ids.add(item_seq)
+            if is_auto_dummy:
+                auto_created_ids.add(item_seq)
+            resolved.append(MatchedDrug(item_seq=item_seq, item_name=name))
+            confidences[item_seq] = name_confidence[name]
 
     return resolved, auto_created_ids, confidences
 
@@ -939,7 +977,10 @@ async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[OcrField]:
     더미 폴백으로 넘어가는 일이 없도록 한다(운영 중 CLOVA 키 만료 등을 감지하기 위함)."""
     assert config.CLOVA_OCR_SECRET_KEY is not None
     assert config.CLOVA_OCR_INVOKE_URL is not None
-    payload, headers = _build_clova_ocr_request(file_bytes, file_name)
+    # (#OCR-CONVERT-BLOCKING) webp 등 변환이 필요한 이미지는 PIL 인코딩/디코딩이 CPU 작업이라
+    # 이벤트 루프에서 그대로 돌리면 그 순간 다른 요청/백그라운드 태스크 처리가 멈춘다 - 스레드
+    # 풀로 넘겨 이벤트 루프를 막지 않는다.
+    payload, headers = await asyncio.to_thread(_build_clova_ocr_request, file_bytes, file_name)
 
     # 재시도마다 새 클라이언트를 만들면 커넥션을 매번 새로 맺어 그만큼 느려지므로,
     # 하나의 클라이언트를 열어 모든 시도에서 재사용한다.
