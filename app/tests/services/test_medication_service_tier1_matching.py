@@ -29,7 +29,7 @@ async def test_exact_master_data_match_is_used_instead_of_auto_dummy():
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, _match_confidence = await medication_service._match_or_create_medications(
-            session, dur_repo, [OcrField(text="*노스판패취10㎍/h", confidence=0.9)]
+            session, dur_repo, [OcrField(text="*노스판패취10㎍/h", confidence=0.9)], "*노스판패취10㎍/h"
         )
 
     assert len(matched) == 1
@@ -51,6 +51,7 @@ async def test_fuzzy_match_rescues_misread_text_not_in_master_data_exactly():
                 OcrField(text="노스판매취10ug/h", confidence=0.7),  # "패취"→"매취" 오인식
                 OcrField(text="[한국먼디파마]", confidence=0.7),
             ],
+            "노스판매취10ug/h [한국먼디파마]",
         )
 
     assert len(matched) == 1
@@ -69,7 +70,7 @@ async def test_master_data_match_with_parenthesized_ingredient_suffix_is_used():
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, _match_confidence = await medication_service._match_or_create_medications(
-            session, dur_repo, [OcrField(text="*한미오메가연질캡슐", confidence=1.0)]
+            session, dur_repo, [OcrField(text="*한미오메가연질캡슐", confidence=1.0)], "*한미오메가연질캡슐"
         )
 
     assert len(matched) == 1
@@ -83,8 +84,8 @@ async def test_ambiguous_parenthesized_master_matches_fall_back_to_auto_dummy(mo
     성분이 다른 복수 품목이 있으면 어느 쪽인지 알 수 없으므로 섣불리 확정하지 않는다."""
     dur_repo = _FakeDurDrugRepository(
         [
-            ("KD_A", "브랜드약(성분1)"),
-            ("KD_B", "브랜드약(성분2)"),
+            ("KD_A", "브랜드테스트약(성분1)"),
+            ("KD_B", "브랜드테스트약(성분2)"),
         ]
     )
 
@@ -98,7 +99,7 @@ async def test_ambiguous_parenthesized_master_matches_fall_back_to_auto_dummy(mo
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, _match_confidence = await medication_service._match_or_create_medications(
-            session, dur_repo, [OcrField(text="*브랜드약", confidence=0.9)]
+            session, dur_repo, [OcrField(text="*브랜드테스트약", confidence=0.9)], "*브랜드테스트약"
         )
 
     assert len(matched) == 1
@@ -111,7 +112,7 @@ async def test_no_master_data_match_falls_through_to_auto_dummy_without_error():
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, _match_confidence = await medication_service._match_or_create_medications(
-            session, dur_repo, [OcrField(text="*완전히새로운약999mg", confidence=0.9)]
+            session, dur_repo, [OcrField(text="*완전히새로운약999mg", confidence=0.9)], "*완전히새로운약999mg"
         )
 
     assert len(matched) == 1
