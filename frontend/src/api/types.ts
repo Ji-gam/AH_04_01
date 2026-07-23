@@ -310,6 +310,9 @@ export interface DurDrugDetail {
 export interface DurBasicScreeningResult {
   drug_detail: DurDrugDetail;
   dur_simple: DurSimpleFlag[];
+  // LIKE 폴백 매칭 시 drug_detail.item_name(DB 공식 표기)이 조회에 쓴 이름과 달라질 수 있어,
+  // 호출자가 원본 이름으로 다시 매핑하려면 item_name이 아니라 이 필드로 키를 잡아야 한다.
+  queried_name: string;
 }
 
 export interface DurBasicScreeningResponse {

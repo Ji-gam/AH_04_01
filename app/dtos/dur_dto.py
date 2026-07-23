@@ -58,6 +58,9 @@ class DrugDetail(BaseModel):
 class BasicScreeningResult(BaseModel):
     drug_detail: DrugDetail
     dur_simple: list[DurSimpleFlag] = Field(default_factory=list)
+    queried_name: str = Field(
+        ..., description="이 결과를 매칭시킨 원본 조회 약품명 (LIKE 폴백 매칭 시 item_name과 다를 수 있음)"
+    )
 
 
 class BasicScreeningResponse(BaseModel):
