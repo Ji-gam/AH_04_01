@@ -1,6 +1,7 @@
+from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
@@ -8,17 +9,17 @@ from app.dependencies.security import get_current_profile
 from app.dtos.push import (
     FcmTokenRegisterRequest,
     FcmTokenUnregisterRequest,
+    MarkTakenRequest,
     PushSubscribeRequest,
     PushUnsubscribeRequest,
     ReduceFrequencyRequest,
-    SnoozeRequest,
     VapidPublicKeyResult,
 )
 from app.models.medication_model import MedicationSchedule
 from app.models.notification_schedules import NotificationSchedule
 from app.models.profiles import Profile
 from app.models.push_subscription import PushPlatform
-from app.services.push_scheduler import schedule_snooze
+from app.services.medication_intake_service import MedicationIntakeService
 from app.services.push_service import PushService
 
 push_router = APIRouter(prefix="/push", tags=["push"])
@@ -92,18 +93,18 @@ async def unregister_fcm_token(
 
 
 @push_router.post(
-    "/snooze",
+    "/mark-taken",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="복약 알림 미루기(스누즈)",
+    summary="알림에서 바로 복용 완료 처리",
     description=(
-        "알림의 '30분/1시간 후 다시' 액션 버튼용. 서비스워커는 로그인 세션에 접근할 수 없어 "
-        "인증 없이 profile_id를 직접 받되, source_id가 그 profile_id 소유인지 서버가 검증한다."
+        "알림의 '복용완료' 액션 버튼용(F-NTFY-1). 서비스워커는 로그인 세션에 접근할 수 없어 "
+        "인증 없이 profile_id를 직접 받되, source_id가 그 profile_id 소유인지 서버가 검증한다. "
+        "이미 체크돼있으면 조용히 아무 것도 하지 않는다(멱등)."
     ),
     responses={status.HTTP_404_NOT_FOUND: {"description": "해당 profile_id 소유가 아니거나 존재하지 않는 알림"}},
 )
-async def snooze_push(
-    body: SnoozeRequest,
-    request: Request,
+async def mark_taken_push(
+    body: MarkTakenRequest,
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     if body.source_type == "notification_schedule":
@@ -116,7 +117,15 @@ async def snooze_push(
     if owner_id is None or owner_id != body.profile_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 알림을 찾을 수 없습니다.")
 
-    schedule_snooze(request.app.state.push_scheduler, body.profile_id, body.source_type, body.source_id, body.minutes)
+    await MedicationIntakeService().toggle(
+        session,
+        body.profile_id,
+        body.source_type,
+        body.source_id,
+        body.alarm_time,
+        date.today().isoformat(),
+        checked=True,
+    )
 
 
 @push_router.post(

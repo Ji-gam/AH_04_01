@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -68,51 +69,41 @@ class _SettingsCache:
         return self._cache[profile_id]
 
 
-async def _send_due_notification_schedules(
-    session: AsyncSession,
-    push_service: PushService,
-    settings: _SettingsCache,
-    send_log_repo: PushSendLogRepository,
-    now: datetime,
-    js_weekday: int,
-    current_hhmm: str,
-) -> None:
+@dataclass
+class _DueItem:
+    """발송 대상 하나(복약 시각 하나) - 묶어 보내기(F-NTFY-2) 전 중간 표현."""
+
+    source_type: str
+    source_id: int
+    profile_id: int
+    name: str
+    alarm_time: str
+
+
+async def _collect_due_notification_schedules(
+    session: AsyncSession, js_weekday: int, current_hhmm: str
+) -> list[_DueItem]:
     """복약알림(NotificationSchedule) - 화면의 "알림 추가"로 직접 만든 것."""
     result = await session.execute(select(NotificationSchedule).where(NotificationSchedule.is_active.is_(True)))
+    items = []
     for schedule in result.scalars().all():
         if schedule.alarm_time.strftime("%H:%M") != current_hhmm:
             continue
         if not _is_due_today(schedule, js_weekday):
             continue
-        setting = await settings.get(schedule.profile_id)
-        if not _should_send(setting):
-            continue
-        # 워커가 여러 개면 같은 1분 틱에 이 알림을 동시에 집으려 할 수 있다 - DB 유니크
-        # 제약으로 선착순 클레임해서, 못 딴 워커는 조용히 건너뛴다(start_push_scheduler
-        # docstring의 "알려진 한계" 참고).
-        if not await send_log_repo.try_claim("notification_schedule", schedule.id, now.date(), current_hhmm):
-            continue
-        try:
-            await push_service.send_to_profile_and_guardians(
-                session,
-                schedule.profile_id,
-                title="복약 알림",
-                body=f"{schedule.medication_name} 드실 시간이에요!",
-                snooze_source=("notification_schedule", schedule.id),
+        items.append(
+            _DueItem(
+                source_type="notification_schedule",
+                source_id=schedule.id,
+                profile_id=schedule.profile_id,
+                name=schedule.medication_name,
                 alarm_time=current_hhmm,
             )
-        except Exception:
-            logger.exception("알림 발송 중 오류 (notification_schedule_id=%s)", schedule.id)
+        )
+    return items
 
 
-async def _send_due_medication_schedules(
-    session: AsyncSession,
-    push_service: PushService,
-    settings: _SettingsCache,
-    send_log_repo: PushSendLogRepository,
-    now: datetime,
-    current_hhmm: str,
-) -> None:
+async def _collect_due_medication_schedules(session: AsyncSession, current_hhmm: str) -> list[_DueItem]:
     """트랙커(MedicationSchedule) - 사진/검색으로 등록한 약. 화면(AlarmPage.tsx)의 "등록된
     알림" 목록엔 이것도 같이 병합해서 보여주고 있어서, 실제 발송도 똑같이 다뤄야 한다 - 이게
     빠져있어서 트랙커로 등록한 약은 시간이 와도 알림이 안 갔다(2026-07-18 확인된 버그, 여기서
@@ -125,6 +116,7 @@ async def _send_due_medication_schedules(
     drug_names = await DurDrugRepository().get_names_by_item_seqs(
         session, {s.item_seq for s in med_schedules if not s.display_name}
     )
+    items = []
     for med_schedule in med_schedules:
         # 이 테이블의 times는 등록 경로에 따라 "HH:MM"(신규 등록)과 "HH:MM:SS"(본인 화면
         # 수정 API가 초까지 붙여 저장하는 경우)가 섞여 있다 - 앞 5글자(HH:MM)만 잘라서
@@ -133,23 +125,65 @@ async def _send_due_medication_schedules(
         normalized_times = [t[:5] for t in med_schedule.times]
         if current_hhmm not in normalized_times:
             continue
-        setting = await settings.get(med_schedule.profile_id)
+        drug_name = med_schedule.display_name or drug_names.get(med_schedule.item_seq, med_schedule.item_seq)
+        items.append(
+            _DueItem(
+                source_type="medication_schedule",
+                source_id=med_schedule.id,
+                profile_id=med_schedule.profile_id,
+                name=drug_name,
+                alarm_time=current_hhmm,
+            )
+        )
+    return items
+
+
+async def _send_due_items(
+    session: AsyncSession,
+    push_service: PushService,
+    settings: _SettingsCache,
+    send_log_repo: PushSendLogRepository,
+    now: datetime,
+    current_hhmm: str,
+    items: list[_DueItem],
+) -> None:
+    """F-NTFY-2 - 같은 프로필의 같은 시각(분)에 겹치는 알림은 여러 개(직접등록 알림 +
+    트래커 약 섞여도)여도 하나로 묶어서 보낸다(예: "타이레놀정, 종합비타민 드실
+    시간이에요!"). "복용완료"/"빈도 줄이기" 액션은 묶인 항목 전체에 적용된다
+    (service-worker.js가 항목마다 반복 요청) - 같은 시각이면 어차피 "지금 같이 챙겨 먹을
+    것들"이라는 전제라 항목별로 따로 고르게 하지 않는다."""
+    by_profile: dict[int, list[_DueItem]] = {}
+    for item in items:
+        by_profile.setdefault(item.profile_id, []).append(item)
+
+    for profile_id, profile_items in by_profile.items():
+        setting = await settings.get(profile_id)
         if not _should_send(setting):
             continue
-        if not await send_log_repo.try_claim("medication_schedule", med_schedule.id, now.date(), current_hhmm):
+
+        # 워커가 여러 개면 같은 1분 틱에 이 알림을 동시에 집으려 할 수 있다 - 항목별로 DB
+        # 유니크 제약으로 선착순 클레임해서, 못 딴 워커는 그 항목만 조용히 건너뛴다
+        # (start_push_scheduler docstring의 "알려진 한계" 참고). 일부 항목만 클레임에
+        # 실패해도 나머지 항목은 정상적으로 묶어 보낸다.
+        claimed = [
+            item
+            for item in profile_items
+            if await send_log_repo.try_claim(item.source_type, item.source_id, now.date(), current_hhmm)
+        ]
+        if not claimed:
             continue
-        drug_name = med_schedule.display_name or drug_names.get(med_schedule.item_seq, med_schedule.item_seq)
+
+        body = f"{', '.join(item.name for item in claimed)} 드실 시간이에요!"
         try:
             await push_service.send_to_profile_and_guardians(
                 session,
-                med_schedule.profile_id,
+                profile_id,
                 title="복약 알림",
-                body=f"{drug_name} 드실 시간이에요!",
-                snooze_source=("medication_schedule", med_schedule.id),
-                alarm_time=current_hhmm,
+                body=body,
+                intake_sources=[(item.source_type, item.source_id, item.alarm_time) for item in claimed],
             )
         except Exception:
-            logger.exception("알림 발송 중 오류 (medication_schedule_id=%s)", med_schedule.id)
+            logger.exception("알림 발송 중 오류 (profile_id=%s)", profile_id)
 
 
 async def _send_weekly_adherence_feedback_if_due(
@@ -228,67 +262,15 @@ async def _check_and_send_due_notifications() -> None:
         settings = _SettingsCache(session)
         send_log_repo = PushSendLogRepository()
         report_service = PeriodicReportService()
-        await _send_due_notification_schedules(
-            session, push_service, settings, send_log_repo, now, js_weekday, current_hhmm
-        )
-        await _send_due_medication_schedules(session, push_service, settings, send_log_repo, now, current_hhmm)
+
+        due_items = await _collect_due_notification_schedules(session, js_weekday, current_hhmm)
+        due_items += await _collect_due_medication_schedules(session, current_hhmm)
+        await _send_due_items(session, push_service, settings, send_log_repo, now, current_hhmm, due_items)
+
         await _send_weekly_adherence_feedback_if_due(
             session, settings, send_log_repo, report_service, now, current_hhmm
         )
         await _send_monthly_goal_report_if_due(session, settings, send_log_repo, report_service, now, current_hhmm)
-
-
-async def _send_snoozed_notification(profile_id: int, source_type: str, source_id: int) -> None:
-    """스누즈로 예약된 일회성 재발송(push_routers.py의 /push/snooze 참고). 예약 시점과
-    실제 발송 시점 사이에 알림이 수정/삭제될 수 있어 문구를 다시 조회한다 - 꺼졌거나
-    지워졌으면 조용히 건너뛴다. 무음 시간대는 일부러 확인하지 않는다 - 사용자가 명시적으로
-    "이 시간에 다시 알려줘"를 선택한 거라, 그 사이 무음 시간대에 들어갔다고 억누르면 오히려
-    스누즈의 의도(꼭 다시 알림받기)에 반한다. push_enabled(알림 자체를 꺼둔 경우)만 확인한다."""
-    async with AsyncSessionLocal() as session:
-        # 소유권 확인이 먼저다 - 알림설정 조회(get_or_create)가 없는 profile_id에 대해
-        # notification_settings 행을 만들려다 FK 위반으로 죽는 걸 막는다(다른 프로필
-        # 소유의 알림이거나, 그 사이 지워진 profile_id일 수 있음).
-        title = "복약 알림"
-        if source_type == "notification_schedule":
-            schedule = await session.get(NotificationSchedule, source_id)
-            if schedule is None or not schedule.is_active or schedule.profile_id != profile_id:
-                return
-            body = f"{schedule.medication_name} 드실 시간이에요! (미뤄둔 알림)"
-        else:
-            med_schedule = await session.get(MedicationSchedule, source_id)
-            if med_schedule is None or med_schedule.profile_id != profile_id:
-                return
-            drug_name = med_schedule.display_name
-            if not drug_name:
-                names = await DurDrugRepository().get_names_by_item_seqs(session, {med_schedule.item_seq})
-                drug_name = names.get(med_schedule.item_seq, med_schedule.item_seq)
-            body = f"{drug_name} 드실 시간이에요! (미뤄둔 알림)"
-
-        setting = await NotificationSettingsService().get_settings(session, profile_id)
-        if not setting.push_enabled:
-            return
-
-        try:
-            await PushService().send_to_profile_and_guardians(
-                session, profile_id, title=title, body=body, snooze_source=(source_type, source_id)
-            )
-        except Exception:
-            logger.exception(
-                "스누즈 알림 발송 중 오류 (profile_id=%s, source_type=%s, source_id=%s)",
-                profile_id,
-                source_type,
-                source_id,
-            )
-
-
-def schedule_snooze(
-    scheduler: AsyncIOScheduler, profile_id: int, source_type: str, source_id: int, minutes: int
-) -> None:
-    """일회성 지연 작업을 등록한다. 반복 job(push_due_notifications)과 달리 이건 이 요청을
-    받은 워커 프로세스 하나에서만 실행되니, ①번에서 다룬 "워커 여러 개면 중복 발송" 문제가
-    여기엔 해당되지 않는다."""
-    run_date = datetime.now(tz=config.TIMEZONE) + timedelta(minutes=minutes)
-    scheduler.add_job(_send_snoozed_notification, "date", run_date=run_date, args=[profile_id, source_type, source_id])
 
 
 def start_push_scheduler() -> AsyncIOScheduler:
