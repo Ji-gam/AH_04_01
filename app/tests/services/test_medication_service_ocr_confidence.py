@@ -38,7 +38,7 @@ async def test_match_or_create_medications_returns_ocr_confidence_for_existing_m
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, match_confidence = await medication_service._match_or_create_medications(
-            session, dur_repo, [OcrField(text="*컨피던스정100mg", confidence=0.63)]
+            session, dur_repo, [OcrField(text="*컨피던스정100mg", confidence=0.63)], "*컨피던스정100mg"
         )
 
     assert any(d.item_seq == "KD_CONF001" for d in matched)
@@ -61,7 +61,7 @@ async def test_match_or_create_medications_reports_confidence_for_auto_created_d
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, match_confidence = await medication_service._match_or_create_medications(
-            session, dur_repo, [OcrField(text="*완전히새로운약999mg", confidence=0.99)]
+            session, dur_repo, [OcrField(text="*완전히새로운약999mg", confidence=0.99)], "*완전히새로운약999mg"
         )
 
     assert len(matched) == 1
@@ -79,7 +79,7 @@ async def test_match_or_create_medications_no_ocr_evidence_fallback_has_no_confi
 
     async with TestSessionLocal() as session:
         matched, _auto_created_ids, match_confidence = await medication_service._match_or_create_medications(
-            session, dur_repo, [OcrField(text="환자정보", confidence=0.99)]
+            session, dur_repo, [OcrField(text="환자정보", confidence=0.99)], "환자정보"
         )
 
     assert len(matched) > 0
