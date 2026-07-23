@@ -920,9 +920,7 @@ async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[OcrField]:
         is_last_attempt = attempt == _CLOVA_OCR_MAX_ATTEMPTS
         try:
             async with httpx.AsyncClient() as client:
-                response = await client.post(
-                    config.CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0
-                )
+                response = await client.post(config.CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
         except httpx.TimeoutException as exc:
             logger.warning("CLOVA OCR 호출 타임아웃 (attempt=%d/%d): %s", attempt, _CLOVA_OCR_MAX_ATTEMPTS, exc)
             if is_last_attempt:
