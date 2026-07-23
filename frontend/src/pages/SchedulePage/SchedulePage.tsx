@@ -8,7 +8,13 @@ import type { MedicationSchedule } from "../../hooks/useMedication";
 import { pinkTheme } from "../../theme/pinkTheme";
 import { toDateString } from "../AlarmPage/dateUtils";
 
-import { buildGroups, loadChecked, saveChecked, type TimeGroup } from "./scheduleData";
+import {
+  buildGroups,
+  loadChecked,
+  toggleChecked,
+  type TimelineItem,
+  type TimeGroup,
+} from "./scheduleData";
 
 /** 공용 pinkTheme 별칭 — 팁 박스(노란 안내)만 이 화면 전용 색으로 유지한다. */
 const c = {
@@ -63,7 +69,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
   const [alarms, setAlarms] = useState<NotificationScheduleResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [checked, setChecked] = useState<Set<string>>(() => loadChecked(dateStr));
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   // 약 이름별 DUR 조회 결과 캐시 — 펼침 버튼을 누른 약만 조회하고, 같은 이름은 재조회하지 않는다.
   const [durByName, setDurByName] = useState<Map<string, DurLookup>>(new Map());
   const [expandedNames, setExpandedNames] = useState<Set<string>>(new Set());
@@ -79,7 +85,13 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
   }, []);
 
   useEffect(() => {
-    setChecked(loadChecked(dateStr));
+    let cancelled = false;
+    loadChecked(dateStr).then((next) => {
+      if (!cancelled) setChecked(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [dateStr]);
 
   const groups = useMemo(
@@ -97,23 +109,29 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
   const nowHHMM = getCurrentHHMM();
   const nextTime = isToday ? groups.find((g) => g.time >= nowHHMM)?.time : undefined;
 
-  const toggle = (key: string) => {
-    const next = new Set(checked);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
+  // 서버 반영 전에 화면부터 바꾸는 낙관적 업데이트 - 실패하면(오프라인 등) 원래 상태로 되돌린다.
+  const toggle = (item: TimelineItem, time: string) => {
+    const prev = checked;
+    const willCheck = !prev.has(item.key);
+    const next = new Set(prev);
+    if (willCheck) next.add(item.key);
+    else next.delete(item.key);
     setChecked(next);
-    saveChecked(dateStr, next);
+    toggleChecked(item, time, dateStr, willCheck).catch(() => setChecked(prev));
   };
 
   const checkAll = (group: TimeGroup) => {
-    const next = new Set(checked);
-    const allChecked = group.items.every((i) => next.has(i.key));
+    const prev = checked;
+    const willCheck = !group.items.every((i) => prev.has(i.key));
+    const next = new Set(prev);
     for (const i of group.items) {
-      if (allChecked) next.delete(i.key);
-      else next.add(i.key);
+      if (willCheck) next.add(i.key);
+      else next.delete(i.key);
     }
     setChecked(next);
-    saveChecked(dateStr, next);
+    Promise.all(group.items.map((i) => toggleChecked(i, group.time, dateStr, willCheck))).catch(
+      () => setChecked(prev),
+    );
   };
 
   const toggleDurExpand = (name: string) => {
@@ -349,7 +367,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                                 aria-label={
                                   done ? `${item.name} 복용 취소` : `${item.name} 복용 체크`
                                 }
-                                onClick={() => toggle(item.key)}
+                                onClick={() => toggle(item, group.time)}
                                 style={{
                                   width: 22,
                                   height: 22,

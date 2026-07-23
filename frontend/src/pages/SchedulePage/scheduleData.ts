@@ -1,3 +1,4 @@
+import { intakeApi } from "../../api/intakeApi";
 import type { NotificationScheduleResult } from "../../api/types";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { isScheduleDueOnDate } from "../AlarmPage/dateUtils";
@@ -81,15 +82,47 @@ export function buildGroups(
     }));
 }
 
-/** 복용 체크는 날짜별 localStorage에 보관한다(백엔드 복용 기록 도메인 합류 전까지의 임시 저장소). */
-export function loadChecked(dateStr: string): Set<string> {
+/** item.key("med-{id}-{HH:MM}" 또는 "alarm-{id}")를 서버 API가 쓰는 (source_type, source_id)로
+ * 되돌린다(F-ADH-1). alarm 쪽은 키에 시각이 없으니(NotificationSchedule 행 자체가 이미 시각
+ * 하나) scheduled_time은 호출부가 그 항목이 속한 TimeGroup.time을 그대로 넘겨준다. */
+export function keyToSource(key: string): {
+  source_type: "medication_schedule" | "notification_schedule";
+  source_id: number;
+} {
+  if (key.startsWith("med-")) {
+    const rest = key.slice(4); // "{id}-{HH:MM}"
+    const lastDash = rest.lastIndexOf("-");
+    return { source_type: "medication_schedule", source_id: Number(rest.slice(0, lastDash)) };
+  }
+  return { source_type: "notification_schedule", source_id: Number(key.slice(6)) }; // "alarm-{id}"
+}
+
+function sourceToKey(sourceType: string, sourceId: number, scheduledTime: string): string {
+  return sourceType === "medication_schedule"
+    ? `med-${sourceId}-${scheduledTime}`
+    : `alarm-${sourceId}`;
+}
+
+/** 복용 체크는 서버(medication_intake_logs)에 저장한다(F-ADH-1) - 예전엔 localStorage에만
+ * 저장해서 기기를 바꾸거나 캐시를 지우면 기록이 사라졌다. 실패하면(오프라인 등) 빈 Set을
+ * 반환해 화면은 계속 쓸 수 있게 한다 - 순응도 요약은 참고용이라 조회 실패로 앱을 막지 않는다. */
+export async function loadChecked(dateStr: string): Promise<Set<string>> {
   try {
-    return new Set(JSON.parse(localStorage.getItem(`intake-${dateStr}`) ?? "[]") as string[]);
+    const records = await intakeApi.list(dateStr);
+    return new Set(records.map((r) => sourceToKey(r.source_type, r.source_id, r.scheduled_time)));
   } catch {
     return new Set();
   }
 }
 
-export function saveChecked(dateStr: string, checked: Set<string>) {
-  localStorage.setItem(`intake-${dateStr}`, JSON.stringify([...checked]));
+/** 체크/체크해제 하나를 서버에 반영한다. item.key만으로는 alarm 항목의 시각을 알 수 없어
+ * scheduledTime(그 항목이 속한 TimeGroup.time)을 호출부에서 같이 넘겨받는다. */
+export async function toggleChecked(
+  item: TimelineItem,
+  scheduledTime: string,
+  dateStr: string,
+  checked: boolean,
+) {
+  const source = keyToSource(item.key);
+  await intakeApi.toggle({ ...source, scheduled_time: scheduledTime }, dateStr, checked);
 }

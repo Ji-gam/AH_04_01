@@ -2,6 +2,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { pinkTheme } from "../../theme/pinkTheme";
 
+import AdherenceHeatmapSection from "./components/AdherenceHeatmapSection";
+
 /** 더보기 > 처방전 등록에서 열었을 때만 뒤로가기가 더보기로 돌아간다(2026-07-16) - 상단
  * 네비게이션의 "트랙커" 탭으로 들어왔을 때는 홈으로 나간다. */
 export default function TrackPage() {
@@ -73,7 +75,7 @@ export default function TrackPage() {
         </div>
 
         {/* 복약관리를 포함한 단일 스크롤(하위 탭으로 안 쪼갠다). 콘텐츠가 있을 때만 섹션 노출 — FRONTEND_ARCHITECTURE.md 참고 */}
-        {/* <AdherenceHeatmapSection /> */}
+        <AdherenceHeatmapSection />
         {/* <LifestyleSurveySection /> */}
         {/* <DietTrackingSection /> */}
         {/* <HealthAppSyncSection /> */}
