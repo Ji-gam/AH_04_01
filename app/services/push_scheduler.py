@@ -232,7 +232,9 @@ async def _check_and_send_due_notifications() -> None:
             session, push_service, settings, send_log_repo, now, js_weekday, current_hhmm
         )
         await _send_due_medication_schedules(session, push_service, settings, send_log_repo, now, current_hhmm)
-        await _send_weekly_adherence_feedback_if_due(session, settings, send_log_repo, report_service, now, current_hhmm)
+        await _send_weekly_adherence_feedback_if_due(
+            session, settings, send_log_repo, report_service, now, current_hhmm
+        )
         await _send_monthly_goal_report_if_due(session, settings, send_log_repo, report_service, now, current_hhmm)
 
 

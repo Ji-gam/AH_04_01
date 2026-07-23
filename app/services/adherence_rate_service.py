@@ -28,9 +28,7 @@ class AdherenceRateService:
     def __init__(self, repo: MedicationIntakeRepository | None = None) -> None:
         self._repo = repo or MedicationIntakeRepository()
 
-    async def compute(
-        self, session: AsyncSession, profile_id: int, start_date: date, end_date: date
-    ) -> RateResult:
+    async def compute(self, session: AsyncSession, profile_id: int, start_date: date, end_date: date) -> RateResult:
         result = await session.execute(
             select(MedicationSchedule.times).where(MedicationSchedule.profile_id == profile_id)
         )

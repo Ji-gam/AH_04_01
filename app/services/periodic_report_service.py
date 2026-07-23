@@ -62,9 +62,7 @@ class PeriodicReportService:
         progress_by_key = {(log.log_date, log.habit_key): log.progress for log in logs}
 
         done = sum(
-            1
-            for s in selections
-            if progress_by_key.get((s.select_date, s.habit_key), 0) >= target_by_key[s.habit_key]
+            1 for s in selections if progress_by_key.get((s.select_date, s.habit_key), 0) >= target_by_key[s.habit_key]
         )
         total = len(selections)
         return RateResult(done=done, total=total, rate=done / total)
@@ -103,7 +101,9 @@ class PeriodicReportService:
         lines = []
         if adherence.rate is not None:
             emoji, comment = _tone(adherence.rate)
-            lines.append(f"{emoji} 복약 순응도 {_pct(adherence.rate)}% ({adherence.done}/{adherence.total}회) — {comment}")
+            lines.append(
+                f"{emoji} 복약 순응도 {_pct(adherence.rate)}% ({adherence.done}/{adherence.total}회) — {comment}"
+            )
         if habit.rate is not None:
             emoji, comment = _tone(habit.rate)
             lines.append(f"{emoji} 습관 달성률 {_pct(habit.rate)}% ({habit.done}/{habit.total}회) — {comment}")
