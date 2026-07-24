@@ -28,10 +28,5 @@
     "owner": "claude",
     "branch": "feat/T-MED-16-item-seq-direct-ref",
     "started": "2026-07-20"
-  },
-  "T-QUAL-1-async-benchmark": {
-    "owner": "agent-Claude",
-    "branch": "feature/T-QUAL-1-async-benchmark",
-    "started": "2026-07-24"
   }
 }
