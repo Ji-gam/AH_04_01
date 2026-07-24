@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import HabitSelectionContent from "../../components/habit/HabitSelectionContent";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 
-/** 더보기 > 생활습관 추천. 본문은 HabitSelectionContent(공용) - 홈 화면 라이프스타일
+/** 더보기 > 마이다이어리. 본문은 HabitSelectionContent(공용) - 홈 화면 라이프스타일
  * 카드에서는 같은 본문을 모달로 띄운다(2026-07-19). 여기서는 뒤로가기만 이 페이지가 갖는다. */
 export default function HabitSelectionPage() {
   const navigate = useNavigate();

@@ -47,6 +47,11 @@ class Config(BaseSettings):
     # app/services/medication_open_api_client.py가 빈 리스트를 반환한다.
     PUBLIC_DATA_API_KEY: str | None = None
 
+    # F-DIET-1/2: 식품영양성분DB API - 별도 서비스 신청이 필요할 수 있어 키를 분리해뒀다.
+    # 설정 안 하면 PUBLIC_DATA_API_KEY로 폴백하고, 그것도 없거나 호출이 실패하면
+    # app/services/food_nutrition_open_api_client.py가 로컬 시드로 폴백한다.
+    FOOD_NUTRITION_API_KEY: str | None = None
+
     # T-MED-1: CLOVA OCR(네이버 클라우드) - 처방전/약봉투 이미지 인식. 둘 다 설정돼야 실제
     # 호출한다(medication_service._clova_configured). 미설정이면 실제 OCR 없이 인식 실패로
     # 처리되고, dummy_mode 명시 요청 시에만 결정적 더미 결과를 낸다. SECRET_KEY가 "your_"로

@@ -17,6 +17,7 @@ import ConsentPage from "./pages/ConsentPage/ConsentPage";
 import ContentDetailPage from "./pages/ContentGenerationPage/ContentDetailPage";
 import ContentGenerationPage from "./pages/ContentGenerationPage/ContentGenerationPage";
 import DataConsentPage from "./pages/DataConsentPage/DataConsentPage";
+import DiaryEntriesPage from "./pages/DiaryEntriesPage/DiaryEntriesPage";
 import DurScreeningPage from "./pages/dur/DurScreeningPage";
 import EmergencyGuidePage from "./pages/EmergencyGuidePage/EmergencyGuidePage";
 import FamilyPage from "./pages/FamilyPage/FamilyPage";
@@ -33,6 +34,7 @@ import NoticePage from "./pages/NoticePage/NoticePage";
 import NotificationSettingsPage from "./pages/NotificationSettingsPage/NotificationSettingsPage";
 import SchedulePage from "./pages/SchedulePage/SchedulePage";
 import TrackPage from "./pages/TrackPage/TrackPage";
+import WeeklyReportsPage from "./pages/WeeklyReportsPage/WeeklyReportsPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -74,6 +76,8 @@ export const router = createBrowserRouter([
           { path: "/medication", element: <MedicationPage /> },
           { path: "/family", element: <FamilyPage /> },
           { path: "/habit-selection", element: <HabitSelectionPage /> },
+          { path: "/weekly-reports", element: <WeeklyReportsPage /> },
+          { path: "/diary", element: <DiaryEntriesPage /> },
         ],
       },
     ],

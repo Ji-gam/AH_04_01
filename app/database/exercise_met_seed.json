@@ -1,0 +1,28 @@
+{
+  "_comment": "운동 종류별 MET(대사당량) 값. Compendium of Physical Activities 기준 통상치 - 소모 칼로리 = MET × 몸무게(kg) × 시간(시간)으로 계산한다. input_mode: 'duration'(시간만 입력, 기본), 'speed'(속도+시간 입력 - MET을 ACSM 공식으로 실시간 계산하므로 met_value는 null), 'count'(횟수 입력 - 분당 100회 가정으로 시간 환산 후 met_value 그대로 사용).",
+  "exercises": [
+    {"exercise_name": "걷기", "met_value": null, "input_mode": "speed"},
+    {"exercise_name": "달리기", "met_value": null, "input_mode": "speed"},
+    {"exercise_name": "자전거(보통)", "met_value": 6.8, "input_mode": "duration"},
+    {"exercise_name": "자전거(빠르게)", "met_value": 10.0, "input_mode": "duration"},
+    {"exercise_name": "수영(자유형, 보통)", "met_value": 8.3, "input_mode": "duration"},
+    {"exercise_name": "수영(여유롭게)", "met_value": 5.8, "input_mode": "duration"},
+    {"exercise_name": "웨이트트레이닝", "met_value": 5.0, "input_mode": "duration"},
+    {"exercise_name": "요가", "met_value": 2.5, "input_mode": "duration"},
+    {"exercise_name": "필라테스", "met_value": 3.0, "input_mode": "duration"},
+    {"exercise_name": "줄넘기", "met_value": 11.0, "input_mode": "count"},
+    {"exercise_name": "등산", "met_value": 6.0, "input_mode": "duration"},
+    {"exercise_name": "축구", "met_value": 7.0, "input_mode": "duration"},
+    {"exercise_name": "농구", "met_value": 6.5, "input_mode": "duration"},
+    {"exercise_name": "배드민턴", "met_value": 5.5, "input_mode": "duration"},
+    {"exercise_name": "테니스", "met_value": 7.3, "input_mode": "duration"},
+    {"exercise_name": "탁구", "met_value": 4.0, "input_mode": "duration"},
+    {"exercise_name": "계단 오르기", "met_value": 8.8, "input_mode": "duration"},
+    {"exercise_name": "홈트레이닝(고강도)", "met_value": 6.0, "input_mode": "duration"},
+    {"exercise_name": "스트레칭", "met_value": 2.3, "input_mode": "duration"},
+    {"exercise_name": "골프", "met_value": 4.8, "input_mode": "duration"},
+    {"exercise_name": "볼링", "met_value": 3.0, "input_mode": "duration"},
+    {"exercise_name": "댄스(에어로빅)", "met_value": 6.5, "input_mode": "duration"},
+    {"exercise_name": "인라인스케이트", "met_value": 7.0, "input_mode": "duration"}
+  ]
+}

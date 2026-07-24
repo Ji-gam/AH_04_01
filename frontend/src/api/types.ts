@@ -263,6 +263,143 @@ export interface HabitRecommendationsResult {
   selected_keys: string[];
 }
 
+// 백엔드 app/dtos/diet_dto.py와 1:1로 수동 동기화 (F-DIET-1/2). 마이다이어리 > 식단 기록.
+export interface FoodSearchResultItem {
+  food_name: string;
+  serving_size_g: number;
+  calorie_kcal_per_100g: number;
+  protein_g_per_100g: number;
+  carb_g_per_100g: number;
+  fat_g_per_100g: number;
+}
+
+export interface FoodSearchResult {
+  results: FoodSearchResultItem[];
+}
+
+export interface DietLogCreateRequest {
+  food_name: string;
+  serving_size_g: number;
+  serving_multiplier: number;
+  calorie_kcal_per_100g: number;
+  protein_g_per_100g: number;
+  carb_g_per_100g: number;
+  fat_g_per_100g: number;
+}
+
+export interface DietLogItemResult {
+  id: number;
+  food_name: string;
+  serving_grams: number;
+  calorie_kcal: number;
+  protein_g: number;
+  carb_g: number;
+  fat_g: number;
+  logged_at: string;
+}
+
+export interface DietTodayResult {
+  logs: DietLogItemResult[];
+  total_kcal: number;
+  total_protein_g: number;
+  total_carb_g: number;
+  total_fat_g: number;
+  reference_kcal: number;
+}
+
+export interface DietRecentDayResult {
+  log_date: string;
+  total_kcal: number;
+}
+
+export interface DietRecentResult {
+  days: DietRecentDayResult[];
+}
+
+// 백엔드 app/dtos/exercise_dto.py와 1:1로 수동 동기화. 마이다이어리 > 운동 기록.
+export type ExerciseInputMode = "duration" | "speed" | "count";
+
+export interface ExerciseSearchResultItem {
+  exercise_name: string;
+  met_value: number | null;
+  input_mode: ExerciseInputMode;
+}
+
+export interface ExerciseSearchResult {
+  results: ExerciseSearchResultItem[];
+}
+
+export interface ExerciseLogCreateRequest {
+  exercise_name: string;
+  input_mode: ExerciseInputMode;
+  met_value?: number;
+  duration_minutes?: number;
+  speed_kmh?: number;
+  count?: number;
+}
+
+export interface ExerciseLogItemResult {
+  id: number;
+  exercise_name: string;
+  duration_minutes: number;
+  distance_km: number | null;
+  count: number | null;
+  calorie_kcal: number;
+  logged_at: string;
+}
+
+export interface ExerciseTodayResult {
+  logs: ExerciseLogItemResult[];
+  total_kcal: number;
+  total_duration_minutes: number;
+}
+
+export interface ExerciseRecentDayResult {
+  log_date: string;
+  total_kcal: number;
+}
+
+export interface ExerciseRecentResult {
+  days: ExerciseRecentDayResult[];
+}
+
+// 백엔드 app/dtos/weekly_report_dto.py와 1:1로 수동 동기화. 더보기 > 주간 리포트 - 매주
+// 일요일 스케줄러가 AI로 작성해 저장한 리포트를 조회 전용으로 보여준다(수동 생성 없음).
+export interface WeeklyReportItemResult {
+  id: number;
+  week_start_date: string;
+  week_end_date: string;
+  content: string;
+  created_at: string;
+}
+
+export interface WeeklyReportListResult {
+  reports: WeeklyReportItemResult[];
+}
+
+// 백엔드 app/dtos/diary_dto.py와 1:1로 수동 동기화. 마이다이어리 > 오늘의 한 줄.
+export interface DiaryEntrySaveRequest {
+  content: string;
+  image_base64?: string;
+}
+
+export interface DiaryEntryItemResult {
+  id: number;
+  entry_date: string;
+  content: string;
+  image_base64: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiaryEntryListResult {
+  entries: DiaryEntryItemResult[];
+}
+
+export interface DiaryTodayResult {
+  entry: DiaryEntryItemResult | null;
+}
+
 // 백엔드 app/dtos/dur_dto.py와 1:1로 수동 동기화 (T-MED-14). 처방/약품명 배열을 넣으면 DUR(의약품
 // 안전사용) 정보를 3단계로 내려주는 스크리닝 API. drug_names만 보내면 되고 로그인 불필요.
 
