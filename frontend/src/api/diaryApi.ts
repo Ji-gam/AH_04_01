@@ -1,5 +1,10 @@
 import { apiFetch } from "./client";
-import type { DiaryEntryItemResult, DiaryEntryListResult, DiaryEntrySaveRequest, DiaryTodayResult } from "./types";
+import type {
+  DiaryEntryItemResult,
+  DiaryEntryListResult,
+  DiaryEntrySaveRequest,
+  DiaryTodayResult,
+} from "./types";
 
 export const diaryApi = {
   getToday: () => apiFetch<DiaryTodayResult>("/diary/today"),

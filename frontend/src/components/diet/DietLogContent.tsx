@@ -10,7 +10,8 @@ const MAX_CUSTOM_MULTIPLIER = 5;
 
 function parseCustomMultiplier(raw: string): number | null {
   const value = Number(raw);
-  if (!raw.trim() || Number.isNaN(value) || value <= 0 || value > MAX_CUSTOM_MULTIPLIER) return null;
+  if (!raw.trim() || Number.isNaN(value) || value <= 0 || value > MAX_CUSTOM_MULTIPLIER)
+    return null;
   return value;
 }
 
@@ -118,7 +119,9 @@ export default function DietLogContent() {
 
   return (
     <div style={cardStyle}>
-      <p style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 700, color: t.primary }}>🍽 오늘의 식단 기록</p>
+      <p style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 700, color: t.primary }}>
+        🍽 오늘의 식단 기록
+      </p>
 
       {loadingInitial && <p style={{ color: t.textMuted, fontSize: 13 }}>불러오는 중...</p>}
 
@@ -132,7 +135,14 @@ export default function DietLogContent() {
                 {Math.round(totalKcal)} / {referenceKcal} kcal
               </span>
             </div>
-            <div style={{ height: 10, borderRadius: 999, background: t.primarySoft, overflow: "hidden" }}>
+            <div
+              style={{
+                height: 10,
+                borderRadius: 999,
+                background: t.primarySoft,
+                overflow: "hidden",
+              }}
+            >
               <div
                 style={{
                   height: "100%",
@@ -143,7 +153,9 @@ export default function DietLogContent() {
                 }}
               />
             </div>
-            <div style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 12, color: t.textMuted }}>
+            <div
+              style={{ display: "flex", gap: 12, marginTop: 8, fontSize: 12, color: t.textMuted }}
+            >
               <span>단백질 {Math.round(today?.total_protein_g ?? 0)}g</span>
               <span>탄수화물 {Math.round(today?.total_carb_g ?? 0)}g</span>
               <span>지방 {Math.round(today?.total_fat_g ?? 0)}g</span>
@@ -203,9 +215,16 @@ export default function DietLogContent() {
                 return (
                   <div
                     key={`${item.food_name}-${index}`}
-                    style={{ border: `1px solid ${t.border}`, borderRadius: 12, padding: 12, background: t.pageBg }}
+                    style={{
+                      border: `1px solid ${t.border}`,
+                      borderRadius: 12,
+                      padding: 12,
+                      background: t.pageBg,
+                    }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div
+                      style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}
+                    >
                       <strong style={{ fontSize: 14, color: t.text }}>{item.food_name}</strong>
                       <span style={{ fontSize: 12, color: t.textMuted }}>
                         {Math.round(servingGrams)}g · {Math.round(kcal)}kcal
@@ -237,7 +256,9 @@ export default function DietLogContent() {
                       ))}
                       <button
                         type="button"
-                        onClick={() => setCustomMode((prev) => ({ ...prev, [item.food_name]: true }))}
+                        onClick={() =>
+                          setCustomMode((prev) => ({ ...prev, [item.food_name]: true }))
+                        }
                         style={{
                           flex: 1,
                           padding: "6px 0",
@@ -294,7 +315,10 @@ export default function DietLogContent() {
                         color: "#fff",
                         fontSize: 13,
                         fontWeight: 700,
-                        cursor: loggingFoodName === item.food_name || customInvalid ? "default" : "pointer",
+                        cursor:
+                          loggingFoodName === item.food_name || customInvalid
+                            ? "default"
+                            : "pointer",
                         opacity: customInvalid ? 0.5 : 1,
                       }}
                     >
@@ -307,9 +331,13 @@ export default function DietLogContent() {
           )}
 
           {/* 오늘 기록한 목록 */}
-          <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: t.text }}>오늘 기록한 식사</p>
+          <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: t.text }}>
+            오늘 기록한 식사
+          </p>
           {!today || today.logs.length === 0 ? (
-            <p style={{ margin: "0 0 16px", fontSize: 13, color: t.textMuted }}>아직 기록한 식사가 없어요.</p>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: t.textMuted }}>
+              아직 기록한 식사가 없어요.
+            </p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               {today.logs.map((log) => (
@@ -351,10 +379,21 @@ export default function DietLogContent() {
           )}
 
           {/* 최근 7일 */}
-          <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: t.text }}>최근 7일</p>
+          <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: t.text }}>
+            최근 7일
+          </p>
           <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 70 }}>
             {(recent?.days ?? []).map((day) => (
-              <div key={day.log_date} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <div
+                key={day.log_date}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
                 <div
                   style={{
                     width: "100%",

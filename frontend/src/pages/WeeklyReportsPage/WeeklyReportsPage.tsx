@@ -158,8 +158,12 @@ export default function WeeklyReportsPage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 6px" }}>📊 주간 리포트</h1>
-        <p style={{ margin: "0 0 20px", fontSize: 13, color: pinkTheme.textMuted, lineHeight: 1.5 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 6px" }}>
+          📊 주간 리포트
+        </h1>
+        <p
+          style={{ margin: "0 0 20px", fontSize: 13, color: pinkTheme.textMuted, lineHeight: 1.5 }}
+        >
           매주 일요일 오전 9시에 습관·식단·운동·복약 기록을 바탕으로 AI가 작성해드려요.
         </p>
 
@@ -167,12 +171,16 @@ export default function WeeklyReportsPage() {
         {error && <p style={{ color: pinkTheme.danger, fontSize: 14 }}>{error}</p>}
 
         {!loading && !error && reports.length === 0 && (
-          <p style={{ color: pinkTheme.textMuted, fontSize: 14, textAlign: "center", marginTop: 20 }}>
+          <p
+            style={{ color: pinkTheme.textMuted, fontSize: 14, textAlign: "center", marginTop: 20 }}
+          >
             아직 생성된 주간 리포트가 없어요. 이번 주 일요일에 첫 리포트가 도착해요.
           </p>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{recent.slice(0, visibleCount).map(renderCard)}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {recent.slice(0, visibleCount).map(renderCard)}
+        </div>
 
         {visibleCount < recent.length && (
           <button
@@ -197,7 +205,14 @@ export default function WeeklyReportsPage() {
 
         {years.length > 0 && (
           <div style={{ marginTop: 28 }}>
-            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: pinkTheme.textMuted }}>
+            <p
+              style={{
+                margin: "0 0 10px",
+                fontSize: 13,
+                fontWeight: 700,
+                color: pinkTheme.textMuted,
+              }}
+            >
               지난 리포트 보관함
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -224,7 +239,9 @@ export default function WeeklyReportsPage() {
                         cursor: "pointer",
                       }}
                     >
-                      <span>{year}년 ({yearReports.length}건)</span>
+                      <span>
+                        {year}년 ({yearReports.length}건)
+                      </span>
                       <span
                         aria-hidden
                         style={{
@@ -236,7 +253,9 @@ export default function WeeklyReportsPage() {
                       </span>
                     </button>
                     {isExpanded && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+                      <div
+                        style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}
+                      >
                         {yearReports.map(renderCard)}
                       </div>
                     )}

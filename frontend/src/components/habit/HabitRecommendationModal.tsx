@@ -40,8 +40,17 @@ export default function HabitRecommendationModal({
           boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-          <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: t.text }}>🌿 추천 받은 습관 리스트</p>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 6,
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: t.text }}>
+            🌿 추천 받은 습관 리스트
+          </p>
           <span
             style={{
               background: t.primarySoft,
@@ -110,7 +119,9 @@ export default function HabitRecommendationModal({
                     {habit.icon}
                   </span>
                   <span style={{ flex: 1 }}>
-                    <strong style={{ display: "block", fontSize: 14, color: t.text }}>{habit.label}</strong>
+                    <strong style={{ display: "block", fontSize: 14, color: t.text }}>
+                      {habit.label}
+                    </strong>
                     <span style={{ fontSize: 12, color: t.textMuted }}>
                       목표 {habit.target}
                       {habit.unit}

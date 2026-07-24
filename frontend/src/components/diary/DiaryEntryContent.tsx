@@ -109,7 +109,9 @@ export default function DiaryEntryContent() {
       <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 700, color: t.primary }}>
         오늘의 마음을 담아주세요.
       </p>
-      <p style={{ margin: "0 0 16px", fontSize: 13, color: t.textMuted }}>당신의 하루를 한 줄로 담아보세요.</p>
+      <p style={{ margin: "0 0 16px", fontSize: 13, color: t.textMuted }}>
+        당신의 하루를 한 줄로 담아보세요.
+      </p>
 
       {loadingInitial ? (
         <p style={{ color: t.textMuted, fontSize: 13 }}>불러오는 중...</p>
@@ -193,9 +195,13 @@ export default function DiaryEntryContent() {
           >
             {imageBase64 ? "📷 다른 사진으로 바꾸기" : "📷 사진 추가하기(선택)"}
           </button>
-          {imageError && <p style={{ color: t.danger, fontSize: 12, margin: "0 0 10px" }}>{imageError}</p>}
+          {imageError && (
+            <p style={{ color: t.danger, fontSize: 12, margin: "0 0 10px" }}>{imageError}</p>
+          )}
 
-          {saveError && <p style={{ color: t.danger, fontSize: 13, margin: "0 0 10px" }}>{saveError}</p>}
+          {saveError && (
+            <p style={{ color: t.danger, fontSize: 13, margin: "0 0 10px" }}>{saveError}</p>
+          )}
 
           <button
             type="button"

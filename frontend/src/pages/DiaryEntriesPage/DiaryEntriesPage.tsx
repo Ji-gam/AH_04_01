@@ -102,7 +102,9 @@ export default function DiaryEntriesPage() {
             cursor: "pointer",
           }}
         >
-          <span style={{ fontSize: 14.5, fontWeight: 700, color: pinkTheme.text }}>{formatDate(entry.entry_date)}</span>
+          <span style={{ fontSize: 14.5, fontWeight: 700, color: pinkTheme.text }}>
+            {formatDate(entry.entry_date)}
+          </span>
           <span
             aria-hidden
             style={{
@@ -161,18 +163,24 @@ export default function DiaryEntriesPage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 20px" }}>📝 오늘의 한 줄 모아보기</h1>
+        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 20px" }}>
+          📝 오늘의 한 줄 모아보기
+        </h1>
 
         {loading && <p style={{ color: pinkTheme.textMuted, fontSize: 14 }}>불러오는 중...</p>}
         {error && <p style={{ color: pinkTheme.danger, fontSize: 14 }}>{error}</p>}
 
         {!loading && !error && entries.length === 0 && (
-          <p style={{ color: pinkTheme.textMuted, fontSize: 14, textAlign: "center", marginTop: 20 }}>
+          <p
+            style={{ color: pinkTheme.textMuted, fontSize: 14, textAlign: "center", marginTop: 20 }}
+          >
             아직 남긴 기록이 없어요. 오늘 하루를 한 줄로 남겨보세요.
           </p>
         )}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>{recent.slice(0, visibleCount).map(renderCard)}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {recent.slice(0, visibleCount).map(renderCard)}
+        </div>
 
         {visibleCount < recent.length && (
           <button
@@ -197,7 +205,14 @@ export default function DiaryEntriesPage() {
 
         {years.length > 0 && (
           <div style={{ marginTop: 28 }}>
-            <p style={{ margin: "0 0 10px", fontSize: 13, fontWeight: 700, color: pinkTheme.textMuted }}>
+            <p
+              style={{
+                margin: "0 0 10px",
+                fontSize: 13,
+                fontWeight: 700,
+                color: pinkTheme.textMuted,
+              }}
+            >
               지난 기록 보관함
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -238,7 +253,9 @@ export default function DiaryEntriesPage() {
                       </span>
                     </button>
                     {isExpanded && (
-                      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}>
+                      <div
+                        style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 10 }}
+                      >
                         {yearEntries.map(renderCard)}
                       </div>
                     )}

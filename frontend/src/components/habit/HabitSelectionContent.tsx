@@ -123,7 +123,11 @@ export default function HabitSelectionContent({ onSaved }: Props) {
       </div>
 
       {/* 추천 받은 습관 리스트 — 누르면 HabitRecommendationModal(토글+저장)을 모달로 보여준다. */}
-      <button type="button" onClick={() => setShowRecommendationModal(true)} style={menuButtonStyle}>
+      <button
+        type="button"
+        onClick={() => setShowRecommendationModal(true)}
+        style={menuButtonStyle}
+      >
         🌿 추천 받은 습관 리스트
       </button>
 

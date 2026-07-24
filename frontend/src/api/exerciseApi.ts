@@ -1,5 +1,10 @@
 import { apiFetch } from "./client";
-import type { ExerciseLogCreateRequest, ExerciseRecentResult, ExerciseSearchResult, ExerciseTodayResult } from "./types";
+import type {
+  ExerciseLogCreateRequest,
+  ExerciseRecentResult,
+  ExerciseSearchResult,
+  ExerciseTodayResult,
+} from "./types";
 
 export const exerciseApi = {
   searchExercise: (query: string) =>
@@ -10,6 +15,7 @@ export const exerciseApi = {
       body: JSON.stringify(payload),
     }),
   getToday: () => apiFetch<ExerciseTodayResult>("/exercise/today"),
-  deleteLog: (logId: number) => apiFetch<ExerciseTodayResult>(`/exercise/logs/${logId}`, { method: "DELETE" }),
+  deleteLog: (logId: number) =>
+    apiFetch<ExerciseTodayResult>(`/exercise/logs/${logId}`, { method: "DELETE" }),
   getRecent: () => apiFetch<ExerciseRecentResult>("/exercise/recent"),
 };

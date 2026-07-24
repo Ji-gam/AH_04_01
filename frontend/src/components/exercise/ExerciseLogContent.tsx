@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 
 import { exerciseApi } from "../../api/exerciseApi";
-import type { ExerciseLogCreateRequest, ExerciseRecentResult, ExerciseSearchResultItem, ExerciseTodayResult } from "../../api/types";
+import type {
+  ExerciseLogCreateRequest,
+  ExerciseRecentResult,
+  ExerciseSearchResultItem,
+  ExerciseTodayResult,
+} from "../../api/types";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 
 const DURATION_PRESETS = [10, 20, 30, 60];
@@ -127,7 +132,12 @@ export default function ExerciseLogContent() {
       const speedKmh = parsePositiveNumber(speedText[item.exercise_name] ?? "", MAX_SPEED_KMH);
       if (speedKmh === null) return;
       const duration = durations[item.exercise_name] ?? 30;
-      payload = { exercise_name: item.exercise_name, input_mode: "speed", speed_kmh: speedKmh, duration_minutes: duration };
+      payload = {
+        exercise_name: item.exercise_name,
+        input_mode: "speed",
+        speed_kmh: speedKmh,
+        duration_minutes: duration,
+      };
     } else {
       const duration = durations[item.exercise_name] ?? 30;
       payload = {
@@ -162,7 +172,9 @@ export default function ExerciseLogContent() {
 
   return (
     <div style={cardStyle}>
-      <p style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 700, color: t.primary }}>🏃 오늘의 운동 기록</p>
+      <p style={{ margin: "0 0 14px", fontSize: 15, fontWeight: 700, color: t.primary }}>
+        🏃 오늘의 운동 기록
+      </p>
 
       {loadingInitial && <p style={{ color: t.textMuted, fontSize: 13 }}>불러오는 중...</p>}
 
@@ -171,7 +183,10 @@ export default function ExerciseLogContent() {
           {/* 오늘 총 운동 요약 - 식단과 달리 게이지 없이 숫자만 */}
           <div style={{ marginBottom: 16, fontSize: 13, color: t.text }}>
             <strong>오늘 총 운동 시간 {Math.round(today?.total_duration_minutes ?? 0)}분</strong>
-            <span style={{ color: t.textMuted }}> · 소모 칼로리 {Math.round(today?.total_kcal ?? 0)}kcal</span>
+            <span style={{ color: t.textMuted }}>
+              {" "}
+              · 소모 칼로리 {Math.round(today?.total_kcal ?? 0)}kcal
+            </span>
           </div>
 
           {/* 운동 검색 */}
@@ -220,19 +235,38 @@ export default function ExerciseLogContent() {
               {searchResults.map((item) => {
                 // count 모드(줄넘기): 횟수 입력만 있고 시간/속도 개념이 없다.
                 if (item.input_mode === "count") {
-                  const countValue = parsePositiveNumber(countText[item.exercise_name] ?? "", MAX_COUNT);
+                  const countValue = parsePositiveNumber(
+                    countText[item.exercise_name] ?? "",
+                    MAX_COUNT,
+                  );
                   const invalid = countValue === null;
-                  const impliedMinutes = countValue !== null ? countValue / JUMP_ROPE_REPS_PER_MINUTE : 0;
+                  const impliedMinutes =
+                    countValue !== null ? countValue / JUMP_ROPE_REPS_PER_MINUTE : 0;
                   const kcal = ((item.met_value ?? 0) * PREVIEW_WEIGHT_KG * impliedMinutes) / 60;
                   return (
                     <div
                       key={item.exercise_name}
-                      style={{ border: `1px solid ${t.border}`, borderRadius: 12, padding: 12, background: t.pageBg }}
+                      style={{
+                        border: `1px solid ${t.border}`,
+                        borderRadius: 12,
+                        padding: 12,
+                        background: t.pageBg,
+                      }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                        <strong style={{ fontSize: 14, color: t.text }}>{item.exercise_name}</strong>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          marginBottom: 8,
+                        }}
+                      >
+                        <strong style={{ fontSize: 14, color: t.text }}>
+                          {item.exercise_name}
+                        </strong>
                         <span style={{ fontSize: 12, color: t.textMuted }}>
-                          {countValue !== null ? `${Math.round(countValue)}회 · 예상 소모 ${Math.round(kcal)}kcal` : "횟수를 입력하세요"}
+                          {countValue !== null
+                            ? `${Math.round(countValue)}회 · 예상 소모 ${Math.round(kcal)}kcal`
+                            : "횟수를 입력하세요"}
                         </span>
                       </div>
                       <input
@@ -241,7 +275,12 @@ export default function ExerciseLogContent() {
                         max={MAX_COUNT}
                         step={1}
                         value={countText[item.exercise_name] ?? ""}
-                        onChange={(e) => setCountText((prev) => ({ ...prev, [item.exercise_name]: e.target.value }))}
+                        onChange={(e) =>
+                          setCountText((prev) => ({
+                            ...prev,
+                            [item.exercise_name]: e.target.value,
+                          }))
+                        }
                         placeholder="횟수 입력 (예: 300)"
                         style={inputStyle(countText[item.exercise_name] !== undefined && invalid)}
                       />
@@ -258,7 +297,10 @@ export default function ExerciseLogContent() {
                           color: "#fff",
                           fontSize: 13,
                           fontWeight: 700,
-                          cursor: loggingExerciseName === item.exercise_name || invalid ? "default" : "pointer",
+                          cursor:
+                            loggingExerciseName === item.exercise_name || invalid
+                              ? "default"
+                              : "pointer",
                           opacity: invalid ? 0.5 : 1,
                         }}
                       >
@@ -274,20 +316,34 @@ export default function ExerciseLogContent() {
                 const customValue = parseCustomMinutes(customText[item.exercise_name] ?? "");
                 const customInvalid = isOther && customValue === null;
 
-                const speedValue = isSpeedMode ? parsePositiveNumber(speedText[item.exercise_name] ?? "", MAX_SPEED_KMH) : null;
+                const speedValue = isSpeedMode
+                  ? parsePositiveNumber(speedText[item.exercise_name] ?? "", MAX_SPEED_KMH)
+                  : null;
                 const speedInvalid = isSpeedMode && speedValue === null;
 
-                const met = isSpeedMode ? (speedValue !== null ? computeSpeedMet(item.exercise_name, speedValue) : 0) : item.met_value ?? 0;
+                const met = isSpeedMode
+                  ? speedValue !== null
+                    ? computeSpeedMet(item.exercise_name, speedValue)
+                    : 0
+                  : (item.met_value ?? 0);
                 const kcal = (met * PREVIEW_WEIGHT_KG * duration) / 60;
-                const distanceKm = isSpeedMode && speedValue !== null ? (speedValue * duration) / 60 : null;
+                const distanceKm =
+                  isSpeedMode && speedValue !== null ? (speedValue * duration) / 60 : null;
                 const disabled = customInvalid || speedInvalid;
 
                 return (
                   <div
                     key={item.exercise_name}
-                    style={{ border: `1px solid ${t.border}`, borderRadius: 12, padding: 12, background: t.pageBg }}
+                    style={{
+                      border: `1px solid ${t.border}`,
+                      borderRadius: 12,
+                      padding: 12,
+                      background: t.pageBg,
+                    }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                    <div
+                      style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}
+                    >
                       <strong style={{ fontSize: 14, color: t.text }}>{item.exercise_name}</strong>
                       <span style={{ fontSize: 12, color: t.textMuted }}>
                         {Math.round(duration)}분
@@ -303,9 +359,16 @@ export default function ExerciseLogContent() {
                         max={MAX_SPEED_KMH}
                         step={0.1}
                         value={speedText[item.exercise_name] ?? ""}
-                        onChange={(e) => setSpeedText((prev) => ({ ...prev, [item.exercise_name]: e.target.value }))}
+                        onChange={(e) =>
+                          setSpeedText((prev) => ({
+                            ...prev,
+                            [item.exercise_name]: e.target.value,
+                          }))
+                        }
                         placeholder="속도(km/h) 입력 (예: 6.0)"
-                        style={inputStyle(speedText[item.exercise_name] !== undefined && speedInvalid)}
+                        style={inputStyle(
+                          speedText[item.exercise_name] !== undefined && speedInvalid,
+                        )}
                       />
                     )}
 
@@ -335,7 +398,9 @@ export default function ExerciseLogContent() {
                       ))}
                       <button
                         type="button"
-                        onClick={() => setCustomMode((prev) => ({ ...prev, [item.exercise_name]: true }))}
+                        onClick={() =>
+                          setCustomMode((prev) => ({ ...prev, [item.exercise_name]: true }))
+                        }
                         style={{
                           flex: 1,
                           padding: "6px 0",
@@ -383,7 +448,10 @@ export default function ExerciseLogContent() {
                         color: "#fff",
                         fontSize: 13,
                         fontWeight: 700,
-                        cursor: loggingExerciseName === item.exercise_name || disabled ? "default" : "pointer",
+                        cursor:
+                          loggingExerciseName === item.exercise_name || disabled
+                            ? "default"
+                            : "pointer",
                         opacity: disabled ? 0.5 : 1,
                       }}
                     >
@@ -396,9 +464,13 @@ export default function ExerciseLogContent() {
           )}
 
           {/* 오늘 기록한 목록 */}
-          <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: t.text }}>오늘 기록한 운동</p>
+          <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: t.text }}>
+            오늘 기록한 운동
+          </p>
           {!today || today.logs.length === 0 ? (
-            <p style={{ margin: "0 0 16px", fontSize: 13, color: t.textMuted }}>아직 기록한 운동이 없어요.</p>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: t.textMuted }}>
+              아직 기록한 운동이 없어요.
+            </p>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               {today.logs.map((log) => (
@@ -444,10 +516,21 @@ export default function ExerciseLogContent() {
           )}
 
           {/* 최근 7일 */}
-          <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: t.text }}>최근 7일</p>
+          <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: t.text }}>
+            최근 7일
+          </p>
           <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 70 }}>
             {(recent?.days ?? []).map((day) => (
-              <div key={day.log_date} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+              <div
+                key={day.log_date}
+                style={{
+                  flex: 1,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
                 <div
                   style={{
                     width: "100%",
