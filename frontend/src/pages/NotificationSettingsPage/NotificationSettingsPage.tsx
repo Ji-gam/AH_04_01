@@ -195,7 +195,23 @@ export default function NotificationSettingsPage() {
       return;
     }
     if (settings.popup_enabled) {
-      new Notification("🔔 테스트 알림", { body: "설정하신 알림이 이렇게 도착해요." });
+      // 안드로이드 Chrome 계열은 페이지에서 `new Notification()`을 직접 호출하면 예외를
+      // 던진다 - 반드시 서비스워커의 showNotification()을 거쳐야 한다(실제 푸시 수신 시
+      // service-worker.js가 쓰는 것과 동일한 방식). 서비스워커가 없는 구형 브라우저를 위해
+      // new Notification()은 폴백으로만 남겨둔다.
+      if ("serviceWorker" in navigator) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          await registration.showNotification("🔔 테스트 알림", {
+            body: "설정하신 알림이 이렇게 도착해요.",
+          });
+        } catch {
+          setTestStatus("테스트 알림 표시에 실패했어요.");
+          return;
+        }
+      } else {
+        new Notification("🔔 테스트 알림", { body: "설정하신 알림이 이렇게 도착해요." });
+      }
     }
     if (settings.sound_enabled) {
       playTestBeep();
