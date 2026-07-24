@@ -8,7 +8,11 @@ import { hasConsented, markConsented } from "../../utils/healthInfoConsent";
 /** 개인건강정보로 들어가는 모든 경로(홈 배너 "확인", 더보기 > 개인건강정보 링크 등)가 공통으로
  * 경유하는 개인정보(민감정보=건강정보) 제공동의 화면. 개인정보보호법 제23조 - 민감정보는 다른
  * 동의와 별도로, 동의를 먼저 받고 나서 수집해야 한다. 한 번 동의하면 다음부터는 자동으로 건너뛴다
- * (계정별로 localStorage에 기억). 동의해야만 다음(개인건강정보 입력)으로 넘어갈 수 있다. */
+ * (계정별로 localStorage에 기억). 동의해야만 다음(개인건강정보 입력)으로 넘어갈 수 있다.
+ *
+ * [2026-07-24] AI 챗봇 데이터 활용 동의를 여기 같이 넣었다가, 위치/문구/저장 방식을 더
+ * 논의하기로 하고 롤백함(대화 저장 기능 자체를 아직 안 만든 상태라 서두를 필요 없음) - 다음
+ * 논의 때 챗봇 화면(ChatPage) 진입 시점 등 다른 위치를 검토할 예정. */
 export default function ConsentPage() {
   const navigate = useNavigate();
   const { user } = useAuth();

@@ -10,7 +10,7 @@ import {
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import TimeInputField from "../ui/TimeInputField";
 
-import FamilyOcrProgressBar from "./FamilyOcrProgressBar";
+import OcrProgressBar from "../ui/OcrProgressBar";
 
 const inputStyle: React.CSSProperties = {
   padding: "10px 12px",
@@ -466,7 +466,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
 
           {(jobStatus === "uploading" || jobStatus === "processing") && (
             <div style={{ padding: "12px 4px 4px" }}>
-              <FamilyOcrProgressBar status={jobStatus} />
+              <OcrProgressBar status={jobStatus} />
             </div>
           )}
 

@@ -193,12 +193,15 @@ class ChatService:
                     has_sources = has_sources or bool(sources)
                     yield chunk
                 elif chunk["type"] == "error":
-                    logger.error(f"채팅 스트림 도중 오류(ai_worker 보고), 받은 만큼만 저장: {chunk['content']}")
+                    logger.error(
+                        "채팅 스트림 도중 오류(ai_worker 보고), 받은 만큼만 저장 (%d자, 내용 미기록)",
+                        len(chunk["content"]),
+                    )
                     full_response = self._append_interrupted_notice(full_response)
                     yield {"type": "token", "content": _STREAM_INTERRUPTED_NOTICE}
                     break
         except _AI_WORKER_ERRORS as e:
-            logger.error(f"채팅 스트림 연결 실패, 받은 만큼만 저장: {e}")
+            logger.error("채팅 스트림 연결 실패, 받은 만큼만 저장: %s (내용 미기록)", type(e).__name__)
             full_response = self._append_interrupted_notice(full_response)
             yield {"type": "token", "content": _STREAM_INTERRUPTED_NOTICE}
 

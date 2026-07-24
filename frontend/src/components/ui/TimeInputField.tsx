@@ -260,7 +260,9 @@ export default function TimeInputField({ value, onChange }: Props) {
           <AnalogClockPicker
             hour={tp.hour}
             minute={tp.minute}
+            period={tp.period}
             onChange={(h, m) => update({ hour: h, minute: m })}
+            onPeriodChange={(p) => update({ period: p })}
             onClose={() => setClockOpen(false)}
           />
         </Modal>

@@ -1,8 +1,11 @@
+import QRCode from "qrcode";
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { familyApi, type FamilyLinkItem, type FamilyMembersResult } from "../../api/familyApi";
 import { pinkTheme } from "../../theme/pinkTheme";
+
+import QrScanner from "./components/QrScanner";
 
 const cardStyle: React.CSSProperties = {
   background: pinkTheme.cardBg,
@@ -73,7 +76,7 @@ export default function FamilyPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [linkMethod, setLinkMethod] = useState<"email" | "code">("email");
+  const [linkMethod, setLinkMethod] = useState<"email" | "code" | "qr">("email");
 
   const [email, setEmail] = useState("");
   const [relationLabel, setRelationLabel] = useState("");
@@ -88,6 +91,13 @@ export default function FamilyPage() {
   const [redeemCode, setRedeemCode] = useState("");
   const [redeemError, setRedeemError] = useState<string | null>(null);
   const [isRedeeming, setIsRedeeming] = useState(false);
+
+  // [QR 탭 전용] 발급된 코드를 QR 이미지(data URL)로 렌더링, 그리고 카메라로 QR 스캔.
+  // 코드 발급/입력 자체(issuedCode/redeemCode/handleIssueCode/handleRedeemCode)는 "초대코드"
+  // 탭과 완전히 같은 로직을 그대로 재사용한다 - QR은 그 코드를 "타이핑 대신 카메라로
+  // 주고받는" 또 다른 경로일 뿐이라, 중복 구현하지 않는다.
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -104,6 +114,37 @@ export default function FamilyPage() {
   useEffect(() => {
     load();
   }, []);
+
+  // 코드가 발급되면(초대코드 탭이든 QR 탭이든 상관없이) QR 이미지도 같이 만들어둔다 -
+  // 어느 탭에서 발급했든 QR 탭으로 넘어가면 바로 볼 수 있게.
+  useEffect(() => {
+    if (!issuedCode) {
+      setQrDataUrl(null);
+      return;
+    }
+    QRCode.toDataURL(issuedCode.code, { width: 200, margin: 1 })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(null)); // QR 생성 실패해도 숫자 코드 자체는 이미 화면에 보이니 문제없음
+  }, [issuedCode]);
+
+  // 카메라로 QR을 읽으면, 그 코드를 "받은 초대코드 입력하기"와 완전히 같은 방식으로
+  // 바로 연결 시도한다 - 사용자가 굳이 6자리를 다시 타이핑할 필요 없이 스캔만으로 끝낸다.
+  async function handleQrScanned(text: string) {
+    setShowScanner(false);
+    const code = text.trim().toUpperCase();
+    setRedeemCode(code);
+    setRedeemError(null);
+    setIsRedeeming(true);
+    try {
+      await familyApi.redeemInviteCode(code);
+      setRedeemCode("");
+      await load();
+    } catch (err) {
+      setRedeemError(err instanceof Error ? err.message : "초대코드 연결에 실패했습니다.");
+    } finally {
+      setIsRedeeming(false);
+    }
+  }
 
   async function handleRequestLink(e: FormEvent) {
     e.preventDefault();
@@ -262,6 +303,23 @@ export default function FamilyPage() {
           >
             초대코드
           </button>
+          <button
+            type="button"
+            onClick={() => setLinkMethod("qr")}
+            style={{
+              flex: 1,
+              padding: "10px",
+              border: `1px solid ${linkMethod === "qr" ? pinkTheme.primary : pinkTheme.border}`,
+              borderRadius: 10,
+              background: linkMethod === "qr" ? pinkTheme.primary : pinkTheme.cardBg,
+              color: linkMethod === "qr" ? "#fff" : pinkTheme.textMuted,
+              fontWeight: 600,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            QR
+          </button>
         </div>
 
         {linkMethod === "email" ? (
@@ -300,7 +358,7 @@ export default function FamilyPage() {
               {isLinking ? "요청 보내는 중..." : "연결 요청 보내기"}
             </button>
           </form>
-        ) : (
+        ) : linkMethod === "code" ? (
           <>
             <form
               onSubmit={handleIssueCode}
@@ -397,6 +455,102 @@ export default function FamilyPage() {
                 {isRedeeming ? "연결하는 중..." : "코드 입력해서 바로 연결하기"}
               </button>
             </form>
+          </>
+        ) : (
+          <>
+            <div style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10 }}>
+              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text, fontSize: 14 }}>
+                QR코드로 초대하기
+              </p>
+              <p style={{ margin: 0, fontSize: 12, color: pinkTheme.textMuted }}>
+                초대코드를 발급하면 QR코드도 같이 생겨요. 상대방이 이 화면(QR 탭)에서 "QR
+                스캔하기"로 찍으면, 6자리를 안 옮겨 적어도 바로 연결돼요.
+              </p>
+              {!issuedCode ? (
+                <form
+                  onSubmit={handleIssueCode}
+                  style={{ display: "flex", flexDirection: "column", gap: 10 }}
+                >
+                  <input
+                    type="text"
+                    name="qr-issue-relation-label"
+                    autoComplete="off"
+                    placeholder="관계 (예: 어머니, 아버지, 할머니)"
+                    value={issueRelationLabel}
+                    onChange={(e) => setIssueRelationLabel(e.target.value)}
+                    style={inputStyle}
+                    maxLength={20}
+                    required
+                  />
+                  {issueError && (
+                    <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{issueError}</p>
+                  )}
+                  <button type="submit" disabled={isIssuing} style={primaryButtonStyle}>
+                    {isIssuing ? "발급 중..." : "QR 초대코드 발급하기"}
+                  </button>
+                </form>
+              ) : (
+                <div
+                  style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}
+                >
+                  {qrDataUrl && (
+                    <img
+                      src={qrDataUrl}
+                      alt={`초대코드 ${issuedCode.code} QR코드`}
+                      style={{
+                        width: 200,
+                        height: 200,
+                        border: `1px solid ${pinkTheme.border}`,
+                        borderRadius: 12,
+                        padding: 8,
+                        background: "#fff",
+                      }}
+                    />
+                  )}
+                  <span
+                    style={{
+                      fontSize: 18,
+                      fontWeight: 700,
+                      letterSpacing: 3,
+                      color: pinkTheme.primary,
+                    }}
+                  >
+                    {issuedCode.code}
+                  </span>
+                  <p style={{ margin: 0, fontSize: 12, color: pinkTheme.textMuted }}>
+                    30분 안에 사용, 1회용이에요.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10 }}>
+              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text, fontSize: 14 }}>
+                QR코드로 연결하기
+              </p>
+              {!showScanner ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRedeemError(null);
+                    setShowScanner(true);
+                  }}
+                  style={primaryButtonStyle}
+                >
+                  📷 QR 스캔하기
+                </button>
+              ) : (
+                <QrScanner onScan={handleQrScanned} onClose={() => setShowScanner(false)} />
+              )}
+              {isRedeeming && (
+                <p style={{ margin: 0, fontSize: 13, color: pinkTheme.textMuted }}>
+                  연결하는 중...
+                </p>
+              )}
+              {redeemError && (
+                <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{redeemError}</p>
+              )}
+            </div>
           </>
         )}
 
