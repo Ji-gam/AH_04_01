@@ -65,6 +65,7 @@ async def test_resolve_llm_suggested_names_filters_out_noise_before_registering(
     """(#OCR-LLM) `_resolve_llm_suggested_names`가 노이즈 이름을 마스터 DB/AUTO_ 더미 생성
     단계까지 보내지 않고 그 전에 걸러야 한다."""
     dur_repo = _FakeDurDrugRepository([])
+    ocr_raw_text_korean = medication_service._korean_only("*리피로우정20mg")
 
     async with TestSessionLocal() as session:
         resolved, auto_created_ids = await medication_service._resolve_llm_suggested_names(
@@ -73,8 +74,42 @@ async def test_resolve_llm_suggested_names_filters_out_noise_before_registering(
             ["전액본인부담금이란", "201501025", "리피로우정20mg"],
             set(),
             set(),
+            ocr_raw_text_korean,
         )
 
     resolved_names = {drug.item_name for drug in resolved}
     assert resolved_names == {"리피로우정20mg"}
     assert len(auto_created_ids) == 1
+
+
+async def test_resolve_llm_suggested_names_rejects_name_with_no_basis_in_ocr_text():
+    """(#283) 처방전과 무관한 사진(알콜스왑/사탕 등)을 OCR에 태우면 포장지 글자 몇 개만
+    인식되는데, LLM이 그 글자들과 무관한 실제 약품명을 지어내 반환하는 경우가 있었다 -
+    이름의 형태가 그럴듯해도 OCR 원문에 아무 근거가 없으면 걸러야 한다."""
+    dur_repo = _FakeDurDrugRepository([])
+    ocr_raw_text_korean = medication_service._korean_only("에탄올 알콜스왑 개별포장 100매입")
+
+    async with TestSessionLocal() as session:
+        resolved, auto_created_ids = await medication_service._resolve_llm_suggested_names(
+            session,
+            dur_repo,
+            ["크라시에소청룡탕엑스세립", "프리베이트크림"],
+            set(),
+            set(),
+            ocr_raw_text_korean,
+        )
+
+    assert resolved == []
+    assert auto_created_ids == set()
+
+
+def test_is_llm_name_grounded_in_ocr_text_accepts_ocr_typo_correction():
+    ocr_raw_text_korean = medication_service._korean_only("*노스판매취10ug/h [한국먼디파마]")
+    assert medication_service._is_llm_name_grounded_in_ocr_text("노스판패취10ug/h", ocr_raw_text_korean) is True
+
+
+def test_is_llm_name_grounded_in_ocr_text_rejects_unrelated_hallucination():
+    ocr_raw_text_korean = medication_service._korean_only("에탄올 알콜스왑 개별포장 100매입")
+    assert (
+        medication_service._is_llm_name_grounded_in_ocr_text("크라시에소청룡탕엑스세립", ocr_raw_text_korean) is False
+    )
