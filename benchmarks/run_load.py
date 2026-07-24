@@ -19,7 +19,6 @@ httpx.AsyncClient(이미 프로젝트 의존성에 존재 — 신규 패키지 �
 import argparse
 import asyncio
 import csv
-import statistics
 import sys
 import time
 
@@ -93,8 +92,7 @@ def print_markdown_table(title: str, rows: list[dict]):
     print("| --- | --- | --- | --- | --- | --- |")
     for r in rows:
         print(
-            f"| {r['concurrency']} | {r['n']} | {r['p50_ms']} | {r['p95_ms']} | "
-            f"{r['p99_ms']} | {r['throughput_rps']} |"
+            f"| {r['concurrency']} | {r['n']} | {r['p50_ms']} | {r['p95_ms']} | {r['p99_ms']} | {r['throughput_rps']} |"
         )
 
 
