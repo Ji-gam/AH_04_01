@@ -193,7 +193,7 @@ export default function DietLogContent() {
 
           {searchResults.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-              {searchResults.map((item) => {
+              {searchResults.map((item, index) => {
                 const multiplier = multipliers[item.food_name] ?? 1;
                 const servingGrams = item.serving_size_g * multiplier;
                 const kcal = (item.calorie_kcal_per_100g * servingGrams) / 100;
@@ -202,7 +202,7 @@ export default function DietLogContent() {
                 const customInvalid = isOther && customValue === null;
                 return (
                   <div
-                    key={item.food_name}
+                    key={`${item.food_name}-${index}`}
                     style={{ border: `1px solid ${t.border}`, borderRadius: 12, padding: 12, background: t.pageBg }}
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>

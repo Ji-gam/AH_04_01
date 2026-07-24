@@ -17,6 +17,7 @@ from app.repositories.push_send_log_repository import PushSendLogRepository
 from app.services.notification_settings_service import NotificationSettingsService
 from app.services.periodic_report_service import PeriodicReportService
 from app.services.push_service import PushService
+from app.services.weekly_report_service import WeeklyReportService
 
 # F-ADH-2(주간 피드백)/F-GOAL-3(월간 리포트)를 매분 틱마다 계산하지 않도록, 하루 중 이
 # 시각의 틱에서만 요일/월말 여부를 확인한다(다른 복약 알림처럼 "정확히 이 분"에만 발송해야
@@ -216,6 +217,43 @@ async def _send_weekly_adherence_feedback_if_due(
             logger.exception("주간 순응도 피드백 발송 중 오류 (profile_id=%s)", profile_id)
 
 
+async def _send_weekly_ai_report_if_due(
+    session: AsyncSession,
+    settings: _SettingsCache,
+    send_log_repo: PushSendLogRepository,
+    weekly_report_service: WeeklyReportService,
+    push_service: PushService,
+    now: datetime,
+    current_hhmm: str,
+) -> None:
+    """주간 AI 리포트 - 매주 일요일(고정, 사용자 설정 없음) 09시에 습관/식단/운동/복약
+    데이터를 AI로 요약해 저장하고, 내용은 화면에서 보게 하고 푸시는 "도착 알림"만 짧게
+    보낸다(F-ADH-2/F-GOAL-3처럼 본문에 통계를 다 담지 않음 - 사용자 요청)."""
+    if current_hhmm != _REPORT_SEND_HHMM:
+        return
+    today = now.date()
+    if today.weekday() != 6:  # 일요일 고정
+        return
+    week_start = today - timedelta(days=6)
+    profile_ids = await weekly_report_service.list_candidate_profile_ids(session, week_start, today)
+    for profile_id in profile_ids:
+        setting = await settings.get(profile_id)
+        if not _should_send(setting):
+            continue
+        if not await send_log_repo.try_claim("weekly_ai_report", profile_id, today, current_hhmm):
+            continue
+        try:
+            await weekly_report_service.generate_and_save(session, profile_id)
+            await push_service.send_to_profile(
+                session,
+                profile_id,
+                title="📊 이번 주 리포트가 도착했어요",
+                body="더보기 > 주간 리포트에서 확인해보세요.",
+            )
+        except Exception:
+            logger.exception("주간 AI 리포트 생성 중 오류 (profile_id=%s)", profile_id)
+
+
 async def _send_monthly_goal_report_if_due(
     session: AsyncSession,
     settings: _SettingsCache,
@@ -262,6 +300,7 @@ async def _check_and_send_due_notifications() -> None:
         settings = _SettingsCache(session)
         send_log_repo = PushSendLogRepository()
         report_service = PeriodicReportService()
+        weekly_report_service = WeeklyReportService()
 
         due_items = await _collect_due_notification_schedules(session, js_weekday, current_hhmm)
         due_items += await _collect_due_medication_schedules(session, current_hhmm)
@@ -271,6 +310,9 @@ async def _check_and_send_due_notifications() -> None:
             session, settings, send_log_repo, report_service, now, current_hhmm
         )
         await _send_monthly_goal_report_if_due(session, settings, send_log_repo, report_service, now, current_hhmm)
+        await _send_weekly_ai_report_if_due(
+            session, settings, send_log_repo, weekly_report_service, push_service, now, current_hhmm
+        )
 
 
 def start_push_scheduler() -> AsyncIOScheduler:

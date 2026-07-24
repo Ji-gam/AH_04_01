@@ -3,6 +3,7 @@ from app.models.content import ContentCategory, HealthContent
 from app.models.diet_logs import DietLog
 from app.models.disease_entries import DiagnosisEntry, DiseaseSubtype, FamilyHistoryEntry
 from app.models.dur import ALL_DUR_MODELS
+from app.models.exercise_logs import ExerciseLog
 from app.models.family_invite_code import FamilyInviteCode
 from app.models.family_link import FamilyLink
 from app.models.food_drug_interaction import (
@@ -20,6 +21,7 @@ from app.models.medication_model import MedicationRecognitionJob, MedicationSche
 from app.models.notification_schedules import NotificationSchedule
 from app.models.profiles import Profile
 from app.models.users import User
+from app.models.weekly_reports import WeeklyReport
 
 __all__ = [
     "ALL_DUR_MODELS",
@@ -30,6 +32,7 @@ __all__ = [
     "DietLog",
     "DiagnosisEntry",
     "DiseaseSubtype",
+    "ExerciseLog",
     "FamilyHistoryEntry",
     "FamilyInviteCode",
     "FamilyLink",
@@ -47,4 +50,5 @@ __all__ = [
     "User",
     "MedicationSchedule",
     "MedicationRecognitionJob",
+    "WeeklyReport",
 ]

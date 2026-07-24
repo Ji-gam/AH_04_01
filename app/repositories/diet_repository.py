@@ -90,3 +90,13 @@ class DietRepository:
             .order_by(DietLog.log_date)
         )
         return [(row[0], row[1]) for row in result.all()]
+
+    async def list_profile_ids_with_logs_in_range(
+        self, session: AsyncSession, start_date: date, end_date: date
+    ) -> list[int]:
+        """주간 AI 리포트 대상자 선정용 - `habit_repository.py`의
+        `list_profile_ids_with_selections_in_range`와 같은 패턴."""
+        result = await session.execute(
+            select(DietLog.profile_id).where(DietLog.log_date >= start_date, DietLog.log_date <= end_date).distinct()
+        )
+        return list(result.scalars().all())
