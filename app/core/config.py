@@ -74,7 +74,6 @@ class Config(BaseSettings):
     # 내용은 app/core/db/encrypted_types.py의 EncryptedText 참고.
     FIELD_ENCRYPTION_KEY: str | None = None
 
-
     # T-LLM-2-async-gateway: ai-worker 서비스 기본 URL (docker-compose 네트워크 내부 호스트명).
     # AIWorkerGateway가 여기에 /retrieve, /generate-structured 경로를 붙여 호출한다.
     AI_WORKER_BASE_URL: str = "http://ai-worker:8001"
