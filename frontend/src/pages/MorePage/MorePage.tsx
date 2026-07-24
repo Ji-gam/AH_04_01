@@ -290,15 +290,15 @@ export default function MorePage() {
 
         {/* 리스트 항목 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <Link to="/notification-settings" style={menuCardStyle}>
-            <span>🔔 알림 설정</span>
+          <Link to="/weekly-reports" style={menuCardStyle}>
+            <span>📊 주간 리포트</span>
             <span aria-hidden style={{ color: pinkTheme.textMuted }}>
               ›
             </span>
           </Link>
 
-          <Link to="/weekly-reports" style={menuCardStyle}>
-            <span>📊 주간 리포트</span>
+          <Link to="/notification-settings" style={menuCardStyle}>
+            <span>🔔 알림 설정</span>
             <span aria-hidden style={{ color: pinkTheme.textMuted }}>
               ›
             </span>

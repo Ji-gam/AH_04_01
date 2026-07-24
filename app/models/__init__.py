@@ -1,5 +1,6 @@
 from app.models.chat import ChatMessage, ChatSession
 from app.models.content import ContentCategory, HealthContent
+from app.models.diary_entries import DiaryEntry
 from app.models.diet_logs import DietLog
 from app.models.disease_entries import DiagnosisEntry, DiseaseSubtype, FamilyHistoryEntry
 from app.models.dur import ALL_DUR_MODELS
@@ -29,6 +30,7 @@ __all__ = [
     "ChatSession",
     "ContentCategory",
     "HealthContent",
+    "DiaryEntry",
     "DietLog",
     "DiagnosisEntry",
     "DiseaseSubtype",

@@ -338,24 +338,42 @@ export default function HomePage() {
         )}
 
         {user && (
-          <button
-            type="button"
-            onClick={() => setShowMyInfo(true)}
-            style={{
-              border: `1px solid ${pinkTheme.border}`,
-              background: pinkTheme.cardBg,
-              color: pinkTheme.primary,
-              borderRadius: 999,
-              padding: "7px 16px",
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: "pointer",
-              marginBottom: 20,
-              boxShadow: "0 2px 6px rgba(255, 111, 145, 0.1)",
-            }}
-          >
-            🙋 내 정보
-          </button>
+          <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
+            <button
+              type="button"
+              onClick={() => setShowMyInfo(true)}
+              style={{
+                border: `1px solid ${pinkTheme.border}`,
+                background: pinkTheme.cardBg,
+                color: pinkTheme.primary,
+                borderRadius: 999,
+                padding: "7px 16px",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 2px 6px rgba(255, 111, 145, 0.1)",
+              }}
+            >
+              🙋 내 정보
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowHabitSelectionModal(true)}
+              style={{
+                border: `1px solid ${pinkTheme.border}`,
+                background: pinkTheme.cardBg,
+                color: pinkTheme.primary,
+                borderRadius: 999,
+                padding: "7px 16px",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 2px 6px rgba(255, 111, 145, 0.1)",
+              }}
+            >
+              📖 마이다이어리
+            </button>
+          </div>
         )}
 
         {user && !loading && totalCount > 0 && (

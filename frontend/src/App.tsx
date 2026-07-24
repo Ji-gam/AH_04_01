@@ -17,6 +17,7 @@ import ConsentPage from "./pages/ConsentPage/ConsentPage";
 import ContentDetailPage from "./pages/ContentGenerationPage/ContentDetailPage";
 import ContentGenerationPage from "./pages/ContentGenerationPage/ContentGenerationPage";
 import DataConsentPage from "./pages/DataConsentPage/DataConsentPage";
+import DiaryEntriesPage from "./pages/DiaryEntriesPage/DiaryEntriesPage";
 import DurScreeningPage from "./pages/dur/DurScreeningPage";
 import EmergencyGuidePage from "./pages/EmergencyGuidePage/EmergencyGuidePage";
 import FamilyPage from "./pages/FamilyPage/FamilyPage";
@@ -76,6 +77,7 @@ export const router = createBrowserRouter([
           { path: "/family", element: <FamilyPage /> },
           { path: "/habit-selection", element: <HabitSelectionPage /> },
           { path: "/weekly-reports", element: <WeeklyReportsPage /> },
+          { path: "/diary", element: <DiaryEntriesPage /> },
         ],
       },
     ],

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { habitApi } from "../../api/habitApi";
 import type { HabitRecommendationItemResult, HabitsTodayResult } from "../../api/types";
+import DiaryEntryContent from "../../components/diary/DiaryEntryContent";
 import DietLogContent from "../../components/diet/DietLogContent";
 import ExerciseLogContent from "../../components/exercise/ExerciseLogContent";
 import { useAuth } from "../../hooks/useAuth";
@@ -49,6 +50,7 @@ export default function HabitSelectionContent({ onSaved }: Props) {
   const [showRecommendationModal, setShowRecommendationModal] = useState(false);
   const [showDietModal, setShowDietModal] = useState(false);
   const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [showDiaryModal, setShowDiaryModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -131,12 +133,17 @@ export default function HabitSelectionContent({ onSaved }: Props) {
       </button>
 
       {/* 오늘의 운동 기록 — 누르면 ExerciseLogContent를 모달로 보여준다. */}
+      <button type="button" onClick={() => setShowExerciseModal(true)} style={menuButtonStyle}>
+        🏃 오늘의 운동 기록
+      </button>
+
+      {/* 오늘의 한 줄 — 누르면 DiaryEntryContent(일기)를 모달로 보여준다. */}
       <button
         type="button"
-        onClick={() => setShowExerciseModal(true)}
+        onClick={() => setShowDiaryModal(true)}
         style={{ ...menuButtonStyle, marginBottom: 20 }}
       >
-        🏃 오늘의 운동 기록
+        📝 오늘의 한 줄
       </button>
 
       {showRecommendationModal && (
@@ -162,6 +169,12 @@ export default function HabitSelectionContent({ onSaved }: Props) {
       {showExerciseModal && (
         <Modal onClose={() => setShowExerciseModal(false)}>
           <ExerciseLogContent />
+        </Modal>
+      )}
+
+      {showDiaryModal && (
+        <Modal onClose={() => setShowDiaryModal(false)}>
+          <DiaryEntryContent />
         </Modal>
       )}
     </>

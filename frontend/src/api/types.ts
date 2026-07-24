@@ -377,6 +377,29 @@ export interface WeeklyReportListResult {
   reports: WeeklyReportItemResult[];
 }
 
+// 백엔드 app/dtos/diary_dto.py와 1:1로 수동 동기화. 마이다이어리 > 오늘의 한 줄.
+export interface DiaryEntrySaveRequest {
+  content: string;
+  image_base64?: string;
+}
+
+export interface DiaryEntryItemResult {
+  id: number;
+  entry_date: string;
+  content: string;
+  image_base64: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiaryEntryListResult {
+  entries: DiaryEntryItemResult[];
+}
+
+export interface DiaryTodayResult {
+  entry: DiaryEntryItemResult | null;
+}
+
 // 백엔드 app/dtos/dur_dto.py와 1:1로 수동 동기화 (T-MED-14). 처방/약품명 배열을 넣으면 DUR(의약품
 // 안전사용) 정보를 3단계로 내려주는 스크리닝 API. drug_names만 보내면 되고 로그인 불필요.
 
