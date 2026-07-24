@@ -14,4 +14,6 @@ export const diaryApi = {
       body: JSON.stringify(payload),
     }),
   list: () => apiFetch<DiaryEntryListResult>("/diary"),
+  deleteEntry: (entryId: number) =>
+    apiFetch<DiaryEntryListResult>(`/diary/${entryId}`, { method: "DELETE" }),
 };

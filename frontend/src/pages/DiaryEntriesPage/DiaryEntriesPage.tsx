@@ -30,6 +30,7 @@ export default function DiaryEntriesPage() {
   const [openId, setOpenId] = useState<number | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set());
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   useEffect(() => {
     diaryApi
@@ -60,6 +61,19 @@ export default function DiaryEntriesPage() {
     const sortedYears = Array.from(byYear.keys()).sort((a, b) => b - a);
     return { recent: recentList, archivedByYear: byYear, years: sortedYears };
   }, [entries]);
+
+  function handleDelete(entry: DiaryEntryItemResult) {
+    if (!window.confirm(`${formatDate(entry.entry_date)} 기록을 삭제할까요?`)) return;
+    setDeletingId(entry.id);
+    diaryApi
+      .deleteEntry(entry.id)
+      .then((result) => {
+        setEntries(result.entries);
+        setOpenId((prev) => (prev === entry.id ? null : prev));
+      })
+      .catch(() => setError("기록을 삭제하지 못했습니다."))
+      .finally(() => setDeletingId(null));
+  }
 
   function toggleYear(year: number) {
     setExpandedYears((prev) => {
@@ -122,7 +136,7 @@ export default function DiaryEntriesPage() {
           <div style={{ padding: "0 16px 16px" }}>
             <p
               style={{
-                margin: entry.image_base64 ? "0 0 10px" : 0,
+                margin: "0 0 10px",
                 fontSize: 13.5,
                 color: pinkTheme.text,
                 lineHeight: 1.7,
@@ -135,9 +149,27 @@ export default function DiaryEntriesPage() {
               <img
                 src={entry.image_base64}
                 alt={`${entry.entry_date} 기록에 첨부된 사진`}
-                style={{ width: "100%", borderRadius: 12, display: "block" }}
+                style={{ width: "100%", borderRadius: 12, display: "block", marginBottom: 10 }}
               />
             )}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                aria-label={`${formatDate(entry.entry_date)} 기록 삭제`}
+                onClick={() => handleDelete(entry)}
+                disabled={deletingId === entry.id}
+                style={{
+                  border: "none",
+                  background: "none",
+                  color: pinkTheme.textMuted,
+                  cursor: deletingId === entry.id ? "not-allowed" : "pointer",
+                  fontSize: 13,
+                  padding: "4px 0",
+                }}
+              >
+                {deletingId === entry.id ? "삭제 중..." : "🗑️ 삭제"}
+              </button>
+            </div>
           </div>
         )}
       </div>
