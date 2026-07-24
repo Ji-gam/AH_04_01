@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
   title: ReMedi API — Phase 1 (Core)
-  version: "0.3.0"
+  version: "0.4.0"
   description: >
-    Phase 1(코어) 범위의 API 명세. Auth / 문서인식(공통모듈) / 복약 / Chat(RAG) / Push구독을 포함한다.
+    Phase 1(코어) 범위의 API 명세. Auth / 문서인식(공통모듈) / 복약 / Chat(RAG) / Push구독 / DUR 스크리닝을 포함한다.
     인증은 JWT(Access/Refresh Token, `Authorization: Bearer` 헤더)로 처리하며(2026-07, httpOnly 쿠키에서 변경),
     인증이 필요한 엔드포인트는 security: bearerAuth로 표기한다.
   x-changelog:
@@ -16,6 +16,9 @@ info:
     - version: "0.3.0"
       date: "2026-07-07"
       changes: "복약 알림 일정(T-NTFY) CRUD 추가 — /notifications/schedules, NotificationSchedule* 스키마"
+    - version: "0.4.0"
+      date: "2026-07-14"
+      changes: "DUR 3단계 스크리닝(T-MED-14) 추가 — /dur/screening/basic|interaction|ingredient, Dur* 스키마. 로그인 불필요(profile_id 미사용)."
 
 servers:
   - url: https://api.remedi.app/v1
@@ -126,6 +129,22 @@ components:
         content: { type: string }
         severity: { type: string, enum: [info, caution, warning] }
         disclaimer: { type: string, description: "T-LLM-1: 항상 동반되는 면책 문구" }
+        food_items:
+          type: array
+          nullable: true
+          description: >
+            T-DOC-4: 규칙 기반(V1) 추출로 음식/음료 명사가 식별되면 채워진다. 프론트는 이유
+            줄글(content) 대신 음식명 칩을 먼저 보여주고, 칩 클릭 시 해당 FoodItem.detail만
+            펼친다. null이면(사전에 없는 음식이거나 자유 텍스트) 프론트는 content 전체를
+            그대로 보여준다.
+          items: { $ref: '#/components/schemas/FoodItem' }
+
+    FoodItem:
+      type: object
+      description: "T-DOC-4: 음식명 칩 하나에 대응하는 단위."
+      properties:
+        name: { type: string, example: "자몽주스" }
+        detail: { type: string, example: "자몽주스는 약효를 지나치게 증가시킬 수 있으므로 피하세요." }
 
     RecognitionConfirmResult:
       type: object
@@ -171,15 +190,33 @@ components:
         실제 응답은 text/plain 청크 스트림으로 전송됨 (OpenAPI로 스트림 자체는 표현 불가).
         이 스키마는 각 청크의 논리적 구조를 문서화하기 위함.
       properties:
-        type: { type: string, enum: [token, emergency_fallback, done] }
+        type: { type: string, enum: [sources, token, emergency_fallback, done] }
         content: { type: string }
         disclaimer: { type: string, description: "T-LLM-1: 응답에 항상 동반되는 면책 문구" }
+        sources:
+          type: array
+          description: "T-LLM-7-3-2: 통합 RAG(DUR+논문) 답변에 쓰인 출처 목록. token보다 먼저 도착."
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              url: { type: string, nullable: true }
 
     ChatHistoryItem:
       type: object
       properties:
         role: { type: string, enum: [user, assistant] }
         content: { type: string }
+        sources:
+          type: array
+          nullable: true
+          description: "T-LLM-7-3-2: 답변 생성에 쓰인 DUR/논문 출처 목록. user 메시지는 항상 null"
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              url: { type: string, nullable: true }
+        disclaimer: { type: string, nullable: true, description: "의료 관련 답변에만 붙는 면책 문구. 없으면 null" }
         created_at: { type: string, format: date-time }
 
     # ---------- Push 구독 ----------
@@ -227,6 +264,168 @@ components:
         target_day_of_week: { type: string, enum: [일, 월, 화, 수, 목, 금, 토], nullable: true }
         alarm_time: { type: string, format: time }
         is_active: { type: boolean }
+
+    # ---------- DUR 스크리닝 (T-MED-14) ----------
+    DurScreeningRequest:
+      type: object
+      properties:
+        drug_names:
+          type: array
+          items: { type: string }
+          description: "스크리닝할 약품명 목록. 3개 엔드포인트 모두 이 요청 바디를 공용으로 쓴다."
+
+    DurDrugRef:
+      type: object
+      description: "다른 약을 이름 문자열이 아니라 item_seq로 참조 — 프론트가 이름 재매칭 없이 상세로 바로 링크 가능."
+      properties:
+        item_seq: { type: string }
+        item_name: { type: string }
+
+    DurSimpleFlag:
+      type: object
+      description: >
+        항상 6개 고정 순서(PWNM/ODSN/SPCIFY_AGRDE/MDCTN/SEOBANG/CPCTY)로 내려온다 - "없으면 표시
+        안 함" 판단 없이 그대로 pill 6개에 매핑하면 된다. 같은 rule_code에 조합 파트너별 중복 행이
+        여러 개 있으면 첫 번째 것만 대표로 노출한다(전체 변형은 3차 성분 상세에서 확인 가능).
+      properties:
+        rule_code: { type: string, enum: [PWNM, ODSN, SPCIFY_AGRDE, MDCTN, SEOBANG, CPCTY] }
+        rule_label: { type: string, example: "임부금기" }
+        present: { type: boolean, description: "이 약품에 해당 규칙이 실제로 걸리는지 여부" }
+        prohbt_content: { type: string, nullable: true, description: "금기/주의 내용 (present=false면 항상 null)" }
+        remark: { type: string, nullable: true }
+
+    DurDrugIdentification:
+      type: object
+      properties:
+        shape: { type: string, nullable: true, example: "장방형" }
+        color: { type: string, nullable: true, example: "하양" }
+        mark: { type: string, nullable: true, example: "r0080" }
+
+    DurDrugDetail:
+      type: object
+      properties:
+        item_seq: { type: string }
+        item_name: { type: string }
+        entp_name: { type: string, nullable: true }
+        etc_otc_name: { type: string, nullable: true, description: "전문의약품/일반의약품 구분" }
+        form_name: { type: string, nullable: true, description: "제형 (정제 등)" }
+        efcy_qesitm: { type: string, nullable: true, description: "효능/효과" }
+        use_method_qesitm: { type: string, nullable: true, description: "용법/용량" }
+        atpn_warn_qesitm: { type: string, nullable: true, description: "사용상 주의사항(경고)" }
+        se_qesitm: { type: string, nullable: true, description: "부작용" }
+        deposit_method_qesitm: { type: string, nullable: true, description: "보관방법" }
+        item_image: { type: string, nullable: true }
+        identification: { allOf: [{ $ref: '#/components/schemas/DurDrugIdentification' }], nullable: true }
+        atc_code: { type: string, nullable: true, description: "WHO ATC 분류코드 (T-MED-14-1)", example: "M01AE01" }
+        is_rare_drug: { type: boolean, nullable: true, description: "희귀의약품 여부 (T-MED-14-1)" }
+        narcotic_kind_name:
+          {
+            type: string,
+            nullable: true,
+            description: "마약류 구분(마약/향정/한외마약 등, 해당 없으면 null) (T-MED-14-1)",
+          }
+
+    DurBasicScreeningResult:
+      type: object
+      properties:
+        drug_detail: { $ref: '#/components/schemas/DurDrugDetail' }
+        dur_simple:
+          type: array
+          items: { $ref: '#/components/schemas/DurSimpleFlag' }
+
+    DurBasicScreeningResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items: { $ref: '#/components/schemas/DurBasicScreeningResult' }
+        unmatched_drug_names:
+          type: array
+          items: { type: string }
+          description: "매칭되지 않은 약품명 목록. 매칭 실패는 에러가 아니라 200으로 내려간다."
+
+    DurInteractionWarning:
+      type: object
+      properties:
+        rule_type: { type: string, enum: [병용금기, 효능군중복주의] }
+        drug_a: { $ref: '#/components/schemas/DurDrugRef' }
+        drug_b: { $ref: '#/components/schemas/DurDrugRef' }
+        prohbt_content: { type: string, nullable: true }
+        remark: { type: string, nullable: true, example: "24시간 이내 병용금기" }
+
+    DurRecallInfo:
+      type: object
+      properties:
+        item_seq: { type: string }
+        item_name: { type: string }
+        entp_name: { type: string, nullable: true, description: "제조사" }
+        recall_reason: { type: string, nullable: true }
+        recall_command_date: { type: string, nullable: true }
+        enforced: { type: boolean, nullable: true, description: "true=강제 회수, false=자율 회수" }
+
+    DurIntrc:
+      type: object
+      properties:
+        interactions:
+          type: array
+          items: { $ref: '#/components/schemas/DurInteractionWarning' }
+        recalls:
+          type: array
+          items: { $ref: '#/components/schemas/DurRecallInfo' }
+
+    DurInteractionScreeningResponse:
+      type: object
+      properties:
+        drug_intrc: { $ref: '#/components/schemas/DurIntrc' }
+        unmatched_drug_names:
+          type: array
+          items: { type: string }
+
+    DurIngredientRuleDetail:
+      type: object
+      properties:
+        rule_type: { type: string }
+        prohbt_content: { type: string, nullable: true }
+        remark: { type: string, nullable: true }
+
+    DurIngredientSourceDrug:
+      type: object
+      description: >
+        이 성분을 가진 입력 약품 - item_seq로 상세화면에 바로 링크 가능하고, 실제 이 약에서의
+        함량(qnt/unit)을 함께 내려줘 같은 성분이라도 약마다 다른 용량을 구분할 수 있다
+        (T-MED-14-1). qnt/unit은 drug_prdt_mcpn_detail 기반일 때만 채워지고, MATERIAL_NAME
+        텍스트 폴백 매칭인 경우 null.
+      properties:
+        item_seq: { type: string }
+        item_name: { type: string }
+        qnt: { type: string, nullable: true, description: "이 약에서 이 성분의 함량", example: "60" }
+        unit: { type: string, nullable: true, description: "함량 단위", example: "밀리그램" }
+
+    DurIngredientDetail:
+      type: object
+      description: >
+        입력 약품에서 역추적한 성분(INGR_CODE) 기준 규칙 - 품목 기준 데이터보다 완성도가 높은
+        성분 기준 원본 테이블을 재조회해서, 품목 기준(1·2차)에서 놓친 규칙을 잡아낸다.
+      properties:
+        ingr_code: { type: string, example: "D000363" }
+        ingr_name: { type: string, example: "이부프로펜" }
+        source_drugs:
+          type: array
+          items: { $ref: '#/components/schemas/DurIngredientSourceDrug' }
+          description: "이 성분을 가진 입력 약품 목록"
+        rules:
+          type: array
+          items: { $ref: '#/components/schemas/DurIngredientRuleDetail' }
+
+    DurIngredientScreeningResponse:
+      type: object
+      properties:
+        ingredients:
+          type: array
+          items: { $ref: '#/components/schemas/DurIngredientDetail' }
+        unmatched_drug_names:
+          type: array
+          items: { type: string }
 
 paths:
   # ================= Auth =================
@@ -600,3 +799,65 @@ paths:
         '204': { description: 삭제 완료 }
         '401': { description: 인증되지 않음 }
         '404': { description: 본인 소유가 아니거나 존재하지 않는 일정 }
+
+  # ================= DUR 스크리닝 (T-MED-14) =================
+  /dur/screening/basic:
+    post:
+      tags: [DUR]
+      summary: 1차 - 개별 약품 기본 정보 및 단일 금기 사항
+      description: >
+        약품명 배열을 받아 약품별로 e약은요 정보(drug_detail)와 DUR 규칙 6종 고정 배열(dur_simple)을
+        반환한다. profile_id를 쓰지 않는 공개 API라 로그인이 필요 없다. 매칭 실패한 이름은 에러가
+        아니라 unmatched_drug_names로 모아 200으로 반환한다(전부 실패해도 200 + 빈 결과).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DurScreeningRequest' }
+      responses:
+        '200':
+          description: 스크리닝 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DurBasicScreeningResponse' }
+        '400': { description: drug_names가 비어있거나 공백뿐인 값만 들어옴 }
+
+  /dur/screening/interaction:
+    post:
+      tags: [DUR]
+      summary: 2차 - 복수 약품 간 상호작용 및 리콜 정보
+      description: >
+        입력 약품 집합 내부의 병용금기(USJNT)·효능군중복(EFCY)을 drug_intrc.interactions로,
+        리콜 정보를 drug_intrc.recalls로 반환한다. 매칭된 약품이 1개뿐이면 interactions는
+        빈 배열이지만 recalls는 그 1개에 대해서도 계산된다.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DurScreeningRequest' }
+      responses:
+        '200':
+          description: 상호작용/리콜 결과
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DurInteractionScreeningResponse' }
+        '400': { description: drug_names가 비어있거나 공백뿐인 값만 들어옴 }
+
+  /dur/screening/ingredient:
+    post:
+      tags: [DUR]
+      summary: 3차 - 성분 기준 심층 분석 리포트
+      description: >
+        입력 약품의 성분(INGR_CODE)을 품목 기준 DUR 히트 테이블에서 역추적한 뒤, 품목 기준보다
+        완성도가 높은 성분 기준 원본 테이블을 재조회한다 — 품목 기준(1·2차)에서 규칙이 0건이던
+        약품은 성분코드를 알아낼 방법이 없어 이 API에서도 빈 결과가 된다(제품-성분 매핑 테이블이
+        별도로 없음).
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DurScreeningRequest' }
+      responses:
+        '200':
+          description: 성분별 DUR 규칙 상세
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DurIngredientScreeningResponse' }
+        '400': { description: drug_names가 비어있거나 공백뿐인 값만 들어옴 }

@@ -1,33 +1,33 @@
 {
-  "T-MED-1": {
+  "T-MED-4-2": {
     "owner": "agent-Antigravity",
-    "branch": "feat/T-MED-1-pill-ocr",
-    "started": "2026-07-07"
+    "branch": "feat/T-MED-4-2-drug-db-sync",
+    "started": "2026-07-14"
   },
-  "T-MED-3": {
+  "T-MED-14": {
+    "owner": "agent-Antigravity",
+    "branch": "feat/T-MED-14-dur-screening",
+    "started": "2026-07-14"
+  },
+  "T-MED-14-1": {
+    "owner": "agent-Antigravity",
+    "branch": "feat/T-MED-14-dur-screening",
+    "started": "2026-07-14"
+  },
+  "T-LLM-7-3": {
+    "owner": "agent-Genie",
+    "branch": "feat/T-LLM-7-3-pubmed-integration",
+    "started": "2026-07-16"
+  },
+  "T-LLM-2-dur-interaction-warning": {
+    "owner": "agent-Genie",
+    "branch": "feature/T-LLM-2-dur-interaction-warning",
+    "started": "2026-07-17"
+  },
+  "T-MED-16": {
     "owner": "claude",
-    "branch": "feature/T-MED-3-ocr-manual-fallback",
-    "started": "2026-07-08"
-  },
-  "T-LLM-3": {
-    "owner": "agent-Claude",
-    "branch": "feature/T-LLM-3-content-pipeline-backend",
-    "started": "2026-07-08"
-  },
-  "T-MED-4": {
-    "owner": "agent-Claude",
-    "branch": "feature/T-MED-4-medicine-master-data",
-    "started": "2026-07-08"
-  },
-  "T-MED-2": {
-    "owner": "agent-Claude",
-    "branch": "feature/T-MED-2-schedule-dur-precaution",
-    "started": "2026-07-09"
-  },
-  "T-MED-2-2": {
-    "owner": "agent-Claude",
-    "branch": "feature/T-MED-2-2-drug-interaction-check",
-    "started": "2026-07-09"
+    "branch": "feat/T-MED-16-item-seq-direct-ref",
+    "started": "2026-07-20"
   },
   "T-QUAL-1-async-benchmark": {
     "owner": "agent-Claude",

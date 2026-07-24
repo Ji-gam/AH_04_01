@@ -1,9 +1,17 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { authApi } from "../../api/authApi";
+import { authApi, socialLoginUrl } from "../../api/authApi";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
+
+/** 카톡/메모앱 등에서 비밀번호를 복사해 붙여넣을 때, 화면엔 안 보이지만 같이 딸려오는
+ * 줄바꿈/앞뒤 공백/zero-width 문자를 제거한다. 가입 때 타이핑으로 넣고 로그인 때 복붙으로
+ * 넣으면(혹은 반대) 육안으로는 똑같아 보여도 실제 문자열이 달라 해시가 안 맞는 문제를 막는다.
+ * client.ts의 accessToken 방어(줄바꿈/공백 제거)와 같은 이유. */
+export function sanitizeCredential(value: string): string {
+  return value.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+}
 
 type Tab = "login" | "signup";
 
@@ -51,7 +59,7 @@ export default function LoginPage() {
     setLoginError(null);
     setIsLoggingIn(true);
     try {
-      await login(email, password);
+      await login(sanitizeCredential(email), sanitizeCredential(password));
       navigate("/", { replace: true });
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "로그인에 실패했습니다.");
@@ -65,9 +73,11 @@ export default function LoginPage() {
     setSignupError(null);
     setIsSigningUp(true);
     try {
-      await authApi.signup({ name: signupName, email: signupEmail, password: signupPassword });
+      const cleanEmail = sanitizeCredential(signupEmail);
+      const cleanPassword = sanitizeCredential(signupPassword);
+      await authApi.signup({ name: signupName, email: cleanEmail, password: cleanPassword });
       // 가입 성공 후 로그인 탭으로 넘기지 않고, 방금 만든 계정으로 바로 로그인시켜서 홈으로 보낸다.
-      await login(signupEmail, signupPassword);
+      await login(cleanEmail, cleanPassword);
       navigate("/", { replace: true });
     } catch (err) {
       setSignupError(err instanceof Error ? err.message : "회원가입에 실패했습니다.");
@@ -147,6 +157,8 @@ export default function LoginPage() {
           >
             <input
               type="email"
+              name="email"
+              autoComplete="username"
               placeholder="이메일"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -155,6 +167,8 @@ export default function LoginPage() {
             />
             <input
               type="password"
+              name="password"
+              autoComplete="current-password"
               placeholder="비밀번호"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -176,6 +190,8 @@ export default function LoginPage() {
             </p>
             <input
               type="text"
+              name="nickname"
+              autoComplete="off"
               placeholder="닉네임"
               value={signupName}
               onChange={(e) => setSignupName(e.target.value)}
@@ -184,6 +200,8 @@ export default function LoginPage() {
             />
             <input
               type="email"
+              name="new-email"
+              autoComplete="email"
               placeholder="이메일"
               value={signupEmail}
               onChange={(e) => setSignupEmail(e.target.value)}
@@ -192,6 +210,8 @@ export default function LoginPage() {
             />
             <input
               type="password"
+              name="new-password"
+              autoComplete="new-password"
               placeholder="비밀번호 (소문자·숫자·특수문자 포함 8자 이상)"
               value={signupPassword}
               onChange={(e) => setSignupPassword(e.target.value)}
@@ -204,6 +224,64 @@ export default function LoginPage() {
             </button>
           </form>
         )}
+
+        <p
+          style={{
+            textAlign: "center",
+            color: pinkTheme.textMuted,
+            fontSize: 12,
+            margin: "16px 0 8px",
+          }}
+        >
+          또는
+        </p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {/* 구글은 카카오/네이버처럼 브랜드컬러로 꽉 채운 공식 버튼이 없다(로고 자체가 다색이라
+             단일색 배경 버튼을 공식으로 안 만듦) - 그래서 구글이 제공하는 3가지 공식 테마
+             (Light/Neutral/Dark) 중 Dark를 써서 진한 배경 + 컬러 G 아이콘으로 통일감을 맞춘다. */}
+          <a
+            href={socialLoginUrl("google")}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              height: "44px",
+              borderRadius: "10px",
+              background: "#131314",
+              textDecoration: "none",
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 600,
+            }}
+          >
+            <img src="/icons/google-icon-dark.png" alt="" style={{ width: 20, height: 20 }} />
+            구글 로그인
+          </a>
+          {/* 네이버/카카오는 한글 라벨까지 이미 박혀있는 공식 완성형 버튼 이미지를 그대로 쓴다 -
+             자체 배경/모서리가 이미 있는 완성된 이미지라 우리 쪽 테두리를 안 덧씌운다. 카드 폭에 맞춰
+             꽉 채우되(width:100%), 이미지 원래 비율은 그대로 유지한다(늘리기/찌그러뜨리기 없음). */}
+          <a
+            href={socialLoginUrl("naver")}
+            style={{ display: "block", borderRadius: "10px", overflow: "hidden", lineHeight: 0 }}
+          >
+            <img
+              src="/icons/naver-button-ko.png"
+              alt="네이버 로그인"
+              style={{ width: "100%", display: "block" }}
+            />
+          </a>
+          <a
+            href={socialLoginUrl("kakao")}
+            style={{ display: "block", borderRadius: "10px", overflow: "hidden", lineHeight: 0 }}
+          >
+            <img
+              src="/icons/kakao-button-ko.png"
+              alt="카카오 로그인"
+              style={{ width: "100%", display: "block" }}
+            />
+          </a>
+        </div>
       </div>
     </div>
   );

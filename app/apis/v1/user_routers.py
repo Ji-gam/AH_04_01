@@ -6,10 +6,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile, get_request_user
-from app.dtos.health_info import DiseaseEntry, HealthInfoResponse, HealthInfoUpdateRequest
+from app.dtos.health_info import DiagnosisEntry, FamilyHistoryEntry, HealthInfoResponse, HealthInfoUpdateRequest
 from app.dtos.users import UserInfoResponse, UserUpdateRequest
-from app.models.profiles import Disease, Profile
+from app.models.disease_entries import DiagnosisEntry as DiagnosisEntryModel
+from app.models.disease_entries import FamilyHistoryEntry as FamilyHistoryEntryModel
+from app.models.profiles import Profile
 from app.models.users import User
+from app.repositories.disease_entry_repository import DiagnosisEntryRepository, FamilyHistoryEntryRepository
+from app.services.age_calculator import resolve_display_age
 from app.services.health_info import HealthInfoService
 from app.services.users import UserManageService
 
@@ -28,18 +32,43 @@ def _to_user_info_response(user: User, profile: Profile) -> UserInfoResponse:
     )
 
 
-def _to_disease_entries(raw: list[dict] | None) -> list[DiseaseEntry]:
-    return [DiseaseEntry(disease=Disease(item["disease"]), detail=item.get("detail")) for item in (raw or [])]
+def _to_diagnosis_dto(row: DiagnosisEntryModel) -> DiagnosisEntry:
+    return DiagnosisEntry(
+        disease=row.disease,
+        disease_subtype=row.disease_subtype.name if row.disease_subtype else None,
+        diagnosed_years_ago=row.diagnosed_years_ago,
+        status=row.status,
+        on_medication=row.on_medication,
+        detail=row.detail,
+    )
 
 
-def _to_health_info_response(profile: Profile) -> HealthInfoResponse:
+def _to_family_history_dto(row: FamilyHistoryEntryModel) -> FamilyHistoryEntry:
+    return FamilyHistoryEntry(
+        disease=row.disease,
+        disease_subtype=row.disease_subtype.name if row.disease_subtype else None,
+        relation=row.relation,
+        detail=row.detail,
+    )
+
+
+async def _to_health_info_response(
+    session: AsyncSession,
+    profile: Profile,
+    diagnosis_repo: DiagnosisEntryRepository,
+    family_repo: FamilyHistoryEntryRepository,
+) -> HealthInfoResponse:
+    diagnosis_rows = await diagnosis_repo.list_for_profile(session, profile.id)
+    family_rows = await family_repo.list_for_profile(session, profile.id)
     return HealthInfoResponse(
-        age=profile.age,
+        age=resolve_display_age(profile.birth_date),
+        birth_date=profile.birth_date,
         gender=profile.gender,
+        is_pregnant=profile.is_pregnant,
         height_cm=float(profile.height_cm) if profile.height_cm is not None else None,
         weight_kg=float(profile.weight_kg) if profile.weight_kg is not None else None,
-        diagnosis_history=_to_disease_entries(profile.diagnosis_history),
-        family_history=_to_disease_entries(profile.family_history),
+        diagnosis_history=[_to_diagnosis_dto(r) for r in diagnosis_rows],
+        family_history=[_to_family_history_dto(r) for r in family_rows],
         special_notes=profile.special_notes,
         other_notes=profile.other_notes,
     )
@@ -99,8 +128,12 @@ async def update_user_me_info(
 )
 async def get_health_info(
     profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    diagnosis_repo: Annotated[DiagnosisEntryRepository, Depends(DiagnosisEntryRepository)],
+    family_repo: Annotated[FamilyHistoryEntryRepository, Depends(FamilyHistoryEntryRepository)],
 ) -> Response:
-    return Response(_to_health_info_response(profile).model_dump(), status_code=status.HTTP_200_OK)
+    response = await _to_health_info_response(session, profile, diagnosis_repo, family_repo)
+    return Response(response.model_dump(), status_code=status.HTTP_200_OK)
 
 
 @user_router.patch(
@@ -123,6 +156,9 @@ async def update_health_info(
     profile: Annotated[Profile, Depends(get_current_profile)],
     session: Annotated[AsyncSession, Depends(get_db)],
     health_info_service: Annotated[HealthInfoService, Depends(HealthInfoService)],
+    diagnosis_repo: Annotated[DiagnosisEntryRepository, Depends(DiagnosisEntryRepository)],
+    family_repo: Annotated[FamilyHistoryEntryRepository, Depends(FamilyHistoryEntryRepository)],
 ) -> Response:
     updated_profile = await health_info_service.update_health_info(session, profile, update_data)
-    return Response(_to_health_info_response(updated_profile).model_dump(), status_code=status.HTTP_200_OK)
+    response = await _to_health_info_response(session, updated_profile, diagnosis_repo, family_repo)
+    return Response(response.model_dump(), status_code=status.HTTP_200_OK)

@@ -1,133 +1,94 @@
-# AH_04_01 협업 하네스 (최소 버전)
+# CONTRIBUTING.md — 협업 하네스
 
-> 목적: 여러 장소에서, 스쿼드별로 나눠서, 개발 초보자들이 참여하는 프로젝트에서
-> "서로 꼬이지 않는 것"에만 집중한 최소 규칙입니다. 완벽한 프로세스가 아니라
-> **사고를 줄이는 최소 장치**라고 생각하고 팀 상황에 맞게 가감하세요.
->
-> **문서 버전**: v1.2 · **최종 수정**: 2026-07-08
-> **변경 이력**
-> - v1.0 (2026-07-07): `remedi_mweb_co`에서 이식하며 레포 구조를 `AH_04_01`의 실제 최상위 폴더(`app/`, `ai_worker/`, `frontend/`, `envs/`, `infra/`, `scripts/`)로 수정
-> - v1.1 (2026-07-07): 하네스 문서 정리 — `docs/`가 `docs/dev`(개발설계 산출물)·`docs/plan`(기획 문서)로 재구성됨에 따라 경로 참조 갱신, `FRONTEND_ARCHITECTURE.md` 폐기(CODING_RULES.md로 흡수) 반영, 프론트 PR 크기 규칙을 6번 표에 추가
-> - v1.2 (2026-07-08): 2차 하네스 정리 — `CLAUDE.md` 대신 `AGENTS.md`가 진입점, `decision_log.md`가 `decision_log/` 폴더로 재구성됨에 따라 레포 구조 트리 갱신
+v3.0 · 이력: `git log docs/CONTRIBUTING.md`. 구조/브랜치/이슈·PR/구현순서/로컬실행/검증/커밋 전부 이 문서 하나. 사람용 프로세스(슬랙공지/킥오프체크리스트) 없음 — 에이전트 실행 규칙만.
 
----
+0. 요약
+레포=모노레포1개(`frontend/`,`app/`=레이어우선). 브랜치=`main`(배포)←`dev`(통합)←`feature/T-ID-설명`. 이슈→PR=이슈먼저→버티컬슬라이스200~300줄PR→즉시머지(스택형금지,§4). 구현순서=TDD:테스트(RED)→`models→repos→services→apis`(GREEN)→Swagger→검증→커밋(§5). 커밋=`type(T-ID): 설명` 예`feat(T-AUTH-1): 이메일 회원가입 API`. PR/이슈 작성=길게 쓰지 않음(§8).
 
-## 0. 한 장 요약
-
-| 항목 | 규칙 |
-| --- | --- |
-| 레포 | 모노레포 1개 (`frontend/`, `app/` — `app`은 레이어 우선 구조) |
-| 브랜치 | `main`(배포) ← `dev`(통합) ← `feature/T-ID-설명`(작업), 필요 시 `Release`, `hotfix/*` |
-| 커밋 | `type(T-ID): 설명` 예) `feat(T-AUTH-1): 이메일 회원가입 API` |
-| PR | 작은 단위, 제목에 T-ID/F-ID, 리뷰 1명 필수, `dev`로 머지 |
-| 이슈 | 제목에 T-ID 포함, 담당 스쿼드 라벨 지정 |
-| 충돌 방지 | 작업 시작 전 슬랙에 "지금 어떤 파일/기능 건드림" 1줄 공지 |
-| 하루 루틴 | 시작 시 `git pull`, 끝날 때 push + PR, 자기 전 dev 최신화 |
-
----
-
-## 1. 레포 구조 (모노레포)
-
+1. 레포 구조
 ```
-AH_04_01/
-├─ app/                  # 백엔드 (레이어 우선 구조 — 상세는 CODING_RULES.md 2번)
-│  ├─ apis/ services/ repositories/ models/ dtos/ core/ dependencies/ tests/
-├─ ai_worker/            # AI/RAG/멀티모달 추론 — 메인 API 프로세스와 분리된 별도 서비스
-├─ frontend/             # 프론트엔드 (React + Vite, pages/ 구조 — CODING_RULES.md 3번)
-├─ envs/                 # 환경별 설정 파일 (CODING_RULES.md 2-2 참고)
-├─ infra/                # nginx, 배포 관련 설정
-├─ scripts/              # 배포/CI 보조 스크립트 (ruff/mypy/pytest 로컬 실행용)
-├─ docs/
-│  ├─ CODING_RULES.md / SESSION_START.md / DEV_WORKFLOW.md / TROUBLESHOOTING.md  # 살아있는 문서 (매번 참조)
-│  ├─ decision_log/       # 날짜별 배경 기록 (YYYY-MM-DD.md)
-│  ├─ squad-map.md        # 아래 2번 내용
-│  ├─ plan/               # 기획 문서 원본 스냅샷 — PRD_ReMedi_v1.1.md, TRD_ReMedi_v1.1.md
-│  └─ dev/                # 개발설계 산출물 — ERD.dbml(CODING_RULES.md 6번), api_spec_core_v1_v1.1.yaml, sample_code_chat/, sample_code_recog/(실제로 동작하는 템플릿 코드)
-├─ AGENTS.md              # 단일 진입점 — AI 에이전트(및 사람)가 지켜야 할 규칙
-└─ CLAUDE.md              # AGENTS.md로의 리다이렉트
+app/            apis/ services/ repositories/ models/ dtos/ core/ dependencies/ tests/
+ai_worker/      AI/RAG/멀티모달 — 별도서비스
+frontend/       React+Vite (CODING_RULES.md §3)
+envs/ infra/ scripts/
+docs/           CODING_RULES / CONTRIBUTING / TROUBLESHOOTING / decision_log/ / SQUAD_MAP.md / FRONTEND_UI_GUIDE.md / plan/ / dev/
+AGENTS.md       진입점(Drill-Me/STOP 포함) · CLAUDE.md=리다이렉트
 ```
+모노레포=프론트/백엔드 스펙변경 한 PR에서 같이 리뷰(레포분리시 동기화사고 방지).
 
-**모노레포를 쓰는 이유**: 초보 개발자 팀에서 레포가 나뉘면 "API 스펙이 바뀌었는데 프론트가 몰랐다"는 문제가 반드시 생깁니다. 하나의 레포 + 하나의 PR 흐름이면 리뷰할 때 프론트/백엔드 변경을 같이 볼 수 있어 훨씬 안전합니다.
+2. 스쿼드↔도메인
+TRD T그룹=스쿼드경계, 실배정/소유파일접두어=`SQUAD_MAP.md`(유일출처). 폴더아닌 파일명접두어로 소유권 구분(`AGENTS.md` §1).
 
----
-
-## 2. 스쿼드 ↔ 기능 도메인 매핑
-
-TRD의 T-그룹 경계를 그대로 스쿼드 경계로 씁니다. 이렇게 하면 "이 파일은 누구 담당인지"를 이슈 번호만 보고 알 수 있습니다. 실제 담당자 배정은 `squad-map.md`에 채웁니다.
-
-- **레이어 우선 구조라 폴더가 아니라 파일명으로 소유권을 나눕니다**: 도메인 하나의 코드가 `apis/`, `services/`, `repositories/`, `models/`, `dtos/`에 흩어져 있으므로, "이 폴더는 내 것"이 아니라 "이 접두어가 붙은 파일은 내 것"으로 구분하세요 (`CODING_RULES.md` 2번 참고).
-- 접두어는 첫 스프린트 킥오프 때 실제 도메인 이름에 맞게 `squad-map.md`에 확정해서 적어두세요.
-
----
-
-## 3. 브랜치 전략 (GitFlow)
-
+3. 브랜치 전략 (GitFlow)
 ```
-main   ← 배포 가능한 최종 상태만 (직접 push 금지, PR로만 병합)
- └─ dev ← 개발 중인 기능이 모이는 통합 브랜치 (직접 push 금지, PR로만 병합)
-     ├─ feature/{T-ID}-{짧은설명}   ← dev에서 분기, dev로 병합
-     ├─ Release/{버전}              ← dev에서 분기, main + dev 양쪽에 병합
-     └─ hotfix/{짧은설명}           ← main에서 분기, main + dev 양쪽에 병합
+main   ←배포가능 상태만(PR only)
+ └dev  ←통합(PR only)
+   ├feature/{T-ID}-{설명}  dev분기→dev병합
+   ├Release/{버전}         dev분기→main+dev병합
+   └hotfix/{설명}          main분기→main+dev병합
 ```
+`main`/`dev` 보호브랜치(PR+승인1). `feature/*`는 항상 `dev` 최신 pull 후 분기.
 
-- 브랜치 예: `feature/T-MED-1-pill-recognition`, `hotfix/login-token-expire-crash`
-- 초보 팀은 대부분 `feature/*`만 씁니다.
-- **main, dev는 보호 브랜치로 설정**하고, 반드시 PR + 최소 1명 승인 후에만 병합되게 하세요.
-- `feature/*`는 항상 **`dev`를 최신으로 pull한 뒤** 분기하세요.
+4. 이슈 → PR 흐름
+원칙: 이슈먼저→작게쪼갠PR→즉시머지. 스택형 금지.
+종류: Proposal — 코드없이 팀승인 필요(외부API/아키텍처변경, `AGENTS.md` §6) — 제목`[PROPOSAL] ...` — 템플릿`.github/ISSUE_TEMPLATE/proposal.md`→승인시 Task Contract 전환. Task — Task Contract 기반 구현/버그수정 — 제목`[T-ID] ...` — 템플릿`.github/ISSUE_TEMPLATE/task.md`→시작전`_active.json` Claim(`AGENTS.md` §0).
+PR 쪼개기: 계층별아닌 버티컬슬라이스(엔드포인트 DB모델~라우터 전체 등 완결단위), 200~300줄/PR 권장, 프론트는 API연동+최소바인딩 완결 화면단위.
+머지흐름: `dev` base PR생성(스택형금지)→CI통과 확인→리뷰요청. 에이전트는 직접 머지 안함(PR생성+CI확인까지가 범위, `AGENTS.md` §5). 머지후 로컬동기화: `git checkout dev && git pull origin dev`.
+종료: 이슈의 모든 슬라이스 PR 머지완료→이슈Close, `_active.json` Claim 제거.
 
----
+5. 구현 순서 (TDD)
+1. 정상+실패케이스 테스트→RED확인(실패케이스: 중복/충돌, 유효성실패, 인증없음/실패). 테스트 품질기준(가짜Repository, 통합테스트 범위, 이름규칙): `CODING_RULES.md` §4
+2. `models→repositories→services→apis`(routers) 순 구현→GREEN(역순금지)
+3. Swagger: `summary`/`description`/실패별`responses`/`Field(description=...)` — 상세 `CODING_RULES.md` §5
+4. DB스키마 변경시: Alembic리비전+`ERD.dbml` 갱신을 같은 커밋단위로 — 상세 `CODING_RULES.md` §6
+5. 검증(§7, "통과 로그 확보"가 완료기준)
+6. 커밋/PR(§8)
 
-## 4. 커밋 & PR 규칙
+프론트(도메인화면 신규시 기본값):
+1. 백엔드계약 검증확인(없으면 위 TDD로 먼저, curl/Swagger로 저장·조회 확인)
+2. `frontend/src/api/types.ts`에 DTO 1:1 타입 동기화
+3. `frontend/src/api/`에 엔드포인트당 호출함수 1개
+4. 공유상태 필요시만 Context — 계층/상태관리 규칙: `CODING_RULES.md` §3-1,§3-3
+5. 스타일 없이 최소 입출력 화면만 — 스타일 규칙: `CODING_RULES.md` §3-5, `FRONTEND_UI_GUIDE.md`
+6. `App.tsx` 라우팅, 인증필요시 `RequireAuth`
+7. 브라우저 직접 클릭확인(저장/조회 값, 에러문구) — `tsc`/`eslint` 통과만으로 안 끝냄
 
-### 커밋 메시지
+6. 로컬 실행 (Docker 표준, venv 병행가능·혼용금지)
+`DB_HOST`: Docker=`mysql`, venv=`localhost`. pytest: Docker=`docker compose exec fastapi uv run pytest`, venv=`uv run pytest`. migration: Docker=`docker compose exec fastapi uv run alembic upgrade head`, venv=`uv run alembic upgrade head`.
+`Access denied`/`Unknown database`→`DB_HOST` 모드불일치. `mysql` DNS에러→venv인데 `DB_HOST=mysql`→`localhost`로.
+`envs/.local.env`=개인파일(gitignore). 팀표준파일(`docker-compose.yml`,`envs/example.local.env`,`vite.config.ts` 포트/프록시)은 검증후 원복 필수(`TROUBLESHOOTING.md`).
+
+7. 검증 (실행결과로 확인)
+```bash
+# Docker
+docker compose exec fastapi uv run --no-sync pytest -v
+docker compose exec fastapi uv run --no-sync ruff check app/
+docker compose exec fastapi uv run --no-sync alembic upgrade head   # 스키마변경시
+
+# 로컬
+uv run pytest -v
+uv run ruff check app/
+uv run alembic upgrade head   # 스키마변경시
+
+curl -s http://localhost:8000/api/openapi.json | python3 -m json.tool | head -40   # API 실동작+Swagger 확인
+
+cd frontend && npx tsc --noEmit && npm run lint
+```
+신규 도메인 라우터 추가시 `/api/docs`에서 응답스키마 육안확인.
+
+8. 커밋 / PR / 이슈 — 길게 쓰지 않는다
+핵심만: 무엇을/왜/어떻게 검증했는지 불릿 몇 줄. 배경서술·산문 금지 — 필요하면 `decision_log/` 링크로 대체. 길수록 에이전트는 토큰낭비, 사람은 인지부하로 안 읽음.
 ```
 type(T-ID): 설명
-
-예)
 feat(T-AUTH-1): 이메일 회원가입 API 구현
 fix(T-NTFY-1): 알림 미도착 버그 수정
-docs(T-LLM-1): 면책조항 정책 문서 추가
 ```
+- PR 생성전 `gh pr list --head <브랜치>` 확인 — 있으면 새 PR 없이 push
+- 제목 `[T-ID] 요약`, 관심사별 커밋·브랜치 분리
+- 본문: TRD 성공요건 체크 + 실행결과("추가함" 금지, "`pytest -v` 13 passed" 식), 미달항목 숨기지 않음
+- DB CRUD PR은 `ERD.dbml` 동시갱신 확인(`CODING_RULES.md` §6)
+- 임시 로컬값(포트/DB명)이 diff에 안 남았는지 마지막 확인
+- 이슈 제목 T-ID/F-ID 포함(Proposal은`[PROPOSAL]`), 라벨=스쿼드+상태, 담당자 없이 시작 금지
 
-### PR 규칙
-- 제목: `[T-ID] 작업 내용 요약`
-- 설명에 최소 포함: 무엇을 했는지(TRD 성공요건 충족 여부 체크), 어떻게 테스트했는지
-- **200~300줄 이내로 작게** 쪼개서 올리기
-- 리뷰어 1명 승인 후 본인이 머지, **Squash and merge**로 통일
-- DB를 CRUD하는 PR은 `docs/dev/ERD.dbml`도 같이 갱신했는지 확인 (`CODING_RULES.md` 6번)
-
----
-
-## 5. 이슈 관리
-
-- 이슈 제목에 반드시 T-ID/F-ID 포함
-- 라벨: 스쿼드명, 상태(`todo`/`in-progress`/`review`/`done`)
-- 담당자 지정 없이 작업 시작 금지
-
----
-
-## 6. 충돌(코드/작업) 방지 원칙
-
-| 문제 상황 | 예방 규칙 |
-| --- | --- |
-| 같은 파일을 두 사람이 동시에 수정 | 작업 시작 전 슬랙/디스코드에 "지금 `medication/schedule.ts` 건드립니다" 한 줄 공지 |
-| 공통 모듈(`services/`의 4개 공통모듈 등)을 바꿨는데 다른 스쿼드가 모름 | 공통모듈 변경 PR은 팀 전체 채널에 별도 공지 + 다른 스쿼드 리뷰 필수 |
-| 오래된 브랜치에서 작업해서 충돌 폭탄 | 매일 작업 시작 전 `git checkout dev && git pull` 후 새로 브랜치 따기 습관화 |
-| dev에 머지했는데 깨짐 | 머지 전 로컬에서 `scripts/ci/run_test.sh`, `scripts/ci/code_fommatting.sh` 실행 확인 |
-| 여러 탭(페이지)에 걸친 대형 프론트 PR | PR은 한 페이지(탭) 폴더 위주로 작게 유지 + Prettier/ESLint를 CI에 강제해 포맷 차이로만 생기는 diff 충돌 차단 |
-
----
-
-## 7. 환경변수 / 시크릿
-
-- 실제 값이 든 `.env`, `envs/.local.env`, `envs/.prod.env`는 절대 커밋 금지.
-- API 키는 슬랙 DM이나 비공개 페이지로 공유, **절대 PR/이슈/코드에 평문으로 남기지 않기**
-
----
-
-## 8. 다음에 정할 것 (킥오프 때 채우기)
-
-- [ ] `docs/squad-map.md`에 실제 스쿼드 이름 + 담당 T-ID 확정
-- [ ] GitHub 브랜치 보호 규칙 설정 (main, dev)
-- [ ] 이슈 라벨 생성 (스쿼드별 + 상태별)
-- [ ] `.github/workflows/ci.yml` 등록 (`scripts/ci/*.sh`를 CI에서도 동일하게 실행)
+9. 환경변수/시크릿
+실값든 `.env`,`envs/.local.env`,`envs/.prod.env` 커밋 금지. API키/시크릿 코드·커밋·PR·이슈에 하드코딩·평문 금지 — `envs/example.*.env`엔 키 이름만. 메커니즘(심볼릭링크 전환, DB_NAME 충돌회피): `CODING_RULES.md` §2-2,§2-3.

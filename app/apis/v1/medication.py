@@ -7,20 +7,27 @@ from app.core import config
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
 from app.dtos.medication_dto import (
+    FoodInteractionCheckResult,
     InteractionCheckResult,
     MedicationScheduleCreateRequest,
     MedicationScheduleResponse,
     MedicationScheduleUpdateRequest,
     QuickRegisterRequest,
     QuickRegisterResult,
+    RecognitionConfirmForFamilyRequest,
     RecognitionConfirmRequest,
     RecognitionConfirmResult,
     RecognitionJobCreateResult,
     RecognitionResult,
 )
 from app.models.profiles import Profile
+from app.repositories.dur_drug_repository import DrugProfile, DurDrugRepository
 from app.services import medication_open_api_client
-from app.services.medication_service import MedicationService, _strip_trailing_dosage
+from app.services.medication_service import (
+    MedicationService,
+    _strip_trailing_dosage,
+    _translate_trailing_dosage_to_korean,
+)
 
 medication_router = APIRouter(tags=["Medications"])
 
@@ -91,6 +98,7 @@ async def confirm_recognition_job(
     body: RecognitionConfirmRequest,
     profile: Annotated[Profile, Depends(get_current_profile)],
     session: Annotated[AsyncSession, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ) -> RecognitionConfirmResult:
     service = MedicationService()
     return await service.confirm_recognition_job(
@@ -99,6 +107,7 @@ async def confirm_recognition_job(
         profile_id=profile.id,
         selected_candidate_drug_code=body.selected_candidate_drug_code,
         confirmed_fields=body.confirmed_fields,
+        background_tasks=background_tasks,
     )
 
 
@@ -134,38 +143,74 @@ async def check_medication_interactions(
     return await service.check_interactions(session, profile.id)
 
 
-_LOCAL_DUR_SQL = """
-SELECT
-    p.item_name,
-    p.entp_name,
-    e.efcy_qesitm,
-    GROUP_CONCAT(DISTINCT r.rule_type || ': ' || r.prohbt_content) AS precautions
-FROM products p
-LEFT JOIN drugs_einfo e ON p.item_seq = e.item_seq
-LEFT JOIN dur_product_rules r ON p.item_seq = r.item_seq
-WHERE p.item_name LIKE ?
-GROUP BY p.item_seq
-LIMIT 15;
-"""
+@medication_router.get(
+    "/medications/food-interactions",
+    response_model=FoodInteractionCheckResult,
+    summary="등록약 기준 음식/음주 주의사항 체크 (빠른 응답)",
+    description=(
+        "현재 프로필에 등록된 약 전체를 대상으로, 식약처 참조 테이블과 MySQL에 이미 적재된 "
+        "e약은요 스냅샷(drugs_data)만으로 음식/음주 관련 주의사항을 모아 반환합니다. 실시간 "
+        "외부 API를 호출하지 않으므로 항상 빠릅니다(T-DOC-5). 이 두 단계로 확인되지 않은 약은 "
+        "`pending_medication_names`에 담겨 오며, 그 약들은 `/medications/food-interactions/pending`을 "
+        "별도로 호출해 확인해야 합니다."
+    ),
+)
+async def check_medication_food_interactions(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> FoodInteractionCheckResult:
+    service = MedicationService()
+    return await service.check_food_interactions(session, profile.id)
 
 
-def _query_local_dur_rows(cursor, query: str, stripped_query: str | None) -> list:
-    """로컬 DB의 품목명은 'mg'가 아니라 '밀리그램' 등 한글 단위 표기라, OCR/사용자 입력이
-    'NN mg' 접미사로 끝나면 그대로는 매칭이 안 될 수 있다 — 접미사를 뗀 이름으로 재시도한다."""
-    cursor.execute(_LOCAL_DUR_SQL, (f"%{query}%",))
-    rows = cursor.fetchall()
-    if not rows and stripped_query:
-        cursor.execute(_LOCAL_DUR_SQL, (f"%{stripped_query}%",))
-        rows = cursor.fetchall()
-    return rows
+@medication_router.get(
+    "/medications/food-interactions/pending",
+    response_model=FoodInteractionCheckResult,
+    summary="빠른 응답에서 확인되지 않은 약의 음식/음주 주의사항 체크 (느린 실시간 API)",
+    description=(
+        "`/medications/food-interactions`가 참조 테이블과 MySQL 스냅샷만으로 확인하지 못한 "
+        "(주로 상표명이면서 e약은요 스냅샷에도 없는) 약만 골라 식약처 e약은요 실시간 API를 "
+        "호출해 확인합니다. 외부 API 호출이 포함되어 느릴 수 있어(T-DOC-5), 빠른 응답을 먼저 "
+        "보여준 뒤 별도로 호출하는 용도입니다."
+    ),
+)
+async def check_medication_food_interactions_pending(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> FoodInteractionCheckResult:
+    service = MedicationService()
+    return await service.check_food_interactions_pending(session, profile.id)
 
 
-def _build_dur_result(item_name: str, entp_name: str, efficacy: str | None, precautions: str | None) -> dict:
-    efficacy = (efficacy or "").strip()
-    precautions = (precautions or "").strip()
+async def _query_mysql_dur_profiles(
+    session: AsyncSession,
+    dur_repo: DurDrugRepository,
+    query: str,
+    translated_queries: list[str],
+    stripped_query: str | None,
+) -> list[DrugProfile]:
+    """MySQL 품목명은 'mg'가 아니라 '밀리그램'/'밀리그람' 등 한글 단위 표기라, OCR/사용자
+    입력이 'NN mg' 접미사로 끝나면 그대로는 매칭이 안 될 수 있다 — 먼저 한글 단위 후보들로,
+    그래도 안 되면 접미사를 뗀 이름으로 재시도한다."""
+    profiles = await dur_repo.find_drug_info(session, query)
+    for translated_query in translated_queries:
+        if profiles:
+            break
+        profiles = await dur_repo.find_drug_info(session, translated_query)
+    if not profiles and stripped_query:
+        profiles = await dur_repo.find_drug_info(session, stripped_query)
+    return profiles[:15]
+
+
+def _build_dur_result(profile: DrugProfile) -> dict:
+    efficacy = (profile.efficacy or "").strip()
+    precaution_parts = [profile.precautions] + [
+        f"{rule['rule_type']}: {rule['prohbt_content']}" for rule in profile.dur_rules if rule.get("prohbt_content")
+    ]
+    precautions = " ".join(p.strip() for p in precaution_parts if p and p.strip())
     return {
-        "item_name": item_name,
-        "entp_name": entp_name,
+        "item_name": profile.item_name,
+        "entp_name": profile.entp_name,
         "efficacy": efficacy or "정보 없음",
         "precautions": precautions or "특이사항 없음",
     }
@@ -187,46 +232,42 @@ def _drop_empty_duplicates(results: list[dict]) -> list[dict]:
 
 @medication_router.get(
     "/medications/search-dur",
-    summary="의약품 DUR 및 효능 검색 API (SQLite Light + 공공데이터 폴백)",
+    summary="의약품 DUR 및 효능 검색 API (MySQL + 공공데이터 폴백)",
     description=(
-        "Light SQLite 데이터베이스에서 제품명으로 먼저 검색하고, 결과가 없으면 식약처 공공데이터포털"
-        "(e약은요) API로 실시간 폴백한다. 결과가 끝까지 없으면 `not_found_reason`에"
-        "어디까지 찾아봤는지가 담긴다."
+        "MySQL 품목 마스터(`dur_prod_master_list`+`drugs_data`)에서 제품명으로 먼저 검색하고, 결과가 "
+        "없으면 식약처 공공데이터포털(e약은요) API로 실시간 폴백한다. 결과가 끝까지 없으면 "
+        "`not_found_reason`에 어디까지 찾아봤는지가 담긴다."
     ),
 )
 async def search_medications_dur(
     profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
     query: str = Query(..., min_length=1),
 ):
-    import os
-    import sqlite3
     import time
 
     start_time = time.perf_counter()
 
-    # Resolve path dynamically using the location of this file
-    db_path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-        "database",
-        "dur_drug_light.db",
-    )
-
+    translated_queries = _translate_trailing_dosage_to_korean(query)
     stripped_query = _strip_trailing_dosage(query)
 
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    rows = _query_local_dur_rows(cursor, query, stripped_query)
-    conn.close()
+    dur_repo = DurDrugRepository()
+    profiles = await _query_mysql_dur_profiles(session, dur_repo, query, translated_queries, stripped_query)
+    results = [_build_dur_result(p) for p in profiles]
 
-    results = [_build_dur_result(row[0], row[1], row[2], row[3]) for row in rows]
-
-    # 로컬 SQLite Light DB는 제품 27,231건 중 효능 데이터가 4,753건뿐이라 커버리지가 낮다.
-    # 결과가 없으면 식약처 공공데이터 API(e약은요)로 실시간 폴백한다.
+    # MySQL 품목 마스터는 품목명 23,417건은 다 있지만 효능/주의사항 텍스트(drugs_data, e약은요
+    # 수집분)는 4,758건뿐이라 커버리지가 낮다. 결과가 아예 없거나(제품명 자체를 못 찾음), 있어도
+    # 전부 내용이 비어있으면(제품은 찾았지만 효능/주의사항 데이터가 없는 경우) 식약처 공공데이터
+    # API(e약은요)로 폴백한다.
     checked_public_api = False
-    if not results:
+    if not results or not any(_has_content(r) for r in results):
         if config.PUBLIC_DATA_API_KEY:
             checked_public_api = True
             summary_items = await medication_open_api_client.fetch_drug_summary(item_name=query)
+            for translated_query in translated_queries:
+                if summary_items:
+                    break
+                summary_items = await medication_open_api_client.fetch_drug_summary(item_name=translated_query)
             if not summary_items and stripped_query:
                 summary_items = await medication_open_api_client.fetch_drug_summary(item_name=stripped_query)
             for item in summary_items:
@@ -238,7 +279,13 @@ async def search_medications_dur(
                 precautions = " ".join(p.strip() for p in precaution_parts if p and p.strip())
                 results.append(
                     _build_dur_result(
-                        item.get("itemName") or query, item.get("entpName") or "", item.get("efcyQesitm"), precautions
+                        DrugProfile(
+                            item_seq=str(item.get("itemSeq") or ""),
+                            item_name=item.get("itemName") or query,
+                            entp_name=item.get("entpName") or "",
+                            efficacy=item.get("efcyQesitm"),
+                            precautions=precautions,
+                        )
                     )
                 )
 
@@ -250,12 +297,12 @@ async def search_medications_dur(
     if not results:
         if checked_public_api:
             not_found_reason = (
-                "로컬 DB(식약처 DUR 데이터 일부)와 식약처 공공데이터(e약은요) 모두에서 "
+                "MySQL 품목 마스터(식약처 DUR 데이터)와 식약처 공공데이터(e약은요) 모두에서 "
                 "일치하는 의약품 정보를 찾지 못했습니다."
             )
         else:
             not_found_reason = (
-                "로컬 DB(식약처 DUR 데이터 일부)에서 일치하는 의약품 정보를 찾지 못했습니다. "
+                "MySQL 품목 마스터(식약처 DUR 데이터)에서 일치하는 의약품 정보를 찾지 못했습니다. "
                 "공공데이터포털 실시간 조회는 서비스키가 설정되지 않아 시도하지 못했습니다."
             )
 
@@ -280,9 +327,10 @@ async def create_manual_schedule(
     body: MedicationScheduleCreateRequest,
     profile: Annotated[Profile, Depends(get_current_profile)],
     session: Annotated[AsyncSession, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ) -> MedicationScheduleResponse:
     service = MedicationService()
-    return await service.create_manual_schedule(session, profile.id, body)
+    return await service.create_manual_schedule(session, profile.id, body, background_tasks)
 
 
 @medication_router.post(
@@ -300,9 +348,12 @@ async def quick_register_medication(
     body: QuickRegisterRequest,
     profile: Annotated[Profile, Depends(get_current_profile)],
     session: Annotated[AsyncSession, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ) -> QuickRegisterResult:
     service = MedicationService()
-    return await service.quick_register_medication(session, profile.id, body.drug_name, body.times, body.hospital_name)
+    return await service.quick_register_medication(
+        session, profile.id, body.drug_name, body.times, background_tasks, body.hospital_name
+    )
 
 
 @medication_router.patch(
@@ -339,7 +390,11 @@ async def delete_medication_schedule(
 @medication_router.get(
     "/medications/search",
     summary="의약품 마스터 수동 검색",
-    description="약품명 또는 외형 검색 fallback을 위한 검색창의 자동완성 API입니다.",
+    description=(
+        "약품명 검색창의 자동완성 API입니다. '더보기 > 약품 검색'(search-dur)이 참조하는 것과 같은 "
+        "MySQL 품목 마스터(dur_prod_master_list)를 조회해, 두 화면에서 같은 약이 서로 다르게 보이지 "
+        "않도록 한다(T-MED-16). 각 결과의 `item_seq`를 `POST /medications`의 drug_code로 넘기면 등록된다."
+    ),
 )
 async def search_medications(
     profile: Annotated[Profile, Depends(get_current_profile)],
@@ -348,3 +403,118 @@ async def search_medications(
 ):
     service = MedicationService()
     return await service.search_medications(session, query)
+
+
+@medication_router.post(
+    "/recognition/jobs/{job_id}/confirm-for-family",
+    response_model=RecognitionConfirmResult,
+    summary="사용자 최종 확인 → 가족 구성원 몫으로 복약 스케줄 등록 (가족관리)",
+    description=(
+        "OCR로 인식한 처방전을 요청자 본인이 아니라, 요청자가 보호자로 등록된 가족 구성원 "
+        "(target_profile_id) 몫으로 등록한다. 기존 /confirm과 별개 엔드포인트로 분리했다 - "
+        "다른 조원이 확정등록 로직(마스터 DB 매칭 등)을 계속 다듬고 있어 병합 충돌을 피하기 "
+        "위함(의도적 중복, 나중에 합칠지는 상의 후 결정)."
+    ),
+)
+async def confirm_recognition_job_for_family(
+    job_id: str,
+    body: RecognitionConfirmForFamilyRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> RecognitionConfirmResult:
+    service = MedicationService()
+    return await service.confirm_recognition_job_for_family(
+        session=session,
+        job_id=job_id,
+        requester_profile_id=profile.id,
+        target_profile_id=body.target_profile_id,
+        selected_candidate_drug_code=body.selected_candidate_drug_code,
+        confirmed_fields=body.confirmed_fields,
+    )
+
+
+@medication_router.get(
+    "/medications/family/{target_profile_id}",
+    response_model=list[MedicationScheduleResponse],
+    summary="가족 구성원의 복약 스케줄 전체 조회 (가족관리)",
+    description="보호자가 자신이 관리하는 가족 구성원의 복약 스케줄 전체를 조회한다.",
+)
+async def list_medication_schedules_for_family(
+    target_profile_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> list[MedicationScheduleResponse]:
+    service = MedicationService()
+    return await service.list_schedules_for_family(session, profile.id, target_profile_id)
+
+
+@medication_router.get(
+    "/medications/interactions/family/{target_profile_id}",
+    response_model=InteractionCheckResult,
+    summary="가족 구성원의 병용금기 확인 (가족관리)",
+)
+async def check_interactions_for_family(
+    target_profile_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> InteractionCheckResult:
+    service = MedicationService()
+    return await service.check_interactions_for_family(session, profile.id, target_profile_id)
+
+
+@medication_router.get(
+    "/medications/food-interactions/family/{target_profile_id}",
+    response_model=FoodInteractionCheckResult,
+    summary="가족 구성원의 음식 상호작용 확인 (가족관리, 빠른 응답)",
+)
+async def check_food_interactions_for_family(
+    target_profile_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> FoodInteractionCheckResult:
+    service = MedicationService()
+    return await service.check_food_interactions_for_family(session, profile.id, target_profile_id)
+
+
+@medication_router.get(
+    "/medications/food-interactions/pending/family/{target_profile_id}",
+    response_model=FoodInteractionCheckResult,
+    summary="가족 구성원의 음식 상호작용 확인 (가족관리, 느린 실시간 API)",
+)
+async def check_food_interactions_pending_for_family(
+    target_profile_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> FoodInteractionCheckResult:
+    service = MedicationService()
+    return await service.check_food_interactions_pending_for_family(session, profile.id, target_profile_id)
+
+
+@medication_router.patch(
+    "/medications/{schedule_id}/for-family",
+    response_model=MedicationScheduleResponse,
+    summary="가족 구성원 몫 복약 스케줄 부분 수정 (가족관리)",
+    description="보호자가 자신이 관리하는 가족 구성원의 복약 스케줄을 수정한다. 전달한 필드(복용 시간 목록, 병원명)만 부분 수정한다.",
+)
+async def update_medication_schedule_for_family(
+    schedule_id: int,
+    body: MedicationScheduleUpdateRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> MedicationScheduleResponse:
+    service = MedicationService()
+    return await service.update_schedule_for_family(session, profile.id, schedule_id, body)
+
+
+@medication_router.delete(
+    "/medications/{schedule_id}/for-family",
+    status_code=204,
+    summary="가족 구성원 몫 복약 스케줄 삭제 (가족관리)",
+)
+async def delete_medication_schedule_for_family(
+    schedule_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    service = MedicationService()
+    await service.delete_schedule_for_family(session, profile.id, schedule_id)

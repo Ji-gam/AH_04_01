@@ -2,8 +2,24 @@
 <html lang="ko">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ReMedi</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Re:Medi</title>
+
+    <!-- 브라우저 탭 favicon - PWA 아이콘과 같은 이미지(온보딩 스플래시 하트비트 아이콘)를 쓴다. -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
+
+    <!-- PWA - manifest.json은 앱 이름/아이콘/테마색/시작화면 배경색을 정의한다.
+         (frontend/public/manifest.json, 2026-07-21) -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#FF6F91" />
+
+    <!-- iOS는 manifest.json을 일부만 인식해서(홈 화면 아이콘/독립 실행 여부 등은 못 읽음)
+         아래 애플 전용 메타태그로 따로 알려줘야 한다. -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Re:Medi" />
   </head>
   <body>
     <div id="root"></div>

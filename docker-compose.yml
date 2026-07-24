@@ -94,6 +94,14 @@ services:
     volumes:
       - ./ai_worker:/app/ai_worker
       - /app/.venv
+      # 임베딩 모델(e5-large, 2.2GB) 캐시. **이름있는 볼륨이어야 한다** — 위 /app/.venv처럼
+      # 익명으로 두면 컨테이너 재생성 때 같이 버려져 매번 2GB를 다시 받는다(기동 3~4분).
+      # 이름을 주면 컨테이너와 수명이 분리돼 재생성·리빌드를 견딘다(down -v면 날아감).
+      - hf_cache:/root/.cache/huggingface
+      # RAG 벡터스토어(ai_worker/ingest가 만든 chroma_data) - 위 ./ai_worker 바인드 마운트가
+      # 로컬 소스코드 전체를 덮어써서 chroma_data도 호스트의 ai_worker/chroma_data(.gitignore)로
+      # 자동으로 영속화된다. prod(EC2)는 소스 바인드 마운트가 없어 이 볼륨이 별도로 필요하다
+      # (infra/docker/docker-compose.prod.yml 참고, 2026-07-22 EC2 장애로 확인됨).
     networks:
       - ws
     command: |
@@ -121,6 +129,7 @@ services:
 volumes:
   mysql_data:
   static_volume:
+  hf_cache:
 
 networks:
   ws:

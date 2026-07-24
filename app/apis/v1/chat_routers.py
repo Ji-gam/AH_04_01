@@ -39,7 +39,8 @@ async def create_chat_session(
     summary="채팅 메시지 전송(스트리밍)",
     description=(
         "메시지를 전송하고 답변을 text/plain 스트림으로 받는다. "
-        "각 줄은 {type: 'token'|'emergency_fallback'|'done', content, disclaimer?} 형태의 JSON이다. "
+        "각 줄은 {type: 'sources'|'token'|'emergency_fallback'|'done', content, disclaimer?, sources?} "
+        "형태의 JSON이다. sources는 답변 생성에 쓰인 DUR/논문 출처 목록(토큰보다 먼저 도착). "
         "응급 키워드가 감지되면 LLM 호출 없이 emergency_fallback 청크만 반환한다."
     ),
     responses={
@@ -57,7 +58,7 @@ async def send_chat_message(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="채팅 세션을 찾을 수 없습니다.")
 
     async def event_stream():
-        async for chunk in ChatService().stream_reply(session, profile.id, session_id, body.message):
+        async for chunk in ChatService().stream_reply(profile.id, session_id, body.message):
             yield json.dumps(chunk, ensure_ascii=False) + "\n"
 
     return StreamingResponse(event_stream(), media_type="text/plain")
@@ -96,4 +97,15 @@ async def list_chat_messages(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="채팅 세션을 찾을 수 없습니다.")
 
     messages = await ChatRepository().list_messages(session, session_id)
-    return [ChatMessageResponse(role=m.role, content=m.content, created_at=m.created_at) for m in messages]
+    # MessageRole enum 값 자체가 "USER"/"ASSISTANT"(대문자)라, 프론트(useChatStream.ts)가
+    # 기대하는 소문자 "user"/"assistant"로 API 경계에서 변환한다(DB/모델은 그대로 둠).
+    return [
+        ChatMessageResponse(
+            role=m.role.value.lower(),
+            content=m.content,
+            sources=m.sources,
+            disclaimer=m.disclaimer,
+            created_at=m.created_at,
+        )
+        for m in messages
+    ]

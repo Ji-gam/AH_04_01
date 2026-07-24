@@ -78,26 +78,14 @@ Table notification_schedules {
 }
 
 // 새 도메인 테이블을 추가하면 여기 아래에 테이블을 추가하고, profiles로의 FK를 명시하세요.
-Table medications {
-  id bigint [pk, increment]
-  standard_code varchar(50)
-  medication_name varchar(150) [not null]
-  form_type varchar(30)
-  dosage_guideline text
-  side_effects text
-  precautions text
-  storage_method text
-  shape varchar(30)
-  color varchar(30)
-  letters varchar(50)
-}
-
 Table medication_schedules {
   id bigint [pk, increment]
   profile_id bigint [not null, ref: > profiles.id]
-  medication_id bigint [not null, ref: > medications.id]
+  item_seq varchar(20) [not null, note: 'drugs_data/drug_identification 등 마스터 데이터 조인 키. row 단위 UNIQUE가 아니라 DB FK 없음 - 앱 레벨에서만 존재 검증(T-MED-16)']
+  display_name varchar(150) [note: 'item_seq가 AUTO_ 더미(마스터 데이터에 없는 이름)일 때만 채움']
   times json [not null]
   source_job_id varchar(36)
+  hospital_name varchar(100)
   created_at datetime [not null]
   updated_at datetime [not null]
 }
@@ -109,6 +97,14 @@ Table medication_recognition_jobs {
   source_type varchar(20) [not null]
   candidates json
   extracted_fields json
+  created_at datetime [not null]
+  updated_at datetime [not null]
+}
+
+Table medication_data_cache {
+  id bigint [pk, increment]
+  query_name varchar(150) [not null, unique, note: '조회 약품명 정확매치 키(trim만). fetch_medication_master_data() 외부 API write-back 캐시(T-MED-x-drug-gateway-cache) - drug_data_cache와 동일 패턴, 빈 응답은 캐싱 안 함']
+  fields json [not null]
   created_at datetime [not null]
   updated_at datetime [not null]
 }

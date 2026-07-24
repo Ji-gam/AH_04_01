@@ -10,6 +10,10 @@ export function setAccessToken(token: string | null) {
   accessToken = token ? token.replace(/\s+/g, "") : token;
 }
 
+export function getAccessToken(): string | null {
+  return accessToken;
+}
+
 // 로그인 기능이 아직 없어 콘솔에서 수동으로 토큰을 넣어 테스트하는 용도.
 // 프로덕션 빌드에는 포함되지 않는다 (import.meta.env.DEV).
 if (import.meta.env.DEV) {
@@ -65,7 +69,7 @@ function doFetch(path: string, options: RequestInit): Promise<Response> {
 let refreshPromise: Promise<boolean> | null = null;
 
 /** access token(수명 60분)이 만료됐을 때 refresh 쿠키로 재발급. 성공 여부만 반환한다. */
-async function tryRefreshAccessToken(): Promise<boolean> {
+export async function tryRefreshAccessToken(): Promise<boolean> {
   refreshPromise ??= (async () => {
     try {
       const res = await fetch("/api/v1/auth/token/refresh", { credentials: "include" });

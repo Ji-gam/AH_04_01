@@ -98,6 +98,137 @@ docker-compose up -d --build
 - **API 서버**: [http://localhost/api/docs](http://localhost/api/docs) (Swagger UI)
 - **Nginx**: 80 포트를 통해 API 서버로 요청을 전달합니다.
 
+#### ⚠️ 데이터 시딩 (최초 1회)
+
+`docker compose up`은 `alembic upgrade head`로 테이블만 생성할 뿐, 그 안의 데이터까지 채워주지는
+않습니다. `mysql_data` 볼륨이 없는 새 환경(신규 팀원 로컬, 새 dev/prod DB, 새 EC2 인스턴스 등)에서는
+필요에 따라 아래 스크립트를 한 번 실행하세요. 볼륨이 살아있는 한(`docker compose down -v`로 지우지
+않는 한) 컨테이너를 껐다 켜도 다시 실행할 필요는 없습니다.
+
+> ⚠️ `seed_food_drug_interaction`/`seed_dur`(밑에서 계속 언급되는 이름)는 (T-MED-15 리팩터링 이후)
+> **"원본 데이터가 이미 운영 MySQL에 있다"고 가정하고 다른 MySQL(주로 테스트 DB)로 복사만 하는**
+> 스크립트로 바뀌었습니다 — 단독 실행하면 아무 것도 하지 않고 안내 메시지만 찍습니다. 운영 MySQL에
+> **처음으로** 데이터를 채워야 한다면(볼륨이 비어있는 신규 환경) 아래 `bootstrap_*` 스크립트를 대신
+> 쓰세요. 이 스크립트들만 원본 소스(SQLite/JSON)를 직접 읽습니다 — 요청을 처리하는 API 코드 경로는
+> 여전히 SQLite를 전혀 참조하지 않습니다.
+
+```bash
+# 음식-약물 상호작용 참조 테이블 (식약처 가이드북 기반) — 매칭 기능이 실제로 동작하려면 필수.
+# food_drug_interaction_reference.json(git에 있음)을 직접 읽어 MySQL에 채운다.
+docker compose exec fastapi uv run python -m app.scripts.bootstrap_food_drug_from_json
+
+# DUR(의약품안전사용서비스) 참조 테이블 — app/database/drugs_full.db(공공데이터포털 API 24종
+# 전수 수집본, scripts/drug_info_sync/orchestrate_pipeline.py 산출물, git에는 없음 — 팀 백업이나
+# 파이프라인 재실행으로 구해야 함)를 직접 읽어 MySQL에 채운다.
+docker compose exec fastapi uv run python -m app.scripts.bootstrap_dur_from_sqlite
+
+# 개발/테스트용 데모 계정 3개 + 습관·복약·알림·AI상담 더미 데이터 — 기능 화면을 바로 확인하고 싶을 때(선택)
+docker compose exec fastapi uv run python -m app.scripts.seed_demo_data
+```
+
+`bootstrap_food_drug_from_json`/`bootstrap_dur_from_sqlite` 모두 재실행해도 안전합니다 — 참조
+테이블 전체를 지우고 원본 소스 내용으로 다시 채우는 방식입니다(정적 참조 데이터라 증분 갱신할
+이유가 없기 때문). 운영 MySQL에 이미 데이터가 있는 환경(볼륨을 새로 만들지 않는 한 보통 여기 해당)
+이라면 이 두 스크립트를 다시 실행할 필요가 없고, 그 대신 테스트 DB 등 별도 DB로 데이터를 복사하고
+싶을 때만 `seed_food_drug_interaction`/`seed_dur`를 (스크립트가 아니라 함수로) 씁니다 —
+`app/tests/conftest.py`가 이미 그렇게 자동 호출합니다.
+
+`app/models/dur.py`에 새 컬럼/테이블을 추가하는 마이그레이션(예: `0027_expand_dur_tables.py`)이
+있는 경우, `bootstrap_dur_from_sqlite`가 새 컬럼까지 채우려면 **먼저 `alembic upgrade head`로
+스키마를 반영한 뒤에** 실행해야 합니다. `docker compose up`은 fastapi 컨테이너 기동 시 항상
+`alembic upgrade head`를 자동으로 실행하므로, 컨테이너를 재기동(`docker compose up -d --build
+fastapi` 또는 재시작)하면 스키마는 이미 최신입니다 — 그다음 위 `bootstrap_dur_from_sqlite` 커맨드만
+실행하면 됩니다.
+
+#### 🩹 (컨테이너 없이) 로컬 venv에서 직접 alembic/seed 실행하기
+
+컨테이너 재빌드 없이 빠르게 반복 확인하고 싶을 때는 호스트에서 직접 실행할 수도 있습니다.
+
+```bash
+# alembic/asyncmy 등은 app 그룹에 있다
+uv sync --group app
+
+# .env의 DB_HOST=mysql은 "컨테이너 안에서 mysql 컨테이너를 찾기 위한" 값이라, 호스트에서 직접
+# 실행할 땐 mysql이라는 호스트명을 못 찾는다. DB_EXPOSE_PORT로 열려있는 localhost로 덮어써야 한다.
+DB_HOST=localhost uv run --group app python -m alembic upgrade head
+DB_HOST=localhost uv run --group app python -m app.scripts.bootstrap_dur_from_sqlite
+```
+
+**⚠️ `alembic upgrade head`가 `Table 'xxx' already exists`로 실패하는 경우**: `alembic_version`
+테이블의 기록과 실제 DB 스키마가 어긋나 있다는 뜻입니다(예: 과거에 다른 방식으로 테이블이
+만들어졌거나, 마이그레이션 적용 후 버전 기록이 누락된 경우). 아래로 실제 상태를 먼저 확인하세요.
+
+```bash
+DB_HOST=localhost uv run --group app python -m alembic current   # 기록된 리비전 확인
+DB_HOST=localhost uv run --group app python -c "
+import asyncio
+from app.core.db.databases import AsyncSessionLocal
+from sqlalchemy import text
+async def main():
+    async with AsyncSessionLocal() as s:
+        r = await s.execute(text('SHOW TABLES'))
+        print(sorted(row[0] for row in r.fetchall()))
+asyncio.run(main())
+"
+```
+
+실제 테이블 목록이 기록된 리비전보다 앞서 있다면(= 스키마는 이미 반영됐는데 기록만 뒤처짐),
+실제 상태와 일치하는 리비전으로 먼저 `stamp`한 뒤 `upgrade head`를 실행하세요.
+
+```bash
+DB_HOST=localhost uv run --group app python -m alembic stamp <실제_상태와_일치하는_리비전>
+DB_HOST=localhost uv run --group app python -m alembic upgrade head
+```
+
+#### ⚠️ RAG 벡터 시딩 (최초 1회, 팀원 각자 로컬에서)
+
+챗봇 검색에 쓰는 벡터 저장소(`ai_worker/chroma_data/`)는 **git에 없습니다**(수백 MB 바이너리).
+논문 JSON/OCR 마크다운은 `ai_worker/source/`에 커밋돼 있지만, **DUR/e약은요 CSV 8개(+ 제품명
+->성분명 조회용 `_item_ingredient_map.csv` 1개, RAG 문서 아님)는 더 이상 커밋되지 않습니다** —
+MySQL이 원본이고(`app/scripts/seed_dur.py`가 옮겨놨습니다), 빌드 시점마다 최신 데이터로 새로
+뽑아옵니다. 그래서 MySQL DUR 시딩(위 "DUR 데이터 시딩" 참고)을 먼저 끝내야 합니다.
+
+**API 키도, 과금도, 네트워크도 필요 없습니다.** 임베딩 모델을 로컬에 내려받아 색인도 질의도
+직접 돌립니다. 몇 번을 다시 만들어도 공짜라 마음껏 실험하세요.
+
+```bash
+# 0. MySQL에 DUR 데이터가 이미 있어야 한다(uv run python -m app.scripts.seed_dur, 위 참고).
+
+# 1. AI 워커 의존성 — 이 프로젝트는 [dependency-groups]를 쓰므로 --group이다.
+#    `--all-extras`는 아무 그룹도 안 잡고 나머지를 지워버린다(실제로 당함).
+uv sync --group ai
+
+# 2. MySQL의 DUR/e약은요 데이터를 드롭 폴더 CSV로 뽑아온다(source/에 9개 파일 생성/갱신,
+#    그중 _item_ingredient_map.csv는 밑줄 접두어라 아래 3번 색인 대상에선 자동 제외된다).
+uv run python -m ai_worker.scripts.export_source_from_mysql
+
+# 3. 뭐가 색인될지 먼저 본다 (색인은 안 함)
+uv run python -m ai_worker.ingest --scan
+
+# 4. 색인. 첫 실행은 임베딩 모델(e5-large, 약 2GB)을 내려받아 5~15분 걸린다.
+uv run python -m ai_worker.ingest
+
+# 5. 검증 — 실제 질문을 던져 팀과 같은 결과가 나오는지 확인한다.
+uv run python -m ai_worker.scripts.verify_rag
+```
+
+5번이 전부 OK면 끝입니다. 기대 결과가 스크립트에 박혀 있어 내 로컬이 팀과 같은지 눈으로
+맞춰볼 수 있습니다. **건수가 아니라 질문으로 확인하는 이유**: 색인은 "몇 건 넣었다"고 보고하지만
+그게 검색이 된다는 뜻은 아닙니다. 메타데이터 키가 하나 틀리면 문서는 들어가 있는데 영원히
+안 뽑히고, 실제로 그런 상태로 오래 굴러간 적이 있습니다.
+
+> 모델은 서빙 프로세스가 1.1GB를 물고 있고, 기동 시 약 10초를 들여 미리 올립니다
+> (`initialize_rag`). 안 그러면 그 10초를 첫 질문한 사용자가 냅니다.
+
+**DUR/e약은요 데이터를 갱신하려면** MySQL을 다시 시딩하고(0번) 2번부터 다시 돌리면 됩니다.
+**그 외 RAG 재료(논문/가이드 문서 등)를 추가하려면** `ai_worker/source/`에 파일을 넣고 4번을
+다시 돌리면 됩니다. 등록 절차는 없습니다 — 폴더에 있으면 색인됩니다(`.csv` / `.json` / `.md`
+/ `.pdf`). RAG 재료가 아닌 것(SQL 조회용 표 등)은 여기 두지 않습니다. 자세한 규칙은
+`ai_worker/ingest/__init__.py`와 `ai_worker/source/_tuning.yaml` 참고.
+
+재색인은 안 바뀐 문서를 콘텐츠 해시로 걸러 건너뛰므로(`SQLRecordManager`) 몇 번을 돌려도
+안전하고 빠릅니다. 청킹 규칙을 바꿔서 전부 다시 임베딩해야 할 때만 `--force`를 씁니다.
+
 #### 로컬에서 개별 실행 (개발용)
 
 **FastAPI 서버 실행:**
@@ -185,8 +316,8 @@ chmod +x scripts/certbot.sh
 | 단계 | 문서 | 언제 보는가 |
 | --- | --- | --- |
 | 1. 진입(매 세션) | `AGENTS.md`(`CLAUDE.md`는 여기로의 리다이렉트) | 작업 시작 전 항상 |
-| 2. 참조(필요할 때) | `docs/SESSION_START.md`, `docs/DEV_WORKFLOW.md`, `docs/TROUBLESHOOTING.md`, `docs/CODING_RULES.md`, `docs/CONTRIBUTING.md`, `docs/decision_log/`, `docs/squad-map.md` | T-ID 작업, 구조/소유권 확인, "왜 이렇게 됐는지" 찾을 때 |
+| 2. 참조(필요할 때) | `docs/CONTRIBUTING.md`, `docs/TROUBLESHOOTING.md`, `docs/CODING_RULES.md`, `docs/FRONTEND_UI_GUIDE.md`, `docs/decision_log/`, `docs/SQUAD_MAP.md` | T-ID 작업, 구조/소유권 확인, "왜 이렇게 됐는지" 찾을 때 |
 | 3. 개발설계 산출물 | `docs/dev/ERD.dbml`, `docs/dev/api_spec_core_v1_v1.1.yaml`, `docs/dev/sample_code_chat/`, `docs/dev/sample_code_recog/` | DB/스키마 변경, 새 도메인 구현 시 참고 예제 |
 | 4. 기획 원본 스냅샷 (수정 금지) | `docs/plan/PRD_ReMedi_v1.1.md`, `docs/plan/TRD_ReMedi_v1.1.md` | T-ID의 입력/출력/성공요건 확인 |
 
-문서 버전 관리 규칙(파일명 고정, 헤더 버전업)은 `AGENTS.md`의 "문서 버전 관리" 참고.
+문서 버전 관리: 파일명 고정, 내용 변경 시 헤더 버전만 올림(이력은 `git log`).

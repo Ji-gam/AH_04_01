@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
-import { apiFetch } from "../../api/client";
+import { apiFetch, apiFetchRaw } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
+import FamilyNotificationView from "../../components/family/FamilyNotificationView";
+import FamilySwitcher from "../../components/family/FamilySwitcher";
 import type { MedicationSchedule } from "../../hooks/useMedication";
+import { pinkTheme as t } from "../../theme/pinkTheme";
+import { disableFcmWeb, enableFcmWeb } from "../../utils/fcmWeb";
+import { disableWebPush, enableWebPush, type PushSubscribeStatus } from "../../utils/webPush";
 import SchedulePage from "../SchedulePage/SchedulePage";
 
 import AlarmCalendar from "./components/AlarmCalendar";
@@ -11,28 +17,14 @@ import AlarmForm, { type AlarmFormSubmit } from "./components/AlarmForm";
 import MedTimeForm from "./components/MedTimeForm";
 import Modal from "./components/Modal";
 import ToggleSwitch from "./components/ToggleSwitch";
-import { isScheduleDueOnDate, toDateString } from "./dateUtils";
-import { alarmTheme as t } from "./theme";
-
-function getCurrentHHMM(): string {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-function isDueToday(schedule: NotificationScheduleResult): boolean {
-  return isScheduleDueOnDate(schedule, new Date());
-}
+import { toDateString } from "./dateUtils";
 
 function dayLabel(schedule: NotificationScheduleResult): string {
   return schedule.frequency_type === "DAILY" ? "매일" : `매주 ${schedule.target_day_of_week}요일`;
 }
 
-/** 하루 복용 횟수의 임상 표기. 4회 이상은 표기 없이 횟수만 보여준다. */
-const DOSE_NOTATION: Record<number, string> = { 1: "qd", 2: "bid", 3: "tid", 4: "qid" };
-
 function doseLabel(count: number): string {
-  const notation = DOSE_NOTATION[count];
-  return notation ? `하루 ${count}회 (${notation})` : `하루 ${count}회`;
+  return `하루 ${count}회`;
 }
 
 /** 같은 약을 하루 몇 번 먹는지 — 약 이름+반복 조건이 같은 알림 개수를 센다. */
@@ -66,12 +58,23 @@ function saveMedAlarmDisabled(disabled: Set<string>) {
 }
 
 export default function AlarmPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // (가족관리) 가족 선택 시 아래 이 화면 전체를 FamilyNotificationView로 전환한다.
+  // 기존 본인 몫 로직(달력/약 시간 병합 등)은 전혀 안 건드리고, 완전히 별도 분기로 처리한다.
+  const [selectedFamily, setSelectedFamily] = useState<{ profileId: number; name: string } | null>(
+    null,
+  );
+
   const [schedules, setSchedules] = useState<NotificationScheduleResult[]>([]);
   const [medSchedules, setMedSchedules] = useState<MedicationSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [showAddForm, setShowAddForm] = useState(false);
+  // 약품검색(더보기)에서 "복약알림 등록"으로 넘어온 약 이름 — 추가 폼을 자동으로 열고 미리 채운다.
+  const [prefillMedName, setPrefillMedName] = useState<string | undefined>(undefined);
   const [editingSchedule, setEditingSchedule] = useState<NotificationScheduleResult | null>(null);
   // 복약 관리에서 등록한 약의 시간 수정 (알림 추가 폼과 같은 UI, 시간만 변경)
   const [editingMed, setEditingMed] = useState<{ med: MedicationSchedule; time: string } | null>(
@@ -84,6 +87,44 @@ export default function AlarmPage() {
   );
   // 달력 날짜 클릭 시 복약 스케줄 화면을 페이지 이동 없이 모달로 띄운다.
   const [scheduleModalDate, setScheduleModalDate] = useState<string | null>(null);
+
+  // (웹푸시) 탭이 닫혀있어도 알림을 받으려면 이 구독이 필요하다 - 기존
+  // requestNotificationPermission()은 탭이 열려있을 때만 동작하는 별개 메커니즘이라 그대로 둠.
+  const [pushStatus, setPushStatus] = useState<PushSubscribeStatus | "idle">("idle");
+
+  async function handleEnablePush() {
+    const status = await enableWebPush();
+    setPushStatus(status);
+    // FCM은 실험적으로 추가한 별도 채널이라(.env에 Firebase 설정이 없으면 조용히
+    // 건너뜀), 실패해도 기존 웹푸시 상태 표시에는 영향을 주지 않는다.
+    void enableFcmWeb();
+  }
+
+  async function handleDisablePush() {
+    await disableWebPush();
+    void disableFcmWeb();
+    setPushStatus("idle");
+  }
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushStatus("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setPushStatus("denied");
+      return;
+    }
+    navigator.serviceWorker
+      .getRegistration("/service-worker.js")
+      .then((reg) => reg?.pushManager.getSubscription())
+      .then((sub) => {
+        if (sub) setPushStatus("subscribed");
+      })
+      .catch(() => {
+        // 조회 실패는 조용히 무시 - "알림 켜기" 버튼이 그대로 남아있으니 다시 시도 가능.
+      });
+  }, []);
 
   const today = new Date();
   // 달력 선택 표시는 항상 오늘 — 날짜 클릭 시 이 페이지에서 필터하는 대신 복약스케줄 화면으로 이동한다.
@@ -126,36 +167,17 @@ export default function AlarmPage() {
     loadSchedules();
   }, []);
 
-  // 탭이 열려 있는 동안, 오늘 예약 시각이 되면 브라우저 알림을 자동으로 띄운다.
-  // 같은 시각의 약(직접 등록 알림 + 복약 관리 약)은 하나로 묶어 한 번만 울린다.
-  // 진짜 백그라운드 푸시(서비스워커)가 아니라 포그라운드 폴링이라 탭을 닫으면 울리지 않는다.
-  const firedTodayRef = useRef<Set<string>>(new Set());
+  // 약품검색에서 navigate(..., { state: { prefillMedicationName } })로 넘어온 경우 —
+  // 추가 폼을 자동으로 열고 약 이름을 미리 채운 뒤, 뒤로가기 시 다시 열리지 않도록 state를 비운다.
   useEffect(() => {
-    const checkAndFire = () => {
-      if (!("Notification" in window) || Notification.permission !== "granted") return;
-      const nowHHMM = getCurrentHHMM();
-      const names: string[] = [];
-      for (const s of schedules) {
-        if (s.is_active && isDueToday(s) && s.alarm_time.slice(0, 5) === nowHHMM) {
-          names.push(s.medication_name);
-        }
-      }
-      for (const m of medSchedules) {
-        const matchTime = m.times.find((time) => time.slice(0, 5) === nowHHMM);
-        if (matchTime && !medAlarmDisabled.has(`med-${m.id}-${matchTime}`)) {
-          names.push(m.drug_name);
-        }
-      }
-      if (names.length === 0) return;
-      const key = `${new Date().toDateString()}:${nowHHMM}`;
-      if (firedTodayRef.current.has(key)) return;
-      firedTodayRef.current.add(key);
-      new Notification("💊 복약 시간이에요!", { body: [...new Set(names)].join(", ") });
-    };
-    checkAndFire();
-    const timer = setInterval(checkAndFire, 15000);
-    return () => clearInterval(timer);
-  }, [schedules, medSchedules, medAlarmDisabled]);
+    const state = location.state as { prefillMedicationName?: string } | null;
+    if (!state?.prefillMedicationName) return;
+    setPrefillMedName(state.prefillMedicationName);
+    setShowAddForm(true);
+    setEditingSchedule(null);
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state]);
 
   const handleToggleMedAlarm = (key: string) => {
     setMedAlarmDisabled((prev) => {
@@ -165,12 +187,6 @@ export default function AlarmPage() {
       saveMedAlarmDisabled(next);
       return next;
     });
-  };
-
-  const requestNotificationPermission = () => {
-    if ("Notification" in window && Notification.permission === "default") {
-      Notification.requestPermission();
-    }
   };
 
   // 하루 2회(bid)/3회(tid)면 시각별로 알림을 한 건씩 등록한다 (백엔드는 알림 1건 = 시각 1개).
@@ -271,6 +287,16 @@ export default function AlarmPage() {
       .catch((e: Error) => setError(`알림 삭제에 실패했습니다. (${e.message})`));
   };
 
+  // 트랙커(복약 관리)에서 등록한 약은 원래 여기서 지울 방법이 없었다(토글/시간수정만 있고
+  // 삭제가 아예 빠져있었음 - 본인이 직접 등록했든 가족이 등록해줬든 동일). 알림(row.alarm)에
+  // 이미 있는 것과 같은 패턴으로 추가한다 - 약 등록 자체(모든 시각)를 지운다.
+  const handleDeleteMed = (med: MedicationSchedule) => {
+    if (!window.confirm(`"${med.drug_name}" 등록을 삭제할까요?`)) return;
+    apiFetchRaw(`/medications/${med.id}`, { method: "DELETE" })
+      .then(loadSchedules)
+      .catch((e: Error) => setError(`약 삭제에 실패했습니다. (${e.message})`));
+  };
+
   const doseCounts = buildDoseCounts(schedules);
 
   // 달력 밑에는 직접 등록한 알림 + 복약 관리에서 등록한 약을 같은 시각끼리 묶어 보여준다
@@ -312,9 +338,67 @@ export default function AlarmPage() {
     else timeGroups.push({ time: row.time, items: [row] });
   }
 
+  // (가족관리) 가족 구성원을 선택한 상태면, 본인 몫의 복잡한 달력/병합 로직은 그대로 두고
+  // 화면 자체를 완전히 별도의 단순 화면(FamilyNotificationView)으로 바꿔치기한다.
+  if (selectedFamily) {
+    return (
+      <div style={{ background: t.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
+        <div style={{ maxWidth: 480, margin: "0 auto" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 16,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedFamily(null)}
+              style={{
+                border: "none",
+                background: "none",
+                color: t.primary,
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              ← 내 복약알림으로
+            </button>
+            <FamilySwitcher
+              selectedProfileId={selectedFamily.profileId}
+              onSelect={(target) => setSelectedFamily(target)}
+            />
+          </div>
+          <FamilyNotificationView
+            targetProfileId={selectedFamily.profileId}
+            targetName={selectedFamily.name}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: t.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
+        <button
+          type="button"
+          onClick={() => navigate("/")}
+          style={{
+            background: "none",
+            border: "none",
+            color: t.textMuted,
+            padding: 0,
+            marginBottom: 12,
+            fontSize: 13,
+            cursor: "pointer",
+          }}
+        >
+          ← 뒤로가기
+        </button>
         <div
           style={{
             display: "flex",
@@ -326,35 +410,124 @@ export default function AlarmPage() {
           <h1 style={{ fontSize: 22, fontWeight: 700, color: t.primary, margin: 0 }}>
             💗 복약 알림
           </h1>
-          <button
-            type="button"
-            onClick={() => {
-              requestNotificationPermission();
-              setShowAddForm((v) => !v);
-              setEditingSchedule(null);
-              setFormError(undefined);
-            }}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 999,
-              border: "none",
-              background: t.primary,
-              color: "white",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            + 알림 추가
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <FamilySwitcher
+              selectedProfileId={null}
+              onSelect={(target) => setSelectedFamily(target)}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddForm((v) => !v);
+                setEditingSchedule(null);
+                setFormError(undefined);
+              }}
+              style={{
+                padding: "8px 16px",
+                borderRadius: 999,
+                border: "none",
+                background: t.primary,
+                color: "white",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              + 알림 추가
+            </button>
+          </div>
         </div>
 
+        {/* (웹푸시) 탭을 닫아도 알림을 받으려면 최초 1회 이 버튼으로 브라우저 알림 권한을
+         * 허용해야 한다 - requestNotificationPermission()과 별개의 실제 백그라운드 푸시. */}
+        {pushStatus !== "subscribed" && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              border: `1px solid ${t.border}`,
+              borderRadius: 10,
+              padding: "10px 14px",
+              marginBottom: 16,
+              background: t.primarySoft,
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 13, color: t.text }}>
+              {pushStatus === "denied"
+                ? "브라우저 알림이 차단되어 있어요. 브라우저 설정에서 허용해주세요."
+                : pushStatus === "unsupported"
+                  ? "이 브라우저는 알림을 지원하지 않아요."
+                  : "탭을 닫아도 복약 시간에 알림을 받으려면 켜주세요."}
+            </p>
+            {pushStatus !== "denied" && pushStatus !== "unsupported" && (
+              <button
+                type="button"
+                onClick={handleEnablePush}
+                style={{
+                  border: "none",
+                  borderRadius: 999,
+                  background: t.primary,
+                  color: "#fff",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  padding: "6px 14px",
+                  cursor: "pointer",
+                  flexShrink: 0,
+                }}
+              >
+                🔔 알림 켜기
+              </button>
+            )}
+          </div>
+        )}
+        {pushStatus === "subscribed" && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              fontSize: 12,
+              color: t.textMuted,
+              marginBottom: 16,
+            }}
+          >
+            <span>🔔 알림 켜짐</span>
+            <button
+              type="button"
+              onClick={handleDisablePush}
+              style={{
+                border: "none",
+                background: "none",
+                color: t.textMuted,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              끄기
+            </button>
+          </div>
+        )}
+
         {showAddForm && (
-          <Modal onClose={() => setShowAddForm(false)}>
+          <Modal
+            onClose={() => {
+              setShowAddForm(false);
+              setPrefillMedName(undefined);
+            }}
+          >
             <AlarmForm
+              key={prefillMedName ?? "blank"}
+              initialMedicationName={prefillMedName}
               isSaving={isSaving}
               errorMessage={formError}
-              onCancel={() => setShowAddForm(false)}
-              onSubmit={handleCreate}
+              onCancel={() => {
+                setShowAddForm(false);
+                setPrefillMedName(undefined);
+              }}
+              onSubmit={(data) => {
+                handleCreate(data);
+                setPrefillMedName(undefined);
+              }}
             />
           </Modal>
         )}
@@ -536,6 +709,21 @@ export default function AlarmPage() {
                             }}
                           >
                             ✏️
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`${row.name} 등록 전체 삭제`}
+                            title="약 등록 전체 삭제"
+                            onClick={() => handleDeleteMed(row.med!)}
+                            style={{
+                              border: "none",
+                              background: "none",
+                              color: t.textMuted,
+                              cursor: "pointer",
+                              fontSize: 14,
+                            }}
+                          >
+                            🗑️
                           </button>
                         </>
                       )}

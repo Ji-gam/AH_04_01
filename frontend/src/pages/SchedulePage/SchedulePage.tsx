@@ -1,43 +1,34 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
 import type { MedicationSchedule } from "../../hooks/useMedication";
-import { isScheduleDueOnDate, toDateString } from "../AlarmPage/dateUtils";
+import { pinkTheme } from "../../theme/pinkTheme";
+import { toDateString } from "../AlarmPage/dateUtils";
 
-/** 레퍼런스 레이아웃 + 앱 공통 연핑크 테마 (복약알림 화면과 동일 계열) */
+import {
+  buildGroups,
+  loadChecked,
+  toggleChecked,
+  type TimelineItem,
+  type TimeGroup,
+} from "./scheduleData";
+
+/** 공용 pinkTheme 별칭 — 팁 박스(노란 안내)만 이 화면 전용 색으로 유지한다. */
 const c = {
-  pageBg: "#FFF5F8",
-  cardBg: "#FFFFFF",
-  cardBorder: "#FFE3EB",
-  text: "#4A3F44",
-  textMuted: "#A8969E",
-  pink: "#FF6F91",
-  pinkSoft: "#FFEDF2",
+  pageBg: pinkTheme.pageBg,
+  cardBg: pinkTheme.cardBg,
+  cardBorder: pinkTheme.border,
+  text: pinkTheme.text,
+  textMuted: pinkTheme.textMuted,
+  pink: pinkTheme.primary,
+  pinkSoft: pinkTheme.primarySoft,
   tipBg: "#FFFBEA",
   tipText: "#8A7B4F",
-  line: "#F3DCE3",
+  line: pinkTheme.border,
 };
-
-const FORM_TYPE_UNIT: Record<string, string> = {
-  TABLET: "1정",
-  CAPSULE: "1캡슐",
-  INJECTION: "주사",
-  SYRUP: "시럽",
-};
-
-interface TimelineItem {
-  key: string;
-  name: string;
-  /** 약 이름 아래 줄 — 병원명이 있으면 병원명, 없으면 제형 단위 */
-  subLabel: string | null;
-  hospitalName: string | null;
-  /** 이 약을 하루에 몇 번 먹는지 — 약 이름 옆에 표시 */
-  doseCount: number;
-  tip: string | null;
-}
 
 interface DurSearchResultItem {
   item_name: string;
@@ -54,80 +45,9 @@ type DurLookup =
   | { status: "error" }
   | { status: "done"; results: DurSearchResultItem[]; notFoundReason: string | null };
 
-interface TimeGroup {
-  time: string; // "HH:MM"
-  items: TimelineItem[];
-  isPrescription: boolean;
-}
-
-function buildGroups(
-  meds: MedicationSchedule[],
-  alarms: NotificationScheduleResult[],
-  date: Date,
-): TimeGroup[] {
-  const byTime = new Map<string, TimelineItem[]>();
-  const push = (time: string, item: TimelineItem) => {
-    const arr = byTime.get(time) ?? [];
-    arr.push(item);
-    byTime.set(time, arr);
-  };
-
-  for (const m of meds) {
-    for (const time of m.times) {
-      push(time.slice(0, 5), {
-        key: `med-${m.id}-${time}`,
-        name: m.drug_name,
-        subLabel:
-          m.hospital_name ?? (m.form_type ? (FORM_TYPE_UNIT[m.form_type] ?? m.form_type) : null),
-        hospitalName: m.hospital_name ?? null,
-        doseCount: m.times.length,
-        tip: m.dosage_guideline ?? null,
-      });
-    }
-  }
-
-  // 직접 등록 알림은 같은 약 이름의 알림 개수 = 하루 복용 횟수
-  const dueAlarms = alarms.filter((a) => a.is_active && isScheduleDueOnDate(a, date));
-  const alarmDoseCounts = new Map<string, number>();
-  for (const a of dueAlarms) {
-    alarmDoseCounts.set(a.medication_name, (alarmDoseCounts.get(a.medication_name) ?? 0) + 1);
-  }
-  for (const a of dueAlarms) {
-    push(a.alarm_time.slice(0, 5), {
-      key: `alarm-${a.id}`,
-      name: a.medication_name,
-      subLabel: "직접 등록 알림",
-      hospitalName: null,
-      doseCount: alarmDoseCounts.get(a.medication_name) ?? 1,
-      tip: null,
-    });
-  }
-
-  return [...byTime.entries()]
-    .sort(([t1], [t2]) => t1.localeCompare(t2))
-    .map(([time, items]) => ({
-      time,
-      items,
-      isPrescription: items.some((i) => i.key.startsWith("med-")),
-    }));
-}
-
 function getCurrentHHMM(): string {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-}
-
-/** 복용 체크는 날짜별 localStorage에 보관한다(백엔드 복용 기록 도메인 합류 전까지의 임시 저장소). */
-function loadChecked(dateStr: string): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(`intake-${dateStr}`) ?? "[]") as string[]);
-  } catch {
-    return new Set();
-  }
-}
-
-function saveChecked(dateStr: string, checked: Set<string>) {
-  localStorage.setItem(`intake-${dateStr}`, JSON.stringify([...checked]));
 }
 
 interface Props {
@@ -138,6 +58,7 @@ interface Props {
 }
 
 export default function SchedulePage({ dateStr: dateStrProp, embedded = false }: Props = {}) {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const todayStr = toDateString(new Date());
   const dateStr = dateStrProp ?? searchParams.get("date") ?? todayStr;
@@ -148,7 +69,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
   const [alarms, setAlarms] = useState<NotificationScheduleResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [checked, setChecked] = useState<Set<string>>(() => loadChecked(dateStr));
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   // 약 이름별 DUR 조회 결과 캐시 — 펼침 버튼을 누른 약만 조회하고, 같은 이름은 재조회하지 않는다.
   const [durByName, setDurByName] = useState<Map<string, DurLookup>>(new Map());
   const [expandedNames, setExpandedNames] = useState<Set<string>>(new Set());
@@ -164,7 +85,13 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
   }, []);
 
   useEffect(() => {
-    setChecked(loadChecked(dateStr));
+    let cancelled = false;
+    loadChecked(dateStr).then((next) => {
+      if (!cancelled) setChecked(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [dateStr]);
 
   const groups = useMemo(
@@ -182,23 +109,29 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
   const nowHHMM = getCurrentHHMM();
   const nextTime = isToday ? groups.find((g) => g.time >= nowHHMM)?.time : undefined;
 
-  const toggle = (key: string) => {
-    const next = new Set(checked);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
+  // 서버 반영 전에 화면부터 바꾸는 낙관적 업데이트 - 실패하면(오프라인 등) 원래 상태로 되돌린다.
+  const toggle = (item: TimelineItem, time: string) => {
+    const prev = checked;
+    const willCheck = !prev.has(item.key);
+    const next = new Set(prev);
+    if (willCheck) next.add(item.key);
+    else next.delete(item.key);
     setChecked(next);
-    saveChecked(dateStr, next);
+    toggleChecked(item, time, dateStr, willCheck).catch(() => setChecked(prev));
   };
 
   const checkAll = (group: TimeGroup) => {
-    const next = new Set(checked);
-    const allChecked = group.items.every((i) => next.has(i.key));
+    const prev = checked;
+    const willCheck = !group.items.every((i) => prev.has(i.key));
+    const next = new Set(prev);
     for (const i of group.items) {
-      if (allChecked) next.delete(i.key);
-      else next.add(i.key);
+      if (willCheck) next.add(i.key);
+      else next.delete(i.key);
     }
     setChecked(next);
-    saveChecked(dateStr, next);
+    Promise.all(group.items.map((i) => toggleChecked(i, group.time, dateStr, willCheck))).catch(
+      () => setChecked(prev),
+    );
   };
 
   const toggleDurExpand = (name: string) => {
@@ -244,6 +177,22 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
       }
     >
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
+        {!embedded && (
+          <button
+            type="button"
+            onClick={() => navigate("/more")}
+            style={{
+              background: "none",
+              border: "none",
+              color: c.textMuted,
+              padding: 0,
+              marginBottom: 12,
+              cursor: "pointer",
+            }}
+          >
+            ← 뒤로가기
+          </button>
+        )}
         <div
           style={{
             display: "flex",
@@ -418,7 +367,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                                 aria-label={
                                   done ? `${item.name} 복용 취소` : `${item.name} 복용 체크`
                                 }
-                                onClick={() => toggle(item.key)}
+                                onClick={() => toggle(item, group.time)}
                                 style={{
                                   width: 22,
                                   height: 22,

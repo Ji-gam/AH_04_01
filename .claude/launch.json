@@ -10,6 +10,21 @@
       ],
       "cwd": "frontend",
       "port": 5174
+    },
+    {
+      "name": "backend",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "DB_HOST=localhost",
+        "uv",
+        "run",
+        "uvicorn",
+        "app.main:app",
+        "--reload",
+        "--port",
+        "8010"
+      ],
+      "port": 8010
     }
   ]
 }

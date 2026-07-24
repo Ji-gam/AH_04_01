@@ -61,3 +61,55 @@ async def test_generate_structured_requires_all_fields():
         response = await client.post("/generate-structured", json={})
 
     assert response.status_code == 422
+
+
+class FakeChatOpenAI:
+    """실제 ChatOpenAI 대신, with_structured_output()에 어떤 스키마가 넘어오는지만 캡처한다."""
+
+    def __init__(self, **kwargs) -> None:
+        pass
+
+    def with_structured_output(self, json_schema):
+        FakeChatOpenAI.received_schema = json_schema
+        return FakeChain({"greeting": "안녕"})
+
+
+def test_build_chain_injects_title_when_missing(monkeypatch):
+    """실서비스에서 발견된 회귀: with_structured_output()은 최상위 title 키가 없으면
+    'Unsupported function' ValueError를 던진다(OpenAI 함수 이름으로 써야 하기 때문).
+    Pydantic의 model_json_schema()는 title을 자동으로 채워주지만, 이 엔드포인트는 범용이라
+    title 없는 스키마가 들어와도 죽지 않아야 한다."""
+    monkeypatch.setattr(generate_structured_module, "ChatOpenAI", FakeChatOpenAI)
+
+    generate_structured_module._build_chain({"type": "object", "properties": {}}, "fake-key")
+
+    assert FakeChatOpenAI.received_schema["title"] == "GeneratedResponse"
+
+
+def test_build_chain_keeps_existing_title(monkeypatch):
+    monkeypatch.setattr(generate_structured_module, "ChatOpenAI", FakeChatOpenAI)
+
+    generate_structured_module._build_chain({"title": "Custom", "type": "object"}, "fake-key")
+
+    assert FakeChatOpenAI.received_schema["title"] == "Custom"
+
+
+class CapturingChatOpenAI:
+    """ChatOpenAI 생성자에 넘어온 kwargs(temperature 포함)를 캡처한다."""
+
+    received_kwargs: dict = {}
+
+    def __init__(self, **kwargs) -> None:
+        CapturingChatOpenAI.received_kwargs = kwargs
+
+    def with_structured_output(self, json_schema):
+        return FakeChain({})
+
+
+def test_build_chain_uses_temperature_zero(monkeypatch):
+    """구조화 추출은 결정적이어야 하므로 temperature=0으로 생성해야 한다(기본 0.7 방지)."""
+    monkeypatch.setattr(generate_structured_module, "ChatOpenAI", CapturingChatOpenAI)
+
+    generate_structured_module._build_chain({"type": "object"}, "fake-key")
+
+    assert CapturingChatOpenAI.received_kwargs["temperature"] == 0
