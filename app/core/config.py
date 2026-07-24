@@ -72,6 +72,13 @@ class Config(BaseSettings):
     # 발송만 건너뛰고(웹푸시는 그대로 동작) 조용히 넘어간다.
     FIREBASE_CREDENTIALS_PATH: str | None = None
 
+    # [개인정보보호법 제23조 - 민감정보(건강정보) 안전성 확보조치] 자유서술형 건강정보
+    # 텍스트(개인건강정보 특이사항/기타, 진단병력/가족력 상세)를 DB에 암호화해서 저장하기
+    # 위한 키. app/scripts/generate_field_encryption_key.py로 1회 생성 후 .env에 넣는다.
+    # 미설정 시엔 평문 그대로 저장되니(로컬 개발 편의), 배포 전 반드시 설정할 것 - 자세한
+    # 내용은 app/core/db/encrypted_types.py의 EncryptedText 참고.
+    FIELD_ENCRYPTION_KEY: str | None = None
+
     # T-LLM-2-async-gateway: ai-worker 서비스 기본 URL (docker-compose 네트워크 내부 호스트명).
     # AIWorkerGateway가 여기에 /retrieve, /generate-structured 경로를 붙여 호출한다.
     AI_WORKER_BASE_URL: str = "http://ai-worker:8001"
