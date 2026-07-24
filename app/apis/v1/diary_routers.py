@@ -57,3 +57,22 @@ async def list_entries(
 ) -> DiaryEntryListResult:
     service = DiaryService()
     return await service.list_entries(session, profile)
+
+
+@diary_router.delete(
+    "/{entry_id}",
+    response_model=DiaryEntryListResult,
+    status_code=status.HTTP_200_OK,
+    summary="'오늘의 한 줄' 기록 삭제",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"},
+        status.HTTP_404_NOT_FOUND: {"description": "본인 소유가 아니거나 존재하지 않는 기록"},
+    },
+)
+async def delete_entry(
+    entry_id: int,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> DiaryEntryListResult:
+    service = DiaryService()
+    return await service.delete_entry(session, profile, entry_id)

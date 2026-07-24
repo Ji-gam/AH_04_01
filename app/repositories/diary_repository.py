@@ -41,3 +41,15 @@ class DiaryRepository:
             select(DiaryEntry).where(DiaryEntry.profile_id == profile_id).order_by(DiaryEntry.entry_date.desc())
         )
         return list(result.scalars().all())
+
+    async def delete(self, session: AsyncSession, profile_id: int, entry_id: int) -> bool:
+        """본인 소유의 기록만 삭제한다. 삭제됐으면 True, 없거나 본인 소유가 아니면 False."""
+        result = await session.execute(
+            select(DiaryEntry).where(DiaryEntry.id == entry_id, DiaryEntry.profile_id == profile_id)
+        )
+        entry = result.scalar_one_or_none()
+        if entry is None:
+            return False
+        await session.delete(entry)
+        await session.commit()
+        return True

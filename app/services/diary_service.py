@@ -1,6 +1,8 @@
 from datetime import date
 
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette import status
 
 from app.dtos.diary_dto import (
     DiaryEntryItemResult,
@@ -41,3 +43,9 @@ class DiaryService:
     async def list_entries(self, session: AsyncSession, profile: Profile) -> DiaryEntryListResult:
         entries = await self._repository.list_for_profile(session, profile.id)
         return DiaryEntryListResult(entries=[_to_item_result(e) for e in entries])
+
+    async def delete_entry(self, session: AsyncSession, profile: Profile, entry_id: int) -> DiaryEntryListResult:
+        deleted = await self._repository.delete(session, profile.id, entry_id)
+        if not deleted:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="삭제할 기록을 찾을 수 없습니다.")
+        return await self.list_entries(session, profile)
