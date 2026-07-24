@@ -28,5 +28,10 @@
     "owner": "agent-Claude",
     "branch": "feature/T-MED-2-2-drug-interaction-check",
     "started": "2026-07-09"
+  },
+  "T-QUAL-1-async-benchmark": {
+    "owner": "agent-Claude",
+    "branch": "feature/T-QUAL-1-async-benchmark",
+    "started": "2026-07-24"
   }
 }
