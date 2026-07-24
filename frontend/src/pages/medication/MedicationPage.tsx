@@ -347,7 +347,7 @@ export default function MedicationPage() {
 
   // 등록 방식 선택 — 가족 등록 화면(FamilyTrackerView)의 검색/사진 탭과 동일하게, 수동 검색
   // 등록과 사진(OCR) 등록 중 하나만 골라 보여준다(둘 다 항상 같이 보이던 것을 정리).
-  const [regMode, setRegMode] = useState<"manual" | "photo">("manual");
+  const [regMode, setRegMode] = useState<"photo" | "manual">("photo");
 
   // 상태 관리
   const [file, setFile] = useState<File | null>(null);
@@ -876,25 +876,8 @@ export default function MedicationPage() {
         {activeTab === "schedule" && (
           <div>
             {/* 등록 방식 선택 — 가족 등록 화면(FamilyTrackerView)의 검색/사진 탭과 같은 pill
-              버튼 스타일. 수동등록/사진등록 중 하나만 아래에 표시한다. */}
+              버튼 스타일. 사진등록/수동등록 중 하나만 아래에 표시한다. */}
             <div style={{ display: "flex", gap: 6, marginBottom: 15 }}>
-              <button
-                type="button"
-                onClick={() => setRegMode("manual")}
-                style={{
-                  flex: 1,
-                  padding: "6px",
-                  border: `1px solid ${regMode === "manual" ? pinkTheme.primary : pinkTheme.border}`,
-                  borderRadius: 8,
-                  background: regMode === "manual" ? pinkTheme.primary : pinkTheme.cardBg,
-                  color: regMode === "manual" ? "#fff" : pinkTheme.textMuted,
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                수동등록
-              </button>
               <button
                 type="button"
                 onClick={() => setRegMode("photo")}
@@ -911,6 +894,23 @@ export default function MedicationPage() {
                 }}
               >
                 사진등록
+              </button>
+              <button
+                type="button"
+                onClick={() => setRegMode("manual")}
+                style={{
+                  flex: 1,
+                  padding: "6px",
+                  border: `1px solid ${regMode === "manual" ? pinkTheme.primary : pinkTheme.border}`,
+                  borderRadius: 8,
+                  background: regMode === "manual" ? pinkTheme.primary : pinkTheme.cardBg,
+                  color: regMode === "manual" ? "#fff" : pinkTheme.textMuted,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                수동등록
               </button>
             </div>
 
