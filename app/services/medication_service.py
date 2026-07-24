@@ -772,6 +772,26 @@ def _is_plausible_llm_drug_name(name: str) -> bool:
     return bool(_DRUG_FORM_SUFFIX_PATTERN.search(name) or _DOSAGE_PATTERN.search(name))
 
 
+# (#283) 처방전과 무관한 사진(사탕/알콜스왑/헤어브러시 등)을 OCR에 태워도 포장지의 자잘한
+# 글자가 몇 개는 인식되는데, `_LLM_DRUG_NAME_SYSTEM_PROMPT`가 "오탈자로 깨져 있어도 최대한
+# 교정해서 포함"하라고 지시하다 보니 LLM이 그 노이즈 글자들을 실제 존재하는(그러나 사진과는
+# 전혀 무관한) 약품명으로 지어내 반환하는 경우가 있었다. `_is_plausible_llm_drug_name`은
+# 이름의 "형태"만 보고("정/캡슐/..."로 끝나는가) 그 이름이 실제 OCR 원문 어디서 왔는지는
+# 검증하지 않으므로 이런 할루시네이션을 걸러내지 못한다 — OCR 원문(한글만 남긴 것) 안에
+# 이름과 상당히 겹치는 부분 문자열이 실제로 있어야만("노스판매취" -> "노스판패취"처럼 오탈자
+# 교정 수준의 차이는 통과) 후보로 인정한다.
+_LLM_NAME_GROUNDING_THRESHOLD = 0.6
+
+
+def _is_llm_name_grounded_in_ocr_text(name: str, ocr_raw_text_korean: str) -> bool:
+    name_korean = _korean_only(name)
+    if not name_korean:
+        return False
+    matcher = difflib.SequenceMatcher(None, ocr_raw_text_korean, name_korean)
+    longest_match = matcher.find_longest_match(0, len(ocr_raw_text_korean), 0, len(name_korean))
+    return longest_match.size / len(name_korean) >= _LLM_NAME_GROUNDING_THRESHOLD
+
+
 def _is_duplicate_of_seen_name(name: str, seen_names: set[str]) -> bool:
     """LLM 교정명이 정규식/퍼지 경로가 이미 후보로 만든 약품명과 (오탈자 한 글자 차이 수준으로)
     거의 같으면 같은 약으로 보고 중복 추가를 막는다.
@@ -799,6 +819,7 @@ async def _resolve_llm_suggested_names(
     names: list[str],
     seen_ids: set[str],
     seen_names: set[str],
+    ocr_raw_text_korean: str,
 ) -> tuple[list[MatchedDrug], set[str]]:
     """LLM이 제안한 약품명 후보를 마스터 DB 정확일치 → Tier3(공공 API)/AUTO_ 더미 순으로 해석한다.
     OCR confidence 근거가 없는 경로라 호출부가 낮은 match_rate(`_NO_OCR_EVIDENCE_MATCH_RATE`)를
@@ -813,6 +834,10 @@ async def _resolve_llm_suggested_names(
 
     for name in _dedupe_drug_names(set(names)):
         if not _is_plausible_llm_drug_name(name):
+            continue
+        # (#283) 이름의 형태는 그럴듯해도 실제 OCR 원문 어디에도 근거가 없으면(무관한 사진에서
+        # LLM이 지어낸 약품명) 건너뛴다.
+        if not _is_llm_name_grounded_in_ocr_text(name, ocr_raw_text_korean):
             continue
         # 이미 정규식/퍼지 경로가 만든 후보(또는 이 루프에서 앞서 채택한 LLM 후보)와 오탈자
         # 수준으로 같은 이름이면 건너뛴다. 채택한 이름은 seen_names에 넣어 LLM 후보끼리의
@@ -880,7 +905,7 @@ async def _match_or_create_medications(
             if llm_names:
                 seen_names = {drug.item_name for drug in matched_drugs}
                 llm_matched, llm_auto_created_ids = await _resolve_llm_suggested_names(
-                    db_session, dur_repo, llm_names, seen_ids, seen_names
+                    db_session, dur_repo, llm_names, seen_ids, seen_names, _korean_only(ocr_raw_text)
                 )
                 matched_drugs.extend(llm_matched)
                 auto_created_ids |= llm_auto_created_ids
