@@ -110,4 +110,6 @@ def test_is_llm_name_grounded_in_ocr_text_accepts_ocr_typo_correction():
 
 def test_is_llm_name_grounded_in_ocr_text_rejects_unrelated_hallucination():
     ocr_raw_text_korean = medication_service._korean_only("에탄올 알콜스왑 개별포장 100매입")
-    assert medication_service._is_llm_name_grounded_in_ocr_text("크라시에소청룡탕엑스세립", ocr_raw_text_korean) is False
+    assert (
+        medication_service._is_llm_name_grounded_in_ocr_text("크라시에소청룡탕엑스세립", ocr_raw_text_korean) is False
+    )
