@@ -13,6 +13,7 @@ from app.apis.v1.habit_routers import habit_router
 from app.apis.v1.medication import medication_router
 from app.apis.v1.medication_intake_routers import intake_router
 from app.apis.v1.notice_routers import notice_router
+from app.apis.v1.notification_log_routers import notification_log_router
 from app.apis.v1.notification_routers import notification_router
 from app.apis.v1.notification_settings_routers import notification_settings_router
 from app.apis.v1.push_routers import push_router
@@ -27,6 +28,7 @@ v1_routers.include_router(content_router)
 v1_routers.include_router(diary_router)
 v1_routers.include_router(medication_router)
 v1_routers.include_router(notification_router)
+v1_routers.include_router(notification_log_router)
 v1_routers.include_router(notification_settings_router)
 v1_routers.include_router(notice_router)
 v1_routers.include_router(push_router)

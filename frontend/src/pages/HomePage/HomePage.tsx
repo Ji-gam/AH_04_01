@@ -24,12 +24,13 @@ import { toDateString } from "../AlarmPage/dateUtils";
 import { buildGroups, loadChecked } from "../SchedulePage/scheduleData";
 import SchedulePage from "../SchedulePage/SchedulePage";
 
-/** 홈 화면 2x2 바로가기 그리드 항목. */
+/** 홈 화면 2x2 바로가기 그리드 항목 - 약 등록을 가장 먼저 두고, 그 아래에 복약알림/AI상담,
+ * 마지막에 건강정보 순서로 배치한다(2026-07-26 순서 변경). */
 const QUICK_LINKS: { to: string; icon: string; label: string }[] = [
+  { to: "/medication", icon: "➕", label: "약 등록" },
   { to: "/alarms", icon: "🔔", label: "복약알림" },
   { to: "/chat", icon: "💬", label: "AI 상담" },
   { to: "/info", icon: "📖", label: "건강정보" },
-  { to: "/medication", icon: "➕", label: "약 등록" },
 ];
 
 /** 건강정보 중 하나라도 채워져 있으면 "입력했다"고 본다 - 항목 전부를 다 채울 필요는 없다.

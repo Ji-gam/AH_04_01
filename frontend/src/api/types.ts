@@ -400,6 +400,21 @@ export interface DiaryTodayResult {
   entry: DiaryEntryItemResult | null;
 }
 
+// 백엔드 app/dtos/notification_log_dto.py와 1:1로 수동 동기화. 홈 상단 🔔 알림함 - 복약알림/
+// 공지/가족알림/리포트 등 발송된 모든 알림의 인앱 사본을 최신순으로 보여준다.
+export interface NotificationLogItemResult {
+  id: number;
+  title: string;
+  body: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface NotificationLogListResult {
+  items: NotificationLogItemResult[];
+  unread_count: number;
+}
+
 // 백엔드 app/dtos/dur_dto.py와 1:1로 수동 동기화 (T-MED-14). 처방/약품명 배열을 넣으면 DUR(의약품
 // 안전사용) 정보를 3단계로 내려주는 스크리닝 API. drug_names만 보내면 되고 로그인 불필요.
 
