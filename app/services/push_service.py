@@ -11,6 +11,7 @@ from app.core import config
 from app.models.family_link import FamilyLinkStatus
 from app.models.push_subscription import PushPlatform, PushSubscription
 from app.repositories.family_repository import FamilyRepository
+from app.repositories.notification_log_repository import NotificationLogRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.repositories.push_subscription_repository import PushSubscriptionRepository
 
@@ -44,6 +45,7 @@ class PushService:
         self._repo = PushSubscriptionRepository()
         self._family_repo = FamilyRepository()
         self._profile_repo = ProfileRepository()
+        self._notification_log_repo = NotificationLogRepository()
 
     def get_vapid_public_key(self) -> str:
         """프론트가 `pushManager.subscribe()`에 넘길 공개키. 서버에서만 비밀키를 쥐고 있고,
@@ -142,6 +144,12 @@ class PushService:
         elif consult_url is not None:
             payload["data"] = {"url": consult_url}
             payload["actions"] = [{"action": "open_consult", "title": "불편한 증상이 있어요"}]
+
+        # 홈 상단 🔔 알림함(NotificationLog) - 실제 웹푸시/FCM 구독이 없거나 만료돼 있어도
+        # "이 프로필에게 이 알림을 보내기로 결정했다"는 사실 자체는 항상 남긴다. 이 메서드가
+        # 모든 알림 종류(복약알림/공지/가족알림/리포트/부작용안내 등)의 유일한 발송 지점이라
+        # 여기 한 곳에만 훅을 걸면 전부 커버된다.
+        await self._notification_log_repo.create(session, profile_id, title, body)
 
         await self._send_to_web_subscriptions(session, profile_id, payload)
         await self._send_to_fcm_subscriptions(session, profile_id, title, body)
