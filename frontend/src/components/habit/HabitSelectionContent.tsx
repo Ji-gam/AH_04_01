@@ -5,6 +5,7 @@ import type { HabitRecommendationItemResult, HabitsTodayResult } from "../../api
 import DiaryEntryContent from "../../components/diary/DiaryEntryContent";
 import DietLogContent from "../../components/diet/DietLogContent";
 import ExerciseLogContent from "../../components/exercise/ExerciseLogContent";
+import GoalContent from "../../components/goal/GoalContent";
 import { useAuth } from "../../hooks/useAuth";
 import Modal from "../../pages/AlarmPage/components/Modal";
 import { pinkTheme as t } from "../../theme/pinkTheme";
@@ -51,6 +52,7 @@ export default function HabitSelectionContent({ onSaved }: Props) {
   const [showDietModal, setShowDietModal] = useState(false);
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [showDiaryModal, setShowDiaryModal] = useState(false);
+  const [showGoalModal, setShowGoalModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -142,12 +144,17 @@ export default function HabitSelectionContent({ onSaved }: Props) {
       </button>
 
       {/* 오늘의 한 줄 — 누르면 DiaryEntryContent(일기)를 모달로 보여준다. */}
+      <button type="button" onClick={() => setShowDiaryModal(true)} style={menuButtonStyle}>
+        📝 오늘의 한 줄
+      </button>
+
+      {/* 목표 설정 — 누르면 GoalContent(F-GOAL-1/2)를 모달로 보여준다. */}
       <button
         type="button"
-        onClick={() => setShowDiaryModal(true)}
+        onClick={() => setShowGoalModal(true)}
         style={{ ...menuButtonStyle, marginBottom: 20 }}
       >
-        📝 오늘의 한 줄
+        🎯 목표 설정
       </button>
 
       {showRecommendationModal && (
@@ -179,6 +186,12 @@ export default function HabitSelectionContent({ onSaved }: Props) {
       {showDiaryModal && (
         <Modal onClose={() => setShowDiaryModal(false)}>
           <DiaryEntryContent />
+        </Modal>
+      )}
+
+      {showGoalModal && (
+        <Modal onClose={() => setShowGoalModal(false)}>
+          <GoalContent />
         </Modal>
       )}
     </>
