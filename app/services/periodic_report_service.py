@@ -7,6 +7,7 @@ from app.models.profiles import Profile
 from app.repositories.habit_repository import HabitRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.services.adherence_rate_service import AdherenceRateService, RateResult
+from app.services.goal_service import GoalService
 from app.services.habit_service import HabitService
 from app.services.push_service import PushService
 
@@ -41,12 +42,14 @@ class PeriodicReportService:
         habit_service: HabitService | None = None,
         profile_repo: ProfileRepository | None = None,
         push_service: PushService | None = None,
+        goal_service: GoalService | None = None,
     ) -> None:
         self._adherence = adherence_rate_service or AdherenceRateService()
         self._habit_repo = habit_repo or HabitRepository()
         self._habit_service = habit_service or HabitService()
         self._profile_repo = profile_repo or ProfileRepository()
         self._push_service = push_service or PushService()
+        self._goal_service = goal_service or GoalService()
 
     async def compute_habit_rate(self, session: AsyncSession, profile: Profile, start: date, end: date) -> RateResult:
         """선택된(습관 선택) 항목 중 그 날짜 진행량이 목표치 이상이면 완료로 센다. 습관 키가
@@ -80,23 +83,22 @@ class PeriodicReportService:
             session, profile_id, title=f"{emoji} 이번 주 복약 순응도 리포트", body=body
         )
 
-    async def send_monthly_goal_report(
-        self, session: AsyncSession, profile_id: int, month_start: date, month_end: date
-    ) -> None:
-        """F-GOAL-3 - 지난 한 달 복약 순응도 + 습관 달성률을 함께 요약해 보낸다. 실제 "목표"
-        (F-GOAL-1)가 아직 없어, 이 앱에서 "달성률"로 부를 수 있는 두 지표(복약/습관)를 각각
-        보고한다(팀 결정: 둘 다 포함)."""
-        adherence = await self._adherence.compute(session, profile_id, month_start, month_end)
+    async def _build_goal_report_lines(
+        self, session: AsyncSession, profile_id: int, start: date, end: date
+    ) -> list[str]:
+        """F-GOAL-3(주간/월간 달성 리포트) 공용 본문 - 복약 순응도 + 습관 달성률(둘 다 기간
+        집계) + 목표(F-GOAL-1) 진행률(기간과 무관한 현재 스냅샷, "지난 기간 동안" 개념이 아니라
+        "지금 어디까지 왔는지"를 보여준다 - 목표 자체가 기간 누적치가 아니라 누적 진행 수치라
+        주/월 리포트마다 다시 계산해도 매번 최신 값이 나온다)."""
+        adherence = await self._adherence.compute(session, profile_id, start, end)
 
         profile = await self._profile_repo.get_profile(session, profile_id)
         habit = (
-            await self.compute_habit_rate(session, profile, month_start, month_end)
+            await self.compute_habit_rate(session, profile, start, end)
             if profile is not None
             else RateResult(done=0, total=0, rate=None)
         )
-
-        if adherence.rate is None and habit.rate is None:
-            return
+        goal_progress = await self._goal_service.compute_progress_summary(session, profile_id)
 
         lines = []
         if adherence.rate is not None:
@@ -107,10 +109,29 @@ class PeriodicReportService:
         if habit.rate is not None:
             emoji, comment = _tone(habit.rate)
             lines.append(f"{emoji} 습관 달성률 {_pct(habit.rate)}% ({habit.done}/{habit.total}회) — {comment}")
+        for title, rate in goal_progress:
+            emoji, comment = _tone(rate)
+            lines.append(f"{emoji} 목표 '{title}' 진행률 {_pct(rate)}% — {comment}")
+        return lines
 
+    async def send_weekly_goal_report(
+        self, session: AsyncSession, profile_id: int, week_start: date, week_end: date
+    ) -> None:
+        """F-GOAL-3 - 매주 월요일, 복약 순응도/습관 달성률/목표 진행률을 함께 요약해 보낸다."""
+        lines = await self._build_goal_report_lines(session, profile_id, week_start, week_end)
+        if not lines:
+            return
         await self._push_service.send_to_profile(
-            session,
-            profile_id,
-            title="🗓️ 이번 달 달성 리포트",
-            body="\n".join(lines),
+            session, profile_id, title="📅 이번 주 달성 리포트", body="\n".join(lines)
+        )
+
+    async def send_monthly_goal_report(
+        self, session: AsyncSession, profile_id: int, month_start: date, month_end: date
+    ) -> None:
+        """F-GOAL-3 - 매월, 복약 순응도/습관 달성률/목표 진행률을 함께 요약해 보낸다."""
+        lines = await self._build_goal_report_lines(session, profile_id, month_start, month_end)
+        if not lines:
+            return
+        await self._push_service.send_to_profile(
+            session, profile_id, title="🗓️ 이번 달 달성 리포트", body="\n".join(lines)
         )

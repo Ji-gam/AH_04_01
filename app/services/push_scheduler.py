@@ -12,6 +12,7 @@ from app.models.medication_model import MedicationSchedule
 from app.models.notification_schedules import DayOfWeek, FrequencyType, NotificationSchedule
 from app.models.notification_settings import NotificationSetting
 from app.repositories.dur_drug_repository import DurDrugRepository
+from app.repositories.goal_repository import GoalRepository
 from app.repositories.habit_repository import HabitRepository
 from app.repositories.push_send_log_repository import PushSendLogRepository
 from app.services.notification_settings_service import NotificationSettingsService
@@ -262,9 +263,9 @@ async def _send_monthly_goal_report_if_due(
     now: datetime,
     current_hhmm: str,
 ) -> None:
-    """F-GOAL-3 - 매월 마지막 날 09시에 그 달 복약 순응도 + 습관 달성률 리포트를 보낸다.
-    실제 "목표"(F-GOAL-1) 기능이 아직 없어, 복약 스케줄이 있거나 이번 달 습관을 하나라도
-    고른 프로필을 대상으로 한다(팀 결정: 두 지표 모두 리포트에 포함)."""
+    """F-GOAL-3 - 매월 마지막 날 09시에 그 달 복약 순응도/습관 달성률/목표(F-GOAL-1) 진행률
+    리포트를 보낸다. 복약 스케줄이 있거나, 이번 달 습관을 하나라도 고르거나, 목표를 하나라도
+    등록한 프로필을 대상으로 한다."""
     if current_hhmm != _REPORT_SEND_HHMM:
         return
     today = now.date()
@@ -276,7 +277,8 @@ async def _send_monthly_goal_report_if_due(
     habit_profile_ids = await HabitRepository().list_profile_ids_with_selections_in_range(
         session, month_start, month_end
     )
-    profile_ids = set(med_result.scalars().all()) | set(habit_profile_ids)
+    goal_profile_ids = await GoalRepository().list_profile_ids_with_goals(session)
+    profile_ids = set(med_result.scalars().all()) | set(habit_profile_ids) | set(goal_profile_ids)
 
     for profile_id in profile_ids:
         setting = await settings.get(profile_id)
@@ -288,6 +290,41 @@ async def _send_monthly_goal_report_if_due(
             await report_service.send_monthly_goal_report(session, profile_id, month_start, month_end)
         except Exception:
             logger.exception("월간 달성 리포트 발송 중 오류 (profile_id=%s)", profile_id)
+
+
+async def _send_weekly_goal_report_if_due(
+    session: AsyncSession,
+    settings: _SettingsCache,
+    send_log_repo: PushSendLogRepository,
+    report_service: PeriodicReportService,
+    now: datetime,
+    current_hhmm: str,
+) -> None:
+    """F-GOAL-3 - 매주 월요일(PRD 고정, 사용자 설정 없음) 09시에 지난 7일 복약 순응도/습관
+    달성률/목표 진행률 리포트를 보낸다. F-ADH-2(요일 선택 가능한 주간 순응도 피드백)와는
+    별개 - 이쪽은 PRD가 명시한 "매주 월요일"에 고정이다."""
+    if current_hhmm != _REPORT_SEND_HHMM:
+        return
+    today = now.date()
+    if today.weekday() != 0:  # 월요일 고정
+        return
+    week_start, week_end = today - timedelta(days=6), today
+
+    med_result = await session.execute(select(MedicationSchedule.profile_id).distinct())
+    habit_profile_ids = await HabitRepository().list_profile_ids_with_selections_in_range(session, week_start, week_end)
+    goal_profile_ids = await GoalRepository().list_profile_ids_with_goals(session)
+    profile_ids = set(med_result.scalars().all()) | set(habit_profile_ids) | set(goal_profile_ids)
+
+    for profile_id in profile_ids:
+        setting = await settings.get(profile_id)
+        if not _should_send(setting):
+            continue
+        if not await send_log_repo.try_claim("goal_weekly_report", profile_id, today, current_hhmm):
+            continue
+        try:
+            await report_service.send_weekly_goal_report(session, profile_id, week_start, week_end)
+        except Exception:
+            logger.exception("주간 달성 리포트 발송 중 오류 (profile_id=%s)", profile_id)
 
 
 async def _check_and_send_due_notifications() -> None:
@@ -310,6 +347,7 @@ async def _check_and_send_due_notifications() -> None:
             session, settings, send_log_repo, report_service, now, current_hhmm
         )
         await _send_monthly_goal_report_if_due(session, settings, send_log_repo, report_service, now, current_hhmm)
+        await _send_weekly_goal_report_if_due(session, settings, send_log_repo, report_service, now, current_hhmm)
         await _send_weekly_ai_report_if_due(
             session, settings, send_log_repo, weekly_report_service, push_service, now, current_hhmm
         )

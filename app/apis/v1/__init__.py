@@ -9,6 +9,7 @@ from app.apis.v1.disease_routers import disease_router
 from app.apis.v1.dur import dur_router
 from app.apis.v1.exercise_routers import exercise_router
 from app.apis.v1.family_routers import family_router
+from app.apis.v1.goal_routers import goal_router
 from app.apis.v1.habit_routers import habit_router
 from app.apis.v1.medication import medication_router
 from app.apis.v1.medication_intake_routers import intake_router
@@ -36,6 +37,7 @@ v1_routers.include_router(disease_router)
 v1_routers.include_router(habit_router)
 v1_routers.include_router(dur_router)
 v1_routers.include_router(family_router)
+v1_routers.include_router(goal_router)
 v1_routers.include_router(intake_router)
 v1_routers.include_router(diet_router)
 v1_routers.include_router(exercise_router)

@@ -415,6 +415,62 @@ export interface NotificationLogListResult {
   unread_count: number;
 }
 
+// 백엔드 app/dtos/goal_dto.py와 1:1로 수동 동기화. F-GOAL-1(목표 CRUD) + F-GOAL-2(AI 가이드).
+export type GoalTerm = "단기" | "장기";
+
+export interface GoalCreateRequest {
+  title: string;
+  start_value?: number;
+  target_value?: number;
+  current_value?: number;
+  unit?: string;
+  start_date: string;
+  end_date: string;
+}
+
+export interface GoalUpdateRequest {
+  title?: string;
+  start_value?: number;
+  target_value?: number;
+  current_value?: number;
+  unit?: string;
+  start_date?: string;
+  end_date?: string;
+  is_achieved?: boolean;
+}
+
+export interface GoalProgressLogCreateRequest {
+  value: number;
+  log_date?: string;
+}
+
+export interface GoalProgressLogItemResult {
+  log_date: string;
+  value: number;
+}
+
+export interface GoalItemResult {
+  id: number;
+  title: string;
+  start_value: number | null;
+  target_value: number | null;
+  current_value: number | null;
+  unit: string | null;
+  start_date: string;
+  end_date: string;
+  term: GoalTerm;
+  progress_rate: number | null;
+  is_achieved: boolean;
+  guide_content: string | null;
+  guide_generated_at: string | null;
+  created_at: string;
+  recent_logs: GoalProgressLogItemResult[];
+}
+
+export interface GoalListResult {
+  goals: GoalItemResult[];
+}
+
 // 백엔드 app/dtos/dur_dto.py와 1:1로 수동 동기화 (T-MED-14). 처방/약품명 배열을 넣으면 DUR(의약품
 // 안전사용) 정보를 3단계로 내려주는 스크리닝 API. drug_names만 보내면 되고 로그인 불필요.
 
