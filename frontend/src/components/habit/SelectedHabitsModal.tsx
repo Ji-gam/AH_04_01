@@ -93,7 +93,7 @@ export default function SelectedHabitsModal({ userName, habitsToday, onCheck, on
                     style={{
                       flexShrink: 0,
                       border: "none",
-                      borderRadius: 999,
+                      borderRadius: 10,
                       padding: "6px 14px",
                       fontSize: 12,
                       fontWeight: 700,

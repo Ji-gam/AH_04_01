@@ -1,5 +1,7 @@
+import { Activity } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import PageTitle from "../../components/common/PageTitle";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 import AdherenceHeatmapSection from "./components/AdherenceHeatmapSection";
@@ -29,9 +31,9 @@ export default function TrackPage() {
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 20px" }}>
-          📊 트랙커
-        </h1>
+        <PageTitle icon={Activity} style={{ marginBottom: 20 }}>
+          트랙커
+        </PageTitle>
 
         <div
           style={{
@@ -66,7 +68,7 @@ export default function TrackPage() {
               borderRadius: 10,
               background: pinkTheme.primary,
               color: "#fff",
-              fontWeight: 600,
+              fontWeight: 700,
               cursor: "pointer",
             }}
           >

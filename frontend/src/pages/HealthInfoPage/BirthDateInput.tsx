@@ -5,7 +5,7 @@ import { pinkTheme } from "../../theme/pinkTheme";
 const inputStyle: React.CSSProperties = {
   padding: "10px 12px",
   border: `1px solid ${pinkTheme.border}`,
-  borderRadius: "8px",
+  borderRadius: 10,
   fontSize: 14,
 };
 
@@ -78,9 +78,10 @@ function CalendarPopup({
       style={{
         marginTop: 10,
         border: `1px solid ${pinkTheme.border}`,
-        borderRadius: 12,
-        padding: 12,
+        borderRadius: 16,
+        padding: 18,
         background: pinkTheme.cardBg,
+        boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
       }}
     >
       <style>{`
@@ -213,7 +214,7 @@ export default function BirthDateInput({ year, month, day, onChange }: BirthDate
           aria-label="달력으로 선택하기"
           style={{
             border: `1px solid ${pinkTheme.border}`,
-            borderRadius: 8,
+            borderRadius: 10,
             background: showCalendar ? pinkTheme.primary : pinkTheme.cardBg,
             color: showCalendar ? "#fff" : pinkTheme.text,
             width: 40,

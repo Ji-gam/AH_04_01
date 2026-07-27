@@ -1,3 +1,4 @@
+import { Pill } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -215,9 +216,26 @@ export default function HomePage() {
   return (
     <div style={{ background: pinkTheme.pageBg, minHeight: "100vh", padding: "24px 16px" }}>
       <div style={{ maxWidth: 480, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 10px" }}>
-          👋 안녕하세요{user ? `, ${user.name}님` : ""}!
-        </h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 10px" }}>
+          <span
+            aria-hidden
+            style={{
+              width: 36,
+              height: 36,
+              flexShrink: 0,
+              borderRadius: "50%",
+              background: pinkTheme.pageBg,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Pill size={18} color={pinkTheme.primary} strokeWidth={1.75} />
+          </span>
+          <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: 0 }}>
+            안녕하세요{user ? `, ${user.name}님` : ""}!
+          </h1>
+        </div>
 
         {/* 건강정보 입력 유도 배너를 먼저 두고, 가족 연결 요청은 그 아래에 둔다. */}
         {showBanner && (
@@ -241,7 +259,7 @@ export default function HomePage() {
                   flex: 1,
                   padding: "10px",
                   border: "none",
-                  borderRadius: "8px",
+                  borderRadius: 10,
                   background: pinkTheme.primary,
                   color: "#fff",
                   fontWeight: 600,
@@ -257,7 +275,7 @@ export default function HomePage() {
                   flex: 1,
                   padding: "10px",
                   border: `1px solid ${pinkTheme.border}`,
-                  borderRadius: "8px",
+                  borderRadius: 10,
                   background: pinkTheme.cardBg,
                   color: pinkTheme.textMuted,
                   cursor: "pointer",
@@ -305,7 +323,7 @@ export default function HomePage() {
                       onClick={() => handleAcceptFamilyRequest(req.link_id)}
                       style={{
                         border: "none",
-                        borderRadius: 8,
+                        borderRadius: 10,
                         background: pinkTheme.primary,
                         color: "#fff",
                         fontSize: 12,
@@ -321,7 +339,7 @@ export default function HomePage() {
                       onClick={() => handleRejectFamilyRequest(req.link_id)}
                       style={{
                         border: `1px solid ${pinkTheme.border}`,
-                        borderRadius: 8,
+                        borderRadius: 10,
                         background: pinkTheme.cardBg,
                         color: pinkTheme.textMuted,
                         fontSize: 12,
@@ -347,7 +365,7 @@ export default function HomePage() {
                 border: `1px solid ${pinkTheme.border}`,
                 background: pinkTheme.cardBg,
                 color: pinkTheme.primary,
-                borderRadius: 999,
+                borderRadius: 10,
                 padding: "7px 16px",
                 fontSize: 13,
                 fontWeight: 700,
@@ -355,7 +373,7 @@ export default function HomePage() {
                 boxShadow: "0 2px 6px rgba(255, 111, 145, 0.1)",
               }}
             >
-              🙋 내 정보
+              내 정보
             </button>
             <button
               type="button"
@@ -364,7 +382,7 @@ export default function HomePage() {
                 border: `1px solid ${pinkTheme.border}`,
                 background: pinkTheme.cardBg,
                 color: pinkTheme.primary,
-                borderRadius: 999,
+                borderRadius: 10,
                 padding: "7px 16px",
                 fontSize: 13,
                 fontWeight: 700,
@@ -372,7 +390,7 @@ export default function HomePage() {
                 boxShadow: "0 2px 6px rgba(255, 111, 145, 0.1)",
               }}
             >
-              📖 마이다이어리
+              마이다이어리
             </button>
           </div>
         )}
@@ -409,7 +427,7 @@ export default function HomePage() {
                   color: pinkTheme.primary,
                 }}
               >
-                💗 오늘의 건강 카드
+                오늘의 건강 카드
               </p>
               <div
                 style={{
@@ -640,7 +658,7 @@ export default function HomePage() {
               style={{
                 flex: 1,
                 padding: "11px 14px",
-                borderRadius: 999,
+                borderRadius: 10,
                 border: `1px solid ${pinkTheme.border}`,
                 fontSize: 13,
                 outline: "none",
@@ -689,7 +707,7 @@ export default function HomePage() {
             }}
           >
             <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.text }}>
-              🏥 가까운 병원·약국 찾기
+              가까운 병원·약국 찾기
             </p>
             {nearbyLocation.status === "granted" ? (
               <span style={{ fontSize: 11, color: pinkTheme.textMuted }}>

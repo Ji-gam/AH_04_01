@@ -38,7 +38,7 @@ export default function FamilySwitcher({
           alignItems: "center",
           gap: 6,
           padding: "8px 12px",
-          borderRadius: 999,
+          borderRadius: 10,
           border: `1px solid ${t.border}`,
           background: t.cardBg,
           color: t.text,
@@ -60,7 +60,7 @@ export default function FamilySwitcher({
             minWidth: 200,
             background: t.cardBg,
             border: `1px solid ${t.border}`,
-            borderRadius: 12,
+            borderRadius: 10,
             boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
             overflow: "hidden",
           }}

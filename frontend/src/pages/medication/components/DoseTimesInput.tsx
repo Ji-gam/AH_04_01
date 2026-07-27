@@ -61,11 +61,12 @@ export default function DoseTimesInput({ value, onChange }: Props) {
             onClick={() => handleDoseCountChange(opt.count)}
             style={{
               padding: "8px 14px",
-              borderRadius: "999px",
+              borderRadius: 10,
               border: `1px solid ${t.border}`,
-              background: doseCount === opt.count ? t.primary : "white",
-              color: doseCount === opt.count ? "white" : t.text,
+              background: doseCount === opt.count ? t.primary : t.cardBg,
+              color: doseCount === opt.count ? "#fff" : t.text,
               fontSize: "13px",
+              fontWeight: 700,
               cursor: "pointer",
             }}
           >

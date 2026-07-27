@@ -1,3 +1,4 @@
+import { Bell } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -80,14 +81,24 @@ export default function NotificationBell() {
           position: "relative",
           border: "none",
           background: "none",
-          color: t.text,
-          fontSize: 19,
-          lineHeight: 1,
-          padding: 4,
+          padding: 0,
           cursor: "pointer",
         }}
       >
-        🔔
+        <span
+          aria-hidden
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: "50%",
+            background: t.cardBg,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Bell size={18} color={t.text} strokeWidth={1.75} />
+        </span>
         {unreadCount > 0 && (
           <span
             aria-hidden
@@ -144,9 +155,13 @@ export default function NotificationBell() {
                 fontWeight: 700,
                 color: t.text,
                 borderBottom: `1px solid ${t.border}`,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
               }}
             >
-              🔔 알림
+              <Bell size={15} color={t.text} strokeWidth={1.75} />
+              알림
             </p>
 
             {loading && (

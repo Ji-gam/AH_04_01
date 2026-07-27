@@ -1,9 +1,11 @@
+import { Clock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
+import PageTitle from "../../components/common/PageTitle";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { pinkTheme } from "../../theme/pinkTheme";
 import { toDateString } from "../AlarmPage/dateUtils";
@@ -201,7 +203,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
             marginBottom: 18,
           }}
         >
-          <h1 style={{ fontSize: 19, fontWeight: 700, color: c.text, margin: 0 }}>⏰ {title}</h1>
+          <PageTitle icon={Clock}>{title}</PageTitle>
           {totalCount > 0 && (
             <span
               style={{
@@ -219,7 +221,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
         </div>
 
         {loading && <p style={{ color: c.textMuted, fontSize: 14 }}>불러오는 중...</p>}
-        {error && <p style={{ color: "#D9534F", fontSize: 14 }}>{error}</p>}
+        {error && <p style={{ color: pinkTheme.danger, fontSize: 14 }}>{error}</p>}
 
         {!loading && !error && groups.length === 0 && (
           <div
@@ -273,7 +275,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                     width: 18,
                     height: 18,
                     borderRadius: "50%",
-                    background: isNext ? c.pink : groupAllChecked ? "#FFB3C4" : "#E0D0D6",
+                    background: isNext ? c.pink : groupAllChecked ? pinkTheme.primaryHover : c.line,
                     border: `4px solid ${c.pageBg}`,
                     boxSizing: "border-box",
                   }}
@@ -292,7 +294,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                     <span
                       style={{
                         background: c.pink,
-                        color: "white",
+                        color: "#fff",
                         borderRadius: 999,
                         padding: "3px 10px",
                         fontSize: 11,
@@ -310,7 +312,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                     border: `1.5px solid ${isNext ? c.pink : c.cardBorder}`,
                     borderRadius: 16,
                     padding: 14,
-                    boxShadow: "0 2px 10px rgba(120, 100, 60, 0.06)",
+                    boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
                   }}
                 >
                   <div
@@ -331,8 +333,8 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                         style={{
                           border: "none",
                           background: groupAllChecked ? c.pink : c.pinkSoft,
-                          color: groupAllChecked ? "white" : c.pink,
-                          borderRadius: 8,
+                          color: groupAllChecked ? "#fff" : c.pink,
+                          borderRadius: 10,
                           padding: "5px 10px",
                           fontSize: 12,
                           fontWeight: 700,
@@ -353,7 +355,7 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                         <div
                           key={item.key}
                           style={{
-                            background: "#FDFCF9",
+                            background: c.cardBg,
                             border: `1px solid ${c.cardBorder}`,
                             borderRadius: 12,
                             padding: "10px 12px",
@@ -374,8 +376,8 @@ export default function SchedulePage({ dateStr: dateStrProp, embedded = false }:
                                   borderRadius: "50%",
                                   flexShrink: 0,
                                   border: done ? "none" : `2px solid ${c.line}`,
-                                  background: done ? c.pink : "white",
-                                  color: "white",
+                                  background: done ? c.pink : c.cardBg,
+                                  color: "#fff",
                                   fontSize: 13,
                                   lineHeight: 1,
                                   cursor: "pointer",

@@ -1,8 +1,10 @@
+import { Users } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { familyApi, type FamilyLinkItem, type FamilyMembersResult } from "../../api/familyApi";
+import PageTitle from "../../components/common/PageTitle";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 import QrScanner from "./components/QrScanner";
@@ -29,7 +31,7 @@ const primaryButtonStyle: React.CSSProperties = {
   borderRadius: "10px",
   background: pinkTheme.primary,
   color: "#fff",
-  fontWeight: 600,
+  fontWeight: 700,
   cursor: "pointer",
 };
 
@@ -260,9 +262,7 @@ export default function FamilyPage() {
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: 0 }}>
-          👨‍👩‍👧 가족관리
-        </h1>
+        <PageTitle icon={Users}>가족관리</PageTitle>
         <p style={{ margin: 0, fontSize: 13, color: pinkTheme.textMuted, lineHeight: 1.5 }}>
           부모님 등 가족 구성원을 이메일 또는 초대코드로 연결해요. 연결되면 트랙커(사진/수동 등록)와
           복약알림 화면에서 "나 또는 이 분" 중 누구 몫으로 확인·등록할지 고를 수 있어요.
@@ -279,7 +279,7 @@ export default function FamilyPage() {
               borderRadius: 10,
               background: linkMethod === "email" ? pinkTheme.primary : pinkTheme.cardBg,
               color: linkMethod === "email" ? "#fff" : pinkTheme.textMuted,
-              fontWeight: 600,
+              fontWeight: 700,
               fontSize: 13,
               cursor: "pointer",
             }}
@@ -296,7 +296,7 @@ export default function FamilyPage() {
               borderRadius: 10,
               background: linkMethod === "code" ? pinkTheme.primary : pinkTheme.cardBg,
               color: linkMethod === "code" ? "#fff" : pinkTheme.textMuted,
-              fontWeight: 600,
+              fontWeight: 700,
               fontSize: 13,
               cursor: "pointer",
             }}
@@ -313,7 +313,7 @@ export default function FamilyPage() {
               borderRadius: 10,
               background: linkMethod === "qr" ? pinkTheme.primary : pinkTheme.cardBg,
               color: linkMethod === "qr" ? "#fff" : pinkTheme.textMuted,
-              fontWeight: 600,
+              fontWeight: 700,
               fontSize: 13,
               cursor: "pointer",
             }}
@@ -327,7 +327,7 @@ export default function FamilyPage() {
             onSubmit={handleRequestLink}
             style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10 }}
           >
-            <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text, fontSize: 14 }}>
+            <p style={{ margin: 0, fontWeight: 700, color: pinkTheme.text, fontSize: 14 }}>
               가족 구성원에게 연결 요청 보내기
             </p>
             <input
@@ -364,10 +364,10 @@ export default function FamilyPage() {
               onSubmit={handleIssueCode}
               style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10 }}
             >
-              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text, fontSize: 14 }}>
+              <p style={{ margin: 0, fontWeight: 700, color: pinkTheme.text, fontSize: 14 }}>
                 초대코드 발급하기
               </p>
-              <p style={{ margin: 0, fontSize: 12, color: pinkTheme.textMuted }}>
+              <p style={{ margin: 0, fontSize: 13, color: pinkTheme.textMuted }}>
                 이메일을 몰라도 돼요(카카오로 가입한 가족분께 추천). 코드를 발급해서 카톡/문자로
                 전달하면, 상대방이 입력하는 즉시 연결돼요(30분 안에 사용, 1회용).
               </p>
@@ -415,11 +415,11 @@ export default function FamilyPage() {
                     onClick={handleCopyCode}
                     style={{
                       border: `1px solid ${pinkTheme.primary}`,
-                      borderRadius: 8,
+                      borderRadius: 10,
                       background: pinkTheme.cardBg,
                       color: pinkTheme.primary,
                       fontSize: 12,
-                      fontWeight: 600,
+                      fontWeight: 700,
                       padding: "6px 12px",
                       cursor: "pointer",
                     }}
@@ -434,7 +434,7 @@ export default function FamilyPage() {
               onSubmit={handleRedeemCode}
               style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10 }}
             >
-              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text, fontSize: 14 }}>
+              <p style={{ margin: 0, fontWeight: 700, color: pinkTheme.text, fontSize: 14 }}>
                 받은 초대코드 입력하기
               </p>
               <input
@@ -459,10 +459,10 @@ export default function FamilyPage() {
         ) : (
           <>
             <div style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10 }}>
-              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text, fontSize: 14 }}>
+              <p style={{ margin: 0, fontWeight: 700, color: pinkTheme.text, fontSize: 14 }}>
                 QR코드로 초대하기
               </p>
-              <p style={{ margin: 0, fontSize: 12, color: pinkTheme.textMuted }}>
+              <p style={{ margin: 0, fontSize: 13, color: pinkTheme.textMuted }}>
                 초대코드를 발급하면 QR코드도 같이 생겨요. 상대방이 이 화면(QR 탭)에서 "QR
                 스캔하기"로 찍으면, 6자리를 안 옮겨 적어도 바로 연결돼요.
               </p>
@@ -517,7 +517,7 @@ export default function FamilyPage() {
                   >
                     {issuedCode.code}
                   </span>
-                  <p style={{ margin: 0, fontSize: 12, color: pinkTheme.textMuted }}>
+                  <p style={{ margin: 0, fontSize: 13, color: pinkTheme.textMuted }}>
                     30분 안에 사용, 1회용이에요.
                   </p>
                 </div>
@@ -525,7 +525,7 @@ export default function FamilyPage() {
             </div>
 
             <div style={{ ...cardStyle, display: "flex", flexDirection: "column", gap: 10 }}>
-              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text, fontSize: 14 }}>
+              <p style={{ margin: 0, fontWeight: 700, color: pinkTheme.text, fontSize: 14 }}>
                 QR코드로 연결하기
               </p>
               {!showScanner ? (
@@ -564,7 +564,7 @@ export default function FamilyPage() {
                 <p
                   style={{
                     margin: "0 0 10px",
-                    fontWeight: 600,
+                    fontWeight: 700,
                     color: pinkTheme.primary,
                     fontSize: 14,
                   }}
@@ -583,11 +583,11 @@ export default function FamilyPage() {
                             onClick={() => handleAccept(item.link_id)}
                             style={{
                               border: "none",
-                              borderRadius: 8,
+                              borderRadius: 10,
                               background: pinkTheme.primary,
                               color: "#fff",
                               fontSize: 12,
-                              fontWeight: 600,
+                              fontWeight: 700,
                               padding: "6px 12px",
                               cursor: "pointer",
                             }}
@@ -599,10 +599,11 @@ export default function FamilyPage() {
                             onClick={() => handleReject(item.link_id)}
                             style={{
                               border: `1px solid ${pinkTheme.border}`,
-                              borderRadius: 8,
+                              borderRadius: 10,
                               background: pinkTheme.cardBg,
                               color: pinkTheme.textMuted,
                               fontSize: 12,
+                              fontWeight: 700,
                               padding: "6px 12px",
                               cursor: "pointer",
                             }}
@@ -619,7 +620,7 @@ export default function FamilyPage() {
 
             <div style={cardStyle}>
               <p
-                style={{ margin: "0 0 10px", fontWeight: 600, color: pinkTheme.text, fontSize: 14 }}
+                style={{ margin: "0 0 10px", fontWeight: 700, color: pinkTheme.text, fontSize: 14 }}
               >
                 내가 관리하는 가족
               </p>
@@ -651,7 +652,7 @@ export default function FamilyPage() {
                   ))}
                 </div>
               )}
-              <p style={{ margin: "10px 0 0", fontSize: 12, color: pinkTheme.textMuted }}>
+              <p style={{ margin: "10px 0 0", fontSize: 13, color: pinkTheme.textMuted }}>
                 이 분 몫으로 약을 등록하려면 트랙커 화면에서, 복약알림을 보려면 복약알림 화면에서 이
                 분을 선택하시면 돼요.
               </p>
@@ -662,7 +663,7 @@ export default function FamilyPage() {
                 <p
                   style={{
                     margin: "0 0 10px",
-                    fontWeight: 600,
+                    fontWeight: 700,
                     color: pinkTheme.text,
                     fontSize: 14,
                   }}
@@ -701,7 +702,7 @@ export default function FamilyPage() {
                 <p
                   style={{
                     margin: "0 0 10px",
-                    fontWeight: 600,
+                    fontWeight: 700,
                     color: pinkTheme.text,
                     fontSize: 14,
                   }}

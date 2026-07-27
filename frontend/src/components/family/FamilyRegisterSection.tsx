@@ -7,7 +7,7 @@ import { pinkTheme } from "../../theme/pinkTheme";
 const inputStyle: React.CSSProperties = {
   padding: "8px 10px",
   border: `1px solid ${pinkTheme.border}`,
-  borderRadius: "8px",
+  borderRadius: 10,
   fontSize: "13px",
   outline: "none",
 };
@@ -15,7 +15,7 @@ const inputStyle: React.CSSProperties = {
 const primaryButtonStyle: React.CSSProperties = {
   padding: "8px 14px",
   border: "none",
-  borderRadius: "8px",
+  borderRadius: 10,
   background: pinkTheme.primary,
   color: "#fff",
   fontWeight: 600,
@@ -247,7 +247,7 @@ export default function FamilyRegisterSection() {
                 onClick={() => setSelectedProfileId(m.profile_id)}
                 style={{
                   padding: "6px 12px",
-                  borderRadius: 999,
+                  borderRadius: 10,
                   border: `1.5px solid ${selectedProfileId === m.profile_id ? pinkTheme.primary : pinkTheme.border}`,
                   background:
                     selectedProfileId === m.profile_id ? pinkTheme.primary : pinkTheme.cardBg,
@@ -271,7 +271,7 @@ export default function FamilyRegisterSection() {
                     flex: 1,
                     padding: "6px",
                     border: `1px solid ${tab === "search" ? pinkTheme.primary : pinkTheme.border}`,
-                    borderRadius: 8,
+                    borderRadius: 10,
                     background: tab === "search" ? pinkTheme.primary : pinkTheme.cardBg,
                     color: tab === "search" ? "#fff" : pinkTheme.textMuted,
                     fontSize: 12,
@@ -288,7 +288,7 @@ export default function FamilyRegisterSection() {
                     flex: 1,
                     padding: "6px",
                     border: `1px solid ${tab === "photo" ? pinkTheme.primary : pinkTheme.border}`,
-                    borderRadius: 8,
+                    borderRadius: 10,
                     background: tab === "photo" ? pinkTheme.primary : pinkTheme.cardBg,
                     color: tab === "photo" ? "#fff" : pinkTheme.textMuted,
                     fontSize: 12,
@@ -354,7 +354,7 @@ export default function FamilyRegisterSection() {
                           onClick={() => setSelectedDrug(r)}
                           style={{
                             padding: "6px 10px",
-                            borderRadius: 999,
+                            borderRadius: 10,
                             border: `1.5px solid ${selectedDrug?.item_seq === r.item_seq ? pinkTheme.primary : pinkTheme.border}`,
                             background:
                               selectedDrug?.item_seq === r.item_seq
@@ -419,7 +419,7 @@ export default function FamilyRegisterSection() {
                             disabled={isBusy}
                             style={{
                               padding: "6px 10px",
-                              borderRadius: 999,
+                              borderRadius: 10,
                               border: `1.5px solid ${pinkTheme.border}`,
                               background: pinkTheme.cardBg,
                               color: pinkTheme.text,

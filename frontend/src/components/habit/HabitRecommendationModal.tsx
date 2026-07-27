@@ -140,7 +140,7 @@ export default function HabitRecommendationModal({
           style={{
             width: "100%",
             padding: "14px 0",
-            borderRadius: 12,
+            borderRadius: 10,
             border: "none",
             background: t.primary,
             color: "#fff",

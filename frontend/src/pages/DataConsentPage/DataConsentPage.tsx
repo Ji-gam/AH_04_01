@@ -1,6 +1,8 @@
+import { ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import PageTitle from "../../components/common/PageTitle";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import {
@@ -346,9 +348,9 @@ export default function DataConsentPage() {
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 16px" }}>
+        <PageTitle icon={ShieldCheck} style={{ marginBottom: 16 }}>
           데이터 활용 동의
-        </h1>
+        </PageTitle>
 
         <label
           style={{
@@ -377,8 +379,8 @@ export default function DataConsentPage() {
                 background: t.cardBg,
                 border: `1px solid ${t.border}`,
                 borderRadius: 16,
-                padding: "14px 16px",
-                boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
+                padding: 18,
+                boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
               }}
             >
               <div
@@ -412,7 +414,7 @@ export default function DataConsentPage() {
                       </span>
                     )}
                   </p>
-                  <p style={{ margin: "4px 0 0", fontSize: 12, color: t.textMuted }}>{item.desc}</p>
+                  <p style={{ margin: "4px 0 0", fontSize: 13, color: t.textMuted }}>{item.desc}</p>
                   <span
                     style={{
                       display: "inline-block",
@@ -450,7 +452,7 @@ export default function DataConsentPage() {
           style={{
             width: "100%",
             padding: "14px 0",
-            borderRadius: 12,
+            borderRadius: 10,
             border: "none",
             background: t.primary,
             color: "#fff",
@@ -475,7 +477,7 @@ export default function DataConsentPage() {
                 background: t.cardBg,
                 border: `1px solid ${t.border}`,
                 borderRadius: 16,
-                padding: 20,
+                padding: 18,
                 color: t.text,
               }}
             >
@@ -531,7 +533,7 @@ export default function DataConsentPage() {
                 background: t.cardBg,
                 border: `1px solid ${t.border}`,
                 borderRadius: 16,
-                padding: 20,
+                padding: 18,
                 color: t.text,
               }}
             >

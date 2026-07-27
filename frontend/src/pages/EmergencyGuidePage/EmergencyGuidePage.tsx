@@ -1,6 +1,8 @@
+import { Siren } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import DisclaimerBanner from "../../components/common/DisclaimerBanner";
+import PageTitle from "../../components/common/PageTitle";
 import { useNearbyRegionLabel } from "../../hooks/useNearbyRegionLabel";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import { DEFAULT_REGION_LABEL, openNearbySearch } from "../../utils/kakaoMapSearch";
@@ -12,7 +14,7 @@ const cardStyle: React.CSSProperties = {
   gap: 12,
   width: "100%",
   boxSizing: "border-box",
-  padding: "16px",
+  padding: 18,
   borderRadius: 16,
   border: `1px solid ${t.border}`,
   background: t.cardBg,
@@ -20,7 +22,7 @@ const cardStyle: React.CSSProperties = {
   textDecoration: "none",
   color: t.text,
   font: "inherit",
-  boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
+  boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
 };
 
 const iconCircleStyle: React.CSSProperties = {
@@ -49,8 +51,8 @@ function ActionCard({ icon, title, desc, href, onClick }: ActionCardProps) {
       <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <span style={iconCircleStyle}>{icon}</span>
         <span style={{ textAlign: "left" }}>
-          <strong style={{ display: "block", fontSize: 15 }}>{title}</strong>
-          <span style={{ fontSize: 12, color: t.textMuted }}>{desc}</span>
+          <strong style={{ display: "block", fontSize: 14 }}>{title}</strong>
+          <span style={{ fontSize: 13, color: t.textMuted }}>{desc}</span>
         </span>
       </span>
       <span aria-hidden style={{ color: t.textMuted }}>
@@ -98,9 +100,9 @@ export default function EmergencyGuidePage() {
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 16px" }}>
-          🚨 응급 안내
-        </h1>
+        <PageTitle icon={Siren} style={{ marginBottom: 16 }}>
+          응급 안내
+        </PageTitle>
 
         <p style={{ margin: "0 0 16px", fontSize: 14, fontWeight: 700, color: t.danger }}>
           응급 상황 시 119로 즉시 연락하세요
@@ -155,7 +157,7 @@ export default function EmergencyGuidePage() {
         )}
 
         {status === "granted" && coords && (
-          <p style={{ margin: "0 0 14px", fontSize: 12, color: t.textMuted }}>
+          <p style={{ margin: "0 0 14px", fontSize: 13, color: t.textMuted }}>
             📍 현재 위치:{" "}
             {addressLabel ?? `위도 ${coords.lat.toFixed(3)}, 경도 ${coords.lng.toFixed(3)}`}
           </p>

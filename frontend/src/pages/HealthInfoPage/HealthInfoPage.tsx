@@ -1,3 +1,4 @@
+import { HeartPulse } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -10,6 +11,7 @@ import type {
   DiseaseStatus,
   HealthInfoResult,
 } from "../../api/types";
+import PageTitle from "../../components/common/PageTitle";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
 import { hasConsented } from "../../utils/healthInfoConsent";
@@ -156,7 +158,7 @@ function useEntrySelection<T extends { disease: Disease }>(
 const smallInputStyle: React.CSSProperties = {
   padding: "6px 10px",
   border: `1px solid ${pinkTheme.border}`,
-  borderRadius: "6px",
+  borderRadius: 10,
   fontSize: 13,
 };
 
@@ -180,12 +182,12 @@ function Chip({
       onClick={onToggle}
       style={{
         padding: "8px 14px",
-        borderRadius: 999,
+        borderRadius: 10,
         border: `1.5px solid ${checked ? activeBg : pinkTheme.border}`,
         background: checked ? activeBg : pinkTheme.cardBg,
         color: checked ? "#fff" : pinkTheme.text,
         fontSize: 13,
-        fontWeight: checked ? 600 : 400,
+        fontWeight: checked ? 700 : 400,
         cursor: "pointer",
         transition: "background 0.15s ease, border-color 0.15s ease",
         whiteSpace: "nowrap",
@@ -229,11 +231,11 @@ function SegmentedControl<T extends string>({
               flex: 1,
               padding: "8px 6px",
               border: "none",
-              borderRadius: 8,
+              borderRadius: 10,
               background: active ? pinkTheme.primary : "transparent",
               color: active ? "#fff" : pinkTheme.textMuted,
               fontSize: 13,
-              fontWeight: active ? 600 : 400,
+              fontWeight: active ? 700 : 400,
               cursor: "pointer",
               transition: "background 0.15s ease",
             }}
@@ -261,7 +263,7 @@ function DiagnosisChecklist({
 }) {
   return (
     <div>
-      <p style={{ marginBottom: 8, color: pinkTheme.text, fontWeight: 600 }}>
+      <p style={{ marginBottom: 8, color: pinkTheme.text, fontSize: 14, fontWeight: 700 }}>
         진단병력 (본인이 진단받은 질환)
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -303,7 +305,7 @@ function DiagnosisChecklist({
                   style={{
                     margin: "0 0 2px",
                     fontSize: 13,
-                    fontWeight: 600,
+                    fontWeight: 700,
                     color: pinkTheme.text,
                   }}
                 >
@@ -385,7 +387,7 @@ function FamilyHistoryChecklist({
 }) {
   return (
     <div>
-      <p style={{ marginBottom: 8, color: pinkTheme.text, fontWeight: 600 }}>
+      <p style={{ marginBottom: 8, color: pinkTheme.text, fontSize: 14, fontWeight: 700 }}>
         가족력 (직계가족의 진단 이력)
       </p>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
@@ -427,7 +429,7 @@ function FamilyHistoryChecklist({
                   style={{
                     margin: "0 0 2px",
                     fontSize: 13,
-                    fontWeight: 600,
+                    fontWeight: 700,
                     color: pinkTheme.text,
                   }}
                 >
@@ -476,14 +478,15 @@ type Mode = "view" | "edit";
 const cardStyle: React.CSSProperties = {
   background: pinkTheme.cardBg,
   border: `1px solid ${pinkTheme.border}`,
-  borderRadius: "12px",
-  padding: "16px",
+  borderRadius: 16,
+  padding: 18,
+  boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
 };
 
 const inputStyle: React.CSSProperties = {
   padding: "10px 12px",
   border: `1px solid ${pinkTheme.border}`,
-  borderRadius: "8px",
+  borderRadius: 10,
   fontSize: 14,
 };
 
@@ -654,16 +657,39 @@ export default function HealthInfoPage() {
   }
 
   if (isLoading) {
-    return <p style={{ textAlign: "center", marginTop: 80 }}>불러오는 중...</p>;
+    return (
+      <div style={{ minHeight: "100%", background: pinkTheme.pageBg, padding: "20px" }}>
+        <p style={{ textAlign: "center", marginTop: 80, fontSize: 13, color: pinkTheme.textMuted }}>
+          불러오는 중...
+        </p>
+      </div>
+    );
   }
 
   if (!info) {
     return (
-      <div style={{ maxWidth: 320, margin: "40px auto" }}>
-        <p style={{ color: pinkTheme.danger }}>{error ?? "정보를 불러오지 못했습니다."}</p>
-        <button type="button" onClick={load}>
-          다시 시도
-        </button>
+      <div style={{ minHeight: "100%", background: pinkTheme.pageBg, padding: "20px" }}>
+        <div style={{ maxWidth: 320, margin: "40px auto" }}>
+          <p style={{ color: pinkTheme.danger, fontSize: 14 }}>
+            {error ?? "정보를 불러오지 못했습니다."}
+          </p>
+          <button
+            type="button"
+            onClick={load}
+            style={{
+              marginTop: 12,
+              padding: "12px",
+              border: "none",
+              borderRadius: "10px",
+              background: pinkTheme.primary,
+              color: "#fff",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            다시 시도
+          </button>
+        </div>
       </div>
     );
   }
@@ -686,27 +712,29 @@ export default function HealthInfoPage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ color: pinkTheme.text, fontSize: 20 }}>개인건강정보</h1>
+        <PageTitle icon={HeartPulse} style={{ marginBottom: 12 }}>
+          개인건강정보
+        </PageTitle>
 
-        {savedMessage && <p style={{ color: pinkTheme.success }}>{savedMessage}</p>}
-        {error && <p style={{ color: pinkTheme.danger }}>{error}</p>}
+        {savedMessage && <p style={{ color: pinkTheme.success, fontSize: 14 }}>{savedMessage}</p>}
+        {error && <p style={{ color: pinkTheme.danger, fontSize: 14 }}>{error}</p>}
 
         {mode === "view" ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <div style={cardStyle}>
-              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>
+              <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: pinkTheme.text }}>
                 🎂 기본 정보
               </p>
-              <p style={{ margin: 0, color: pinkTheme.text }}>
+              <p style={{ margin: 0, fontSize: 14, color: pinkTheme.text }}>
                 생년월일: {info.birth_date ?? "미입력"}
                 {info.age !== null ? ` (만 ${info.age}세)` : ""}
               </p>
-              <p style={{ margin: 0, color: pinkTheme.text }}>
+              <p style={{ margin: 0, fontSize: 14, color: pinkTheme.text }}>
                 성별:{" "}
                 {info.gender === "MALE" ? "남성" : info.gender === "FEMALE" ? "여성" : "미입력"}
               </p>
               {info.gender === "FEMALE" && (
-                <p style={{ margin: 0, color: pinkTheme.text }}>
+                <p style={{ margin: 0, fontSize: 14, color: pinkTheme.text }}>
                   임신 여부:{" "}
                   {info.is_pregnant === true
                     ? "예"
@@ -718,17 +746,17 @@ export default function HealthInfoPage() {
             </div>
 
             <div style={cardStyle}>
-              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>
+              <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: pinkTheme.text }}>
                 ⚖️ 키/체중/BMI
               </p>
-              <p style={{ margin: 0, color: pinkTheme.text }}>
+              <p style={{ margin: 0, fontSize: 14, color: pinkTheme.text }}>
                 키: {info.height_cm !== null ? `${info.height_cm} cm` : "미입력"}
               </p>
-              <p style={{ margin: 0, color: pinkTheme.text }}>
+              <p style={{ margin: 0, fontSize: 14, color: pinkTheme.text }}>
                 체중: {info.weight_kg !== null ? `${info.weight_kg} kg` : "미입력"}
               </p>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-                <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.primary }}>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: pinkTheme.primary }}>
                   BMI: {info.bmi !== null ? info.bmi : "키/체중을 모두 입력하면 계산돼요"}
                 </p>
                 {info.bmi !== null &&
@@ -738,7 +766,7 @@ export default function HealthInfoPage() {
                       <span
                         style={{
                           fontSize: 12,
-                          fontWeight: 600,
+                          fontWeight: 700,
                           color: "#fff",
                           background: category.color,
                           borderRadius: 999,
@@ -753,33 +781,37 @@ export default function HealthInfoPage() {
             </div>
 
             <div style={cardStyle}>
-              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>
+              <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: pinkTheme.text }}>
                 🩺 진단병력 (본인)
               </p>
-              <p style={{ margin: 0, color: pinkTheme.text }}>
+              <p style={{ margin: 0, fontSize: 14, color: pinkTheme.text }}>
                 {diagnosisSummary(info.diagnosis_history)}
               </p>
             </div>
 
             <div style={cardStyle}>
-              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>
+              <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: pinkTheme.text }}>
                 🧬 가족력 (직계가족)
               </p>
-              <p style={{ margin: 0, color: pinkTheme.text }}>
+              <p style={{ margin: 0, fontSize: 14, color: pinkTheme.text }}>
                 {familyHistorySummary(info.family_history)}
               </p>
             </div>
 
             <div style={cardStyle}>
-              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>📝 특이사항</p>
-              <p style={{ margin: 0, whiteSpace: "pre-wrap", color: pinkTheme.text }}>
+              <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: pinkTheme.text }}>
+                📝 특이사항
+              </p>
+              <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap", color: pinkTheme.text }}>
                 {info.special_notes || "미입력"}
               </p>
             </div>
 
             <div style={cardStyle}>
-              <p style={{ fontWeight: 600, marginBottom: 4, color: pinkTheme.text }}>✏️ 기타</p>
-              <p style={{ margin: 0, whiteSpace: "pre-wrap", color: pinkTheme.text }}>
+              <p style={{ fontSize: 14, fontWeight: 700, marginBottom: 4, color: pinkTheme.text }}>
+                ✏️ 기타
+              </p>
+              <p style={{ margin: 0, fontSize: 14, whiteSpace: "pre-wrap", color: pinkTheme.text }}>
                 {info.other_notes || "미입력"}
               </p>
             </div>
@@ -793,7 +825,7 @@ export default function HealthInfoPage() {
                 borderRadius: "10px",
                 background: pinkTheme.primary,
                 color: "#fff",
-                fontWeight: 600,
+                fontWeight: 700,
                 cursor: "pointer",
               }}
             >
@@ -806,7 +838,7 @@ export default function HealthInfoPage() {
             style={{ display: "flex", flexDirection: "column", gap: "16px" }}
           >
             <div>
-              <p style={{ margin: "0 0 4px", color: pinkTheme.text }}>
+              <p style={{ margin: "0 0 4px", fontSize: 14, color: pinkTheme.text }}>
                 생년월일 (선택 - 입력하면 만 나이가 자동으로 계산돼요)
               </p>
               <BirthDateInput
@@ -826,6 +858,7 @@ export default function HealthInfoPage() {
                 display: "flex",
                 flexDirection: "column",
                 gap: "4px",
+                fontSize: 14,
                 color: pinkTheme.text,
               }}
             >
@@ -867,6 +900,7 @@ export default function HealthInfoPage() {
                 display: "flex",
                 flexDirection: "column",
                 gap: "4px",
+                fontSize: 14,
                 color: pinkTheme.text,
               }}
             >
@@ -885,6 +919,7 @@ export default function HealthInfoPage() {
                 display: "flex",
                 flexDirection: "column",
                 gap: "4px",
+                fontSize: 14,
                 color: pinkTheme.text,
               }}
             >
@@ -907,6 +942,7 @@ export default function HealthInfoPage() {
                 display: "flex",
                 flexDirection: "column",
                 gap: "4px",
+                fontSize: 14,
                 color: pinkTheme.text,
               }}
             >
@@ -925,6 +961,7 @@ export default function HealthInfoPage() {
                 display: "flex",
                 flexDirection: "column",
                 gap: "4px",
+                fontSize: 14,
                 color: pinkTheme.text,
               }}
             >
@@ -947,7 +984,7 @@ export default function HealthInfoPage() {
                 borderRadius: "10px",
                 background: pinkTheme.primary,
                 color: "#fff",
-                fontWeight: 600,
+                fontWeight: 700,
                 cursor: "pointer",
               }}
             >
@@ -959,6 +996,7 @@ export default function HealthInfoPage() {
               style={{
                 background: "none",
                 border: "none",
+                fontSize: 13,
                 color: pinkTheme.textMuted,
                 cursor: "pointer",
               }}

@@ -132,7 +132,7 @@ export default function TimeInputField({ value, onChange }: Props) {
     zIndex: 30,
     background: t.cardBg,
     border: `1px solid ${t.border}`,
-    borderRadius: 8,
+    borderRadius: 10,
     boxShadow: "0 6px 16px rgba(255, 111, 145, 0.2)",
     maxHeight: 160,
     overflowY: "auto",
@@ -157,7 +157,7 @@ export default function TimeInputField({ value, onChange }: Props) {
           onClick={() => update({ period: p })}
           style={{
             padding: "6px 10px",
-            borderRadius: 999,
+            borderRadius: 10,
             border: `1px solid ${t.border}`,
             background: tp.period === p ? t.primary : "white",
             color: tp.period === p ? "white" : t.text,
@@ -182,7 +182,7 @@ export default function TimeInputField({ value, onChange }: Props) {
           style={{
             width: 46,
             padding: "6px 6px",
-            borderRadius: 8,
+            borderRadius: 10,
             border: `1px solid ${t.border}`,
             outline: "none",
             fontSize: 13,
@@ -222,7 +222,7 @@ export default function TimeInputField({ value, onChange }: Props) {
           style={{
             width: 46,
             padding: "6px 6px",
-            borderRadius: 8,
+            borderRadius: 10,
             border: `1px solid ${t.border}`,
             outline: "none",
             fontSize: 13,

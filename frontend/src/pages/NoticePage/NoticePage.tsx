@@ -1,8 +1,10 @@
+import { Megaphone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { noticeApi } from "../../api/noticeApi";
 import type { NoticeResult } from "../../api/types";
+import PageTitle from "../../components/common/PageTitle";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 /** 더보기 > 공지사항(2026-07-16 신설, 2026-07-22 백엔드 연동) - 등록된 공지/마케팅 소식을
@@ -48,9 +50,9 @@ export default function NoticePage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 20px" }}>
-          📢 공지사항
-        </h1>
+        <PageTitle icon={Megaphone} style={{ marginBottom: 20 }}>
+          공지사항
+        </PageTitle>
 
         {loading && <p style={{ color: pinkTheme.textMuted, fontSize: 14 }}>불러오는 중...</p>}
         {error && <p style={{ color: pinkTheme.danger, fontSize: 14 }}>{error}</p>}
@@ -95,7 +97,7 @@ export default function NoticePage() {
                 >
                   <div style={{ flex: 1 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 14.5, fontWeight: 700, color: pinkTheme.text }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: pinkTheme.text }}>
                         {notice.title}
                       </span>
                       {notice.is_new && (
@@ -114,7 +116,7 @@ export default function NoticePage() {
                         </span>
                       )}
                     </div>
-                    <p style={{ margin: "4px 0 0", fontSize: 12, color: pinkTheme.textMuted }}>
+                    <p style={{ margin: "4px 0 0", fontSize: 13, color: pinkTheme.textMuted }}>
                       {notice.created_at.slice(0, 10)}
                     </p>
                   </div>
@@ -136,7 +138,7 @@ export default function NoticePage() {
                     style={{
                       margin: 0,
                       padding: "0 16px 16px",
-                      fontSize: 13.5,
+                      fontSize: 14,
                       color: pinkTheme.text,
                       lineHeight: 1.7,
                       whiteSpace: "pre-line",

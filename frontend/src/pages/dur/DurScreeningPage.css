@@ -2,24 +2,28 @@
    목업 자체(board/grid/frame 등 4화면 나열용 레이아웃)는 문서화 목적이라 제외하고,
    실제 앱 화면에 필요한 토큰/컴포넌트 클래스만 가져왔다. */
 
+/* (통일 작업) 이 페이지만 별도 스튜디오(그린) 팔레트를 쓰던 것을, 홈 화면 기준 pinkTheme
+   토큰과 동일한 값으로 맞췄다 - 앱 전체가 시스템 다크모드에 반응하지 않는 고정 팔레트라서
+   (다른 화면 전부 inline pinkTheme 상수), 다크모드 오버라이드도 같은 라이트 핑크 값으로
+   통일해 이 페이지만 시스템 설정에 따라 달라 보이지 않게 했다. */
 .dur {
-  --studio-bg: #ebeee7;
-  --screen-bg: #fbfbf8;
+  --studio-bg: #fff5f8;
+  --screen-bg: #fff5f8;
   --surface: #ffffff;
-  --surface-2: #f3f5f0;
-  --ink: #1b241d;
-  --ink-muted: #5c695e;
-  --ink-faint: #8b968c;
-  --accent: #1f5d45;
-  --accent-ink: #0f3b2a;
-  --accent-soft: #e3efe7;
-  --line: #dde3da;
-  --line-strong: #c4cdc0;
-  --danger: #a93a3a;
-  --danger-soft: #f5e4e1;
-  --warn: #92661f;
-  --warn-soft: #f2e6ce;
-  --shadow: 0 1px 2px rgba(20, 30, 22, 0.06), 0 8px 24px rgba(20, 30, 22, 0.07);
+  --surface-2: #ffe3ec;
+  --ink: #5a4a4e;
+  --ink-muted: #b98a9a;
+  --ink-faint: #b98a9a;
+  --accent: #ff6f91;
+  --accent-ink: #ff4f79;
+  --accent-soft: #ffe3ec;
+  --line: #ffd6e4;
+  --line-strong: #ffd6e4;
+  --danger: #e85d75;
+  --danger-soft: #fdecea;
+  --warn: #b26a00;
+  --warn-soft: #fff3e0;
+  --shadow: 0 2px 10px rgba(255, 111, 145, 0.1);
   --font-ui:
     -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI",
     sans-serif;
@@ -28,60 +32,60 @@
 
 @media (prefers-color-scheme: dark) {
   .dur {
-    --studio-bg: #12150f;
-    --screen-bg: #191d16;
-    --surface: #20251e;
-    --surface-2: #262b22;
-    --ink: #e9efe7;
-    --ink-muted: #9ba89a;
-    --ink-faint: #6d786c;
-    --accent: #62c296;
-    --accent-ink: #bfebd4;
-    --accent-soft: #1e3327;
-    --line: #303629;
-    --line-strong: #3e463a;
-    --danger: #e38b87;
-    --danger-soft: #3b2320;
-    --warn: #e2ba73;
-    --warn-soft: #3a2e17;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 12px 28px rgba(0, 0, 0, 0.35);
+    --studio-bg: #fff5f8;
+    --screen-bg: #fff5f8;
+    --surface: #ffffff;
+    --surface-2: #ffe3ec;
+    --ink: #5a4a4e;
+    --ink-muted: #b98a9a;
+    --ink-faint: #b98a9a;
+    --accent: #ff6f91;
+    --accent-ink: #ff4f79;
+    --accent-soft: #ffe3ec;
+    --line: #ffd6e4;
+    --line-strong: #ffd6e4;
+    --danger: #e85d75;
+    --danger-soft: #fdecea;
+    --warn: #b26a00;
+    --warn-soft: #fff3e0;
+    --shadow: 0 2px 10px rgba(255, 111, 145, 0.1);
   }
 }
 :root[data-theme="dark"] .dur {
-  --studio-bg: #12150f;
-  --screen-bg: #191d16;
-  --surface: #20251e;
-  --surface-2: #262b22;
-  --ink: #e9efe7;
-  --ink-muted: #9ba89a;
-  --ink-faint: #6d786c;
-  --accent: #62c296;
-  --accent-ink: #bfebd4;
-  --accent-soft: #1e3327;
-  --line: #303629;
-  --line-strong: #3e463a;
-  --danger: #e38b87;
-  --danger-soft: #3b2320;
-  --warn: #e2ba73;
-  --warn-soft: #3a2e17;
+  --studio-bg: #fff5f8;
+  --screen-bg: #fff5f8;
+  --surface: #ffffff;
+  --surface-2: #ffe3ec;
+  --ink: #5a4a4e;
+  --ink-muted: #b98a9a;
+  --ink-faint: #b98a9a;
+  --accent: #ff6f91;
+  --accent-ink: #ff4f79;
+  --accent-soft: #ffe3ec;
+  --line: #ffd6e4;
+  --line-strong: #ffd6e4;
+  --danger: #e85d75;
+  --danger-soft: #fdecea;
+  --warn: #b26a00;
+  --warn-soft: #fff3e0;
 }
 :root[data-theme="light"] .dur {
-  --studio-bg: #ebeee7;
-  --screen-bg: #fbfbf8;
+  --studio-bg: #fff5f8;
+  --screen-bg: #fff5f8;
   --surface: #ffffff;
-  --surface-2: #f3f5f0;
-  --ink: #1b241d;
-  --ink-muted: #5c695e;
-  --ink-faint: #8b968c;
-  --accent: #1f5d45;
-  --accent-ink: #0f3b2a;
-  --accent-soft: #e3efe7;
-  --line: #dde3da;
-  --line-strong: #c4cdc0;
-  --danger: #a93a3a;
-  --danger-soft: #f5e4e1;
-  --warn: #92661f;
-  --warn-soft: #f2e6ce;
+  --surface-2: #ffe3ec;
+  --ink: #5a4a4e;
+  --ink-muted: #b98a9a;
+  --ink-faint: #b98a9a;
+  --accent: #ff6f91;
+  --accent-ink: #ff4f79;
+  --accent-soft: #ffe3ec;
+  --line: #ffd6e4;
+  --line-strong: #ffd6e4;
+  --danger: #e85d75;
+  --danger-soft: #fdecea;
+  --warn: #b26a00;
+  --warn-soft: #fff3e0;
 }
 
 .dur {
@@ -123,8 +127,8 @@
 .dur-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 14px;
+  border-radius: 16px;
+  padding: 18px;
   box-shadow: var(--shadow);
 }
 .dur-card-error {
@@ -143,7 +147,7 @@
   text-align: center;
   font-size: 14px;
   font-weight: 700;
-  border-radius: 12px;
+  border-radius: 10px;
   border: none;
   cursor: pointer;
   width: 100%;
@@ -159,7 +163,7 @@
   text-align: center;
   font-size: 13px;
   font-weight: 700;
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid var(--accent);
   cursor: pointer;
   width: 100%;
@@ -170,19 +174,19 @@
   color: var(--ink-muted);
   text-align: center;
   font-size: 13px;
-  font-weight: 600;
-  border-radius: 12px;
+  font-weight: 700;
+  border-radius: 10px;
   border: 1px solid var(--line);
   cursor: pointer;
 }
 .dur-add {
   padding: 12px;
   border: 1.5px dashed var(--line-strong);
-  border-radius: 12px;
+  border-radius: 10px;
   text-align: center;
   font-size: 13px;
   color: var(--ink-muted);
-  font-weight: 600;
+  font-weight: 700;
   background: transparent;
   cursor: pointer;
   width: 100%;
@@ -234,7 +238,7 @@
   align-items: center;
   gap: 5px;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 700;
   padding: 5px 9px 5px 8px;
   border-radius: 999px;
   border: 1px solid transparent;
@@ -365,7 +369,7 @@
 .dur-detail-tag {
   display: inline-block;
   font-size: 10.5px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--ink-muted);
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -419,7 +423,7 @@
 }
 .dur-id-cell-v {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   margin-top: 2px;
 }
 

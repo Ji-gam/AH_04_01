@@ -59,7 +59,7 @@ export default function DiseaseSubtypeSearchInput({ category, value, onChange }:
           width: "100%",
           padding: "6px 10px",
           border: `1px solid ${pinkTheme.border}`,
-          borderRadius: "6px",
+          borderRadius: 10,
           fontSize: 13,
           boxSizing: "border-box",
         }}
@@ -75,12 +75,12 @@ export default function DiseaseSubtypeSearchInput({ category, value, onChange }:
             margin: "2px 0 0",
             padding: "4px 0",
             listStyle: "none",
-            background: "#fff",
+            background: pinkTheme.cardBg,
             border: `1px solid ${pinkTheme.border}`,
-            borderRadius: "6px",
+            borderRadius: 10,
             maxHeight: 160,
             overflowY: "auto",
-            boxShadow: "0 4px 10px rgba(0,0,0,0.08)",
+            boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
           }}
         >
           {results.map((r) => (

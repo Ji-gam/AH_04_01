@@ -31,7 +31,7 @@ const chipStyle = (active: boolean): React.CSSProperties => ({
   fontWeight: active ? 700 : 500,
   cursor: "pointer",
   border: `1px solid ${active ? "transparent" : t.border}`,
-  background: active ? t.primary : "#fff",
+  background: active ? t.primary : t.cardBg,
   color: active ? "#fff" : t.text,
 });
 
@@ -53,7 +53,7 @@ export default function TimeSelectSection({
   return (
     <div style={{ marginBottom: 20 }}>
       <p style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 700, color: t.text }}>{label}</p>
-      <p style={{ margin: "0 0 8px", fontSize: 12, color: t.textMuted }}>{help}</p>
+      <p style={{ margin: "0 0 8px", fontSize: 13, color: t.textMuted }}>{help}</p>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {options.map((opt) => (

@@ -242,7 +242,7 @@ export default function DietLogContent() {
                           style={{
                             flex: 1,
                             padding: "6px 0",
-                            borderRadius: 8,
+                            borderRadius: 10,
                             border: `1.5px solid ${!isOther && m === multiplier ? t.primary : t.border}`,
                             background: !isOther && m === multiplier ? t.primarySoft : "#fff",
                             color: t.text,
@@ -262,7 +262,7 @@ export default function DietLogContent() {
                         style={{
                           flex: 1,
                           padding: "6px 0",
-                          borderRadius: 8,
+                          borderRadius: 10,
                           border: `1.5px solid ${isOther ? t.primary : t.border}`,
                           background: isOther ? t.primarySoft : "#fff",
                           color: t.text,
@@ -296,7 +296,7 @@ export default function DietLogContent() {
                           padding: "8px 10px",
                           marginBottom: 8,
                           border: `1.5px solid ${customInvalid ? t.danger : t.border}`,
-                          borderRadius: 8,
+                          borderRadius: 10,
                           fontSize: 13,
                           outline: "none",
                         }}
@@ -309,7 +309,7 @@ export default function DietLogContent() {
                       style={{
                         width: "100%",
                         padding: "8px 0",
-                        borderRadius: 8,
+                        borderRadius: 10,
                         border: "none",
                         background: t.primary,
                         color: "#fff",

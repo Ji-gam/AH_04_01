@@ -29,7 +29,7 @@ const primaryButtonStyle: React.CSSProperties = {
   borderRadius: "10px",
   background: pinkTheme.primary,
   color: "#fff",
-  fontWeight: 600,
+  fontWeight: 700,
   cursor: "pointer",
 };
 
@@ -105,6 +105,7 @@ export default function LoginPage() {
           borderRadius: "16px",
           border: `1px solid ${pinkTheme.border}`,
           padding: "24px",
+          boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
         }}
       >
         <div
@@ -185,7 +186,7 @@ export default function LoginPage() {
             onSubmit={handleSignup}
             style={{ display: "flex", flexDirection: "column", gap: "10px" }}
           >
-            <p style={{ color: pinkTheme.textMuted, fontSize: 12, margin: 0 }}>
+            <p style={{ color: pinkTheme.textMuted, fontSize: 13, margin: 0 }}>
               닉네임, 이메일, 비밀번호만 있으면 바로 시작할 수 있어요. 건강정보는 나중에 입력해요.
             </p>
             <input
@@ -229,7 +230,7 @@ export default function LoginPage() {
           style={{
             textAlign: "center",
             color: pinkTheme.textMuted,
-            fontSize: 12,
+            fontSize: 13,
             margin: "16px 0 8px",
           }}
         >

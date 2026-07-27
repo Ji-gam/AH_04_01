@@ -1,7 +1,9 @@
+import { Settings } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { authApi } from "../../api/authApi";
+import PageTitle from "../../components/common/PageTitle";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
 
@@ -91,9 +93,9 @@ export default function AccountSettingsPage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 16px" }}>
-          ⚙️ 개인정보수정
-        </h1>
+        <PageTitle icon={Settings} style={{ marginBottom: 16 }}>
+          개인정보수정
+        </PageTitle>
 
         <form
           onSubmit={handleSave}
@@ -160,7 +162,7 @@ export default function AccountSettingsPage() {
               borderRadius: 10,
               background: pinkTheme.primary,
               color: "#fff",
-              fontWeight: 600,
+              fontWeight: 700,
               cursor: "pointer",
             }}
           >
@@ -175,6 +177,7 @@ export default function AccountSettingsPage() {
             border: `1px solid ${pinkTheme.border}`,
             borderRadius: 16,
             padding: 18,
+            boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
           }}
         >
           {!showWithdrawForm ? (
@@ -235,7 +238,7 @@ export default function AccountSettingsPage() {
                     borderRadius: 10,
                     background: pinkTheme.danger,
                     color: "#fff",
-                    fontWeight: 600,
+                    fontWeight: 700,
                     cursor: "pointer",
                   }}
                 >
@@ -271,7 +274,7 @@ export default function AccountSettingsPage() {
             borderRadius: 10,
             background: pinkTheme.cardBg,
             color: pinkTheme.textMuted,
-            fontWeight: 600,
+            fontWeight: 700,
             cursor: "pointer",
           }}
         >

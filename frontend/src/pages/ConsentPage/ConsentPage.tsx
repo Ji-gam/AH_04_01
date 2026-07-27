@@ -1,6 +1,8 @@
+import { ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import PageTitle from "../../components/common/PageTitle";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
 import { hasConsented, markConsented } from "../../utils/healthInfoConsent";
@@ -48,6 +50,7 @@ export default function ConsentPage() {
           border: `1px solid ${pinkTheme.border}`,
           borderRadius: "16px",
           padding: "24px",
+          boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
         }}
       >
         <button
@@ -65,17 +68,17 @@ export default function ConsentPage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ fontSize: 18, color: pinkTheme.text, marginTop: 0 }}>
+        <PageTitle icon={ShieldCheck} style={{ marginBottom: 12 }}>
           개인정보(건강정보) 제공동의
-        </h1>
+        </PageTitle>
         <div
           style={{
-            background: pinkTheme.pageBg,
+            background: pinkTheme.cardBg,
             border: `1px solid ${pinkTheme.border}`,
-            borderRadius: "10px",
-            padding: "14px",
+            borderRadius: 16,
+            padding: 18,
             fontSize: 13,
-            color: pinkTheme.text,
+            color: pinkTheme.textMuted,
             lineHeight: 1.6,
             maxHeight: 200,
             overflowY: "auto",
@@ -121,7 +124,7 @@ export default function ConsentPage() {
               borderRadius: "10px",
               background: agreed ? pinkTheme.primary : pinkTheme.border,
               color: "#fff",
-              fontWeight: 600,
+              fontWeight: 700,
               cursor: agreed ? "pointer" : "not-allowed",
             }}
           >

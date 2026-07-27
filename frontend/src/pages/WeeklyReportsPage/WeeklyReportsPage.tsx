@@ -1,8 +1,10 @@
+import { BarChart3 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type { WeeklyReportItemResult } from "../../api/types";
 import { weeklyReportApi } from "../../api/weeklyReportApi";
+import PageTitle from "../../components/common/PageTitle";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 const PAGE_SIZE = 10;
@@ -105,7 +107,7 @@ export default function WeeklyReportsPage() {
             cursor: "pointer",
           }}
         >
-          <span style={{ fontSize: 14.5, fontWeight: 700, color: pinkTheme.text }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: pinkTheme.text }}>
             {formatDate(report.week_start_date)} ~ {formatDate(report.week_end_date)}
           </span>
           <span
@@ -126,7 +128,7 @@ export default function WeeklyReportsPage() {
             style={{
               margin: 0,
               padding: "0 16px 16px",
-              fontSize: 13.5,
+              fontSize: 14,
               color: pinkTheme.text,
               lineHeight: 1.7,
               whiteSpace: "pre-line",
@@ -158,9 +160,9 @@ export default function WeeklyReportsPage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 6px" }}>
-          📊 주간 리포트
-        </h1>
+        <PageTitle icon={BarChart3} style={{ marginBottom: 6 }}>
+          주간 리포트
+        </PageTitle>
         <p
           style={{ margin: "0 0 20px", fontSize: 13, color: pinkTheme.textMuted, lineHeight: 1.5 }}
         >
@@ -190,12 +192,12 @@ export default function WeeklyReportsPage() {
               width: "100%",
               marginTop: 10,
               padding: "12px 0",
-              borderRadius: 12,
+              borderRadius: 10,
               border: `1px solid ${pinkTheme.border}`,
               background: pinkTheme.cardBg,
               color: pinkTheme.text,
               fontSize: 13,
-              fontWeight: 600,
+              fontWeight: 700,
               cursor: "pointer",
             }}
           >

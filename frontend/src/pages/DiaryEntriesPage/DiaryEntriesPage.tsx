@@ -1,8 +1,10 @@
+import { NotebookPen } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { diaryApi } from "../../api/diaryApi";
 import type { DiaryEntryItemResult } from "../../api/types";
+import PageTitle from "../../components/common/PageTitle";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 const PAGE_SIZE = 10;
@@ -116,7 +118,7 @@ export default function DiaryEntriesPage() {
             cursor: "pointer",
           }}
         >
-          <span style={{ fontSize: 14.5, fontWeight: 700, color: pinkTheme.text }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: pinkTheme.text }}>
             {formatDate(entry.entry_date)}
           </span>
           <span
@@ -137,7 +139,7 @@ export default function DiaryEntriesPage() {
             <p
               style={{
                 margin: "0 0 10px",
-                fontSize: 13.5,
+                fontSize: 14,
                 color: pinkTheme.text,
                 lineHeight: 1.7,
                 whiteSpace: "pre-line",
@@ -195,9 +197,9 @@ export default function DiaryEntriesPage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: "0 0 20px" }}>
-          📝 오늘의 한 줄 모아보기
-        </h1>
+        <PageTitle icon={NotebookPen} style={{ marginBottom: 20 }}>
+          오늘의 한 줄 모아보기
+        </PageTitle>
 
         {loading && <p style={{ color: pinkTheme.textMuted, fontSize: 14 }}>불러오는 중...</p>}
         {error && <p style={{ color: pinkTheme.danger, fontSize: 14 }}>{error}</p>}
@@ -222,12 +224,12 @@ export default function DiaryEntriesPage() {
               width: "100%",
               marginTop: 10,
               padding: "12px 0",
-              borderRadius: 12,
+              borderRadius: 10,
               border: `1px solid ${pinkTheme.border}`,
               background: pinkTheme.cardBg,
               color: pinkTheme.text,
               fontSize: 13,
-              fontWeight: 600,
+              fontWeight: 700,
               cursor: "pointer",
             }}
           >

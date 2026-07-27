@@ -128,10 +128,10 @@ export default function AlarmForm({
                 onClick={() => handleDoseCountChange(opt.count)}
                 style={{
                   padding: "8px 14px",
-                  borderRadius: 999,
+                  borderRadius: 10,
                   border: `1px solid ${t.border}`,
-                  background: doseCount === opt.count ? t.primary : "white",
-                  color: doseCount === opt.count ? "white" : t.text,
+                  background: doseCount === opt.count ? t.primary : t.cardBg,
+                  color: doseCount === opt.count ? "#fff" : t.text,
                   fontSize: 13,
                   cursor: "pointer",
                 }}
@@ -168,10 +168,10 @@ export default function AlarmForm({
             onClick={() => setFrequencyType(f)}
             style={{
               padding: "8px 14px",
-              borderRadius: 999,
+              borderRadius: 10,
               border: `1px solid ${t.border}`,
-              background: frequencyType === f ? t.primary : "white",
-              color: frequencyType === f ? "white" : t.text,
+              background: frequencyType === f ? t.primary : t.cardBg,
+              color: frequencyType === f ? "#fff" : t.text,
               fontSize: 13,
               cursor: "pointer",
             }}
@@ -193,8 +193,8 @@ export default function AlarmForm({
                 height: 32,
                 borderRadius: "50%",
                 border: `1px solid ${t.border}`,
-                background: targetDay === d ? t.primary : "white",
-                color: targetDay === d ? "white" : t.text,
+                background: targetDay === d ? t.primary : t.cardBg,
+                color: targetDay === d ? "#fff" : t.text,
                 fontSize: 13,
                 cursor: "pointer",
               }}
@@ -220,8 +220,8 @@ export default function AlarmForm({
             borderRadius: 10,
             border: "none",
             background: canSave ? t.primary : t.primarySoft,
-            color: canSave ? "white" : t.textMuted,
-            fontWeight: 600,
+            color: canSave ? "#fff" : t.textMuted,
+            fontWeight: 700,
             cursor: canSave ? "pointer" : "not-allowed",
           }}
         >
@@ -234,7 +234,7 @@ export default function AlarmForm({
             padding: "12px 18px",
             borderRadius: 10,
             border: `1px solid ${t.border}`,
-            background: "white",
+            background: t.cardBg,
             color: t.textMuted,
             cursor: "pointer",
           }}

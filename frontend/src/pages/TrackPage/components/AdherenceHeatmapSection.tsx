@@ -97,7 +97,7 @@ export default function AdherenceHeatmapSection() {
       <p style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 700, color: t.primary }}>
         🗓️ 복약 순응도
       </p>
-      <p style={{ margin: "0 0 10px", fontSize: 12, color: t.textMuted }}>
+      <p style={{ margin: "0 0 10px", fontSize: 13, color: t.textMuted }}>
         최근 {WEEKS}주간 복용 체크 기록이에요. 색이 진할수록 그날 잘 챙겨 드신 거예요.
       </p>
 
@@ -106,7 +106,7 @@ export default function AdherenceHeatmapSection() {
         style={{
           margin: "0 0 10px",
           fontSize: 13,
-          fontWeight: 600,
+          fontWeight: 700,
           color: t.text,
           minHeight: 18,
         }}

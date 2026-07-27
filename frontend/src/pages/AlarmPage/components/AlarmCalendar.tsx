@@ -86,7 +86,7 @@ export default function AlarmCalendar({
         }}
       >
         {KOREAN_DAYS.map((d, i) => (
-          <span key={d} style={{ color: i === 0 ? t.danger : i === 6 ? "#7B9ACC" : t.textMuted }}>
+          <span key={d} style={{ color: i === 0 ? t.danger : t.textMuted }}>
             {d}
           </span>
         ))}
@@ -116,7 +116,7 @@ export default function AlarmCalendar({
                 borderRadius: 10,
                 cursor: "pointer",
                 fontSize: 13,
-                color: isSelected ? "white" : t.text,
+                color: isSelected ? "#fff" : t.text,
                 background: isSelected ? t.primary : isToday ? t.primarySoft : "transparent",
                 border: isToday && !isSelected ? `1px solid ${t.primary}` : "1px solid transparent",
                 fontWeight: isToday || isSelected ? 700 : 400,
@@ -128,7 +128,7 @@ export default function AlarmCalendar({
                   width: 5,
                   height: 5,
                   borderRadius: "50%",
-                  background: hasSchedule ? (isSelected ? "white" : t.primary) : "transparent",
+                  background: hasSchedule ? (isSelected ? "#fff" : t.primary) : "transparent",
                 }}
               />
             </button>
