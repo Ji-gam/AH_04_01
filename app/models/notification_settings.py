@@ -41,8 +41,10 @@ class NotificationSetting(Base):
     quiet_start: Mapped[time] = mapped_column(Time, default=time(22, 0), nullable=False)
     quiet_end: Mapped[time] = mapped_column(Time, default=time(7, 0), nullable=False)
     # F-ADH-2: 주간 순응도 피드백 발송 요일. Python date.weekday() 기준(월=0~일=6), 기본값
-    # 5(토요일). 사용자가 알림설정 화면에서 바꿀 수 있다.
-    adherence_feedback_day_of_week: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    # 6(일요일) - F-GOAL-3 주간 달성 리포트도 일요일로 맞춰서, 여러 요일에 걸쳐 비슷한 주간
+    # 요약 알림이 따로따로 오지 않고 한 번에 몰아서 오게 한다(2026-07-27). 사용자가
+    # 알림설정 화면에서 바꿀 수 있다.
+    adherence_feedback_day_of_week: Mapped[int] = mapped_column(Integer, default=6, nullable=False)
     sound_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     vibration_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     popup_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
