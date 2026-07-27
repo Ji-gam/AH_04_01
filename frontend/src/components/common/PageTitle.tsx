@@ -30,7 +30,9 @@ export default function PageTitle({ icon: Icon, children, style }: Props) {
       >
         <Icon size={18} color={pinkTheme.primary} strokeWidth={1.75} />
       </span>
-      <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: 0 }}>{children}</h1>
+      <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: 0 }}>
+        {children}
+      </h1>
     </div>
   );
 }
