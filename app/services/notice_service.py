@@ -45,7 +45,9 @@ class NoticeService:
                 if is_in_quiet_hours(setting, now):
                     continue
                 try:
-                    await self._push_service.send_to_profile(session, setting.profile_id, title=push_title, body=title)
+                    await self._push_service.send_to_profile(
+                        session, setting.profile_id, title=push_title, body=title, link_url="/notices"
+                    )
                 except Exception:
                     logger.exception("공지 알림 발송 실패 (profile_id=%s)", setting.profile_id)
         except Exception:

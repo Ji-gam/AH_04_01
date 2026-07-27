@@ -42,7 +42,9 @@ class ContentNotificationService:
                         continue
                     if not is_in_lifestyle_tip_window(setting, now) or not is_lifestyle_tip_interval_ok(setting, now):
                         continue
-                    await self._push_service.send_to_profile(session, profile_id, title="🌿 새 건강 콘텐츠", body=title)
+                    await self._push_service.send_to_profile(
+                        session, profile_id, title="🌿 새 건강 콘텐츠", body=title, link_url="/info"
+                    )
                     setting.lifestyle_tip_last_sent_at = now
                     await session.commit()
                 except Exception:

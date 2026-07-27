@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { notificationInboxApi } from "../../api/notificationInboxApi";
 import type { NotificationLogItemResult } from "../../api/types";
@@ -17,6 +18,7 @@ function formatSentAt(iso: string): string {
  * 전체를 읽음 처리해 배지 숫자를 지운다(목록 자체는 그대로 남아 계속 볼 수 있다). */
 export default function NotificationBell() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [items, setItems] = useState<NotificationLogItemResult[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
@@ -171,9 +173,17 @@ export default function NotificationBell() {
               items.map((item) => (
                 <div
                   key={item.id}
+                  role={item.link_url ? "button" : undefined}
+                  tabIndex={item.link_url ? 0 : undefined}
+                  onClick={() => {
+                    if (!item.link_url) return;
+                    setOpen(false);
+                    navigate(item.link_url);
+                  }}
                   style={{
                     padding: "12px 16px",
                     borderBottom: `1px solid ${t.border}`,
+                    cursor: item.link_url ? "pointer" : "default",
                   }}
                 >
                   <p style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: t.text }}>
