@@ -196,7 +196,7 @@ async def _send_weekly_adherence_feedback_if_due(
     now: datetime,
     current_hhmm: str,
 ) -> None:
-    """F-ADH-2 - 프로필마다 고른 요일(기본 토요일, NotificationSetting.adherence_feedback_day_of_week)
+    """F-ADH-2 - 프로필마다 고른 요일(기본 일요일, NotificationSetting.adherence_feedback_day_of_week)
     09시에 지난 7일 복약 순응도 피드백을 보낸다. 복약 스케줄이 하나도 없는 프로필은 볼 것도
     없으니 건너뛴다."""
     if current_hhmm != _REPORT_SEND_HHMM:
@@ -300,13 +300,15 @@ async def _send_weekly_goal_report_if_due(
     now: datetime,
     current_hhmm: str,
 ) -> None:
-    """F-GOAL-3 - 매주 월요일(PRD 고정, 사용자 설정 없음) 09시에 지난 7일 복약 순응도/습관
-    달성률/목표 진행률 리포트를 보낸다. F-ADH-2(요일 선택 가능한 주간 순응도 피드백)와는
-    별개 - 이쪽은 PRD가 명시한 "매주 월요일"에 고정이다."""
+    """F-GOAL-3 - 매주 일요일(고정, 사용자 설정 없음) 09시에 지난 7일 복약 순응도/습관
+    달성률/목표 진행률 리포트를 보낸다. PRD 원문은 "매주 월요일"이지만, F-ADH-2(주간 순응도
+    피드백)·주간 AI 리포트와 발송 요일이 서로 달라 한 주에 비슷한 리포트가 토/일/월 사흘에
+    걸쳐 따로따로 오는 문제가 있어(2026-07-27), 셋 다 일요일로 모았다 - F-ADH-2도 기본값을
+    일요일로 바꿨다(NotificationSetting.adherence_feedback_day_of_week)."""
     if current_hhmm != _REPORT_SEND_HHMM:
         return
     today = now.date()
-    if today.weekday() != 0:  # 월요일 고정
+    if today.weekday() != 6:  # 일요일 고정
         return
     week_start, week_end = today - timedelta(days=6), today
 
