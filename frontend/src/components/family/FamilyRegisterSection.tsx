@@ -38,6 +38,7 @@ export default function FamilyRegisterSection() {
   const [tab, setTab] = useState<"search" | "photo">("search");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MedicationSearchResult[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedDrug, setSelectedDrug] = useState<MedicationSearchResult | null>(null);
   const [timesInput, setTimesInput] = useState("08:00");
   const [message, setMessage] = useState<string | null>(null);
@@ -100,8 +101,41 @@ export default function FamilyRegisterSection() {
     setIsBusy(true);
     try {
       setResults(await familyMedicationApi.search(query.trim()));
+      setHasSearched(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "검색에 실패했습니다.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  // 검색해도 원하는 약이 없을 때 - 입력한 이름 그대로 등록(T-MED-3 자동생성 정책을 가족 몫에도
+  // 동일 적용). OCR 후보가 잘못 인식됐을 때도 "다른 약이에요" → 검색 탭 → 이 경로로 이어진다.
+  async function handleQuickRegisterFromSearch() {
+    if (!query.trim() || !selectedProfileId) return;
+    setError(null);
+    setMessage(null);
+    setIsBusy(true);
+    try {
+      const res = await familyMedicationApi.quickRegisterForFamily(
+        selectedProfileId,
+        query.trim(),
+        parseTimes(),
+      );
+      if (res.status === "registered") {
+        setMessage(
+          res.auto_created
+            ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`
+            : `${res.schedule?.drug_name} 등록 완료`,
+        );
+        setQuery("");
+        setResults([]);
+        setHasSearched(false);
+      } else {
+        setResults(res.candidates.map((c) => ({ item_seq: c.drug_code, medication_name: c.medication_name })));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "등록에 실패했습니다.");
     } finally {
       setIsBusy(false);
     }
@@ -267,7 +301,10 @@ export default function FamilyRegisterSection() {
                     <input
                       type="text"
                       value={query}
-                      onChange={(e) => setQuery(e.target.value)}
+                      onChange={(e) => {
+                        setQuery(e.target.value);
+                        setHasSearched(false);
+                      }}
                       placeholder="약품명 검색"
                       style={{ ...inputStyle, flex: 1 }}
                     />
@@ -280,6 +317,29 @@ export default function FamilyRegisterSection() {
                       검색
                     </button>
                   </div>
+                  {hasSearched && !isBusy && results.length === 0 && (
+                    <div>
+                      <p style={{ margin: "0 0 5px", fontSize: 12, color: pinkTheme.textMuted }}>
+                        검색 결과가 없습니다.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleQuickRegisterFromSearch}
+                        disabled={isBusy || !query.trim()}
+                        style={{
+                          fontSize: 12,
+                          color: pinkTheme.textMuted,
+                          background: "none",
+                          border: "none",
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        찾는 약이 없나요? &quot;{query.trim()}&quot;(으)로 새로 등록
+                      </button>
+                    </div>
+                  )}
                   {results.length > 0 && (
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {results.map((r) => (
@@ -373,6 +433,22 @@ export default function FamilyRegisterSection() {
                         placeholder="복용시간, 쉼표로 구분 (예: 08:00,19:00)"
                         style={inputStyle}
                       />
+                      <button
+                        type="button"
+                        onClick={() => setTab("search")}
+                        style={{
+                          fontSize: 12,
+                          color: pinkTheme.textMuted,
+                          background: "none",
+                          border: "none",
+                          textDecoration: "underline",
+                          cursor: "pointer",
+                          padding: 0,
+                          alignSelf: "flex-start",
+                        }}
+                      >
+                        인식이 잘못됐나요? 검색 탭에서 다른 약 등록하기
+                      </button>
                     </>
                   )}
                   {jobStatus === "done" && candidates.length === 0 && (
