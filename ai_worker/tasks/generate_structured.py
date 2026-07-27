@@ -10,9 +10,11 @@ user_input + json_schema를 받아 그 스키마를 만족하는 JSON을 생성�
 import logging
 from typing import Any
 
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
+from ai_worker.core import observability
 from ai_worker.core.config import settings
 
 logger = logging.getLogger("ai_worker.generate_structured")
@@ -38,11 +40,15 @@ async def generate_structured(system_prompt: str, user_input: str, json_schema: 
 
     try:
         chain = _build_chain(json_schema, settings.OPENAI_API_KEY)
+        # 관측(Langfuse)이 설정돼 있으면 콜백으로 이 생성 호출을 trace로 남긴다(미설정 시 no-op).
+        handler = observability.get_langfuse_handler()
+        config: RunnableConfig | None = {"callbacks": [handler]} if handler else None
         return await chain.ainvoke(
             [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_input},
-            ]
+            ],
+            config=config,
         )
     except GenerationUnavailableError:
         raise
