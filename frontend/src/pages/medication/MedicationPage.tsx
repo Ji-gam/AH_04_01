@@ -14,7 +14,8 @@ import type {
 import PageTitle from "../../components/common/PageTitle";
 import FamilySwitcher from "../../components/family/FamilySwitcher";
 import FamilyTrackerView from "../../components/family/FamilyTrackerView";
-import OcrProgressBar from "../../components/ui/OcrProgressBar";
+import OcrFullscreenOverlay from "../../components/ui/OcrFullscreenOverlay";
+import type { OcrJobStatus } from "../../components/ui/OcrProgressBar";
 import { useAuth } from "../../hooks/useAuth";
 import {
   useMedication,
@@ -908,6 +909,7 @@ export default function MedicationPage() {
 
   return (
     <div style={{ background: pinkTheme.pageBg, minHeight: "100%", padding: "20px 12px" }}>
+      <OcrFullscreenOverlay status={jobStatus as OcrJobStatus | null} />
       <div style={{ maxWidth: 480, margin: "0 auto", color: pinkTheme.text }}>
         <button
           type="button"
@@ -1054,8 +1056,8 @@ export default function MedicationPage() {
                   </form>
                 </div>
 
-                {/* 4단계: 분석 진행 상태 노출 */}
-                {jobStatus && (
+                {/* 4단계: 분석 진행 상태 노출 (실패 상태는 카드로, 진행 중에는 풀스크린으로) */}
+                {jobStatus && jobStatus !== "pending" && jobStatus !== "processing" && (
                   <div
                     style={{
                       background: pinkTheme.cardBg,
@@ -1074,18 +1076,8 @@ export default function MedicationPage() {
                         margin: "0 0 8px",
                       }}
                     >
-                      분석 상태:{" "}
-                      {jobStatus === "pending"
-                        ? "접수 대기 중..."
-                        : jobStatus === "processing"
-                          ? "이미지 분석 및 매칭 추출 중..."
-                          : jobStatus}
+                      분석 상태: {jobStatus}
                     </h4>
-                    {(jobStatus === "pending" || jobStatus === "processing") && (
-                      <div style={{ marginTop: 8 }}>
-                        <OcrProgressBar status={jobStatus} />
-                      </div>
-                    )}
                   </div>
                 )}
 
