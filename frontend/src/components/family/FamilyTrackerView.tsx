@@ -9,7 +9,7 @@ import {
 } from "../../api/familyMedicationApi";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import { isUnverifiedDrug } from "../../utils/medication";
-import OcrProgressBar from "../ui/OcrProgressBar";
+import OcrFullscreenOverlay from "../ui/OcrFullscreenOverlay";
 import TimeInputField from "../ui/TimeInputField";
 
 const inputStyle: React.CSSProperties = {
@@ -324,6 +324,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <OcrFullscreenOverlay status={jobStatus} />
       <div style={{ display: "flex", gap: 6 }}>
         <button
           type="button"
@@ -529,12 +530,6 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
               ? "인식 중..."
               : "업로드 및 인식"}
           </button>
-
-          {(jobStatus === "uploading" || jobStatus === "processing") && (
-            <div style={{ padding: "12px 4px 4px" }}>
-              <OcrProgressBar status={jobStatus} />
-            </div>
-          )}
 
           {jobStatus === "done" && candidates.length > 0 && (
             <>
