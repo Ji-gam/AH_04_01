@@ -15,14 +15,14 @@ import OcrProgressBar from "../ui/OcrProgressBar";
 const inputStyle: React.CSSProperties = {
   padding: "10px 12px",
   border: `1px solid ${t.border}`,
-  borderRadius: "8px",
+  borderRadius: 10,
   fontSize: "14px",
 };
 
 const primaryButtonStyle: React.CSSProperties = {
   padding: "10px 16px",
   border: "none",
-  borderRadius: "8px",
+  borderRadius: 10,
   background: t.primary,
   color: "#fff",
   fontWeight: 600,
@@ -92,7 +92,7 @@ export default function FamilyTrackerView({
             onClick={() => setTab(key)}
             style={{
               padding: "8px 14px",
-              borderRadius: 999,
+              borderRadius: 10,
               border: `1px solid ${tab === key ? t.primary : t.border}`,
               background: tab === key ? t.primary : t.cardBg,
               color: tab === key ? "#fff" : t.textMuted,
@@ -292,7 +292,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
             flex: 1,
             padding: "8px",
             border: `1px solid ${subTab === "search" ? t.primary : t.border}`,
-            borderRadius: 8,
+            borderRadius: 10,
             background: subTab === "search" ? t.primary : t.cardBg,
             color: subTab === "search" ? "#fff" : t.textMuted,
             fontSize: 13,
@@ -309,7 +309,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
             flex: 1,
             padding: "8px",
             border: `1px solid ${subTab === "photo" ? t.primary : t.border}`,
-            borderRadius: 8,
+            borderRadius: 10,
             background: subTab === "photo" ? t.primary : t.cardBg,
             color: subTab === "photo" ? "#fff" : t.textMuted,
             fontSize: 13,
@@ -349,7 +349,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
                   onClick={() => setSelectedDrug(r)}
                   style={{
                     padding: "6px 10px",
-                    borderRadius: 999,
+                    borderRadius: 10,
                     border: `1.5px solid ${selectedDrug?.item_seq === r.item_seq ? t.primary : t.border}`,
                     background: selectedDrug?.item_seq === r.item_seq ? t.primary : t.cardBg,
                     color: selectedDrug?.item_seq === r.item_seq ? "#fff" : t.text,
@@ -373,7 +373,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
                     onClick={() => handleSearchDoseCountChange(opt.count)}
                     style={{
                       padding: "6px 12px",
-                      borderRadius: 999,
+                      borderRadius: 10,
                       border: `1px solid ${t.border}`,
                       background: searchTimeSlots.length === opt.count ? t.primary : "white",
                       color: searchTimeSlots.length === opt.count ? "white" : t.text,
@@ -485,7 +485,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
                       gap: 8,
                       padding: "8px 10px",
                       border: `1px solid ${t.border}`,
-                      borderRadius: 8,
+                      borderRadius: 10,
                       fontSize: 13,
                       color: t.text,
                       cursor: "pointer",
@@ -513,7 +513,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
                     onClick={() => handleDoseCountChange(opt.count)}
                     style={{
                       padding: "6px 12px",
-                      borderRadius: 999,
+                      borderRadius: 10,
                       border: `1px solid ${t.border}`,
                       background: timeSlots.length === opt.count ? t.primary : "white",
                       color: timeSlots.length === opt.count ? "white" : t.text,

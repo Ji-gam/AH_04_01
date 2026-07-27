@@ -1,9 +1,11 @@
+import { AlarmClock, Calendar } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { apiFetch, apiFetchRaw } from "../../api/client";
 import { notificationApi } from "../../api/notificationApi";
 import type { NotificationScheduleResult } from "../../api/types";
+import PageTitle from "../../components/common/PageTitle";
 import FamilyNotificationView from "../../components/family/FamilyNotificationView";
 import FamilySwitcher from "../../components/family/FamilySwitcher";
 import type { MedicationSchedule } from "../../hooks/useMedication";
@@ -360,7 +362,7 @@ export default function AlarmPage() {
                 background: "none",
                 color: t.primary,
                 fontSize: 13,
-                fontWeight: 600,
+                fontWeight: 700,
                 cursor: "pointer",
                 padding: 0,
               }}
@@ -407,9 +409,7 @@ export default function AlarmPage() {
             marginBottom: 20,
           }}
         >
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: t.primary, margin: 0 }}>
-            💗 복약 알림
-          </h1>
+          <PageTitle icon={Calendar}>복약스케쥴</PageTitle>
           <div style={{ display: "flex", gap: 8 }}>
             <FamilySwitcher
               selectedProfileId={null}
@@ -424,11 +424,12 @@ export default function AlarmPage() {
               }}
               style={{
                 padding: "8px 16px",
-                borderRadius: 999,
+                borderRadius: 10,
                 border: "none",
                 background: t.primary,
                 color: "white",
-                fontWeight: 600,
+                fontSize: 13,
+                fontWeight: 700,
                 cursor: "pointer",
               }}
             >
@@ -467,11 +468,11 @@ export default function AlarmPage() {
                 onClick={handleEnablePush}
                 style={{
                   border: "none",
-                  borderRadius: 999,
+                  borderRadius: 10,
                   background: t.primary,
                   color: "#fff",
                   fontSize: 12,
-                  fontWeight: 600,
+                  fontWeight: 700,
                   padding: "6px 14px",
                   cursor: "pointer",
                   flexShrink: 0,
@@ -578,7 +579,19 @@ export default function AlarmPage() {
           onNextMonth={handleNextMonth}
         />
 
-        <h2 style={{ fontSize: 15, color: t.text, marginBottom: 10 }}>🔔 등록된 알림</h2>
+        <h2
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 15,
+            color: t.text,
+            marginBottom: 10,
+          }}
+        >
+          <AlarmClock size={16} color={t.danger} strokeWidth={1.75} />
+          등록된 알림
+        </h2>
 
         {loading && <p style={{ color: t.textMuted, fontSize: 14 }}>불러오는 중...</p>}
         {error && <p style={{ color: t.danger, fontSize: 14 }}>{error}</p>}
@@ -620,7 +633,7 @@ export default function AlarmPage() {
                   <span
                     style={{
                       fontSize: 11,
-                      fontWeight: 600,
+                      fontWeight: 700,
                       color: t.primary,
                       background: t.primarySoft,
                       borderRadius: 999,

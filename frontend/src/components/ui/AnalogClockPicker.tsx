@@ -76,7 +76,7 @@ export default function AnalogClockPicker({
             onClick={() => onPeriodChange(p)}
             style={{
               padding: "5px 14px",
-              borderRadius: 999,
+              borderRadius: 10,
               border: `1px solid ${period === p ? t.primary : t.border}`,
               background: period === p ? t.primary : "white",
               color: period === p ? "white" : t.text,
@@ -203,7 +203,7 @@ export default function AnalogClockPicker({
           onClick={onClose}
           style={{
             padding: "6px 14px",
-            borderRadius: 999,
+            borderRadius: 10,
             border: "none",
             background: t.primary,
             color: "#fff",

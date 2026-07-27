@@ -73,7 +73,7 @@ export default function OnboardingPage({ onFinish }: Props) {
           <p style={{ margin: 0, fontSize: 26, fontWeight: 800, color: pinkTheme.primary }}>
             Re:medi
           </p>
-          <p style={{ margin: 0, fontSize: 14, color: pinkTheme.textMuted, lineHeight: 1.5 }}>
+          <p style={{ margin: 0, fontSize: 13, color: pinkTheme.textMuted, lineHeight: 1.5 }}>
             복약관리와 건강 상담을
             <br />한 곳에서
           </p>

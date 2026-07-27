@@ -107,7 +107,7 @@ export default function InstallPwaBanner() {
           onClick={handleInstallClick}
           style={{
             border: "none",
-            borderRadius: 999,
+            borderRadius: 10,
             background: pinkTheme.primary,
             color: "#fff",
             fontSize: 12,

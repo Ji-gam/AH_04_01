@@ -63,8 +63,8 @@ export default function MedTimeForm({
             borderRadius: 10,
             border: "none",
             background: t.primary,
-            color: "white",
-            fontWeight: 600,
+            color: "#fff",
+            fontWeight: 700,
             cursor: "pointer",
           }}
         >
@@ -77,7 +77,7 @@ export default function MedTimeForm({
             padding: "12px 18px",
             borderRadius: 10,
             border: `1px solid ${t.border}`,
-            background: "white",
+            background: t.cardBg,
             color: t.textMuted,
             cursor: "pointer",
           }}

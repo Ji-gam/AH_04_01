@@ -1,8 +1,10 @@
+import { Megaphone } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { noticeApi } from "../../api/noticeApi";
 import type { NoticeKind, NoticeResult } from "../../api/types";
+import PageTitle from "../../components/common/PageTitle";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 /** 더보기 > 관리자 공지등록(2026-07-22 신설) - ContentGenerationPage.tsx와 같은 패턴의
@@ -62,7 +64,9 @@ export default function NoticeAdminPage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ color: pinkTheme.text, fontSize: 20 }}>관리자 공지등록</h1>
+        <PageTitle icon={Megaphone} style={{ marginBottom: 12 }}>
+          관리자 공지등록
+        </PageTitle>
         <p style={{ color: pinkTheme.textMuted, fontSize: 13, marginTop: 4 }}>
           등록하면 해당 알림을 켜둔 사용자 전체에게 즉시 푸시가 발송돼요.
         </p>
@@ -80,11 +84,11 @@ export default function NoticeAdminPage() {
                 style={{
                   flex: 1,
                   padding: "10px 0",
-                  borderRadius: 8,
+                  borderRadius: 10,
                   border: `1px solid ${kind === option ? pinkTheme.primary : pinkTheme.border}`,
-                  background: kind === option ? pinkTheme.primarySoft : "#fff",
+                  background: kind === option ? pinkTheme.primarySoft : pinkTheme.cardBg,
                   color: kind === option ? pinkTheme.primary : pinkTheme.textMuted,
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: "pointer",
                 }}
               >
@@ -102,7 +106,7 @@ export default function NoticeAdminPage() {
             style={{
               padding: "12px 14px",
               border: `1px solid ${pinkTheme.border}`,
-              borderRadius: 8,
+              borderRadius: 10,
               fontSize: 14,
             }}
           />
@@ -115,7 +119,7 @@ export default function NoticeAdminPage() {
             style={{
               padding: "12px 14px",
               border: `1px solid ${pinkTheme.border}`,
-              borderRadius: 8,
+              borderRadius: 10,
               fontSize: 14,
               fontFamily: "inherit",
               resize: "vertical",
@@ -128,10 +132,10 @@ export default function NoticeAdminPage() {
             style={{
               padding: "14px 16px",
               border: "none",
-              borderRadius: 8,
+              borderRadius: 10,
               background: isSaving ? pinkTheme.primarySoft : pinkTheme.primary,
               color: "#fff",
-              fontWeight: 600,
+              fontWeight: 700,
               cursor: isSaving ? "not-allowed" : "pointer",
             }}
           >
@@ -139,7 +143,7 @@ export default function NoticeAdminPage() {
           </button>
         </form>
 
-        {error && <p style={{ color: pinkTheme.danger, marginTop: 12 }}>{error}</p>}
+        {error && <p style={{ color: pinkTheme.danger, fontSize: 14, marginTop: 12 }}>{error}</p>}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 20 }}>
           {isLoading && (
@@ -158,14 +162,22 @@ export default function NoticeAdminPage() {
               style={{
                 background: pinkTheme.cardBg,
                 border: `1px solid ${pinkTheme.border}`,
-                borderRadius: 12,
-                padding: 14,
+                borderRadius: 16,
+                padding: 18,
+                boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
               }}
             >
-              <span style={{ fontSize: 12, color: pinkTheme.textMuted }}>
+              <span style={{ fontSize: 13, color: pinkTheme.textMuted }}>
                 {item.kind === "NOTICE" ? "공지사항" : "마케팅"} · {item.created_at.slice(0, 10)}
               </span>
-              <p style={{ color: pinkTheme.text, fontWeight: 600, margin: "6px 0 4px" }}>
+              <p
+                style={{
+                  color: pinkTheme.text,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  margin: "6px 0 4px",
+                }}
+              >
                 {item.title}
               </p>
               <p

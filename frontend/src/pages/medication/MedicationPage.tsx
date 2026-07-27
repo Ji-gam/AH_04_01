@@ -1,3 +1,4 @@
+import { Pill } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -10,6 +11,7 @@ import type {
   DurInteractionWarning,
   DurRecallInfo,
 } from "../../api/types";
+import PageTitle from "../../components/common/PageTitle";
 import FamilySwitcher from "../../components/family/FamilySwitcher";
 import FamilyTrackerView from "../../components/family/FamilyTrackerView";
 import OcrProgressBar from "../../components/ui/OcrProgressBar";
@@ -49,7 +51,7 @@ function tabStyle(isActive: boolean): React.CSSProperties {
   return {
     flex: 1,
     padding: "9px 4px",
-    fontWeight: isActive ? 700 : 400,
+    fontWeight: 700,
     fontSize: 13,
     border: isActive ? "none" : `1px solid ${pinkTheme.border}`,
     borderRadius: 10,
@@ -845,9 +847,7 @@ export default function MedicationPage() {
             marginBottom: 16,
           }}
         >
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: pinkTheme.text, margin: 0 }}>
-            💊 복약 관리
-          </h1>
+          <PageTitle icon={Pill}>복약 관리</PageTitle>
           <FamilySwitcher selectedProfileId={null} onSelect={setSelectedFamily} />
         </div>
 
@@ -885,11 +885,11 @@ export default function MedicationPage() {
                   flex: 1,
                   padding: "6px",
                   border: `1px solid ${regMode === "photo" ? pinkTheme.primary : pinkTheme.border}`,
-                  borderRadius: 8,
+                  borderRadius: 10,
                   background: regMode === "photo" ? pinkTheme.primary : pinkTheme.cardBg,
                   color: regMode === "photo" ? "#fff" : pinkTheme.textMuted,
                   fontSize: 13,
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: "pointer",
                 }}
               >
@@ -902,11 +902,11 @@ export default function MedicationPage() {
                   flex: 1,
                   padding: "6px",
                   border: `1px solid ${regMode === "manual" ? pinkTheme.primary : pinkTheme.border}`,
-                  borderRadius: 8,
+                  borderRadius: 10,
                   background: regMode === "manual" ? pinkTheme.primary : pinkTheme.cardBg,
                   color: regMode === "manual" ? "#fff" : pinkTheme.textMuted,
                   fontSize: 13,
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: "pointer",
                 }}
               >
@@ -920,11 +920,12 @@ export default function MedicationPage() {
                   pink 테두리 카드 + pill 버튼 스타일로 통일 */}
                 <div
                   style={{
-                    border: `1.5px solid ${pinkTheme.primary}`,
-                    borderRadius: 10,
-                    padding: "12px 15px",
+                    border: `1px solid ${pinkTheme.border}`,
+                    borderRadius: 16,
+                    padding: 18,
                     marginBottom: "15px",
-                    background: pinkTheme.primarySoft,
+                    background: pinkTheme.cardBg,
+                    boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
                   }}
                 >
                   <div
@@ -954,10 +955,10 @@ export default function MedicationPage() {
                       style={{
                         padding: "8px 14px",
                         border: "none",
-                        borderRadius: 8,
+                        borderRadius: 10,
                         background: pinkTheme.primary,
                         color: "#fff",
-                        fontWeight: 600,
+                        fontWeight: 700,
                         fontSize: 13,
                         cursor: isLoading ? "not-allowed" : "pointer",
                         opacity: isLoading ? 0.6 : 1,
@@ -972,14 +973,22 @@ export default function MedicationPage() {
                 {jobStatus && (
                   <div
                     style={{
+                      background: pinkTheme.cardBg,
                       border: `1px solid ${pinkTheme.border}`,
-                      borderRadius: 10,
-                      padding: "15px",
+                      borderRadius: 16,
+                      padding: 18,
                       marginBottom: "15px",
-                      backgroundColor: pinkTheme.pageBg,
+                      boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
                     }}
                   >
-                    <h4>
+                    <h4
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: pinkTheme.text,
+                        margin: "0 0 8px",
+                      }}
+                    >
                       분석 상태:{" "}
                       {jobStatus === "pending"
                         ? "접수 대기 중..."
@@ -999,13 +1008,24 @@ export default function MedicationPage() {
                 {candidates.length > 0 && (
                   <div
                     style={{
+                      background: pinkTheme.cardBg,
                       border: `1px solid ${pinkTheme.border}`,
-                      borderRadius: 10,
-                      padding: "15px",
+                      borderRadius: 16,
+                      padding: 18,
                       marginBottom: "15px",
+                      boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
                     }}
                   >
-                    <h3>분석 결과 및 매칭 추천</h3>
+                    <h3
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: pinkTheme.text,
+                        margin: "0 0 8px",
+                      }}
+                    >
+                      분석 결과 및 매칭 추천
+                    </h3>
 
                     <div
                       style={{
@@ -1185,9 +1205,11 @@ export default function MedicationPage() {
                         style={{
                           padding: "10px",
                           marginBottom: "10px",
-                          backgroundColor: "#fdecea",
-                          border: "1px solid #f5c6cb",
-                          fontSize: "13px",
+                          background: "#fdecea",
+                          border: `1px solid ${pinkTheme.danger}`,
+                          borderRadius: 10,
+                          fontSize: 14,
+                          color: pinkTheme.danger,
                         }}
                       >
                         {durCheckError}
@@ -1266,10 +1288,14 @@ export default function MedicationPage() {
                       style={{
                         width: "100%",
                         padding: "10px",
-                        backgroundColor: "#4caf50",
+                        borderRadius: 10,
+                        background: pinkTheme.primary,
                         color: "#fff",
+                        fontWeight: 700,
+                        fontSize: 13,
                         border: "none",
                         cursor: isConfirmingJob ? "not-allowed" : "pointer",
+                        opacity: isConfirmingJob ? 0.6 : 1,
                       }}
                     >
                       {isConfirmingJob
@@ -1286,9 +1312,26 @@ export default function MedicationPage() {
               하나를 선택해 등록한다(T-MED-1 DoD 2번: 등록 자체는 막히지 않아야 한다는 원칙은
               유지 — 검색 결과에 원하는 약이 없으면 입력한 이름 그대로 새로 등록하는 보조
               수단을 아래에 남겨뒀다). */
-              <div style={{ border: `1px solid ${pinkTheme.border}`, padding: "15px" }}>
-                <h3>수동 약품 등록</h3>
-                <p style={{ fontSize: "12px", color: pinkTheme.textMuted }}>
+              <div
+                style={{
+                  background: pinkTheme.cardBg,
+                  border: `1px solid ${pinkTheme.border}`,
+                  borderRadius: 16,
+                  padding: 18,
+                  boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+                }}
+              >
+                <h3
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: pinkTheme.text,
+                    margin: "0 0 8px",
+                  }}
+                >
+                  수동 약품 등록
+                </h3>
+                <p style={{ fontSize: 13, color: pinkTheme.textMuted }}>
                   약품명을 검색해서 목록에서 선택하면 바로 복약 일정이 등록됩니다. 검색 결과에
                   원하는 약이 없으면, 입력한 이름 그대로 새로 등록할 수도 있습니다(마스터 DB에 없는
                   약도 등록 자체는 막히지 않습니다).
@@ -1299,12 +1342,21 @@ export default function MedicationPage() {
                 <div
                   style={{ display: "flex", flexDirection: "column", gap: "5px", margin: "10px 0" }}
                 >
-                  <label>처방 병원명 (선택):</label>
+                  <label style={{ fontSize: 13, color: pinkTheme.textMuted }}>
+                    처방 병원명 (선택):
+                  </label>
                   <input
                     type="text"
                     value={hospitalName}
                     onChange={(e) => setHospitalName(e.target.value)}
                     placeholder="예: 서울건강내과"
+                    style={{
+                      fontSize: 14,
+                      color: pinkTheme.text,
+                      border: `1px solid ${pinkTheme.border}`,
+                      borderRadius: 10,
+                      padding: "8px 10px",
+                    }}
                   />
                 </div>
 
@@ -1322,16 +1374,37 @@ export default function MedicationPage() {
                       setSelectedManualCode(null);
                     }}
                     placeholder="약품명 검색 (예: 타이레놀)"
-                    style={{ flex: 1 }}
+                    style={{
+                      flex: 1,
+                      fontSize: 14,
+                      color: pinkTheme.text,
+                      border: `1px solid ${pinkTheme.border}`,
+                      borderRadius: 10,
+                      padding: "8px 10px",
+                    }}
                   />
-                  <button type="submit" disabled={searchLoading || !quickDrugName.trim()}>
+                  <button
+                    type="submit"
+                    disabled={searchLoading || !quickDrugName.trim()}
+                    style={{
+                      padding: "8px 14px",
+                      border: "none",
+                      borderRadius: 10,
+                      background: pinkTheme.primary,
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: 13,
+                      cursor: searchLoading || !quickDrugName.trim() ? "not-allowed" : "pointer",
+                      opacity: searchLoading || !quickDrugName.trim() ? 0.6 : 1,
+                    }}
+                  >
                     {searchLoading ? "검색 중..." : "검색"}
                   </button>
                 </form>
 
                 {hasSearched && !searchLoading && manualCandidates.length === 0 && (
                   <div style={{ marginBottom: "10px" }}>
-                    <p style={{ fontSize: "13px", color: pinkTheme.textMuted, margin: "0 0 5px" }}>
+                    <p style={{ fontSize: 13, color: pinkTheme.textMuted, margin: "0 0 5px" }}>
                       검색 결과가 없습니다.
                     </p>
                     <button
@@ -1385,10 +1458,14 @@ export default function MedicationPage() {
                       style={{
                         width: "100%",
                         padding: "10px",
-                        backgroundColor: "#4caf50",
+                        borderRadius: 10,
+                        background: pinkTheme.primary,
                         color: "#fff",
+                        fontWeight: 700,
+                        fontSize: 13,
                         border: "none",
                         cursor: selectedManualCode ? "pointer" : "not-allowed",
+                        opacity: selectedManualCode ? 1 : 0.6,
                       }}
                     >
                       선택한 약품 복약 스케줄 등록 확정
@@ -1403,9 +1480,11 @@ export default function MedicationPage() {
         {activeTab === "list" && (
           <div>
             {/* 11번 단계: 약 목록 및 스케줄 확인 */}
-            <h3>등록 완료된 복약 스케줄 목록</h3>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: pinkTheme.text, margin: "0 0 8px" }}>
+              등록 완료된 복약 스케줄 목록
+            </h3>
             {schedules.length === 0 ? (
-              <p>등록된 복약 스케줄이 없습니다.</p>
+              <p style={{ fontSize: 14, color: pinkTheme.text }}>등록된 복약 스케줄이 없습니다.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 <div
@@ -1440,7 +1519,7 @@ export default function MedicationPage() {
                       color: "#fff",
                       border: "none",
                       padding: "5px 12px",
-                      borderRadius: "4px",
+                      borderRadius: 10,
                       cursor:
                         isLoading || selectedScheduleIds.length === 0 ? "not-allowed" : "pointer",
                       opacity: selectedScheduleIds.length === 0 ? 0.5 : 1,
@@ -1532,7 +1611,7 @@ export default function MedicationPage() {
                           color: "#fff",
                           border: "none",
                           padding: "5px 10px",
-                          borderRadius: "4px",
+                          borderRadius: 10,
                           cursor: "pointer",
                           flex: "none",
                         }}
@@ -1548,29 +1627,57 @@ export default function MedicationPage() {
         )}
 
         {activeTab === "interaction" && (
-          <div style={{ padding: "15px", border: `1px solid ${pinkTheme.border}` }}>
+          <div
+            style={{
+              background: pinkTheme.cardBg,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 16,
+              padding: 18,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+            }}
+          >
             {/* 12번 단계: 약물 상호작용 — DurScreeningPage.tsx 화면4(상호작용/리콜/공유성분 통계
               박스 + 상호작용/성분 카드)와 같은 틀, 색상은 pinkTheme. durApi.screenInteraction과
               screenIngredient를 등록약 이름으로 그대로 호출한다(백엔드 변경 없음). */}
-            <h3>약물 상호작용 체크 (DUR)</h3>
-            <p style={{ color: pinkTheme.textMuted }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: pinkTheme.text, margin: "0 0 8px" }}>
+              약물 상호작용 체크 (DUR)
+            </h3>
+            <p style={{ fontSize: 13, color: pinkTheme.textMuted }}>
               등록하신 약들을 서로 대조해 식약처 DUR 데이터에서 병용금기·효능군중복·성분 주의를
               확인합니다. 지병(질병)과의 상충 여부는 아직 포함되지 않습니다.
             </p>
 
             {schedules.length < 2 && (
               <div
-                style={{ padding: "10px", backgroundColor: "#fffde7", border: "1px solid #fff59d" }}
+                style={{
+                  padding: "10px",
+                  borderRadius: 10,
+                  background: pinkTheme.primarySoft,
+                  border: `1px solid ${pinkTheme.border}`,
+                  fontSize: 14,
+                  color: pinkTheme.text,
+                }}
               >
                 비교할 수 있는 등록약이 2개 미만이라 상호작용을 확인할 수 없습니다.
               </div>
             )}
 
-            {regDurLoading && <p>등록약을 대조하는 중입니다...</p>}
+            {regDurLoading && (
+              <p style={{ fontSize: 13, color: pinkTheme.textMuted }}>
+                등록약을 대조하는 중입니다...
+              </p>
+            )}
 
             {!regDurLoading && regDurError && (
               <div
-                style={{ padding: "10px", backgroundColor: "#fdecea", border: "1px solid #f5c6cb" }}
+                style={{
+                  padding: "10px",
+                  borderRadius: 10,
+                  background: "#fdecea",
+                  border: `1px solid ${pinkTheme.danger}`,
+                  fontSize: 14,
+                  color: pinkTheme.danger,
+                }}
               >
                 {regDurError}
               </div>
@@ -1638,8 +1745,11 @@ export default function MedicationPage() {
                     <div
                       style={{
                         padding: "10px",
-                        backgroundColor: "#e8f5e9",
-                        border: "1px solid #a5d6a7",
+                        borderRadius: 10,
+                        background: "#EAF7EF",
+                        border: `1px solid ${pinkTheme.success}`,
+                        fontSize: 14,
+                        color: pinkTheme.text,
                       }}
                     >
                       등록하신 약들 사이에서 확인된 상호작용·리콜·성분 주의가 없습니다.
@@ -1682,20 +1792,41 @@ export default function MedicationPage() {
         )}
 
         {activeTab === "food" && (
-          <div style={{ padding: "15px", border: `1px solid ${pinkTheme.border}` }}>
+          <div
+            style={{
+              background: pinkTheme.cardBg,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 16,
+              padding: 18,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+            }}
+          >
             {/* 13번 단계: 음식 주의사항 (T-DOC-2) — 등록된 약 전체(OCR/수동 등록 무관)의 e약은요
               상호작용 문항(intrcQesitm)에서 음식/음주 관련 주의사항을 그대로 보여준다. */}
-            <h3>복약 중 음식 주의사항</h3>
-            <p style={{ color: pinkTheme.textMuted }}>
+            <h3 style={{ fontSize: 14, fontWeight: 700, color: pinkTheme.text, margin: "0 0 8px" }}>
+              복약 중 음식 주의사항
+            </h3>
+            <p style={{ fontSize: 13, color: pinkTheme.textMuted }}>
               현재 등록된 약 전체를 기준으로, 식약처 e약은요 정보에서 확인된 음식·음주 관련
               주의사항을 보여줍니다.
             </p>
 
-            {foodInteractionLoading && <p>등록약을 확인하는 중입니다...</p>}
+            {foodInteractionLoading && (
+              <p style={{ fontSize: 13, color: pinkTheme.textMuted }}>
+                등록약을 확인하는 중입니다...
+              </p>
+            )}
 
             {!foodInteractionLoading && foodInteractionError && (
               <div
-                style={{ padding: "10px", backgroundColor: "#fdecea", border: "1px solid #f5c6cb" }}
+                style={{
+                  padding: "10px",
+                  borderRadius: 10,
+                  background: "#fdecea",
+                  border: `1px solid ${pinkTheme.danger}`,
+                  fontSize: 14,
+                  color: pinkTheme.danger,
+                }}
               >
                 {foodInteractionError}
               </div>
@@ -1707,8 +1838,11 @@ export default function MedicationPage() {
                   <div
                     style={{
                       padding: "10px",
-                      backgroundColor: "#e3f2fd",
-                      border: "1px solid #90caf9",
+                      borderRadius: 10,
+                      background: pinkTheme.primarySoft,
+                      border: `1px solid ${pinkTheme.border}`,
+                      fontSize: 14,
+                      color: pinkTheme.text,
                     }}
                   >
                     등록된 약이 없습니다. 처방전/알약 분석 또는 수동 등록으로 약을 등록해보세요.
@@ -1720,12 +1854,23 @@ export default function MedicationPage() {
                     <div
                       key={idx}
                       style={{
-                        border: `1px solid ${g.severity === "caution" ? "#f0ad4e" : pinkTheme.border}`,
+                        background: pinkTheme.cardBg,
+                        border: `1px solid ${g.severity === "caution" ? pinkTheme.danger : pinkTheme.border}`,
+                        borderRadius: 12,
                         padding: "10px",
                         marginBottom: "10px",
                       }}
                     >
-                      <h5>{g.title}</h5>
+                      <h5
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: pinkTheme.text,
+                          margin: "0 0 8px",
+                        }}
+                      >
+                        {g.title}
+                      </h5>
                       {g.food_items && g.food_items.length > 0 ? (
                         // (T-DOC-4, 모달 개선) 음식명이 식별되면 이유 줄글 대신 칩으로 먼저 보여주고,
                         // 칩을 누르면 상세 이유를 모달로 띄운다 — 원문이 긴 카테고리도 다른 칩
@@ -1741,12 +1886,12 @@ export default function MedicationPage() {
                                 onClick={() => setOpenFoodDetail({ item, cardTitle: g.title })}
                                 style={{
                                   padding: "6px 14px",
-                                  borderRadius: "999px",
+                                  borderRadius: 10,
                                   border: `1px solid ${isAvoid ? pinkTheme.border : style.color}`,
                                   background: style.bg,
                                   color: isAvoid ? pinkTheme.text : style.color,
                                   fontSize: 13,
-                                  fontWeight: 600,
+                                  fontWeight: 700,
                                   cursor: "pointer",
                                 }}
                               >
@@ -1765,7 +1910,10 @@ export default function MedicationPage() {
                           .map((s) => s.trim())
                           .filter(Boolean)
                           .map((paragraph, pIdx) => (
-                            <p key={pIdx} style={{ margin: "6px 0" }}>
+                            <p
+                              key={pIdx}
+                              style={{ margin: "6px 0", fontSize: 14, color: pinkTheme.text }}
+                            >
                               {paragraph}
                             </p>
                           ))
@@ -1812,7 +1960,7 @@ export default function MedicationPage() {
                   color: "#fff",
                   cursor: "pointer",
                   fontSize: 13,
-                  fontWeight: 600,
+                  fontWeight: 700,
                 }}
               >
                 확인

@@ -1,15 +1,18 @@
+import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { contentApi } from "../../api/contentApi";
 import type { HealthContentResult } from "../../api/types";
+import PageTitle from "../../components/common/PageTitle";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 const cardStyle: React.CSSProperties = {
   background: pinkTheme.cardBg,
   border: `1px solid ${pinkTheme.border}`,
-  borderRadius: "12px",
-  padding: "16px",
+  borderRadius: 16,
+  padding: 18,
+  boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
 };
 
 /** 더보기 > 관리자 컨텐츠생성.
@@ -68,7 +71,9 @@ export default function ContentGenerationPage() {
           ← 뒤로가기
         </button>
 
-        <h1 style={{ color: pinkTheme.text, fontSize: 20 }}>관리자 컨텐츠생성</h1>
+        <PageTitle icon={Sparkles} style={{ marginBottom: 12 }}>
+          관리자 컨텐츠생성
+        </PageTitle>
         <p style={{ color: pinkTheme.textMuted, fontSize: 13, marginTop: 4 }}>
           버튼을 누르면 실제 LLM으로 건강 콘텐츠 카드를 생성해 저장합니다. "정보" 탭에 바로
           반영돼요.
@@ -83,17 +88,17 @@ export default function ContentGenerationPage() {
             marginTop: 16,
             padding: "14px 16px",
             border: "none",
-            borderRadius: "8px",
+            borderRadius: 10,
             background: isGenerating ? pinkTheme.primarySoft : pinkTheme.primary,
             color: "#fff",
-            fontWeight: 600,
+            fontWeight: 700,
             cursor: isGenerating ? "not-allowed" : "pointer",
           }}
         >
           {isGenerating ? "생성 중..." : "컨텐츠생성"}
         </button>
 
-        {error && <p style={{ color: pinkTheme.danger, marginTop: 12 }}>{error}</p>}
+        {error && <p style={{ color: pinkTheme.danger, fontSize: 14, marginTop: 12 }}>{error}</p>}
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginTop: "20px" }}>
           {isLoading && (
@@ -130,14 +135,22 @@ export default function ContentGenerationPage() {
               <div
                 style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
               >
-                <span style={{ fontSize: 12, color: pinkTheme.textMuted }}>
+                <span style={{ fontSize: 13, color: pinkTheme.textMuted }}>
                   {item.disease_code} · {item.category}
                 </span>
                 <span aria-hidden style={{ color: pinkTheme.textMuted }}>
                   ›
                 </span>
               </div>
-              <p style={{ color: pinkTheme.text, fontWeight: 600, marginTop: 6, marginBottom: 4 }}>
+              <p
+                style={{
+                  color: pinkTheme.text,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  marginTop: 6,
+                  marginBottom: 4,
+                }}
+              >
                 {item.title}
               </p>
               <p

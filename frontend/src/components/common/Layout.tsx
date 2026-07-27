@@ -43,8 +43,8 @@ export default function Layout() {
           <img
             src="/icons/icon-192.png"
             alt=""
-            width={28}
-            height={28}
+            width={36}
+            height={36}
             style={{ borderRadius: 8 }}
           />
         </button>
@@ -55,12 +55,17 @@ export default function Layout() {
             aria-label="더보기 메뉴 열기"
             onClick={() => navigate("/more")}
             style={{
+              width: 36,
+              height: 36,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
               border: "none",
               background: "none",
               color: pinkTheme.text,
-              fontSize: 20,
+              fontSize: 22,
               lineHeight: 1,
-              padding: 4,
+              padding: 0,
               cursor: "pointer",
             }}
           >

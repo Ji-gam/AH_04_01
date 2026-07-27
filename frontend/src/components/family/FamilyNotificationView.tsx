@@ -218,7 +218,7 @@ export default function FamilyNotificationView({
           onClick={() => setShowAddForm((v) => !v)}
           style={{
             padding: "8px 16px",
-            borderRadius: 999,
+            borderRadius: 10,
             border: "none",
             background: t.primary,
             color: "white",
@@ -251,7 +251,7 @@ export default function FamilyNotificationView({
             style={{
               padding: "10px 12px",
               border: `1px solid ${t.border}`,
-              borderRadius: 8,
+              borderRadius: 10,
               fontSize: 14,
             }}
           />
@@ -264,7 +264,7 @@ export default function FamilyNotificationView({
             style={{
               padding: "10px",
               border: "none",
-              borderRadius: 8,
+              borderRadius: 10,
               background: t.primary,
               color: "#fff",
               fontWeight: 600,

@@ -1,6 +1,8 @@
+import { Moon } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import PageTitle from "../../components/common/PageTitle";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 
 import TimeSelectSection from "./TimeSelectSection";
@@ -108,9 +110,9 @@ export default function LifestyleInfoPage() {
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 6px" }}>
-          🌙 생활습관 정보
-        </h1>
+        <PageTitle icon={Moon} style={{ marginBottom: 6 }}>
+          생활습관 정보
+        </PageTitle>
 
         <p style={{ margin: "0 0 20px", fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>
           복약 효과를 높이기 위한 생활습관을 설정해주세요.
@@ -135,7 +137,7 @@ export default function LifestyleInfoPage() {
             width: "100%",
             padding: "14px 0",
             marginTop: 8,
-            borderRadius: 12,
+            borderRadius: 10,
             border: "none",
             background: t.primary,
             color: "#fff",

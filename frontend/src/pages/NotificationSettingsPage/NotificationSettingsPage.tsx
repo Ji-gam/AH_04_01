@@ -1,8 +1,10 @@
+import { Bell } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { notificationSettingsApi } from "../../api/notificationSettingsApi";
 import type { NotificationSettingsResult } from "../../api/types";
+import PageTitle from "../../components/common/PageTitle";
 import TimeInputField from "../../components/ui/TimeInputField";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import ToggleSwitch from "../AlarmPage/components/ToggleSwitch";
@@ -43,7 +45,7 @@ const rowLabelStyle: React.CSSProperties = {
 };
 
 const rowDescStyle: React.CSSProperties = {
-  fontSize: 12,
+  fontSize: 13,
   color: t.textMuted,
   margin: "3px 0 0",
 };
@@ -112,7 +114,7 @@ function FrequencySelect({ value, onChange }: FrequencySelectProps) {
       onChange={(e) => onChange(Number(e.target.value))}
       style={{
         padding: "8px 10px",
-        borderRadius: 8,
+        borderRadius: 10,
         border: `1px solid ${t.border}`,
         background: t.cardBg,
         color: t.text,
@@ -239,9 +241,9 @@ export default function NotificationSettingsPage() {
         >
           ← 뒤로가기
         </button>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: t.text, margin: "0 0 6px" }}>
-          🔔 알림설정
-        </h1>
+        <PageTitle icon={Bell} style={{ marginBottom: 6 }}>
+          알림설정
+        </PageTitle>
 
         <p style={{ margin: "0 0 12px", fontSize: 13, color: t.textMuted, lineHeight: 1.5 }}>
           받고 싶은 알림과 무음 시간대를 설정해주세요.
@@ -391,7 +393,7 @@ export default function NotificationSettingsPage() {
                 width: "100%",
                 padding: "14px 0",
                 marginTop: 24,
-                borderRadius: 12,
+                borderRadius: 10,
                 border: `1px solid ${t.primary}`,
                 background: t.cardBg,
                 color: t.primary,

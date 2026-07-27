@@ -1,7 +1,9 @@
+import { LayoutGrid } from "lucide-react";
 import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
+import PageTitle from "../../components/common/PageTitle";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
 import Modal from "../AlarmPage/components/Modal";
@@ -167,18 +169,16 @@ export default function MorePage() {
             marginBottom: 20,
           }}
         >
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: pinkTheme.text, margin: 0 }}>
-            더보기
-          </h1>
+          <PageTitle icon={LayoutGrid}>더보기</PageTitle>
           <Link
             to="/account-settings"
             state={{ from: "more" }}
             style={{
               border: `1px solid ${pinkTheme.border}`,
-              borderRadius: 999,
+              borderRadius: 10,
               padding: "6px 14px",
               fontSize: 13,
-              fontWeight: 600,
+              fontWeight: 700,
               color: pinkTheme.text,
               background: pinkTheme.cardBg,
               textDecoration: "none",
@@ -504,7 +504,7 @@ export default function MorePage() {
                   top: 12,
                   right: 12,
                   border: "none",
-                  borderRadius: 8,
+                  borderRadius: 10,
                   background: pinkTheme.primarySoft,
                   color: pinkTheme.primary,
                   cursor: "pointer",
@@ -592,7 +592,7 @@ export default function MorePage() {
                               flexShrink: 0,
                               marginLeft: 8,
                               padding: "5px 10px",
-                              borderRadius: 999,
+                              borderRadius: 10,
                               border: "none",
                               background: pinkTheme.primary,
                               color: "#fff",

@@ -130,7 +130,7 @@ export default function DiaryEntryContent() {
               boxSizing: "border-box",
               padding: "12px 14px",
               border: `1px solid ${t.border}`,
-              borderRadius: 12,
+              borderRadius: 10,
               fontSize: 14,
               color: t.text,
               resize: "vertical",
@@ -210,7 +210,7 @@ export default function DiaryEntryContent() {
             style={{
               width: "100%",
               padding: "14px 0",
-              borderRadius: 12,
+              borderRadius: 10,
               border: "none",
               background: t.primary,
               color: "#fff",
