@@ -183,6 +183,7 @@ async def _send_due_items(
                 title="복약 알림",
                 body=body,
                 intake_sources=[(item.source_type, item.source_id, item.alarm_time) for item in claimed],
+                link_url="/alarms",
             )
         except Exception:
             logger.exception("알림 발송 중 오류 (profile_id=%s)", profile_id)
@@ -250,6 +251,7 @@ async def _send_weekly_ai_report_if_due(
                 profile_id,
                 title="📊 이번 주 리포트가 도착했어요",
                 body="더보기 > 주간 리포트에서 확인해보세요.",
+                link_url="/weekly-reports",
             )
         except Exception:
             logger.exception("주간 AI 리포트 생성 중 오류 (profile_id=%s)", profile_id)

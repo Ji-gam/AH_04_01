@@ -237,7 +237,11 @@ class ChatService:
             # 챗봇 답변 알림은 필수 알림(복약)이 아니라, 무음 시간대엔 보류한다(F-NTFY-6).
             if settings.chatbot_reply_enabled and not is_in_quiet_hours(settings, datetime.now(tz=config.TIMEZONE)):
                 await self._push_service.send_to_profile(
-                    session, profile_id, title="💬 AI 상담 답변 도착", body="질문하신 내용에 답변이 도착했어요."
+                    session,
+                    profile_id,
+                    title="💬 AI 상담 답변 도착",
+                    body="질문하신 내용에 답변이 도착했어요.",
+                    link_url="/chat",
                 )
         except Exception:
             logger.exception("챗봇 답변 알림 발송 실패 (profile_id=%s)", profile_id)

@@ -7,8 +7,10 @@ _LIST_LIMIT = 50
 
 
 class NotificationLogRepository:
-    async def create(self, session: AsyncSession, profile_id: int, title: str, body: str) -> NotificationLog:
-        log = NotificationLog(profile_id=profile_id, title=title, body=body)
+    async def create(
+        self, session: AsyncSession, profile_id: int, title: str, body: str, link_url: str | None = None
+    ) -> NotificationLog:
+        log = NotificationLog(profile_id=profile_id, title=title, body=body, link_url=link_url)
         session.add(log)
         await session.commit()
         await session.refresh(log)

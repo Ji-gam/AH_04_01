@@ -101,6 +101,7 @@ class PushService:
         body: str,
         intake_sources: list[tuple[str, int, str]] | None = None,
         consult_url: str | None = None,
+        link_url: str | None = None,
     ) -> None:
         """이 프로필이 구독해둔 모든 기기(웹푸시 + FCM, 웹/네이티브 공통)에 푸시를 보낸다.
         구독 하나가 실패해도(예: 브라우저에서 구독 취소했는데 서버 DB에는 아직 남아있는
@@ -123,6 +124,12 @@ class PushService:
         consult_url을 주면(F-NTFY-5 부작용 사전 안내 전용) "불편한 증상이 있어요" 액션
         버튼을 붙인다 - service-worker.js가 클릭 시 이 URL(챗봇 자동 질문 딥링크)을 연다.
         intake_sources와 동시에 쓰는 경우는 없다(용도가 겹치지 않음).
+
+        link_url은 홈 상단 🔔 알림함에서 이 알림을 클릭했을 때 이동할 프론트 라우트다(웹푸시
+        자체의 클릭 동작과는 별개 - 알림함 전용). 안 주면 consult_url을 그대로 쓴다(부작용
+        안내는 어차피 상담으로 보내는 게 자연스러워 호출부에서 따로 안 넘겨도 되게 했다).
+        그 외 알림 종류는 딱 맞는 화면이 없으면 안 줘도 된다 - 그러면 알림함에서 클릭해도
+        아무 데도 이동하지 않는다.
 
         웹푸시(pywebpush/VAPID) 구독과 FCM 구독(웹/네이티브 공통, FIREBASE_CREDENTIALS_PATH
         설정 시)이 모두 있으면 둘 다 보낸다 - 액션 버튼/딥링크는 pywebpush 쪽에만 실어보낸다
@@ -149,7 +156,7 @@ class PushService:
         # "이 프로필에게 이 알림을 보내기로 결정했다"는 사실 자체는 항상 남긴다. 이 메서드가
         # 모든 알림 종류(복약알림/공지/가족알림/리포트/부작용안내 등)의 유일한 발송 지점이라
         # 여기 한 곳에만 훅을 걸면 전부 커버된다.
-        await self._notification_log_repo.create(session, profile_id, title, body)
+        await self._notification_log_repo.create(session, profile_id, title, body, link_url or consult_url)
 
         await self._send_to_web_subscriptions(session, profile_id, payload)
         await self._send_to_fcm_subscriptions(session, profile_id, title, body)
@@ -215,6 +222,7 @@ class PushService:
         title: str,
         body: str,
         intake_sources: list[tuple[str, int, str]] | None = None,
+        link_url: str | None = None,
     ) -> None:
         """`send_to_profile`은 그대로 두고, 여기에 "이 사람을 관리하는 보호자들에게도 같이
         보낸다"는 것만 추가한다. 보호자가 자기 기기에서 "🔔 알림 켜기"를 눌러 구독해두면
@@ -224,7 +232,7 @@ class PushService:
         보호자가 여러 명을 관리할 수 있어 "누구 약인지" 구분이 안 되면 헷갈리므로, 보호자
         쪽엔 대상자 이름을 붙여서 보낸다(본인 몫은 그대로 둠). intake_sources는 본인 몫에만
         전달한다 - 가족 사본은 복용완료/빈도조정 액션 버튼 없이 정보 전달용으로만 보낸다."""
-        await self.send_to_profile(session, profile_id, title, body, intake_sources=intake_sources)
+        await self.send_to_profile(session, profile_id, title, body, intake_sources=intake_sources, link_url=link_url)
 
         guardian_links = await self._family_repo.list_as_member(session, profile_id, status=FamilyLinkStatus.ACCEPTED)
         if not guardian_links:
@@ -234,4 +242,4 @@ class PushService:
         member_name = member_profile.name if member_profile else "가족"
         body_for_guardian = f"[{member_name}] {body}"
         for link in guardian_links:
-            await self.send_to_profile(session, link.guardian_profile_id, title, body_for_guardian)
+            await self.send_to_profile(session, link.guardian_profile_id, title, body_for_guardian, link_url=link_url)

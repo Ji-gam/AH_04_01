@@ -14,7 +14,12 @@ class NotificationLogService:
         return NotificationLogListResult(
             items=[
                 NotificationLogItemResult(
-                    id=log.id, title=log.title, body=log.body, is_read=log.is_read, created_at=log.created_at
+                    id=log.id,
+                    title=log.title,
+                    body=log.body,
+                    link_url=log.link_url,
+                    is_read=log.is_read,
+                    created_at=log.created_at,
                 )
                 for log in logs
             ],

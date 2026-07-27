@@ -21,5 +21,8 @@ class NotificationLog(Base):
     )
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
+    # 알림함에서 이 알림을 클릭했을 때 이동할 프론트 라우트(예: "/alarms", "/chat?autoMessage=...").
+    # 없으면(예: 순응도 리포트처럼 딱 맞는 화면이 없는 경우) 클릭해도 아무 데도 이동하지 않는다.
+    link_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

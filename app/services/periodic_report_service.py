@@ -80,7 +80,7 @@ class PeriodicReportService:
         emoji, comment = _tone(result.rate)
         body = f"이번 주 {result.done}/{result.total}회 복용해서 순응도 {_pct(result.rate)}%예요. {comment}"
         await self._push_service.send_to_profile(
-            session, profile_id, title=f"{emoji} 이번 주 복약 순응도 리포트", body=body
+            session, profile_id, title=f"{emoji} 이번 주 복약 순응도 리포트", body=body, link_url="/track"
         )
 
     async def _build_goal_report_lines(
@@ -117,12 +117,12 @@ class PeriodicReportService:
     async def send_weekly_goal_report(
         self, session: AsyncSession, profile_id: int, week_start: date, week_end: date
     ) -> None:
-        """F-GOAL-3 - 매주 월요일, 복약 순응도/습관 달성률/목표 진행률을 함께 요약해 보낸다."""
+        """F-GOAL-3 - 매주 일요일, 복약 순응도/습관 달성률/목표 진행률을 함께 요약해 보낸다."""
         lines = await self._build_goal_report_lines(session, profile_id, week_start, week_end)
         if not lines:
             return
         await self._push_service.send_to_profile(
-            session, profile_id, title="📅 이번 주 달성 리포트", body="\n".join(lines)
+            session, profile_id, title="📅 이번 주 달성 리포트", body="\n".join(lines), link_url="/habit-selection"
         )
 
     async def send_monthly_goal_report(
@@ -133,5 +133,5 @@ class PeriodicReportService:
         if not lines:
             return
         await self._push_service.send_to_profile(
-            session, profile_id, title="🗓️ 이번 달 달성 리포트", body="\n".join(lines)
+            session, profile_id, title="🗓️ 이번 달 달성 리포트", body="\n".join(lines), link_url="/habit-selection"
         )
