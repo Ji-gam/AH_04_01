@@ -28,5 +28,10 @@
     "owner": "claude",
     "branch": "feat/T-MED-16-item-seq-direct-ref",
     "started": "2026-07-20"
+  },
+  "T-LLM-2-langfuse-observability": {
+    "owner": "agent-Genie",
+    "branch": "feat/T-LLM-2-langfuse-observability",
+    "started": "2026-07-27"
   }
 }

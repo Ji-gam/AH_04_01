@@ -42,6 +42,9 @@ ai = [
     # PDF 읽기 + 스캔본 OCR. Docling을 쓰지 않는 이유는 ingest/loaders.py 참고
     # (Apple Silicon MPS에서 레이아웃 모델이 터지고, 한글 OCR이 글자를 깨뜨린다).
     "pymupdf>=1.28.0",
+    # LLM 관측(T-LLM-2-langfuse-observability). v4 API(langfuse.langchain.CallbackHandler,
+    # 전역 클라이언트 + 표준 환경변수) 기준으로 연동/검증했다 — ai_worker/core/observability.py.
+    "langfuse>=4.0.0",
 ]
 app = [
     "alembic>=1.14.0",

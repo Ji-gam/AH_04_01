@@ -352,7 +352,13 @@ async def quick_register_medication(
 ) -> QuickRegisterResult:
     service = MedicationService()
     return await service.quick_register_medication(
-        session, profile.id, body.drug_name, body.times, background_tasks, body.hospital_name
+        session,
+        profile.id,
+        body.drug_name,
+        body.times,
+        background_tasks,
+        body.hospital_name,
+        body.target_profile_id,
     )
 
 

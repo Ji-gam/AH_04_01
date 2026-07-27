@@ -20,9 +20,11 @@ LLM 답변까지 완결)를 하나로 통합한다. 질문 하나에 DUR도 관�
 
 from collections.abc import AsyncIterator
 
+from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
 from pydantic import SecretStr
 
+from ai_worker.core import observability
 from ai_worker.core.config import settings
 from ai_worker.schemas.retrieval_schema import DocumentChunk, SourceRef
 from ai_worker.services.paper_retrieve_service import ensure_paper_db, search_papers
@@ -126,6 +128,11 @@ async def stream_chat_answer(
     llm = _build_llm()
     messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": message}]
 
-    async for event in llm.astream(messages):
+    # 관측(Langfuse)이 설정돼 있으면 콜백으로 프롬프트/응답/토큰/지연을 trace로 남긴다.
+    # 미설정이면 handler가 None이라 config=None(기본 동작) — 스트리밍은 그대로다.
+    handler = observability.get_langfuse_handler()
+    config: RunnableConfig | None = {"callbacks": [handler]} if handler else None
+
+    async for event in llm.astream(messages, config=config):
         if event.content:
             yield {"type": "token", "content": event.content}
