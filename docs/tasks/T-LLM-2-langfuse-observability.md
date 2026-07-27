@@ -30,17 +30,17 @@
 - POC 제출용 범위임을 감안해 1단계로 관측의 80%를 확보하고, 2단계는 필요 시 착수한다.
 
 ### 완료 정의 (Definition of Done — 1단계)
-- [ ] `langfuse` 의존성이 `[dependency-groups].ai`에 추가되고 `uv.lock`이 갱신된다
-- [ ] `ai_worker/core/config.py`에 `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST`
+- [x] `langfuse` 의존성이 `[dependency-groups].ai`에 추가되고 `uv.lock`이 갱신된다 (langfuse 4.14.1)
+- [x] `ai_worker/core/config.py`에 `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_BASE_URL`
       설정이 추가된다(기본값은 빈 문자열 — 미설정 시 관측 비활성)
-- [ ] `ai_worker/core/`에 콜백 핸들러 팩토리 신설 — 키가 모두 설정된 경우에만 `CallbackHandler`를
-      반환하고, 아니면 `None`(no-op)을 반환한다
-- [ ] `chat_agent.py`의 `llm.astream(...)`과 `generate_structured.py`의 `chain.ainvoke(...)`가
+- [x] `ai_worker/core/observability.py`에 콜백 핸들러 팩토리 신설 — 키가 모두 설정된 경우에만
+      `CallbackHandler`를 반환하고, 아니면 `None`(no-op)을 반환한다
+- [x] `chat_agent.py`의 `llm.astream(...)`과 `generate_structured.py`의 `chain.ainvoke(...)`가
       핸들러가 있을 때 `config={"callbacks": [handler]}`로 호출된다
-- [ ] 키 미설정 시(로컬/CI) 예외·경고 없이 챗봇/구조화 생성이 종전과 동일하게 동작한다(무회귀)
-- [ ] 실제 키 설정 후 챗봇 1회 호출 시 Langfuse 대시보드에 trace 1건(프롬프트·응답·토큰)이 뜬다 — 스크린샷으로 확인
-- [ ] `.env.example`(및 `envs/`)에 3개 키의 자리표시자와 주석이 추가된다
-- [ ] (공통) 테스트 함수명 영문, ruff/mypy 통과 (CI 게이트: `ruff check` + `ruff format --check` + `mypy`; 이 레포 CI는 pytest 미실행)
+- [x] 키 미설정 시(로컬/CI) 예외·경고 없이 챗봇/구조화 생성이 종전과 동일하게 동작한다(무회귀) — conftest autouse 가드 + test_observability
+- [x] 실제 키 설정 후 `auth_check()` 성공 + 테스트 trace 전송·flush 확인 (Langfuse jp 리전 대시보드에 trace 노출) — 실 챗봇 스트리밍 1건은 사람이 최종 확인 예정
+- [x] `envs/example.local.env`에 3개 키의 자리표시자와 주석이 추가된다
+- [x] (공통) 테스트 함수명 영문, ruff/mypy 통과 (CI 게이트: `ruff check` + `ruff format --check` + `mypy` 로컬 통과, 관련 pytest 17건 통과)
 
 ### 허용 경로 (이 안에서만 자유롭게 작업)
 ```
@@ -79,7 +79,16 @@ docs/tasks/_active.json                 (등록/해제 외 수정 금지)
   구현 전 한 번 더 확인한다(POC 데모 데이터 기준). 필요 시 마스킹/비활성 스위치를 기본값으로 둔다.
 
 ### 완료 보고 (구현 후 작성)
-- 완료 정의 체크리스트 결과:
+- 완료 정의 체크리스트 결과: 1단계 전 항목 충족. LLM 호출 2곳 계측, 무회귀(키 없으면 no-op) 확인,
+  실 Langfuse 인증(`auth_check() == True`) + 테스트 trace 전송 검증. ruff/mypy/pytest(17) 통과.
+- 실제 SDK 버전: 계획 시엔 v3 문서를 참고했으나 설치된 것은 **langfuse 4.14.1(v4)**. v4 API로 검증하고
+  핀을 `>=4.0.0`으로 조정. import는 `from langfuse.langchain import CallbackHandler`, 핸들러는 인자 없이
+  생성하며 자격증명은 전역 클라이언트가 표준 환경변수에서 읽는다.
 - 가정(Assumptions):
-- 공유 계약 변경 필요 사항 (있다면):
+  - host 환경변수명이 SDK 패치별로 `LANGFUSE_HOST`/`LANGFUSE_BASE_URL`로 갈려, 팩토리에서 둘 다 세팅(무해).
+  - Langfuse 키는 사람이 발급해 로컬 `.env`(gitignore)에만 둔다 — 저장소엔 자리표시자만.
+- 공유 계약 변경 필요 사항: 없음. 사용자 대면 응답 스키마·스트리밍 이벤트 포맷 무변경.
+- 미완/후속: (a) 실 챗봇 스트리밍 1건의 대시보드 trace는 사람이 최종 눈으로 확인,
+  (b) **환자 텍스트 외부 전송 범위 검토** — 필요 시 `Langfuse(mask=...)`로 마스킹(2단계에서 함께),
+  (c) RAG 검색 span `@observe` 계측은 2단계 별도 PR.
 - 브랜치명: `feat/T-LLM-2-langfuse-observability`
