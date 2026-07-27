@@ -21,6 +21,7 @@ import {
   type RecognitionCandidate,
 } from "../../hooks/useMedication";
 import { pinkTheme } from "../../theme/pinkTheme";
+import { isUnverifiedDrug } from "../../utils/medication";
 import Modal from "../AlarmPage/components/Modal";
 
 import DoseTimesInput from "./components/DoseTimesInput";
@@ -379,6 +380,17 @@ export default function MedicationPage() {
   const [isConfirmingJob, setIsConfirmingJob] = useState(false);
   const isConfirmingJobRef = useRef(false);
 
+  // OCR 후보가 잘못 인식됐을 때 "다른 약이에요"로 텍스트 검색해 바로잡는 기능 — 새 매칭/
+  // 할루시네이션 로직을 새로 만들지 않고, 수동등록 탭이 이미 쓰는 searchMedications/
+  // createManualSchedule/quickRegister를 후보 카드 안에서 인라인으로 재사용한다.
+  const [editingCandidateCode, setEditingCandidateCode] = useState<string | null>(null);
+  const [candidateSearchText, setCandidateSearchText] = useState("");
+  const [candidateSearchResults, setCandidateSearchResults] = useState<
+    Array<{ item_seq: string; medication_name: string }>
+  >([]);
+  const [candidateSearchLoading, setCandidateSearchLoading] = useState(false);
+  const [candidateSearchDone, setCandidateSearchDone] = useState(false);
+
   // 수동 등록용 상태 — "더보기 > 약품 검색"과 동일하게 먼저 검색해서 목록에서 고르는 방식으로
   // 바꿨다(마스터 DB 통일 이후 검색 결과가 실제 등록 가능한 약과 일치하므로). 검색 결과에
   // 원하는 약이 없을 때만, 입력한 이름 그대로 새로 등록하는 기존 빠른 등록(T-MED-3, 자동 생성
@@ -668,6 +680,79 @@ export default function MedicationPage() {
     }
   };
 
+  // "다른 약이에요" 클릭 → 편집 모드 진입. 후보 카드 하나만 검색창으로 바꾼다.
+  const handleStartEditCandidate = (drugCode: string) => {
+    setEditingCandidateCode(drugCode);
+    setCandidateSearchText("");
+    setCandidateSearchResults([]);
+    setCandidateSearchDone(false);
+  };
+
+  const handleCancelEditCandidate = () => {
+    setEditingCandidateCode(null);
+    setCandidateSearchText("");
+    setCandidateSearchResults([]);
+    setCandidateSearchDone(false);
+  };
+
+  // 편집 중인 OCR 후보에 대해 마스터 DB(Tier1)를 검색한다 — 수동등록 탭의 handleSearchMedications와
+  // 동일한 API(searchMedications)를 그대로 쓴다.
+  const handleSearchCandidateReplacement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!candidateSearchText.trim()) return;
+    setCandidateSearchLoading(true);
+    try {
+      const results = await searchMedications(candidateSearchText.trim());
+      setCandidateSearchResults(results);
+      setCandidateSearchDone(true);
+    } finally {
+      setCandidateSearchLoading(false);
+    }
+  };
+
+  // 검색 결과 중 정확한 약을 골랐을 때 — createManualSchedule(수동등록 탭과 동일 API)로 바로
+  // 등록한다. 성공하면 내부에서 fetchSchedules()가 실행되어, 기존 isRegistered 파생 로직이 이
+  // 후보를 자동으로 "등록됨"으로 표시해준다(별도 상태 동기화 불필요).
+  const handleSelectCandidateReplacement = async (itemSeq: string) => {
+    try {
+      await createManualSchedule(itemSeq, confirmedTimes, hospitalName.trim() || null);
+      handleCancelEditCandidate();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // 검색해도 원하는 약이 없을 때 — 입력한 이름 그대로 등록(quickRegister, T-MED-3 자동생성 정책).
+  const handleRegisterCandidateAsTyped = async () => {
+    if (!candidateSearchText.trim()) return;
+    try {
+      const res = await quickRegister(
+        candidateSearchText.trim(),
+        confirmedTimes,
+        hospitalName.trim() || null,
+      );
+      if (res.status === "registered") {
+        alert(
+          res.auto_created
+            ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`
+            : "복약 일정이 성공적으로 등록되었습니다!",
+        );
+        handleCancelEditCandidate();
+      } else {
+        // 여러 약과 부분일치 — 검색 결과 목록에 반영해 다시 고르게 한다.
+        setCandidateSearchResults(
+          res.candidates.map((c) => ({
+            item_seq: c.drug_code,
+            medication_name: c.medication_name,
+          })),
+        );
+        setCandidateSearchDone(true);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   // 약품명 검색 핸들러 — "더보기 > 약품 검색"과 같은 마스터 DB(MySQL dur_prod_master_list)를
   // 조회하는 /medications/search를 그대로 쓴다. 결과는 OCR 후보와 동일한 모양(drug_code/
   // medication_name/form_type)으로 담아 manualCandidates에 넣고, 아래에서 하나를 골라 확정한다.
@@ -703,7 +788,7 @@ export default function MedicationPage() {
       if (res.status === "registered") {
         alert(
           res.auto_created
-            ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다.`
+            ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`
             : "복약 일정이 성공적으로 등록되었습니다!",
         );
         setQuickDrugName("");
@@ -1033,6 +1118,122 @@ export default function MedicationPage() {
                         // 삭제되면 자동으로 다시 선택 가능해지고, 이미지를 다시 올릴 필요가 없다.
                         const isRegistered = schedules.some((s) => s.item_seq === c.drug_code);
                         const checked = !isRegistered && selectedDrugCodes.includes(c.drug_code);
+
+                        // 이 후보가 편집(다른 약이에요) 모드면, 카드 대신 인라인 검색 UI를 보여준다.
+                        if (editingCandidateCode === c.drug_code) {
+                          return (
+                            <div
+                              key={c.drug_code}
+                              style={{
+                                border: `1px solid ${pinkTheme.primary}`,
+                                borderRadius: 12,
+                                padding: 10,
+                                background: pinkTheme.cardBg,
+                              }}
+                            >
+                              <form
+                                onSubmit={handleSearchCandidateReplacement}
+                                style={{ display: "flex", gap: 5, marginBottom: 8 }}
+                              >
+                                <input
+                                  type="text"
+                                  value={candidateSearchText}
+                                  onChange={(e) => {
+                                    setCandidateSearchText(e.target.value);
+                                    setCandidateSearchDone(false);
+                                    setCandidateSearchResults([]);
+                                  }}
+                                  placeholder="실제 약품명 검색 (예: 타이레놀)"
+                                  autoFocus
+                                  style={{ flex: 1 }}
+                                />
+                                <button
+                                  type="submit"
+                                  disabled={candidateSearchLoading || !candidateSearchText.trim()}
+                                >
+                                  {candidateSearchLoading ? "검색 중..." : "검색"}
+                                </button>
+                              </form>
+
+                              {candidateSearchDone &&
+                                !candidateSearchLoading &&
+                                candidateSearchResults.length === 0 && (
+                                  <div style={{ marginBottom: 8 }}>
+                                    <p
+                                      style={{
+                                        fontSize: 12.5,
+                                        color: pinkTheme.textMuted,
+                                        margin: "0 0 5px",
+                                      }}
+                                    >
+                                      검색 결과가 없습니다.
+                                    </p>
+                                    <button
+                                      onClick={handleRegisterCandidateAsTyped}
+                                      disabled={isLoading}
+                                      style={{
+                                        fontSize: 12.5,
+                                        color: pinkTheme.textMuted,
+                                        background: "none",
+                                        border: "none",
+                                        textDecoration: "underline",
+                                        cursor: "pointer",
+                                        padding: 0,
+                                      }}
+                                    >
+                                      찾는 약이 없나요? &quot;{candidateSearchText.trim()}
+                                      &quot;(으)로 새로 등록
+                                    </button>
+                                  </div>
+                                )}
+
+                              {candidateSearchResults.length > 0 && (
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 6,
+                                    marginBottom: 8,
+                                  }}
+                                >
+                                  {candidateSearchResults.map((r) => (
+                                    <button
+                                      key={r.item_seq}
+                                      onClick={() => handleSelectCandidateReplacement(r.item_seq)}
+                                      disabled={isLoading}
+                                      style={{
+                                        textAlign: "left",
+                                        padding: "8px 10px",
+                                        borderRadius: 8,
+                                        border: `1px solid ${pinkTheme.border}`,
+                                        background: pinkTheme.pageBg,
+                                        cursor: "pointer",
+                                        fontSize: 13,
+                                      }}
+                                    >
+                                      {r.medication_name}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+
+                              <button
+                                onClick={handleCancelEditCandidate}
+                                style={{
+                                  fontSize: 12,
+                                  color: pinkTheme.textMuted,
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  padding: 0,
+                                }}
+                              >
+                                취소
+                              </button>
+                            </div>
+                          );
+                        }
+
                         return (
                           <label
                             key={c.drug_code}
@@ -1096,10 +1297,33 @@ export default function MedicationPage() {
                                     등록됨
                                   </span>
                                 )}
+                                {!isRegistered && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      handleStartEditCandidate(c.drug_code);
+                                    }}
+                                    style={{
+                                      marginLeft: 8,
+                                      fontSize: 11,
+                                      color: pinkTheme.primary,
+                                      background: "none",
+                                      border: "none",
+                                      textDecoration: "underline",
+                                      cursor: "pointer",
+                                      padding: 0,
+                                      fontWeight: 400,
+                                    }}
+                                  >
+                                    다른 약이에요
+                                  </button>
+                                )}
                               </div>
                               <div style={{ fontSize: 11.5, color: pinkTheme.textMuted }}>
                                 매칭률 {(c.match_rate * 100).toFixed(0)}%
-                                {c.match_rate < 0.6 && " · 마스터 DB 미등록, 신규 인식"}
+                                {c.match_rate < 0.6 &&
+                                  " · 마스터 DB 미등록, 신규 인식(상호작용 검사 미지원)"}
                               </div>
                               {durCheckLoading && !durInfo && (
                                 <div
@@ -1517,6 +1741,12 @@ export default function MedicationPage() {
                           <div style={{ fontSize: 11.5, color: pinkTheme.textMuted }}>
                             복용 시간: {s.times.join(", ")}
                           </div>
+                          {isUnverifiedDrug(s.item_seq) && (
+                            <div style={{ fontSize: 11, color: "#b26a00", marginTop: 4 }}>
+                              ⚠️ 마스터 DB에 없는 약이라 상호작용(병용금기) 검사가 제공되지
+                              않습니다.
+                            </div>
+                          )}
                           {s.source_job_id && (
                             <div style={{ fontSize: 11, color: pinkTheme.success, marginTop: 4 }}>
                               ✓ OCR 인식을 통해 자동 등록됨

@@ -1536,6 +1536,7 @@ class MedicationService:
         times: list[str],
         background_tasks: BackgroundTasks,
         hospital_name: str | None = None,
+        target_profile_id: int | None = None,
     ) -> QuickRegisterResult:
         """약품명을 직접 입력해 검색 단계 없이 한 번에 등록한다(T-MED-3).
 
@@ -1547,6 +1548,17 @@ class MedicationService:
         stripped_name = drug_name.strip()
         if not stripped_name:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="약품명을 입력해주세요.")
+
+        # (가족관리) create_manual_schedule과 동일한 규칙 - target_profile_id가 있으면 요청자가
+        # 그 프로필의 보호자로 등록되어 있어야만 허용한다.
+        owner_profile_id = target_profile_id or profile_id
+        if owner_profile_id != profile_id:
+            is_guardian = await self._family_repository.is_guardian_of(session, profile_id, owner_profile_id)
+            if not is_guardian:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="해당 프로필에 대한 복약 스케줄을 등록할 권한이 없습니다. 더보기 > 가족관리에서 먼저 연결해주세요.",
+                )
 
         matches = await self._dur_drug_repository.search_item_names(
             session, stripped_name, _SEARCH_TIER1_CANDIDATE_LIMIT
@@ -1571,14 +1583,14 @@ class MedicationService:
         master_names = await self._dur_drug_repository.get_names_by_item_seqs(session, {item_seq})
         display_name = None if item_seq in master_names else item_name
         schedule = MedicationSchedule(
-            profile_id=profile_id,
+            profile_id=owner_profile_id,
             item_seq=item_seq,
             display_name=display_name,
             times=times,
             hospital_name=hospital_name,
         )
         schedule = await self._repository.create_schedule(session, schedule)
-        background_tasks.add_task(_notify_side_effects_task, profile_id, item_name)
+        background_tasks.add_task(_notify_side_effects_task, owner_profile_id, item_name)
 
         return QuickRegisterResult(
             status="registered",

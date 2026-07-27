@@ -34,12 +34,28 @@ export interface RecognitionJobStatus {
 export interface FamilyMedicationScheduleItem {
   id: number;
   medication_id: number;
+  // (T-MED-16) item_seq 또는 AUTO_ 더미 코드 — AUTO_로 시작하면 상호작용(DUR) 체크에서
+  // 제외되는 약이라, 가족 목록에서 경고 배지를 붙일 때 이 값으로 판단한다.
+  item_seq: string;
   drug_name: string;
   times: string[];
   source_job_id?: string | null;
   form_type?: string | null;
   dosage_guideline?: string | null;
   hospital_name?: string | null;
+}
+
+export interface FamilyQuickRegisterCandidate {
+  drug_code: string;
+  medication_name: string;
+  form_type: string | null;
+}
+
+export interface FamilyQuickRegisterResult {
+  status: string; // "registered" | "multiple_matches"
+  schedule: FamilyMedicationScheduleItem | null;
+  candidates: FamilyQuickRegisterCandidate[];
+  auto_created: boolean;
 }
 
 export interface FamilyInteractionWarning {
@@ -89,6 +105,26 @@ export const familyMedicationApi = {
       method: "POST",
       body: JSON.stringify({
         drug_code: drugCode,
+        times,
+        hospital_name: hospitalName ?? null,
+        target_profile_id: targetProfileId,
+      }),
+    }),
+
+  // 가족 몫 빠른 등록(이름 그대로, 검색 생략) - 검색해도 원하는 약이 없을 때 쓰는 보조 수단.
+  // /medications/quick-register가 target_profile_id를 받아 보호자 권한 검증 후 그 프로필로
+  // 등록하도록 백엔드를 확장해서, 본인 몫(useMedication.ts의 quickRegister)과 동일한 엔드포인트를
+  // target_profile_id만 추가해 재사용한다.
+  quickRegisterForFamily: (
+    targetProfileId: number,
+    drugName: string,
+    times: string[],
+    hospitalName?: string | null,
+  ) =>
+    apiFetch<FamilyQuickRegisterResult>("/medications/quick-register", {
+      method: "POST",
+      body: JSON.stringify({
+        drug_name: drugName,
         times,
         hospital_name: hospitalName ?? null,
         target_profile_id: targetProfileId,
