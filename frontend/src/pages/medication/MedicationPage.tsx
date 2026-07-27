@@ -1063,7 +1063,14 @@ export default function MedicationPage() {
                         }}
                       >
                         <p style={{ margin: "0 0 8px", fontSize: 20 }}>📷</p>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: pinkTheme.text }}>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: pinkTheme.text,
+                          }}
+                        >
                           카메라로 촬영
                         </p>
                       </button>
@@ -1081,7 +1088,14 @@ export default function MedicationPage() {
                         }}
                       >
                         <p style={{ margin: "0 0 8px", fontSize: 20 }}>🖼️</p>
-                        <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: pinkTheme.text }}>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: pinkTheme.text,
+                          }}
+                        >
                           갤러리에서 선택
                         </p>
                       </button>
