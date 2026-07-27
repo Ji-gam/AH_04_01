@@ -47,6 +47,18 @@ class Config(BaseSettings):
     # app/services/medication_open_api_client.py가 빈 리스트를 반환한다.
     PUBLIC_DATA_API_KEY: str | None = None
 
+    # F-DIET-1/2: 식품영양성분DB API - 별도 서비스 신청이 필요할 수 있어 키를 분리해뒀다.
+    # 설정 안 하면 PUBLIC_DATA_API_KEY로 폴백하고, 그것도 없거나 호출이 실패하면
+    # app/services/food_nutrition_open_api_client.py가 로컬 시드로 폴백한다.
+    FOOD_NUTRITION_API_KEY: str | None = None
+
+    # T-MED-1: CLOVA OCR(네이버 클라우드) - 처방전/약봉투 이미지 인식. 둘 다 설정돼야 실제
+    # 호출한다(medication_service._clova_configured). 미설정이면 실제 OCR 없이 인식 실패로
+    # 처리되고, dummy_mode 명시 요청 시에만 결정적 더미 결과를 낸다. SECRET_KEY가 "your_"로
+    # 시작하면 .env 예시의 미교체 플레이스홀더로 보고 미설정으로 취급한다.
+    CLOVA_OCR_SECRET_KEY: str | None = None
+    CLOVA_OCR_INVOKE_URL: str | None = None
+
     # 웹푸시(Web Push) - VAPID 키쌍. 한 번 생성하면 이후 계속 재사용(교체하면 기존 구독이
     # 전부 무효화됨). app/scripts/generate_vapid_keys.py로 1회 생성해서 .env에 넣어둔다.
     VAPID_PUBLIC_KEY: str | None = None
@@ -59,6 +71,13 @@ class Config(BaseSettings):
     # 상대경로 - uv run은 항상 레포 루트에서 실행). 설정 안 하면 push_service.py가 FCM
     # 발송만 건너뛰고(웹푸시는 그대로 동작) 조용히 넘어간다.
     FIREBASE_CREDENTIALS_PATH: str | None = None
+
+    # [개인정보보호법 제23조 - 민감정보(건강정보) 안전성 확보조치] 자유서술형 건강정보
+    # 텍스트(개인건강정보 특이사항/기타, 진단병력/가족력 상세)를 DB에 암호화해서 저장하기
+    # 위한 키. app/scripts/generate_field_encryption_key.py로 1회 생성 후 .env에 넣는다.
+    # 미설정 시엔 평문 그대로 저장되니(로컬 개발 편의), 배포 전 반드시 설정할 것 - 자세한
+    # 내용은 app/core/db/encrypted_types.py의 EncryptedText 참고.
+    FIELD_ENCRYPTION_KEY: str | None = None
 
     # T-LLM-2-async-gateway: ai-worker 서비스 기본 URL (docker-compose 네트워크 내부 호스트명).
     # AIWorkerGateway가 여기에 /retrieve, /generate-structured 경로를 붙여 호출한다.

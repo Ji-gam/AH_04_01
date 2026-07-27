@@ -149,6 +149,7 @@ class DurScreeningService:
                 BasicScreeningResult(
                     drug_detail=detail,
                     dur_simple=_build_dur_simple(d["item_seq"], rules_raw),
+                    queried_name=d["queried_name"],
                 )
             )
         return BasicScreeningResponse(results=results, unmatched_drug_names=unmatched)

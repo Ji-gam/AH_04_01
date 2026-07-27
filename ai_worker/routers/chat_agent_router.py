@@ -55,7 +55,7 @@ async def chat_agent_endpoint(payload: ChatCompletionRequest) -> StreamingRespon
         except Exception as e:
             # 스트림이 이미 시작된 뒤의 실패는 상태 코드로 알릴 수 없어, 인밴드 error
             # 청크로 알린다 — 호출자(app/)가 이걸 보고 "받은 만큼만 저장 + 에러 표시"한다.
-            logger.error(f"채팅 스트림 생성 중 오류: {e}")
+            logger.error("채팅 스트림 생성 중 오류: %s (내용 미기록)", type(e).__name__)
             yield json.dumps({"type": "error", "content": str(e)}, ensure_ascii=False) + "\n"
 
     return StreamingResponse(event_stream(), media_type="text/plain")

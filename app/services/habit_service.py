@@ -273,6 +273,7 @@ class HabitService:
                     profile.id,
                     "🎉 오늘의 습관 목표 달성!",
                     "오늘 고른 습관을 모두 완료했어요. 정말 잘하고 있어요!",
+                    link_url="/habit-selection",
                 )
             except Exception:
                 # 알림은 부가 기능이라, 발송 실패가 습관 체크 자체(핵심 기능)를 막으면 안 된다.

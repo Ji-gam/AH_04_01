@@ -55,6 +55,79 @@ const sectionTitleStyle: React.CSSProperties = {
   margin: "24px 0 4px",
 };
 
+const WEEKDAY_LABELS = ["월", "화", "수", "목", "금", "토", "일"];
+
+interface DayOfWeekPickerProps {
+  value: number;
+  onChange: (day: number) => void;
+}
+
+/** F-ADH-2 - 주간 순응도 피드백을 받을 요일 선택(기본값 토=5). Python date.weekday() 기준
+ * (월=0~일=6)으로 백엔드와 그대로 맞춘다. */
+function DayOfWeekPicker({ value, onChange }: DayOfWeekPickerProps) {
+  return (
+    <div style={{ display: "flex", gap: 6 }}>
+      {WEEKDAY_LABELS.map((label, day) => (
+        <button
+          key={label}
+          type="button"
+          onClick={() => onChange(day)}
+          aria-pressed={value === day}
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            border: `1px solid ${value === day ? t.primary : t.border}`,
+            background: value === day ? t.primary : t.cardBg,
+            color: value === day ? "#fff" : t.text,
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const FREQUENCY_OPTIONS = [
+  { value: 0, label: "제한 없음" },
+  { value: 1, label: "하루 한 번" },
+  { value: 3, label: "3일에 한 번" },
+  { value: 7, label: "일주일에 한 번" },
+];
+
+interface FrequencySelectProps {
+  value: number;
+  onChange: (days: number) => void;
+}
+
+/** F-NTFY-6 - 라이프스타일 팁 최소 수신 간격(일) 선택. 0 = 제한 없음(콘텐츠가 생길 때마다). */
+function FrequencySelect({ value, onChange }: FrequencySelectProps) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      style={{
+        padding: "8px 10px",
+        borderRadius: 8,
+        border: `1px solid ${t.border}`,
+        background: t.cardBg,
+        color: t.text,
+        fontSize: 13,
+      }}
+    >
+      {FREQUENCY_OPTIONS.map((opt) => (
+        <option key={opt.value} value={opt.value}>
+          {opt.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 interface ToggleRowProps {
   label: string;
   desc: string;
@@ -122,7 +195,23 @@ export default function NotificationSettingsPage() {
       return;
     }
     if (settings.popup_enabled) {
-      new Notification("🔔 테스트 알림", { body: "설정하신 알림이 이렇게 도착해요." });
+      // 안드로이드 Chrome 계열은 페이지에서 `new Notification()`을 직접 호출하면 예외를
+      // 던진다 - 반드시 서비스워커의 showNotification()을 거쳐야 한다(실제 푸시 수신 시
+      // service-worker.js가 쓰는 것과 동일한 방식). 서비스워커가 없는 구형 브라우저를 위해
+      // new Notification()은 폴백으로만 남겨둔다.
+      if ("serviceWorker" in navigator) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          await registration.showNotification("🔔 테스트 알림", {
+            body: "설정하신 알림이 이렇게 도착해요.",
+          });
+        } catch {
+          setTestStatus("테스트 알림 표시에 실패했어요.");
+          return;
+        }
+      } else {
+        new Notification("🔔 테스트 알림", { body: "설정하신 알림이 이렇게 도착해요." });
+      }
     }
     if (settings.sound_enabled) {
       playTestBeep();
@@ -193,6 +282,58 @@ export default function NotificationSettingsPage() {
               checked={settings.lifestyle_tip_enabled}
               onChange={() => toggle("lifestyle_tip_enabled")}
             />
+            {settings.lifestyle_tip_enabled && (
+              <>
+                <ToggleRow
+                  label="팁 전용 시간대"
+                  desc="무음 시간대와 별개로, 이 시간에만 팁을 받아요"
+                  checked={settings.lifestyle_tip_window_enabled}
+                  onChange={() => toggle("lifestyle_tip_window_enabled")}
+                />
+                {settings.lifestyle_tip_window_enabled && (
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "14px 0",
+                      borderBottom: `1px solid ${t.border}`,
+                    }}
+                  >
+                    <TimeInputField
+                      value={settings.lifestyle_tip_start.slice(0, 5)}
+                      onChange={(v) => update("lifestyle_tip_start", `${v}:00`)}
+                    />
+                    <span style={{ color: t.textMuted, fontSize: 13 }}>~</span>
+                    <TimeInputField
+                      value={settings.lifestyle_tip_end.slice(0, 5)}
+                      onChange={(v) => update("lifestyle_tip_end", `${v}:00`)}
+                    />
+                  </div>
+                )}
+                <div style={rowStyle}>
+                  <span>
+                    <p style={rowLabelStyle}>수신 빈도</p>
+                    <p style={rowDescStyle}>너무 자주 오면 며칠에 한 번만 받도록 줄일 수 있어요</p>
+                  </span>
+                  <FrequencySelect
+                    value={settings.lifestyle_tip_min_interval_days}
+                    onChange={(days) => update("lifestyle_tip_min_interval_days", days)}
+                  />
+                </div>
+              </>
+            )}
+
+            <p style={sectionTitleStyle}>주간 순응도 피드백</p>
+            <div style={{ padding: "10px 0 14px" }}>
+              <p style={{ ...rowDescStyle, margin: "0 0 10px" }}>
+                이 요일마다 지난 한 주 복약 순응도를 알려드려요
+              </p>
+              <DayOfWeekPicker
+                value={settings.adherence_feedback_day_of_week}
+                onChange={(day) => update("adherence_feedback_day_of_week", day)}
+              />
+            </div>
 
             <p style={sectionTitleStyle}>무음 시간대</p>
             <ToggleRow

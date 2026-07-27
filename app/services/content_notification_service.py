@@ -8,7 +8,7 @@ from app.repositories.disease_entry_repository import DiagnosisEntryRepository
 from app.services.disease_code_mapper import disease_code_to_enum
 from app.services.notification_settings_service import NotificationSettingsService
 from app.services.push_service import PushService
-from app.services.quiet_hours import is_in_quiet_hours
+from app.services.quiet_hours import is_in_lifestyle_tip_window, is_in_quiet_hours, is_lifestyle_tip_interval_ok
 
 logger = logging.getLogger("app.content_notification_service")
 
@@ -40,7 +40,13 @@ class ContentNotificationService:
                     setting = await self._settings_service.get_settings(session, profile_id)
                     if not setting.lifestyle_tip_enabled or is_in_quiet_hours(setting, now):
                         continue
-                    await self._push_service.send_to_profile(session, profile_id, title="🌿 새 건강 콘텐츠", body=title)
+                    if not is_in_lifestyle_tip_window(setting, now) or not is_lifestyle_tip_interval_ok(setting, now):
+                        continue
+                    await self._push_service.send_to_profile(
+                        session, profile_id, title="🌿 새 건강 콘텐츠", body=title, link_url="/info"
+                    )
+                    setting.lifestyle_tip_last_sent_at = now
+                    await session.commit()
                 except Exception:
                     logger.exception("콘텐츠 알림 발송 실패 (profile_id=%s)", profile_id)
         except Exception:

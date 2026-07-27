@@ -457,7 +457,9 @@ export default function AlarmPage() {
                 ? "브라우저 알림이 차단되어 있어요. 브라우저 설정에서 허용해주세요."
                 : pushStatus === "unsupported"
                   ? "이 브라우저는 알림을 지원하지 않아요."
-                  : "탭을 닫아도 복약 시간에 알림을 받으려면 켜주세요."}
+                  : pushStatus === "error"
+                    ? "알림 켜기에 실패했어요. 잠시 후 다시 시도해주세요."
+                    : "탭을 닫아도 복약 시간에 알림을 받으려면 켜주세요."}
             </p>
             {pushStatus !== "denied" && pushStatus !== "unsupported" && (
               <button

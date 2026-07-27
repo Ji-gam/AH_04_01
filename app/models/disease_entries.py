@@ -1,9 +1,10 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, ForeignKey, String, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.db.encrypted_types import EncryptedText
 from app.models.base import Base
 from app.models.profiles import Disease, DiseaseStatus, FamilyRelation
 
@@ -75,7 +76,7 @@ class DiagnosisEntry(Base):
         SAEnum(DiseaseStatus, native_enum=False, length=20), nullable=True
     )
     on_medication: Mapped[bool | None] = mapped_column(nullable=True)
-    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
 
     profile: Mapped["Profile"] = relationship(back_populates="diagnosis_entries")
     disease_subtype: Mapped["DiseaseSubtype | None"] = relationship()
@@ -93,7 +94,7 @@ class FamilyHistoryEntry(Base):
     relation: Mapped[FamilyRelation | None] = mapped_column(
         SAEnum(FamilyRelation, native_enum=False, length=15), nullable=True
     )
-    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    detail: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)
 
     profile: Mapped["Profile"] = relationship(back_populates="family_history_entries")
     disease_subtype: Mapped["DiseaseSubtype | None"] = relationship()

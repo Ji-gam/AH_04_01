@@ -34,6 +34,7 @@ async def test_parenthesized_ingredient_line_is_not_treated_as_a_drug_name():
                 OcrField(text="*플라빅스정75mg", confidence=0.9),
                 OcrField(text="(클로피도그렐 75mg)", confidence=0.9),
             ],
+            "*플라빅스정75mg (클로피도그렐 75mg)",
         )
 
     matched_item_seqs = {d.item_seq for d in matched}
@@ -48,7 +49,7 @@ async def test_drug_name_without_dosage_unit_still_matches_by_form_suffix():
 
     async with TestSessionLocal() as session:
         matched, _auto_created_ids, _match_confidence = await medication_service._match_or_create_medications(
-            session, dur_repo, [OcrField(text="세레타이드500디스커스", confidence=0.9)]
+            session, dur_repo, [OcrField(text="세레타이드500디스커스", confidence=0.9)], "세레타이드500디스커스"
         )
 
     matched_item_seqs = {d.item_seq for d in matched}
@@ -71,7 +72,7 @@ async def test_all_six_prescription_items_are_recognized():
     async with TestSessionLocal() as session:
         ocr_fields = [OcrField(text=name, confidence=0.9) for name in names]
         matched, _auto_created_ids, _match_confidence = await medication_service._match_or_create_medications(
-            session, dur_repo, ocr_fields
+            session, dur_repo, ocr_fields, " ".join(names)
         )
 
     matched_item_seqs = {d.item_seq for d in matched}
@@ -94,7 +95,10 @@ async def test_drug_with_manufacturer_bracket_and_non_mg_dosage_is_matched():
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, _match_confidence = await medication_service._match_or_create_medications(
-            session, dur_repo, [OcrField(text="노스판패취10ug/h [한국먼디파마]", confidence=0.9)]
+            session,
+            dur_repo,
+            [OcrField(text="노스판패취10ug/h [한국먼디파마]", confidence=0.9)],
+            "노스판패취10ug/h [한국먼디파마]",
         )
 
     assert len(matched) == 1
@@ -117,11 +121,15 @@ async def test_fuzzy_match_rescues_clova_character_misread():
                 OcrField(text="노스판매취10ug/h", confidence=0.9),
                 OcrField(text="[한국먼디파마]", confidence=0.9),
             ],
+            "노스판매취10ug/h [한국먼디파마]",
         )
 
     matched_item_seqs = {d.item_seq for d in matched}
     assert "KD_NOSP002" in matched_item_seqs
-    assert match_confidence["KD_NOSP002"] == 0.9
+    # 퍼지 경로는 OCR이 잘못 읽은 텍스트를 마스터명으로 교정 매칭한 것이므로, match_rate는
+    # OCR confidence(0.9)를 그대로 쓰지 않고 교정 유사도(ratio 0.8)와의 보수적 최솟값이어야
+    # 한다 — "OCR이 틀린 글자를 확신했다"가 "매칭이 정확하다"로 둔갑하지 않게 한다.
+    assert match_confidence["KD_NOSP002"] == 0.8
 
 
 async def test_unparenthesized_ingredient_line_is_not_treated_as_a_drug_name():
@@ -138,6 +146,7 @@ async def test_unparenthesized_ingredient_line_is_not_treated_as_a_drug_name():
                 OcrField(text="경동아스피린장용정", confidence=0.9),
                 OcrField(text="아스피린 100mg", confidence=0.9),
             ],
+            "경동아스피린장용정 아스피린 100mg",
         )
 
     matched_item_seqs = {d.item_seq for d in matched}
@@ -157,6 +166,7 @@ async def test_fuzzy_match_does_not_trigger_on_unrelated_prescription_text():
             session,
             dur_repo,
             [OcrField(text="혈압을 낮추고 심장 근육으로 산소를 많이 공급합니다", confidence=0.9)],
+            "혈압을 낮추고 심장 근육으로 산소를 많이 공급합니다",
         )
 
     assert "KD_NOSP003" not in match_confidence

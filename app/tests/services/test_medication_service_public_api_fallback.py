@@ -38,7 +38,7 @@ async def test_unmatched_drug_uses_public_api_item_seq_when_available(monkeypatc
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, match_confidence = await medication_service._match_or_create_medications(
-            session, _FakeDurDrugRepository(), [OcrField(text="*낫모르는약100mg", confidence=0.9)]
+            session, _FakeDurDrugRepository(), [OcrField(text="*낫모르는약100mg", confidence=0.9)], "*낫모르는약100mg"
         )
 
     assert len(matched) == 1
@@ -61,7 +61,10 @@ async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_has_no_da
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, _ = await medication_service._match_or_create_medications(
-            session, _FakeDurDrugRepository(), [OcrField(text="*아무데이터도없는약999mg", confidence=0.9)]
+            session,
+            _FakeDurDrugRepository(),
+            [OcrField(text="*아무데이터도없는약999mg", confidence=0.9)],
+            "*아무데이터도없는약999mg",
         )
 
     assert len(matched) == 1
@@ -84,7 +87,7 @@ async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_times_out
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, _ = await medication_service._match_or_create_medications(
-            session, _FakeDurDrugRepository(), [OcrField(text="*타임아웃약700mg", confidence=0.9)]
+            session, _FakeDurDrugRepository(), [OcrField(text="*타임아웃약700mg", confidence=0.9)], "*타임아웃약700mg"
         )
 
     assert len(matched) == 1
@@ -106,7 +109,7 @@ async def test_unmatched_drug_falls_back_to_auto_dummy_when_public_api_errors(mo
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, _ = await medication_service._match_or_create_medications(
-            session, _FakeDurDrugRepository(), [OcrField(text="*API장애약500mg", confidence=0.9)]
+            session, _FakeDurDrugRepository(), [OcrField(text="*API장애약500mg", confidence=0.9)], "*API장애약500mg"
         )
 
     assert len(matched) == 1

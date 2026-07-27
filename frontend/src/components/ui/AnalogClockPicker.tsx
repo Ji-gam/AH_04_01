@@ -5,7 +5,9 @@ import { pinkTheme as t } from "../../theme/pinkTheme";
 interface AnalogClockPickerProps {
   hour: number; // 1-12
   minute: number; // 0-59
+  period: "오전" | "오후";
   onChange: (hour: number, minute: number) => void;
+  onPeriodChange: (period: "오전" | "오후") => void;
   onClose: () => void;
 }
 
@@ -23,11 +25,20 @@ function pointOnCircle(angleDeg: number, r: number) {
  * "분" 선택으로 넘어간다. 클릭/탭만으로 고르는 방식(드래그 아님) - 손가락으로도 정확히
  * 찍기 쉽고 구현도 단순해서 이렇게 만들었다. 원래 가족관리 화면 전용으로 만들었다가
  * (2026-07-21), 시간 입력이 있는 모든 화면에서 같은 방식을 쓰기로 하면서 공용
- * 컴포넌트로 옮겼다(2026-07-23) - `TimeInputField`가 이 컴포넌트를 감싸는 조합 UI다. */
+ * 컴포넌트로 옮겼다(2026-07-23) - `TimeInputField`가 이 컴포넌트를 감싸는 조합 UI다.
+ *
+ * [2026-07-24 복원] 팝업 안에 오전/오후 토글을 다시 넣었다 - 팝업이 화면 중앙 Modal로
+ * 뜨면서(어두운 배경이 전체를 덮음) 바깥(TimeInputField)의 오전/오후 버튼을 누를 수
+ * 없어지는 문제가 있었다(공용 컴포넌트로 옮기면서 이 부분이 빠졌었음 - 원래 가족관리
+ * 전용 버전엔 있었던 기능). 바깥 버튼은 그대로 유지 - 시계를 아예 안 열고 빠르게 바꾸고
+ * 싶을 때는 그쪽을, 시계를 이미 연 상태에서 바로 바꾸고 싶을 때는 이 안의 토글을 쓰면
+ * 된다(양쪽 다 같은 값을 가리키므로 어느 쪽을 눌러도 동일하게 반영됨). */
 export default function AnalogClockPicker({
   hour,
   minute,
+  period,
   onChange,
+  onPeriodChange,
   onClose,
 }: AnalogClockPickerProps) {
   const [mode, setMode] = useState<"hour" | "minute">("hour");
@@ -54,8 +65,31 @@ export default function AnalogClockPicker({
         borderRadius: 16,
         padding: 4,
         width: 240,
+        margin: "0 auto",
       }}
     >
+      <div style={{ display: "flex", justifyContent: "center", gap: 6, marginBottom: 10 }}>
+        {(["오전", "오후"] as const).map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onPeriodChange(p)}
+            style={{
+              padding: "5px 14px",
+              borderRadius: 999,
+              border: `1px solid ${period === p ? t.primary : t.border}`,
+              background: period === p ? t.primary : "white",
+              color: period === p ? "white" : t.text,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+
       <div
         style={{
           display: "flex",
@@ -103,6 +137,7 @@ export default function AnalogClockPicker({
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         role="img"
         aria-label="시간 선택 시계"
+        style={{ display: "block", margin: "0 auto" }}
       >
         <circle cx={CENTER} cy={CENTER} r={RADIUS} fill={t.primarySoft} />
         <line

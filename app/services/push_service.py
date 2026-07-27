@@ -11,6 +11,7 @@ from app.core import config
 from app.models.family_link import FamilyLinkStatus
 from app.models.push_subscription import PushPlatform, PushSubscription
 from app.repositories.family_repository import FamilyRepository
+from app.repositories.notification_log_repository import NotificationLogRepository
 from app.repositories.profile_repository import ProfileRepository
 from app.repositories.push_subscription_repository import PushSubscriptionRepository
 
@@ -44,6 +45,7 @@ class PushService:
         self._repo = PushSubscriptionRepository()
         self._family_repo = FamilyRepository()
         self._profile_repo = ProfileRepository()
+        self._notification_log_repo = NotificationLogRepository()
 
     def get_vapid_public_key(self) -> str:
         """프론트가 `pushManager.subscribe()`에 넘길 공개키. 서버에서만 비밀키를 쥐고 있고,
@@ -97,47 +99,64 @@ class PushService:
         profile_id: int,
         title: str,
         body: str,
-        snooze_source: tuple[str, int] | None = None,
-        alarm_time: str | None = None,
+        intake_sources: list[tuple[str, int, str]] | None = None,
         consult_url: str | None = None,
+        link_url: str | None = None,
     ) -> None:
         """이 프로필이 구독해둔 모든 기기(웹푸시 + FCM, 웹/네이티브 공통)에 푸시를 보낸다.
         구독 하나가 실패해도(예: 브라우저에서 구독 취소했는데 서버 DB에는 아직 남아있는
         경우) 나머지 기기 발송은 계속한다.
 
-        snooze_source=(source_type, source_id)를 주면 알림에 "30분 후 다시"/"빈도 줄이기"
-        액션 버튼을 붙인다(service-worker.js가 payload.actions/data를 그대로 showNotification에
-        넘긴다) - 복약알림 본인 몫에만 쓰고, 가족에게 전달하는 사본에는 안 붙인다(스누즈/빈도
-        조정은 본인이 결정할 일이라 가족이 대신 할 수 있으면 안 된다). 액션 버튼은 브라우저마다
-        보통 최대 2개까지만 확실히 렌더링돼서(F-NTFY-3), "1시간 후 다시"는 "빈도 줄이기"로
-        교체했다 - 둘 다 넣으면 일부 기기에서 3번째 버튼이 아예 안 보일 수 있어서다.
+        intake_sources=[(source_type, source_id, alarm_time), ...]를 주면 알림에 "복용완료"/
+        "빈도 줄이기" 액션 버튼을 붙인다(service-worker.js가 payload.actions/data를 그대로
+        showNotification에 넘긴다) - 복약알림 본인 몫에만 쓰고, 가족에게 전달하는 사본에는 안
+        붙인다(복용 체크/빈도 조정은 본인이 결정할 일이라 가족이 대신 할 수 있으면 안 된다).
+        액션 버튼은 브라우저마다 보통 최대 2개까지만 확실히 렌더링돼서(실기기 확인), 둘 다
+        넣으면 일부 기기에서 3번째 버튼이 아예 안 보일 수 있다 - 그래서 "30분 후 다시"(스누즈)는
+        뺐다(팀 결정, 2026-07-23. 대신 F-NTFY-2로 같은 시각 여러 약을 한 알림에 묶을 수 있게
+        됐으니, 리스트에 항목이 여러 개면 "복용완료"/"빈도 줄이기" 둘 다 그 알림에 묶인 항목
+        전체에 적용된다 - service-worker.js가 리스트를 순회하며 항목마다 요청을 반복한다).
 
-        alarm_time("HH:MM")은 medication_schedule 빈도 줄이기 전용 - 그 스케줄의 여러 시각
-        중 "이 알림이 울린 시각"만 정확히 골라 뺄 수 있도록 함께 실어보낸다. 모르면(예: 스누즈
-        후 재발송) 생략해도 된다 - 서버가 alarm_time 없이는 조용히 아무것도 지우지 않는다.
+        alarm_time("HH:MM")은 각 항목이 "실제로 울린 시각"이다 - "복용완료"는 F-ADH-1
+        복용기록(MedicationIntakeLog.scheduled_time)에, "빈도 줄이기"는 medication_schedule의
+        여러 시각 중 정확히 어떤 시각을 뺄지 고르는 데 쓰인다.
 
         consult_url을 주면(F-NTFY-5 부작용 사전 안내 전용) "불편한 증상이 있어요" 액션
         버튼을 붙인다 - service-worker.js가 클릭 시 이 URL(챗봇 자동 질문 딥링크)을 연다.
-        snooze_source와 동시에 쓰는 경우는 없다(용도가 겹치지 않음).
+        intake_sources와 동시에 쓰는 경우는 없다(용도가 겹치지 않음).
+
+        link_url은 홈 상단 🔔 알림함에서 이 알림을 클릭했을 때 이동할 프론트 라우트다(웹푸시
+        자체의 클릭 동작과는 별개 - 알림함 전용). 안 주면 consult_url을 그대로 쓴다(부작용
+        안내는 어차피 상담으로 보내는 게 자연스러워 호출부에서 따로 안 넘겨도 되게 했다).
+        그 외 알림 종류는 딱 맞는 화면이 없으면 안 줘도 된다 - 그러면 알림함에서 클릭해도
+        아무 데도 이동하지 않는다.
 
         웹푸시(pywebpush/VAPID) 구독과 FCM 구독(웹/네이티브 공통, FIREBASE_CREDENTIALS_PATH
         설정 시)이 모두 있으면 둘 다 보낸다 - 액션 버튼/딥링크는 pywebpush 쪽에만 실어보낸다
         (FCM은 지금 단순 title/body만 - 어차피 iOS/일부 브라우저는 웹 알림 actions 자체를
         렌더링하지 않아 전송 경로와 무관하게 못 쓴다)."""
         payload: dict = {"title": title, "body": body}
-        if snooze_source is not None:
-            source_type, source_id = snooze_source
-            data: dict = {"profile_id": profile_id, "source_type": source_type, "source_id": source_id}
-            if alarm_time is not None:
-                data["alarm_time"] = alarm_time
-            payload["data"] = data
+        if intake_sources:
+            payload["data"] = {
+                "profile_id": profile_id,
+                "items": [
+                    {"source_type": source_type, "source_id": source_id, "alarm_time": alarm_time}
+                    for source_type, source_id, alarm_time in intake_sources
+                ],
+            }
             payload["actions"] = [
-                {"action": "snooze_30", "title": "30분 후 다시"},
+                {"action": "intake_complete", "title": "복용완료"},
                 {"action": "reduce_freq", "title": "빈도 줄이기"},
             ]
         elif consult_url is not None:
             payload["data"] = {"url": consult_url}
             payload["actions"] = [{"action": "open_consult", "title": "불편한 증상이 있어요"}]
+
+        # 홈 상단 🔔 알림함(NotificationLog) - 실제 웹푸시/FCM 구독이 없거나 만료돼 있어도
+        # "이 프로필에게 이 알림을 보내기로 결정했다"는 사실 자체는 항상 남긴다. 이 메서드가
+        # 모든 알림 종류(복약알림/공지/가족알림/리포트/부작용안내 등)의 유일한 발송 지점이라
+        # 여기 한 곳에만 훅을 걸면 전부 커버된다.
+        await self._notification_log_repo.create(session, profile_id, title, body, link_url or consult_url)
 
         await self._send_to_web_subscriptions(session, profile_id, payload)
         await self._send_to_fcm_subscriptions(session, profile_id, title, body)
@@ -202,8 +221,8 @@ class PushService:
         profile_id: int,
         title: str,
         body: str,
-        snooze_source: tuple[str, int] | None = None,
-        alarm_time: str | None = None,
+        intake_sources: list[tuple[str, int, str]] | None = None,
+        link_url: str | None = None,
     ) -> None:
         """`send_to_profile`은 그대로 두고, 여기에 "이 사람을 관리하는 보호자들에게도 같이
         보낸다"는 것만 추가한다. 보호자가 자기 기기에서 "🔔 알림 켜기"를 눌러 구독해두면
@@ -211,10 +230,9 @@ class PushService:
         가족 구성원의 알림도 자동으로 같이 받게 된다.
 
         보호자가 여러 명을 관리할 수 있어 "누구 약인지" 구분이 안 되면 헷갈리므로, 보호자
-        쪽엔 대상자 이름을 붙여서 보낸다(본인 몫은 그대로 둠). snooze_source/alarm_time은
-        본인 몫에만 전달한다 - 가족 사본은 스누즈/빈도조정 액션 버튼 없이 정보 전달용으로만
-        보낸다."""
-        await self.send_to_profile(session, profile_id, title, body, snooze_source=snooze_source, alarm_time=alarm_time)
+        쪽엔 대상자 이름을 붙여서 보낸다(본인 몫은 그대로 둠). intake_sources는 본인 몫에만
+        전달한다 - 가족 사본은 복용완료/빈도조정 액션 버튼 없이 정보 전달용으로만 보낸다."""
+        await self.send_to_profile(session, profile_id, title, body, intake_sources=intake_sources, link_url=link_url)
 
         guardian_links = await self._family_repo.list_as_member(session, profile_id, status=FamilyLinkStatus.ACCEPTED)
         if not guardian_links:
@@ -224,4 +242,4 @@ class PushService:
         member_name = member_profile.name if member_profile else "가족"
         body_for_guardian = f"[{member_name}] {body}"
         for link in guardian_links:
-            await self.send_to_profile(session, link.guardian_profile_id, title, body_for_guardian)
+            await self.send_to_profile(session, link.guardian_profile_id, title, body_for_guardian, link_url=link_url)

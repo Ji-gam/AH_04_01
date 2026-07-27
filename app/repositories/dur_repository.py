@@ -99,7 +99,11 @@ class DurScreeningRepository:
 
     async def resolve_item_seqs(self, item_names: list[str]) -> tuple[list[dict[str, Any]], list[str]]:
         """약품명 목록을 itemSeq 등 기본정보로 변환한다. 정확일치 IN 쿼리 1개 + (남은 이름이
-        있을 때만) LIKE 쿼리 1개, 최대 2쿼리로 N과 무관하게 끝난다."""
+        있을 때만) LIKE 쿼리 1개, 최대 2쿼리로 N과 무관하게 끝난다.
+
+        각 matched dict에는 실제 조회에 쓰인 원본 약품명을 "queried_name"으로 함께 담는다 -
+        LIKE 폴백 매칭 시 반환되는 item_name(DB 공식 표기)이 입력한 이름과 달라질 수 있어(괄호
+        성분명 등), 호출자가 원본 이름으로 다시 매핑할 수 있어야 한다."""
         if not item_names:
             return [], []
 
@@ -124,7 +128,9 @@ class DurScreeningRepository:
         rows = result.mappings().all()
 
         for row in rows:
-            matched.append(dict(row))
+            row_dict = dict(row)
+            row_dict["queried_name"] = row["item_name"]
+            matched.append(row_dict)
             if row["item_name"] in unmatched:
                 unmatched.remove(row["item_name"])
 
@@ -147,7 +153,9 @@ class DurScreeningRepository:
             for row in like_result.mappings().all():
                 for name in list(unmatched):
                     if name in row["item_name"]:
-                        matched.append(dict(row))
+                        row_dict = dict(row)
+                        row_dict["queried_name"] = name
+                        matched.append(row_dict)
                         unmatched.remove(name)
                         break
 

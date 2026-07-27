@@ -8,9 +8,9 @@ import {
   type MedicationSearchResult,
 } from "../../api/familyMedicationApi";
 import { pinkTheme as t } from "../../theme/pinkTheme";
+import { isUnverifiedDrug } from "../../utils/medication";
+import OcrProgressBar from "../ui/OcrProgressBar";
 import TimeInputField from "../ui/TimeInputField";
-
-import FamilyOcrProgressBar from "./FamilyOcrProgressBar";
 
 const inputStyle: React.CSSProperties = {
   padding: "10px 12px",
@@ -119,6 +119,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MedicationSearchResult[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedDrug, setSelectedDrug] = useState<MedicationSearchResult | null>(null);
   // [2026-07-21] 쉼표구분 텍스트 입력 → 사진탭과 같은 오전/오후+복용횟수 스타일로 통일.
   // 검색 등록은 OCR 인식이 없어 기본값은 그냥 1회로 시작한다.
@@ -176,8 +177,47 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
     setIsBusy(true);
     try {
       setResults(await familyMedicationApi.search(query.trim()));
+      setHasSearched(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "검색에 실패했습니다.");
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  // 검색해도 원하는 약이 없을 때 - 입력한 이름 그대로 등록한다(T-MED-3 자동생성 정책을 가족
+  // 몫에도 동일 적용). OCR 인식이 틀렸을 때도 "검색 탭에서 다른 약 등록하기"로 넘어와 이
+  // 경로를 함께 쓴다.
+  async function handleQuickRegisterFromSearch() {
+    if (!query.trim()) return;
+    setError(null);
+    setMessage(null);
+    setIsBusy(true);
+    try {
+      const res = await familyMedicationApi.quickRegisterForFamily(
+        targetProfileId,
+        query.trim(),
+        searchTimeSlots,
+      );
+      if (res.status === "registered") {
+        setMessage(
+          res.auto_created
+            ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`
+            : `${res.schedule?.drug_name} 등록 완료`,
+        );
+        setQuery("");
+        setResults([]);
+        setHasSearched(false);
+      } else {
+        setResults(
+          res.candidates.map((c) => ({
+            item_seq: c.drug_code,
+            medication_name: c.medication_name,
+          })),
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "등록에 실패했습니다.");
     } finally {
       setIsBusy(false);
     }
@@ -327,7 +367,10 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
             <input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setHasSearched(false);
+              }}
               placeholder="약품명 검색"
               style={{ ...inputStyle, flex: 1 }}
             />
@@ -340,6 +383,29 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
               검색
             </button>
           </div>
+          {hasSearched && !isBusy && results.length === 0 && (
+            <div>
+              <p style={{ margin: "0 0 5px", fontSize: 12, color: t.textMuted }}>
+                검색 결과가 없습니다.
+              </p>
+              <button
+                type="button"
+                onClick={handleQuickRegisterFromSearch}
+                disabled={isBusy || !query.trim()}
+                style={{
+                  fontSize: 12,
+                  color: t.textMuted,
+                  background: "none",
+                  border: "none",
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                찾는 약이 없나요? &quot;{query.trim()}&quot;(으)로 새로 등록
+              </button>
+            </div>
+          )}
           {results.length > 0 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {results.map((r) => (
@@ -466,7 +532,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
 
           {(jobStatus === "uploading" || jobStatus === "processing") && (
             <div style={{ padding: "12px 4px 4px" }}>
-              <FamilyOcrProgressBar status={jobStatus} />
+              <OcrProgressBar status={jobStatus} />
             </div>
           )}
 
@@ -538,6 +604,22 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
                 style={{ ...primaryButtonStyle, background: "#22c55e" }}
               >
                 선택한 {selectedCodes.size}개 약품 복약 스케줄 등록 확정
+              </button>
+              <button
+                type="button"
+                onClick={() => setSubTab("search")}
+                style={{
+                  fontSize: 12,
+                  color: t.textMuted,
+                  background: "none",
+                  border: "none",
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                  padding: 0,
+                  alignSelf: "flex-start",
+                }}
+              >
+                인식이 잘못됐나요? 검색 탭에서 다른 약 등록하기
               </button>
             </>
           )}
@@ -611,6 +693,11 @@ function ListTab({ targetProfileId }: { targetProfileId: number }) {
               {item.times.join(", ")}
               {item.hospital_name ? ` · ${item.hospital_name}` : ""}
             </p>
+            {isUnverifiedDrug(item.item_seq) && (
+              <p style={{ margin: "2px 0 0", fontSize: 11, color: "#b26a00" }}>
+                ⚠️ 마스터 DB에 없는 약이라 상호작용(병용금기) 검사가 제공되지 않습니다.
+              </p>
+            )}
           </div>
           <button
             type="button"

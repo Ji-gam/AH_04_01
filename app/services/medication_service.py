@@ -1,12 +1,13 @@
 import asyncio
 import base64
+import contextlib
 import difflib
 import io
 import logging
-import os
 import re
 import time
 import uuid
+from collections import OrderedDict
 from typing import NamedTuple, cast
 
 import httpx
@@ -15,6 +16,7 @@ from PIL import Image
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import config
 from app.core.db.databases import AsyncSessionLocal
 from app.dtos.medication_dto import (
     FoodInteractionCheckResult,
@@ -48,9 +50,6 @@ from app.services.food_item_extraction import extract_food_items
 from app.services.side_effect_notification_service import SideEffectNotificationService
 
 logger = logging.getLogger("app.medication_service")
-
-CLOVA_OCR_SECRET_KEY = os.getenv("CLOVA_OCR_SECRET_KEY")
-CLOVA_OCR_INVOKE_URL = os.getenv("CLOVA_OCR_INVOKE_URL")
 
 # 타임아웃/5xx처럼 재시도하면 성공할 여지가 있는 실패에 한해서만 재시도한다.
 # 401/403 같은 인증 오류나 응답 파싱 실패는 재시도해도 결과가 같으므로 즉시 실패 처리한다.
@@ -128,9 +127,10 @@ def _korean_only(text: str) -> str:
     return "".join(_KOREAN_TOKEN_PATTERN.findall(text))
 
 
-def _best_fuzzy_candidate(query: str, candidates: list[tuple[str, str]], threshold: float) -> str | None:
+def _best_fuzzy_candidate(query: str, candidates: list[tuple[str, str]], threshold: float) -> tuple[str, float] | None:
     """`candidates`((item_seq, 이름)) 중 `query`(한글만 남긴 OCR 텍스트)와 가장 유사하면서
-    임계값 이상인 것의 item_seq를 반환한다.
+    임계값 이상인 것의 (item_seq, 유사도)를 반환한다. 호출부가 이 유사도를 match_rate 계산에
+    쓸 수 있게 ratio도 함께 돌려준다.
 
     (#120) 후보와 길이가 같은 것만 비교한다 — 이 함수의 목적은 "글자 하나가 비슷한 다른 글자로
     잘못 읽힌" 같은-길이 치환 오류 구제(T-MED-9)이지, "성분명만 언급되고 제형 접미사가 없는"
@@ -146,7 +146,7 @@ def _best_fuzzy_candidate(query: str, candidates: list[tuple[str, str]], thresho
         ratio = difflib.SequenceMatcher(None, query, korean_name).ratio()
         if ratio > best_ratio:
             best_ratio, best_key = ratio, key
-    return best_key if best_ratio >= threshold else None
+    return (best_key, best_ratio) if best_key is not None and best_ratio >= threshold else None
 
 
 class MatchedDrug(NamedTuple):
@@ -179,6 +179,9 @@ _AUTO_CREATED_MATCH_RATE_CAP = 0.5
 # T-MED-13: dummy_mode(T-MED-3)는 confidence와 마찬가지로 용법 정보도 없는 결정적 테스트 데이터라,
 # 실제 인식과 동일한 흐름을 태우기 위해 대표적인 예시값을 그대로 둔다. `dummy_mode` 플래그로 이미
 # 실인식과 명시적으로 구분되므로, 실제 값처럼 오인될 위험이 없다.
+# OCR/확정 등록 시 처방전에서 복용 시간을 파싱하지 못했을 때 추천하는 기본 슬롯(아침/점심/저녁).
+_DEFAULT_SCHEDULE_TIMES = ["09:00", "13:00", "19:00"]
+
 _DUMMY_DOSAGE = "1정"
 _DUMMY_TIMES = ["09:00", "13:00", "19:00"]
 _DUMMY_DURATION = "3일"
@@ -391,6 +394,16 @@ def _strip_trailing_dosage(name: str) -> str | None:
     return stripped if stripped and stripped != name else None
 
 
+def _dosage_name_variants(name: str) -> list[str]:
+    """이름을 조회 재시도 순서(원본 → 한글 단위 변환 → 'NNmg' 접미사 제거)대로 나열한다.
+    e약은요/로컬 스냅샷 조회가 용량 단위 표기 차이로 빈 결과를 내는 문제를 한 곳에서 다룬다."""
+    variants = [name, *_translate_trailing_dosage_to_korean(name)]
+    stripped = _strip_trailing_dosage(name)
+    if stripped:
+        variants.append(stripped)
+    return variants
+
+
 async def _find_interaction_warnings(item_seqs: set[str], names: dict[str, str]) -> list[InteractionWarning]:
     """(T-MED-16) 스케줄이 이제 item_seq를 직접 들고 있어(`_extract_item_seq`로 뽑아내던 과거의
     간접 경로가 불필요해짐), item_seq끼리 바로 병용금기를 대조한다."""
@@ -505,39 +518,69 @@ def _find_master_item_seq(tier1_results: list[tuple[str, str]], name: str) -> st
     return prefix_matches[0] if len(prefix_matches) == 1 else None
 
 
-async def _resolve_unmatched_name(db_session: AsyncSession, name: str) -> tuple[str, bool]:
-    """마스터 DB(`dur_prod_master_list`)에 없는 약품명에 대해 Tier 3(공공 API)로 품목기준코드를
-    조회 → 실패 시 AUTO_ 더미 코드 생성 순으로 item_seq를 확보한다(T-MED-4/T-MED-1: 등록 자체가
-    막히지 않아야 한다). 반환값: (item_seq 또는 AUTO_ 더미 코드, 더미 생성 여부).
+async def _fetch_master_data_safe(query_name: str) -> dict | None:
+    try:
+        return await medication_open_api_client.fetch_medication_master_data(query_name)
+    except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
+        return None
 
-    Tier3(실시간 공공 API) 호출 앞에 두 단계를 둔다:
-    1) (#PLAVIX-MATCH-GAP) `dur_prod_master_list` Tier1 검색이 놓친 이름도 `drugs_data`/
-       `drug_identification`엔 이미 있을 수 있다(세 마스터 테이블 커버리지가 서로 다름) - 정확
-       일치가 있으면 그 item_seq를 그대로 재사용해 불필요한 API 호출과 매번 다른 item_seq
-       재발급을 피한다.
-    2) MySQL 캐시(`medication_data_cache`, T-LLM-2-drug-gateway `DurDrugRepository.drug_data()`와
-       동일 패턴 — query_name 정확매치, 빈 응답은 캐싱 안 함) — 같은 약이 반복 조회될 때마다
-       낱알식별/허가정보/e약은요/DUR품목정보 4개 API를 매번 다시 부르는 낭비를 없앤다."""
-    query_name = name.strip()
+
+async def _resolve_unmatched_names_batch(db_session: AsyncSession, names: list[str]) -> dict[str, tuple[str, bool]]:
+    """마스터 DB(`dur_prod_master_list`)에 없는 약품명 여러 개를 한 번에 처리한다. 반환값:
+    {원본 name: (item_seq 또는 AUTO_ 더미 코드, 더미 생성 여부)}.
+
+    (#OCR-SEQ-API) 처방전 한 장에 마스터 DB에 없는 약이 여러 개면, 예전엔 이름마다
+    `_resolve_unmatched_name`을 순차 호출해 Tier3 API(약품당 최대 4개 호출) 대기가 약 개수만큼
+    그대로 누적됐다. DB 조회(로컬 정확일치/캐시)는 AsyncSession 하나를 공유해 동시 실행이
+    안전하지 않으므로 순차로 두되, 실제 지연의 원인인 Tier3 API 호출(이름마다 독립된 네트워크
+    요청, DB 세션과 무관)만 asyncio.gather로 한꺼번에 실행해 대기 시간을 이름 개수와 무관하게
+    가장 느린 API 응답 1건 수준으로 줄인다."""
     medication_repo = MedicationRepository()
+    results: dict[str, tuple[str, bool]] = {}
+    fields_by_name: dict[str, dict | None] = {}
+    need_api: list[str] = []
 
-    local_item_seq = await medication_repo.find_item_seq_by_exact_name(db_session, query_name)
-    if local_item_seq:
-        return local_item_seq, False
+    # 1단계(순차, DB 전용): 로컬 정확일치/캐시로 해결되는 이름은 Tier3 API 호출 없이 끝낸다.
+    for name in names:
+        query_name = name.strip()
+        local_item_seq = await medication_repo.find_item_seq_by_exact_name(db_session, query_name)
+        if local_item_seq:
+            results[name] = (local_item_seq, False)
+            continue
+        cached_fields = await medication_repo.get_cached_master_data(db_session, query_name)
+        if cached_fields is not None:
+            fields_by_name[name] = cached_fields
+        else:
+            need_api.append(name)
 
-    fields = await medication_repo.get_cached_master_data(db_session, query_name)
-    if fields is None:
-        try:
-            fields = await medication_open_api_client.fetch_medication_master_data(query_name)
-        except (httpx.HTTPError, medication_open_api_client.PublicDataApiError):
-            fields = None
+    # 2단계(동시, 네트워크 전용): DB 세션을 쓰지 않으므로 안전하게 병렬 호출 가능.
+    if need_api:
+        api_results = await asyncio.gather(*(_fetch_master_data_safe(name.strip()) for name in need_api))
+        for name, fields in zip(need_api, api_results, strict=True):
+            fields_by_name[name] = fields
+
+    # 3단계(순차, DB 전용): API가 실제로 채운 결과만 캐시에 write-back한다.
+    for name in need_api:
+        fields = fields_by_name.get(name)
         if fields is not None:
-            await medication_repo.write_back_master_data(db_session, query_name, fields)
+            await medication_repo.write_back_master_data(db_session, name.strip(), fields)
 
-    item_seq = _extract_item_seq(fields.get("standard_code")) if fields else None
-    if item_seq:
-        return item_seq, False
-    return f"AUTO_{uuid.uuid4().hex[:10].upper()}", True
+    for name in names:
+        if name in results:
+            continue
+        fields = fields_by_name.get(name)
+        item_seq = _extract_item_seq(fields.get("standard_code")) if fields else None
+        results[name] = (item_seq, False) if item_seq else (f"AUTO_{uuid.uuid4().hex[:10].upper()}", True)
+
+    return results
+
+
+async def _resolve_unmatched_name(db_session: AsyncSession, name: str) -> tuple[str, bool]:
+    """`_resolve_unmatched_names_batch`의 이름 1개짜리 얇은 래퍼 - 수동/빠른 등록
+    (`_resolve_manual_registration_medication`, 항상 이름 1개)에서만 쓴다. 이름이 여러 개면
+    (OCR 등록 경로) 배치 함수를 직접 호출해야 Tier3 API가 병렬로 실행된다."""
+    results = await _resolve_unmatched_names_batch(db_session, [name])
+    return results[name]
 
 
 async def _resolve_manual_registration_medication(db_session: AsyncSession, name: str) -> tuple[MatchedDrug, bool]:
@@ -571,23 +614,31 @@ async def _resolve_or_create_drug_like_names(
         name = field.text.lstrip("*").strip()
         name_confidence[name] = max(name_confidence.get(name, 0.0), field.confidence)
 
+    # 1단계(순차, DB 전용): 마스터 DB 정확매치로 바로 풀리는 이름은 여기서 끝낸다. 여기서 못
+    # 찾은 이름만 Tier3 API가 필요한 후보로 모아 2단계에서 한 번에(병렬) 처리한다 — 이름
+    # 개수만큼 API 대기가 순차로 쌓이던 지연(#OCR-SEQ-API)을 없앤다.
+    unmatched_names: list[str] = []
     for name in _dedupe_drug_names(set(name_confidence)):
-        confidence = name_confidence[name]
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
         exact_item_seq = _find_master_item_seq(tier1_results, name)
         if exact_item_seq:
+            confidence = name_confidence[name]
             confidences[exact_item_seq] = max(confidences.get(exact_item_seq, 0.0), confidence)
             if exact_item_seq not in seen_ids:
                 seen_ids.add(exact_item_seq)
                 resolved.append(MatchedDrug(item_seq=exact_item_seq, item_name=name))
-            continue
+        else:
+            unmatched_names.append(name)
 
-        item_seq, is_auto_dummy = await _resolve_unmatched_name(db_session, name)
-        seen_ids.add(item_seq)
-        if is_auto_dummy:
-            auto_created_ids.add(item_seq)
-        resolved.append(MatchedDrug(item_seq=item_seq, item_name=name))
-        confidences[item_seq] = confidence
+    if unmatched_names:
+        batch_results = await _resolve_unmatched_names_batch(db_session, unmatched_names)
+        for name in unmatched_names:
+            item_seq, is_auto_dummy = batch_results[name]
+            seen_ids.add(item_seq)
+            if is_auto_dummy:
+                auto_created_ids.add(item_seq)
+            resolved.append(MatchedDrug(item_seq=item_seq, item_name=name))
+            confidences[item_seq] = name_confidence[name]
 
     return resolved, auto_created_ids, confidences
 
@@ -620,28 +671,39 @@ async def _fuzzy_match_unrecognized_fields(
         if len(query) < _FUZZY_MATCH_MIN_KOREAN_LEN:
             continue
 
-        matched_drug = await _fuzzy_match_one_field(db_session, dur_repo, query, seen_ids)
-        if matched_drug is None:
+        match_result = await _fuzzy_match_one_field(db_session, dur_repo, query, seen_ids)
+        if match_result is None:
             continue
+        matched_drug, fuzzy_ratio = match_result
         seen_ids.add(matched_drug.item_seq)
         matched.append(matched_drug)
-        confidences[matched_drug.item_seq] = max(confidences.get(matched_drug.item_seq, 0.0), field.confidence)
+        # 퍼지 경로는 OCR이 (오탈자로) 잘못 읽은 텍스트를 마스터 약품명으로 "교정 매칭"한
+        # 것이므로, match_rate에 OCR field confidence를 그대로 쓰면 "OCR이 틀린 글자를 확신했다"는
+        # 사실이 "매칭이 정확하다"로 둔갑한다. 실제 근거는 (a) OCR이 그 텍스트를 얼마나 확신했나와
+        # (b) 교정 대상과 얼마나 비슷한가 둘 다이므로, 더 보수적인 쪽(min)을 match_rate로 삼아
+        # 교정이 개입한 만큼 사용자 확인을 더 유도한다.
+        match_rate = min(field.confidence, fuzzy_ratio)
+        confidences[matched_drug.item_seq] = max(confidences.get(matched_drug.item_seq, 0.0), match_rate)
 
     return matched, confidences
 
 
 async def _fuzzy_match_one_field(
     db_session: AsyncSession, dur_repo: DurDrugRepository, query: str, seen_ids: set[str]
-) -> MatchedDrug | None:
-    """OCR 텍스트(한글만 남긴 것) 하나에 대해 마스터 DB 접두어 후보 안에서 가장 비슷한 것을 찾는다."""
+) -> tuple[MatchedDrug, float] | None:
+    """OCR 텍스트(한글만 남긴 것) 하나에 대해 마스터 DB 접두어 후보 안에서 가장 비슷한 것을
+    찾아 (매칭된 약, 유사도)를 반환한다. 유사도는 호출부의 match_rate 계산에 쓰인다."""
     tier1_candidates = await dur_repo.search_item_names_by_prefix(
         db_session, query[:_FUZZY_TIER1_PREFIX_LEN], _FUZZY_TIER1_CANDIDATE_LIMIT
     )
-    best_item_seq = _best_fuzzy_candidate(query, tier1_candidates, _FUZZY_MATCH_THRESHOLD)
-    if best_item_seq is None or best_item_seq in seen_ids:
+    best = _best_fuzzy_candidate(query, tier1_candidates, _FUZZY_MATCH_THRESHOLD)
+    if best is None:
+        return None
+    best_item_seq, fuzzy_ratio = best
+    if best_item_seq in seen_ids:
         return None
     item_name = next(name for seq, name in tier1_candidates if seq == best_item_seq)
-    return MatchedDrug(item_seq=best_item_seq, item_name=item_name)
+    return MatchedDrug(item_seq=best_item_seq, item_name=item_name), fuzzy_ratio
 
 
 _LLM_DRUG_NAME_SYSTEM_PROMPT = (
@@ -710,12 +772,54 @@ def _is_plausible_llm_drug_name(name: str) -> bool:
     return bool(_DRUG_FORM_SUFFIX_PATTERN.search(name) or _DOSAGE_PATTERN.search(name))
 
 
+# (#283) 처방전과 무관한 사진(사탕/알콜스왑/헤어브러시 등)을 OCR에 태워도 포장지의 자잘한
+# 글자가 몇 개는 인식되는데, `_LLM_DRUG_NAME_SYSTEM_PROMPT`가 "오탈자로 깨져 있어도 최대한
+# 교정해서 포함"하라고 지시하다 보니 LLM이 그 노이즈 글자들을 실제 존재하는(그러나 사진과는
+# 전혀 무관한) 약품명으로 지어내 반환하는 경우가 있었다. `_is_plausible_llm_drug_name`은
+# 이름의 "형태"만 보고("정/캡슐/..."로 끝나는가) 그 이름이 실제 OCR 원문 어디서 왔는지는
+# 검증하지 않으므로 이런 할루시네이션을 걸러내지 못한다 — OCR 원문(한글만 남긴 것) 안에
+# 이름과 상당히 겹치는 부분 문자열이 실제로 있어야만("노스판매취" -> "노스판패취"처럼 오탈자
+# 교정 수준의 차이는 통과) 후보로 인정한다.
+_LLM_NAME_GROUNDING_THRESHOLD = 0.6
+
+
+def _is_llm_name_grounded_in_ocr_text(name: str, ocr_raw_text_korean: str) -> bool:
+    name_korean = _korean_only(name)
+    if not name_korean:
+        return False
+    matcher = difflib.SequenceMatcher(None, ocr_raw_text_korean, name_korean)
+    longest_match = matcher.find_longest_match(0, len(ocr_raw_text_korean), 0, len(name_korean))
+    return longest_match.size / len(name_korean) >= _LLM_NAME_GROUNDING_THRESHOLD
+
+
+def _is_duplicate_of_seen_name(name: str, seen_names: set[str]) -> bool:
+    """LLM 교정명이 정규식/퍼지 경로가 이미 후보로 만든 약품명과 (오탈자 한 글자 차이 수준으로)
+    거의 같으면 같은 약으로 보고 중복 추가를 막는다.
+
+    문자열 완전일치만으로는 부족하다 — 마스터 DB에 없는 약은 정규식 경로가 OCR 원문
+    표기("노스판매취10ug/h")로, LLM 경로가 교정 표기("노스판패취10ug/h")로 각각 후보를
+    만드는데, 둘은 문자열이 다르고 각자 별도 item_seq(Tier3/AUTO_ 더미)를 받아 seen_ids로도
+    안 걸러져 같은 약이 2번 등록됐다. 한글만 남긴 뒤 편집거리로 비교해, LLM이 오탈자를
+    교정한 것뿐인 경우를 같은 약으로 인식한다."""
+    if name in seen_names:
+        return True
+    query = _korean_only(name)
+    if not query:
+        return False
+    for seen in seen_names:
+        seen_korean = _korean_only(seen)
+        if seen_korean and difflib.SequenceMatcher(None, query, seen_korean).ratio() >= _FUZZY_MATCH_THRESHOLD:
+            return True
+    return False
+
+
 async def _resolve_llm_suggested_names(
     db_session: AsyncSession,
     dur_repo: DurDrugRepository,
     names: list[str],
     seen_ids: set[str],
     seen_names: set[str],
+    ocr_raw_text_korean: str,
 ) -> tuple[list[MatchedDrug], set[str]]:
     """LLM이 제안한 약품명 후보를 마스터 DB 정확일치 → Tier3(공공 API)/AUTO_ 더미 순으로 해석한다.
     OCR confidence 근거가 없는 경로라 호출부가 낮은 match_rate(`_NO_OCR_EVIDENCE_MATCH_RATE`)를
@@ -731,7 +835,14 @@ async def _resolve_llm_suggested_names(
     for name in _dedupe_drug_names(set(names)):
         if not _is_plausible_llm_drug_name(name):
             continue
-        if name in seen_names:
+        # (#283) 이름의 형태는 그럴듯해도 실제 OCR 원문 어디에도 근거가 없으면(무관한 사진에서
+        # LLM이 지어낸 약품명) 건너뛴다.
+        if not _is_llm_name_grounded_in_ocr_text(name, ocr_raw_text_korean):
+            continue
+        # 이미 정규식/퍼지 경로가 만든 후보(또는 이 루프에서 앞서 채택한 LLM 후보)와 오탈자
+        # 수준으로 같은 이름이면 건너뛴다. 채택한 이름은 seen_names에 넣어 LLM 후보끼리의
+        # 근사 중복도 같은 기준으로 걸러지게 한다.
+        if _is_duplicate_of_seen_name(name, seen_names):
             continue
 
         tier1_results = await dur_repo.search_item_names(db_session, name, 5)
@@ -739,11 +850,13 @@ async def _resolve_llm_suggested_names(
         if exact_item_seq:
             if exact_item_seq not in seen_ids:
                 seen_ids.add(exact_item_seq)
+                seen_names.add(name)
                 resolved.append(MatchedDrug(item_seq=exact_item_seq, item_name=name))
             continue
 
         item_seq, is_auto_dummy = await _resolve_unmatched_name(db_session, name)
         seen_ids.add(item_seq)
+        seen_names.add(name)
         if is_auto_dummy:
             auto_created_ids.add(item_seq)
         resolved.append(MatchedDrug(item_seq=item_seq, item_name=name))
@@ -752,7 +865,7 @@ async def _resolve_llm_suggested_names(
 
 
 async def _match_or_create_medications(
-    db_session: AsyncSession, dur_repo: DurDrugRepository, ocr_fields: list[OcrField]
+    db_session: AsyncSession, dur_repo: DurDrugRepository, ocr_fields: list[OcrField], ocr_raw_text: str
 ) -> tuple[list[MatchedDrug], set[str], dict[str, float]]:
     """OCR 텍스트에서 약품명으로 보이는 조각을 마스터 DB와 매칭하고, 없으면 새로 생성한다.
     반환값: (매칭/생성된 약 목록, 이번에 새로 생성된 약의 item_seq 집합, item_seq별 OCR confidence)"""
@@ -766,36 +879,46 @@ async def _match_or_create_medications(
     # 매번 순차적으로 맨 마지막에 기다리면 등록 전체 시간에 그대로 더해져 느려진다.
     llm_task: asyncio.Task[list[str]] | None = None
     if ocr_fields:
-        ocr_raw_text = " ".join(f.text for f in ocr_fields)
         llm_task = asyncio.create_task(_llm_extract_drug_names(ocr_raw_text))
 
-        resolved, auto_created_ids, resolved_confidence = await _resolve_or_create_drug_like_names(
-            db_session, dur_repo, ocr_fields, seen_ids
-        )
-        matched_drugs.extend(resolved)
-        match_confidence.update(resolved_confidence)
-
-        fuzzy_matched, fuzzy_confidence = await _fuzzy_match_unrecognized_fields(
-            db_session, dur_repo, ocr_fields, seen_ids
-        )
-        matched_drugs.extend(fuzzy_matched)
-        match_confidence.update(fuzzy_confidence)
-
-    # 정규식/퍼지 매칭 결과가 있어도, 그 규칙들이 놓쳤을 수 있는 약을 추가로 구제하기 위해 매번
-    # LLM으로 한 번 더 보완한다. 마스터 DB에 있는 약은 `seen_ids`(item_seq)로 걸러지고, 마스터
-    # DB에 없는 약은 이름이 같아도 매번 새 item_seq(Tier3 API/AUTO_ 더미)를 받으므로 `seen_names`
-    # (약품명 문자열)로 따로 걸러야 정규식 경로가 이미 만든 후보를 LLM이 또 중복 추가하지 않는다.
-    if llm_task is not None:
-        llm_names = await llm_task
-        if llm_names:
-            seen_names = {drug.item_name for drug in matched_drugs}
-            llm_matched, llm_auto_created_ids = await _resolve_llm_suggested_names(
-                db_session, dur_repo, llm_names, seen_ids, seen_names
+    try:
+        if ocr_fields:
+            resolved, auto_created_ids, resolved_confidence = await _resolve_or_create_drug_like_names(
+                db_session, dur_repo, ocr_fields, seen_ids
             )
-            matched_drugs.extend(llm_matched)
-            auto_created_ids |= llm_auto_created_ids
-            for drug in llm_matched:
-                match_confidence[drug.item_seq] = _NO_OCR_EVIDENCE_MATCH_RATE
+            matched_drugs.extend(resolved)
+            match_confidence.update(resolved_confidence)
+
+            fuzzy_matched, fuzzy_confidence = await _fuzzy_match_unrecognized_fields(
+                db_session, dur_repo, ocr_fields, seen_ids
+            )
+            matched_drugs.extend(fuzzy_matched)
+            match_confidence.update(fuzzy_confidence)
+
+        # 정규식/퍼지 매칭 결과가 있어도, 그 규칙들이 놓쳤을 수 있는 약을 추가로 구제하기 위해 매번
+        # LLM으로 한 번 더 보완한다. 마스터 DB에 있는 약은 `seen_ids`(item_seq)로 걸러지고, 마스터
+        # DB에 없는 약은 이름이 같아도 매번 새 item_seq(Tier3 API/AUTO_ 더미)를 받으므로 `seen_names`
+        # (약품명 문자열)로 따로 걸러야 정규식 경로가 이미 만든 후보를 LLM이 또 중복 추가하지 않는다.
+        if llm_task is not None:
+            llm_names = await llm_task
+            llm_task = None  # 정상 소비 완료 — 아래 finally에서 취소 대상이 되지 않도록 비운다.
+            if llm_names:
+                seen_names = {drug.item_name for drug in matched_drugs}
+                llm_matched, llm_auto_created_ids = await _resolve_llm_suggested_names(
+                    db_session, dur_repo, llm_names, seen_ids, seen_names, _korean_only(ocr_raw_text)
+                )
+                matched_drugs.extend(llm_matched)
+                auto_created_ids |= llm_auto_created_ids
+                for drug in llm_matched:
+                    match_confidence[drug.item_seq] = _NO_OCR_EVIDENCE_MATCH_RATE
+    finally:
+        # DB 매칭 패스가 예외로 중단되면 위에서 create_task로 띄운 LLM 태스크가 await되지 못해
+        # "Task was destroyed but it is pending" 경고와 불필요한 게이트웨이 호출이 남는다.
+        # 아직 정상 소비되지 않았으면(위에서 None으로 비우지 못한 경우) 취소하고 정리한다.
+        if llm_task is not None:
+            llm_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await llm_task
 
     # 그래도 후보가 하나도 없으면(약품명으로 보이는 텍스트조차 없었던 경우)
     # 마스터 DB 상위 몇 개를 참고용으로 보여준다 — 이 경우엔 수동 검색으로의 전환을 기대한다.
@@ -838,7 +961,7 @@ def _build_clova_ocr_request(file_bytes: bytes, file_name: str) -> tuple[dict, d
         "timestamp": int(time.time() * 1000),
         "version": "V2",
     }
-    headers = {"X-OCR-SECRET": CLOVA_OCR_SECRET_KEY, "Content-Type": "application/json"}
+    headers = {"X-OCR-SECRET": config.CLOVA_OCR_SECRET_KEY, "Content-Type": "application/json"}
     return payload, headers
 
 
@@ -877,15 +1000,26 @@ async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[OcrField]:
     타임아웃/네트워크 오류/5xx는 일시적일 수 있어 짧게 재시도하고, 인증 오류(401/403) 같은
     4xx는 재시도해도 결과가 같으므로 즉시 포기한다. 모든 실패 경로에 로그를 남겨 조용히
     더미 폴백으로 넘어가는 일이 없도록 한다(운영 중 CLOVA 키 만료 등을 감지하기 위함)."""
-    assert CLOVA_OCR_SECRET_KEY is not None
-    assert CLOVA_OCR_INVOKE_URL is not None
-    payload, headers = _build_clova_ocr_request(file_bytes, file_name)
+    assert config.CLOVA_OCR_SECRET_KEY is not None
+    assert config.CLOVA_OCR_INVOKE_URL is not None
+    # (#OCR-CONVERT-BLOCKING) webp 등 변환이 필요한 이미지는 PIL 인코딩/디코딩이 CPU 작업이라
+    # 이벤트 루프에서 그대로 돌리면 그 순간 다른 요청/백그라운드 태스크 처리가 멈춘다 - 스레드
+    # 풀로 넘겨 이벤트 루프를 막지 않는다.
+    payload, headers = await asyncio.to_thread(_build_clova_ocr_request, file_bytes, file_name)
 
+    # 재시도마다 새 클라이언트를 만들면 커넥션을 매번 새로 맺어 그만큼 느려지므로,
+    # 하나의 클라이언트를 열어 모든 시도에서 재사용한다.
+    async with httpx.AsyncClient() as client:
+        return await _post_clova_ocr_with_retries(client, config.CLOVA_OCR_INVOKE_URL, payload, headers)
+
+
+async def _post_clova_ocr_with_retries(
+    client: httpx.AsyncClient, invoke_url: str, payload: dict, headers: dict
+) -> list[OcrField]:
     for attempt in range(1, _CLOVA_OCR_MAX_ATTEMPTS + 1):
         is_last_attempt = attempt == _CLOVA_OCR_MAX_ATTEMPTS
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.post(CLOVA_OCR_INVOKE_URL, json=payload, headers=headers, timeout=10.0)
+            response = await client.post(invoke_url, json=payload, headers=headers, timeout=10.0)
         except httpx.TimeoutException as exc:
             logger.warning("CLOVA OCR 호출 타임아웃 (attempt=%d/%d): %s", attempt, _CLOVA_OCR_MAX_ATTEMPTS, exc)
             if is_last_attempt:
@@ -919,7 +1053,11 @@ async def _call_clova_ocr(file_bytes: bytes, file_name: str) -> list[OcrField]:
 
 
 def _clova_configured() -> bool:
-    return bool(CLOVA_OCR_SECRET_KEY and CLOVA_OCR_INVOKE_URL and not CLOVA_OCR_SECRET_KEY.startswith("your_"))
+    return bool(
+        config.CLOVA_OCR_SECRET_KEY
+        and config.CLOVA_OCR_INVOKE_URL
+        and not config.CLOVA_OCR_SECRET_KEY.startswith("your_")
+    )
 
 
 def _dummy_ocr_fields() -> list[OcrField]:
@@ -951,18 +1089,11 @@ async def _fetch_drug_summary_with_fallback(medication_name: str) -> list[dict]:
     품목명(대개 '밀리그램' 등 한글 단위 표기)과 안 맞으면 빈 결과가 흔하다(실 API로 확인 —
     "아스피린정 100mg"는 0건, "아스피린정"은 1건). `_fetch_master_data_with_fallback`과 동일한
     패턴으로 먼저 한글 단위로 바꾼 이름을, 그래도 안 되면 접미사를 뗀 이름으로 한 번 더 시도한다."""
-    summaries = await medication_open_api_client.fetch_drug_summary(item_name=medication_name)
-    if summaries:
-        return summaries
-
-    for translated_name in _translate_trailing_dosage_to_korean(medication_name):
-        summaries = await medication_open_api_client.fetch_drug_summary(item_name=translated_name)
+    summaries: list[dict] = []
+    for candidate in _dosage_name_variants(medication_name):
+        summaries = await medication_open_api_client.fetch_drug_summary(item_name=candidate)
         if summaries:
             return summaries
-
-    stripped_name = _strip_trailing_dosage(medication_name)
-    if stripped_name:
-        return await medication_open_api_client.fetch_drug_summary(item_name=stripped_name)
     return summaries
 
 
@@ -970,7 +1101,10 @@ async def _fetch_drug_summary_with_fallback(medication_name: str) -> list[dict]:
 # 1건마다, 그리고 "음식(13번)" 탭을 열 때마다 등록약 전부에 대해 매번 다시 부르는 게 느린 원인
 # 중 하나였다. 프로세스 메모리에 약품명 기준으로 캐싱해 반복 조회를 없앤다. 3단계(느린 실시간
 # e약은요 API) 결과만 캐싱한다 — 1,2단계는 MySQL 조회라 이미 충분히 빠르다.
-_food_guide_card_cache: dict[str, GuideCard] = {}
+# 서로 다른 약품명이 계속 들어오면 프로세스 메모리에 무한히 쌓이므로, 최근 사용 항목만 유지하는
+# 상한(_FOOD_GUIDE_CARD_CACHE_MAX)을 둔다 — 정적 데이터라 밀려난 항목은 다음 조회 때 다시 채워진다.
+_FOOD_GUIDE_CARD_CACHE_MAX = 512
+_food_guide_card_cache: OrderedDict[str, GuideCard] = OrderedDict()
 
 
 async def _fetch_food_intrc_from_local_db(session: AsyncSession, medication_name: str) -> str | None:
@@ -981,16 +1115,11 @@ async def _fetch_food_intrc_from_local_db(session: AsyncSession, medication_name
     아예 없다는 뜻 — 그 경우에만 3단계(느린 실시간 API, `_build_food_interaction_guide_card_slow`)
     호출이 필요하다."""
     dur_repo = DurDrugRepository()
-    text_value = await dur_repo.find_food_intrc_text(session, medication_name)
-    if text_value is None:
-        for translated_name in _translate_trailing_dosage_to_korean(medication_name):
-            text_value = await dur_repo.find_food_intrc_text(session, translated_name)
-            if text_value is not None:
-                break
-    if text_value is None:
-        stripped_name = _strip_trailing_dosage(medication_name)
-        if stripped_name:
-            text_value = await dur_repo.find_food_intrc_text(session, stripped_name)
+    text_value: str | None = None
+    for candidate in _dosage_name_variants(medication_name):
+        text_value = await dur_repo.find_food_intrc_text(session, candidate)
+        if text_value is not None:
+            return text_value
     return text_value
 
 
@@ -1049,9 +1178,12 @@ async def _build_food_interaction_guide_card_slow(medication_name: str) -> Guide
 async def _build_food_interaction_guide_card_slow_cached(medication_name: str) -> GuideCard:
     cached = _food_guide_card_cache.get(medication_name)
     if cached is not None:
+        _food_guide_card_cache.move_to_end(medication_name)  # 최근 사용으로 표시(LRU)
         return cached
     card = await _build_food_interaction_guide_card_slow(medication_name)
     _food_guide_card_cache[medication_name] = card
+    if len(_food_guide_card_cache) > _FOOD_GUIDE_CARD_CACHE_MAX:
+        _food_guide_card_cache.popitem(last=False)  # 가장 오래된 항목 제거
     return card
 
 
@@ -1070,7 +1202,6 @@ async def _build_food_interaction_guide_card(session: AsyncSession, medication_n
 async def _execute_ocr_logic(
     db_session: AsyncSession,
     job_id: str,
-    source_type: str,
     file_bytes: bytes,
     file_name: str,
     dummy_mode: bool = False,
@@ -1095,7 +1226,7 @@ async def _execute_ocr_logic(
     }
 
     matched_drugs, auto_created_ids, match_confidence = await _match_or_create_medications(
-        db_session, dur_repo, ocr_fields
+        db_session, dur_repo, ocr_fields, ocr_raw_text
     )
 
     for drug in matched_drugs:
@@ -1118,9 +1249,20 @@ async def _execute_ocr_logic(
     )
 
 
+async def _mark_recognition_job_failed(job_id: str) -> None:
+    """OCR 태스크가 예외로 중단됐을 때, job이 "processing"에 영구 고착되지 않도록 별도
+    세션에서 상태만 "failed"로 확정한다. 실패를 기록하는 이 경로마저 실패하면(예: DB 자체가
+    내려간 경우) 프론트 폴링 상한이 최종 방어선이므로, 여기서는 로그만 남기고 삼킨다."""
+    try:
+        async with AsyncSessionLocal() as failure_session:
+            await MedicationRepository().update_recognition_job(failure_session, job_id, "failed")
+            await failure_session.commit()
+    except Exception:
+        logger.exception("OCR job 실패 상태 기록마저 실패: job_id=%s", job_id)
+
+
 async def run_ocr_task(
     job_id: str,
-    source_type: str,
     file_bytes: bytes,
     file_name: str = "image.jpg",
     dummy_mode: bool = False,
@@ -1129,10 +1271,31 @@ async def run_ocr_task(
     비동기 OCR 및 약품 매칭 백그라운드 태스크.
     요청 스코프 세션은 응답 전송 시 닫히므로, 항상 자체 세션을 새로 열어 사용한다(BE-2).
     dummy_mode=True면 실제 OCR 호출 없이 결정적인 더미 인식 결과를 반환한다(T-MED-3).
+
+    처리 중 예외가 나면(DB 오류/공공 API 예외 등) job을 "failed"로 확정한다 — 그러지 않으면
+    초기 "processing" 상태 그대로 남아 프론트가 무한 폴링하고 진행 애니메이션이 영구 정체한다.
     """
-    async with AsyncSessionLocal() as db_session:
-        await _execute_ocr_logic(db_session, job_id, source_type, file_bytes, file_name, dummy_mode)
-        await db_session.commit()
+    try:
+        async with AsyncSessionLocal() as db_session:
+            await _execute_ocr_logic(db_session, job_id, file_bytes, file_name, dummy_mode)
+            await db_session.commit()
+    except Exception:
+        logger.exception("OCR 백그라운드 태스크 실패, job을 failed로 처리합니다: job_id=%s", job_id)
+        await _mark_recognition_job_failed(job_id)
+
+
+async def _notify_side_effects_task(profile_id: int, drug_name: str) -> None:
+    """등록 응답 반환 후 실행되는 백그라운드 태스크. 요청 스코프 세션은 응답 전송 시 닫히므로
+    (BE-2와 동일한 이유), 여기서도 자체 세션을 새로 연다. 부작용 확인이 e약은요 실시간 API를
+    타면 최대 10초까지 걸릴 수 있는데, 이건 등록 자체와 무관한 1회성 참고 알림(F-NTFY-5)이라
+    등록 응답을 그만큼 지연시킬 이유가 없다 - 등록 확정/수동/빠른등록 응답은 즉시 반환하고,
+    알림은 이 태스크가 응답 반환 후 비동기로 조회·발송한다."""
+    try:
+        async with AsyncSessionLocal() as session:
+            await SideEffectNotificationService().notify_if_side_effects(session, profile_id, drug_name)
+            await session.commit()
+    except Exception:
+        logger.exception("부작용 사전 안내 백그라운드 태스크 실패 (profile_id=%s, drug_name=%s)", profile_id, drug_name)
 
 
 async def _check_master_data_available(session: AsyncSession, repo: MedicationRepository, item_seq: str) -> bool:
@@ -1161,6 +1324,28 @@ class MedicationService:
         self._family_repository = FamilyRepository()  # (가족관리) 대상자 권한검증용
         self._side_effect_notification_service = side_effect_notification_service or SideEffectNotificationService()
 
+    async def _assert_guardian(
+        self,
+        session: AsyncSession,
+        requester_profile_id: int,
+        target_profile_id: int,
+        detail: str = "해당 프로필에 대한 권한이 없습니다.",
+    ) -> None:
+        """(가족관리) 요청자가 대상 프로필의 보호자로 등록돼 있지 않으면 403을 던진다."""
+        if not await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+
+    @staticmethod
+    def _schedule_to_response(schedule: MedicationSchedule, drug_name: str) -> MedicationScheduleResponse:
+        return MedicationScheduleResponse(
+            id=schedule.id,
+            item_seq=schedule.item_seq,
+            drug_name=drug_name,
+            times=schedule.times,
+            source_job_id=schedule.source_job_id,
+            hospital_name=schedule.hospital_name,
+        )
+
     async def create_recognition_job(
         self,
         session: AsyncSession,
@@ -1186,7 +1371,7 @@ class MedicationService:
         await self._repository.create_recognition_job(session, job)
 
         # 백그라운드 태스크 등록 (요청 세션은 넘기지 않고, 태스크 내부에서 자체 세션을 생성한다)
-        background_tasks.add_task(run_ocr_task, job_id, source_type, file_bytes, file_name, dummy_mode=dummy_mode)
+        background_tasks.add_task(run_ocr_task, job_id, file_bytes, file_name, dummy_mode=dummy_mode)
 
         return RecognitionJobCreateResult(job_id=job_id, status="pending")
 
@@ -1215,6 +1400,7 @@ class MedicationService:
         profile_id: int,
         selected_candidate_drug_code: str | None,
         confirmed_fields: dict | None,
+        background_tasks: BackgroundTasks,
     ) -> RecognitionConfirmResult:
         job = await self._repository.get_recognition_job(session, job_id)
         if not job or job.profile_id != profile_id:
@@ -1243,7 +1429,7 @@ class MedicationService:
             display_name = None if item_seq in master_names else drug_name
 
             # 9~10번: 시간대가 적혀있다면 추출된 시간 사용, 없으면 기본 슬롯 추천
-            times = ["09:00", "13:00", "19:00"]
+            times = _DEFAULT_SCHEDULE_TIMES
             if confirmed_fields and "times" in confirmed_fields:
                 times = confirmed_fields["times"]
             elif job.extracted_fields and job.extracted_fields.get("times"):
@@ -1260,29 +1446,29 @@ class MedicationService:
                 source_job_id=job_id,
             )
             await self._repository.create_schedule(session, schedule)
-            await self._side_effect_notification_service.notify_if_side_effects(session, profile_id, drug_name)
+            background_tasks.add_task(_notify_side_effects_task, profile_id, drug_name)
 
         # 13번: 음식(T-DOC-2) — 등록된 약의 e약은요 상호작용 문항에서 음식/음주 주의사항을 안내한다.
+        # (#CONFIRM-FOOD-CARD-SLOW) 프론트(MedicationPage.tsx handleConfirmSubmit)는 여러 약을
+        # Promise.allSettled로 병렬 confirm한 뒤 이 guide_cards 응답을 실제로 화면에 쓰지 않는다
+        # (성공/실패 카운트만 확인) - 음식 상호작용은 별도의 "음식" 탭이 fast/pending 2단계
+        # API(check_food_interactions[_pending])로 채운다. 그런데도 여기서 로컬 데이터로 못 찾으면
+        # 실시간 e약은요 API를 최대 3회 순차 호출하는 느린 경로(_build_food_interaction_guide_card_slow)
+        # 까지 타서, 아무도 안 보는 값을 위해 confirm 응답 자체가 최대 30초까지 느려졌다 - 로컬
+        # 데이터(참조테이블/MySQL 스냅샷)로 즉시 확인 가능한 경우만 채우고, 못 찾으면 그냥 비워서
+        # "음식" 탭의 기존 pending 조회에 맡긴다.
         guide_cards = []
         if drug_name:
-            guide_cards.append(await _build_food_interaction_guide_card(session, drug_name))
+            fast_card = await _build_food_interaction_guide_card_fast(session, drug_name)
+            if fast_card is not None:
+                guide_cards.append(fast_card)
 
         return RecognitionConfirmResult(status="confirmed", guide_cards=guide_cards)
 
     async def list_schedules(self, session: AsyncSession, profile_id: int) -> list[MedicationScheduleResponse]:
         schedules = await self._repository.list_schedules_by_profile(session, profile_id)
         names = await self._dur_drug_repository.get_names_by_item_seqs(session, {s.item_seq for s in schedules})
-        return [
-            MedicationScheduleResponse(
-                id=s.id,
-                item_seq=s.item_seq,
-                drug_name=s.display_name or names.get(s.item_seq, s.item_seq),
-                times=s.times,
-                source_job_id=s.source_job_id,
-                hospital_name=s.hospital_name,
-            )
-            for s in schedules
-        ]
+        return [self._schedule_to_response(s, s.display_name or names.get(s.item_seq, s.item_seq)) for s in schedules]
 
     async def update_schedule(
         self, session: AsyncSession, profile_id: int, schedule_id: int, req: MedicationScheduleUpdateRequest
@@ -1299,13 +1485,8 @@ class MedicationService:
         await session.refresh(schedule)
 
         names = await self._dur_drug_repository.get_names_by_item_seqs(session, {schedule.item_seq})
-        return MedicationScheduleResponse(
-            id=schedule.id,
-            item_seq=schedule.item_seq,
-            drug_name=schedule.display_name or names.get(schedule.item_seq, schedule.item_seq),
-            times=schedule.times,
-            source_job_id=schedule.source_job_id,
-            hospital_name=schedule.hospital_name,
+        return self._schedule_to_response(
+            schedule, schedule.display_name or names.get(schedule.item_seq, schedule.item_seq)
         )
 
     async def delete_schedule(self, session: AsyncSession, profile_id: int, schedule_id: int) -> None:
@@ -1315,7 +1496,11 @@ class MedicationService:
         await self._repository.delete_schedule(session, schedule)
 
     async def create_manual_schedule(
-        self, session: AsyncSession, profile_id: int, req: MedicationScheduleCreateRequest
+        self,
+        session: AsyncSession,
+        profile_id: int,
+        req: MedicationScheduleCreateRequest,
+        background_tasks: BackgroundTasks,
     ) -> MedicationScheduleResponse:
         item_seq = req.drug_code
         if not await _check_master_data_available(session, self._repository, item_seq):
@@ -1339,15 +1524,9 @@ class MedicationService:
             profile_id=owner_profile_id, item_seq=item_seq, times=req.times, hospital_name=req.hospital_name
         )
         await self._repository.create_schedule(session, schedule)
-        await self._side_effect_notification_service.notify_if_side_effects(session, owner_profile_id, drug_name)
+        background_tasks.add_task(_notify_side_effects_task, owner_profile_id, drug_name)
 
-        return MedicationScheduleResponse(
-            id=schedule.id,
-            item_seq=schedule.item_seq,
-            drug_name=drug_name,
-            times=schedule.times,
-            hospital_name=schedule.hospital_name,
-        )
+        return self._schedule_to_response(schedule, drug_name)
 
     async def quick_register_medication(
         self,
@@ -1355,7 +1534,9 @@ class MedicationService:
         profile_id: int,
         drug_name: str,
         times: list[str],
+        background_tasks: BackgroundTasks,
         hospital_name: str | None = None,
+        target_profile_id: int | None = None,
     ) -> QuickRegisterResult:
         """약품명을 직접 입력해 검색 단계 없이 한 번에 등록한다(T-MED-3).
 
@@ -1367,6 +1548,17 @@ class MedicationService:
         stripped_name = drug_name.strip()
         if not stripped_name:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="약품명을 입력해주세요.")
+
+        # (가족관리) create_manual_schedule과 동일한 규칙 - target_profile_id가 있으면 요청자가
+        # 그 프로필의 보호자로 등록되어 있어야만 허용한다.
+        owner_profile_id = target_profile_id or profile_id
+        if owner_profile_id != profile_id:
+            is_guardian = await self._family_repository.is_guardian_of(session, profile_id, owner_profile_id)
+            if not is_guardian:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="해당 프로필에 대한 복약 스케줄을 등록할 권한이 없습니다. 더보기 > 가족관리에서 먼저 연결해주세요.",
+                )
 
         matches = await self._dur_drug_repository.search_item_names(
             session, stripped_name, _SEARCH_TIER1_CANDIDATE_LIMIT
@@ -1391,24 +1583,18 @@ class MedicationService:
         master_names = await self._dur_drug_repository.get_names_by_item_seqs(session, {item_seq})
         display_name = None if item_seq in master_names else item_name
         schedule = MedicationSchedule(
-            profile_id=profile_id,
+            profile_id=owner_profile_id,
             item_seq=item_seq,
             display_name=display_name,
             times=times,
             hospital_name=hospital_name,
         )
         schedule = await self._repository.create_schedule(session, schedule)
-        await self._side_effect_notification_service.notify_if_side_effects(session, profile_id, item_name)
+        background_tasks.add_task(_notify_side_effects_task, owner_profile_id, item_name)
 
         return QuickRegisterResult(
             status="registered",
-            schedule=MedicationScheduleResponse(
-                id=schedule.id,
-                item_seq=schedule.item_seq,
-                drug_name=item_name,
-                times=schedule.times,
-                hospital_name=schedule.hospital_name,
-            ),
+            schedule=self._schedule_to_response(schedule, item_name),
             auto_created=auto_created,
         )
 
@@ -1549,33 +1735,25 @@ class MedicationService:
     ) -> list[MedicationScheduleResponse]:
         """(가족관리) 보호자가 가족 구성원의 복약 스케줄 전체를 조회 - 복약알림/트랙커의
         가족 화면에서 달력·목록에 쓴다."""
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
-        if not is_guardian:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        await self._assert_guardian(session, requester_profile_id, target_profile_id)
         return await self.list_schedules(session, target_profile_id)
 
     async def check_interactions_for_family(
         self, session: AsyncSession, requester_profile_id: int, target_profile_id: int
     ) -> InteractionCheckResult:
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
-        if not is_guardian:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        await self._assert_guardian(session, requester_profile_id, target_profile_id)
         return await self.check_interactions(session, target_profile_id)
 
     async def check_food_interactions_for_family(
         self, session: AsyncSession, requester_profile_id: int, target_profile_id: int
     ) -> FoodInteractionCheckResult:
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
-        if not is_guardian:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        await self._assert_guardian(session, requester_profile_id, target_profile_id)
         return await self.check_food_interactions(session, target_profile_id)
 
     async def check_food_interactions_pending_for_family(
         self, session: AsyncSession, requester_profile_id: int, target_profile_id: int
     ) -> FoodInteractionCheckResult:
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
-        if not is_guardian:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="해당 프로필에 대한 권한이 없습니다.")
+        await self._assert_guardian(session, requester_profile_id, target_profile_id)
         return await self.check_food_interactions_pending(session, target_profile_id)
 
     async def update_schedule_for_family(
@@ -1588,11 +1766,9 @@ class MedicationService:
         schedule = await self._repository.get_schedule_by_id(session, schedule_id)
         if not schedule:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 복약 스케줄을 찾을 수 없습니다.")
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, schedule.profile_id)
-        if not is_guardian:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="해당 복약 스케줄을 수정할 권한이 없습니다."
-            )
+        await self._assert_guardian(
+            session, requester_profile_id, schedule.profile_id, detail="해당 복약 스케줄을 수정할 권한이 없습니다."
+        )
 
         if req.times is not None:
             schedule.times = req.times
@@ -1618,9 +1794,7 @@ class MedicationService:
         schedule = await self._repository.get_schedule_by_id(session, schedule_id)
         if not schedule:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 복약 스케줄을 찾을 수 없습니다.")
-        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, schedule.profile_id)
-        if not is_guardian:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="해당 복약 스케줄을 삭제할 권한이 없습니다."
-            )
+        await self._assert_guardian(
+            session, requester_profile_id, schedule.profile_id, detail="해당 복약 스케줄을 삭제할 권한이 없습니다."
+        )
         await self._repository.delete_schedule(session, schedule)

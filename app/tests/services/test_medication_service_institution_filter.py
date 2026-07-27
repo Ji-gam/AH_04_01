@@ -12,7 +12,7 @@ async def test_institution_name_with_bullet_is_not_registered_as_medication():
 
     async with TestSessionLocal() as session:
         matched, auto_created_ids, _match_confidence = await medication_service._match_or_create_medications(
-            session, dur_repo, [OcrField(text="*SAMPLE*약국", confidence=1.0)]
+            session, dur_repo, [OcrField(text="*SAMPLE*약국", confidence=1.0)], "*SAMPLE*약국"
         )
 
     assert matched == []

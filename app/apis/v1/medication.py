@@ -98,6 +98,7 @@ async def confirm_recognition_job(
     body: RecognitionConfirmRequest,
     profile: Annotated[Profile, Depends(get_current_profile)],
     session: Annotated[AsyncSession, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ) -> RecognitionConfirmResult:
     service = MedicationService()
     return await service.confirm_recognition_job(
@@ -106,6 +107,7 @@ async def confirm_recognition_job(
         profile_id=profile.id,
         selected_candidate_drug_code=body.selected_candidate_drug_code,
         confirmed_fields=body.confirmed_fields,
+        background_tasks=background_tasks,
     )
 
 
@@ -325,9 +327,10 @@ async def create_manual_schedule(
     body: MedicationScheduleCreateRequest,
     profile: Annotated[Profile, Depends(get_current_profile)],
     session: Annotated[AsyncSession, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ) -> MedicationScheduleResponse:
     service = MedicationService()
-    return await service.create_manual_schedule(session, profile.id, body)
+    return await service.create_manual_schedule(session, profile.id, body, background_tasks)
 
 
 @medication_router.post(
@@ -345,9 +348,18 @@ async def quick_register_medication(
     body: QuickRegisterRequest,
     profile: Annotated[Profile, Depends(get_current_profile)],
     session: Annotated[AsyncSession, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ) -> QuickRegisterResult:
     service = MedicationService()
-    return await service.quick_register_medication(session, profile.id, body.drug_name, body.times, body.hospital_name)
+    return await service.quick_register_medication(
+        session,
+        profile.id,
+        body.drug_name,
+        body.times,
+        background_tasks,
+        body.hospital_name,
+        body.target_profile_id,
+    )
 
 
 @medication_router.patch(
