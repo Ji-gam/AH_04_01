@@ -1224,7 +1224,7 @@ export default function MedicationPage() {
                                       style={{
                                         textAlign: "left",
                                         padding: "8px 10px",
-                                        borderRadius: 8,
+                                        borderRadius: 10,
                                         border: `1px solid ${pinkTheme.border}`,
                                         background: pinkTheme.pageBg,
                                         cursor: "pointer",
