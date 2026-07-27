@@ -132,7 +132,12 @@ export default function FamilyRegisterSection() {
         setResults([]);
         setHasSearched(false);
       } else {
-        setResults(res.candidates.map((c) => ({ item_seq: c.drug_code, medication_name: c.medication_name })));
+        setResults(
+          res.candidates.map((c) => ({
+            item_seq: c.drug_code,
+            medication_name: c.medication_name,
+          })),
+        );
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "등록에 실패했습니다.");

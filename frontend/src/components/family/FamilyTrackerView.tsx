@@ -210,7 +210,10 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
         setHasSearched(false);
       } else {
         setResults(
-          res.candidates.map((c) => ({ item_seq: c.drug_code, medication_name: c.medication_name })),
+          res.candidates.map((c) => ({
+            item_seq: c.drug_code,
+            medication_name: c.medication_name,
+          })),
         );
       }
     } catch (err) {

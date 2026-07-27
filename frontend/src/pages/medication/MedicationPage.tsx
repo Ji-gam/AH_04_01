@@ -741,7 +741,10 @@ export default function MedicationPage() {
       } else {
         // 여러 약과 부분일치 — 검색 결과 목록에 반영해 다시 고르게 한다.
         setCandidateSearchResults(
-          res.candidates.map((c) => ({ item_seq: c.drug_code, medication_name: c.medication_name })),
+          res.candidates.map((c) => ({
+            item_seq: c.drug_code,
+            medication_name: c.medication_name,
+          })),
         );
         setCandidateSearchDone(true);
       }
@@ -1178,8 +1181,8 @@ export default function MedicationPage() {
                                         padding: 0,
                                       }}
                                     >
-                                      찾는 약이 없나요? &quot;{candidateSearchText.trim()}&quot;(으)로
-                                      새로 등록
+                                      찾는 약이 없나요? &quot;{candidateSearchText.trim()}
+                                      &quot;(으)로 새로 등록
                                     </button>
                                   </div>
                                 )}
@@ -1740,7 +1743,8 @@ export default function MedicationPage() {
                           </div>
                           {isUnverifiedDrug(s.item_seq) && (
                             <div style={{ fontSize: 11, color: "#b26a00", marginTop: 4 }}>
-                              ⚠️ 마스터 DB에 없는 약이라 상호작용(병용금기) 검사가 제공되지 않습니다.
+                              ⚠️ 마스터 DB에 없는 약이라 상호작용(병용금기) 검사가 제공되지
+                              않습니다.
                             </div>
                           )}
                           {s.source_job_id && (
