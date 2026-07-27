@@ -65,6 +65,14 @@ class Config(BaseSettings):
     # 논문 검색 시 반환할 최대 청크 수(멀티 논문 인용).
     PAPER_RETRIEVAL_LIMIT: int = 5
 
+    # Langfuse 관측성(T-LLM-2-langfuse-observability). LLM 호출의 프롬프트/응답/토큰/지연을
+    # trace로 남긴다. **세 값이 모두 채워졌을 때만** 활성화되고(observability.get_langfuse_handler),
+    # 비어 있으면 관측이 꺼진 채 챗봇은 종전과 동일하게 동작한다(로컬/CI 무회귀).
+    # 발급: cloud.langfuse.com → 프로젝트 → API Keys. BASE_URL은 리전별로 다르다(예: jp/eu/us).
+    LANGFUSE_PUBLIC_KEY: str = ""
+    LANGFUSE_SECRET_KEY: str = ""
+    LANGFUSE_BASE_URL: str = "https://cloud.langfuse.com"
+
 
 # 글로벌 싱글톤 인스턴스 생성
 settings = Config()

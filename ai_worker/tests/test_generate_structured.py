@@ -11,7 +11,7 @@ class FakeChain:
     def __init__(self, result: dict) -> None:
         self._result = result
 
-    async def ainvoke(self, messages: list[dict]) -> dict:
+    async def ainvoke(self, messages: list[dict], config: dict | None = None) -> dict:
         return self._result
 
 

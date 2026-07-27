@@ -52,7 +52,7 @@ class FakeStreamingLLM:
         self._contents = contents
         self.received_messages: list[dict] | None = None
 
-    async def astream(self, messages: list[dict]):
+    async def astream(self, messages: list[dict], config: dict | None = None):
         self.received_messages = messages
         for content in self._contents:
             yield _FakeChunk(content)
