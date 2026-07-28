@@ -1,8 +1,8 @@
 """T-LLM-2-langfuse-observability: 관측 팩토리 격리 테스트.
 
 conftest의 autouse 픽스처가 다른 테스트에선 관측을 no-op으로 눌러두므로, 여기서만
-`get_langfuse_handler`의 실제 활성/비활성 분기를 검증한다. 실제 Langfuse 서버에는
-붙지 않도록(CallbackHandler 생성을 스텁으로 대체) 격리한다.
+`get_langfuse_handler`/`get_langfuse_client`의 실제 활성/비활성 분기를 검증한다. 실제
+Langfuse 서버에는 붙지 않도록(CallbackHandler/get_client 생성을 스텁으로 대체) 격리한다.
 """
 
 import os
@@ -13,17 +13,22 @@ from ai_worker.core import observability
 
 # 실제 함수 객체를 잡아둔다 — conftest의 autouse 픽스처가 모듈 속성을 no-op 람다로
 # 바꿔치기해도, 이 바인딩은 원본 함수를 계속 가리킨다.
+from ai_worker.core.observability import get_langfuse_client as real_get_langfuse_client
 from ai_worker.core.observability import get_langfuse_handler as real_get_langfuse_handler
 
 
 @pytest.fixture(autouse=True)
 def _reset_observability_cache():
     """팩토리는 결과를 모듈 전역에 캐싱한다 — 각 테스트가 깨끗한 상태에서 시작하도록 리셋."""
-    observability._initialized = False
+    observability._handler_initialized = False
     observability._handler = None
+    observability._client_initialized = False
+    observability._client = None
     yield
-    observability._initialized = False
+    observability._handler_initialized = False
     observability._handler = None
+    observability._client_initialized = False
+    observability._client = None
 
 
 def test_returns_none_when_keys_are_not_configured(monkeypatch):
@@ -71,6 +76,101 @@ def test_result_is_cached_after_first_call(monkeypatch):
     monkeypatch.setattr(observability.settings, "LANGFUSE_SECRET_KEY", "")
 
     first = real_get_langfuse_handler()
-    assert observability._initialized is True
+    assert observability._handler_initialized is True
     second = real_get_langfuse_handler()
     assert first is second is None
+
+
+def test_get_client_returns_none_when_keys_are_not_configured(monkeypatch):
+    monkeypatch.setattr(observability.settings, "LANGFUSE_PUBLIC_KEY", "")
+    monkeypatch.setattr(observability.settings, "LANGFUSE_SECRET_KEY", "")
+
+    assert real_get_langfuse_client() is None
+
+
+def test_get_client_returns_client_and_bridges_env_when_configured(monkeypatch):
+    monkeypatch.setattr(observability.settings, "LANGFUSE_PUBLIC_KEY", "pk-lf-test")
+    monkeypatch.setattr(observability.settings, "LANGFUSE_SECRET_KEY", "sk-lf-test")
+    monkeypatch.setattr(observability.settings, "LANGFUSE_BASE_URL", "https://example.test")
+    for var in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_HOST", "LANGFUSE_BASE_URL"):
+        monkeypatch.setenv(var, "")
+
+    sentinel = object()
+    import langfuse as lf
+
+    monkeypatch.setattr(lf, "get_client", lambda: sentinel)
+
+    client = real_get_langfuse_client()
+
+    assert client is sentinel
+    assert os.environ["LANGFUSE_PUBLIC_KEY"] == "pk-lf-test"
+    assert os.environ["LANGFUSE_SECRET_KEY"] == "sk-lf-test"
+
+
+def test_get_client_result_is_cached_after_first_call(monkeypatch):
+    monkeypatch.setattr(observability.settings, "LANGFUSE_PUBLIC_KEY", "")
+    monkeypatch.setattr(observability.settings, "LANGFUSE_SECRET_KEY", "")
+
+    first = real_get_langfuse_client()
+    assert observability._client_initialized is True
+    second = real_get_langfuse_client()
+    assert first is second is None
+
+
+def test_observe_span_yields_none_when_client_is_not_configured(monkeypatch):
+    monkeypatch.setattr(observability, "get_langfuse_client", lambda: None)
+
+    with observability.observe_span("test-span") as span:
+        assert span is None
+
+
+def test_observe_span_yields_span_and_closes_it_when_configured(monkeypatch):
+    events = []
+
+    class FakeSpan:
+        def update(self, **kwargs):
+            events.append(("update", kwargs))
+
+    class FakeSpanContextManager:
+        def __enter__(self):
+            events.append(("enter",))
+            return FakeSpan()
+
+        def __exit__(self, exc_type, exc, tb):
+            events.append(("exit", exc_type))
+            return False
+
+    class FakeClient:
+        def start_as_current_observation(self, **kwargs):
+            events.append(("start", kwargs))
+            return FakeSpanContextManager()
+
+    monkeypatch.setattr(observability, "get_langfuse_client", lambda: FakeClient())
+
+    with observability.observe_span("test-span", as_type="retriever", query="아스피린") as span:
+        assert isinstance(span, FakeSpan)
+        span.update(output=["doc"])
+
+    assert events[0] == ("start", {"name": "test-span", "as_type": "retriever", "input": {"query": "아스피린"}})
+    assert events[1] == ("enter",)
+    assert events[2] == ("update", {"output": ["doc"]})
+    assert events[3] == ("exit", None)
+
+
+def test_observe_span_propagates_caller_exception_without_yielding_twice(monkeypatch):
+    class FakeSpanContextManager:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class FakeClient:
+        def start_as_current_observation(self, **kwargs):
+            return FakeSpanContextManager()
+
+    monkeypatch.setattr(observability, "get_langfuse_client", lambda: FakeClient())
+
+    with pytest.raises(ValueError, match="boom"):
+        with observability.observe_span("test-span"):
+            raise ValueError("boom")

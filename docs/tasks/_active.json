@@ -29,9 +29,9 @@
     "branch": "feat/T-MED-16-item-seq-direct-ref",
     "started": "2026-07-20"
   },
-  "T-LLM-2-rag-brand-name-bridge": {
+  "T-LLM-2-langfuse-retrieval-span": {
     "owner": "agent-Genie",
-    "branch": "feat/T-LLM-2-rag-brand-name-bridge",
-    "started": "2026-07-27"
+    "branch": "feat/T-LLM-2-langfuse-retrieval-span",
+    "started": "2026-07-28"
   }
 }

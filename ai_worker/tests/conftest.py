@@ -14,3 +14,4 @@ from ai_worker.core import observability
 @pytest.fixture(autouse=True)
 def _disable_langfuse(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(observability, "get_langfuse_handler", lambda: None)
+    monkeypatch.setattr(observability, "get_langfuse_client", lambda: None)

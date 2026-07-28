@@ -119,20 +119,27 @@ async def stream_chat_answer(
     """DUR+논문 통합 검색 -> 프롬프트 조립 -> LLM 스트리밍.
     `{"type": "sources", "sources": [...]}` 1건 다음 `{"type": "token", "content": ...}`
     여러 건을 순서대로 내보낸다."""
-    rag_chunks, sources = _search_all(message)
-    yield {"type": "sources", "sources": [s.model_dump() for s in sources]}
+    # 루트 span으로 이 턴 전체(검색 + LLM 생성)를 감싼다 — 검색 span(search_documents/
+    # search_papers)과 아래 LLM generation이 별도 trace로 흩어지지 않고 이 span 하위로
+    # 함께 묶이게 하기 위함이다(T-LLM-2-langfuse-retrieval-span). 미설정 시 no-op.
+    with observability.observe_span("chat_turn", as_type="span", message=message) as root_span:
+        rag_chunks, sources = _search_all(message)
+        yield {"type": "sources", "sources": [s.model_dump() for s in sources]}
 
-    reference_text = "\n".join(injected_context + [c.content for c in rag_chunks]) or "없음"
-    system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(reference_text=reference_text, context=context)
+        reference_text = "\n".join(injected_context + [c.content for c in rag_chunks]) or "없음"
+        system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(reference_text=reference_text, context=context)
 
-    llm = _build_llm()
-    messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": message}]
+        llm = _build_llm()
+        messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": message}]
 
-    # 관측(Langfuse)이 설정돼 있으면 콜백으로 프롬프트/응답/토큰/지연을 trace로 남긴다.
-    # 미설정이면 handler가 None이라 config=None(기본 동작) — 스트리밍은 그대로다.
-    handler = observability.get_langfuse_handler()
-    config: RunnableConfig | None = {"callbacks": [handler]} if handler else None
+        # 관측(Langfuse)이 설정돼 있으면 콜백으로 프롬프트/응답/토큰/지연을 trace로 남긴다.
+        # 미설정이면 handler가 None이라 config=None(기본 동작) — 스트리밍은 그대로다.
+        handler = observability.get_langfuse_handler()
+        config: RunnableConfig | None = {"callbacks": [handler]} if handler else None
 
-    async for event in llm.astream(messages, config=config):
-        if event.content:
-            yield {"type": "token", "content": event.content}
+        async for event in llm.astream(messages, config=config):
+            if event.content:
+                yield {"type": "token", "content": event.content}
+
+        if root_span is not None:
+            root_span.update(metadata={"rag_chunk_count": len(rag_chunks), "source_count": len(sources)})

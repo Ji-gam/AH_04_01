@@ -4,6 +4,7 @@ from typing import Any
 
 from langchain_chroma import Chroma
 
+from ai_worker.core import observability
 from ai_worker.core.config import settings
 from ai_worker.core.logger import setup_logger
 from ai_worker.ingest.embeddings import get_embeddings
@@ -226,39 +227,53 @@ def search_documents(db: Chroma, query: str, limit: int) -> list[DocumentChunk]:
     임베딩 호환성 검증(`assert_embedding_compatible`)은 호출자(라우터) 책임이다."""
     logger.info(f"Retrieving documents for query: '{query}' (limit: {limit})")
 
-    filters = _build_filters(query)
+    with observability.observe_span("search_documents", as_type="retriever", query=query, limit=limit) as span:
+        filters = _build_filters(query)
 
-    if not filters:
-        logger.info("쿼리에서 성분명·약 이름을 식별하지 못해 검색을 생략합니다.")
-        return []
+        if not filters:
+            logger.info("쿼리에서 성분명·약 이름을 식별하지 못해 검색을 생략합니다.")
+            if span is not None:
+                span.update(output=[], metadata={"filters_matched": 0, "reason": "no_name_matched"})
+            return []
 
-    # 필터마다 따로 top-k를 뽑아 합친다(단일 $or로 합치지 않는 이유는 _build_filters
-    # 참고) — 제품명 브릿지가 걸리면 필터가 2개(item_name, ingr_name)라 최대 limit*2건이
-    # 후보로 모일 수 있다. 필터마다 검색 문구(search_text)도 다를 수 있다 — 성분 브릿지
-    # 필터는 원본 질의 대신 정규화된 성분명을 덧붙인 문구로 비교한다(_build_filters 참고).
-    docs_with_scores: list[tuple[Any, float]] = []
-    for filter_dict, search_text in filters:
-        docs_with_scores.extend(db.similarity_search_with_score(search_text, k=limit, filter=filter_dict))
+        # 필터마다 따로 top-k를 뽑아 합친다(단일 $or로 합치지 않는 이유는 _build_filters
+        # 참고) — 제품명 브릿지가 걸리면 필터가 2개(item_name, ingr_name)라 최대 limit*2건이
+        # 후보로 모일 수 있다. 필터마다 검색 문구(search_text)도 다를 수 있다 — 성분 브릿지
+        # 필터는 원본 질의 대신 정규화된 성분명을 덧붙인 문구로 비교한다(_build_filters 참고).
+        docs_with_scores: list[tuple[Any, float]] = []
+        for filter_dict, search_text in filters:
+            docs_with_scores.extend(db.similarity_search_with_score(search_text, k=limit, filter=filter_dict))
 
-    # 디버깅 로그 출력 (유사도 거리 분석용)
-    for doc, score in docs_with_scores:
+        # 디버깅 로그 출력 (유사도 거리 분석용)
+        for doc, score in docs_with_scores:
+            logger.info(
+                f"DEBUG_SCORE: INGR={doc.metadata.get('ingr_name')}, score={score}, "
+                f"source_id={doc.metadata.get('source_id')}"
+            )
+
+        # 임계값(score < threshold)을 만족하는 유효한 문서만 반환합니다. 값은 config에서
+        # 가져와 임베딩 백엔드별로 튜닝할 수 있게 한다(거리 스케일이 백엔드마다 다름).
+        threshold = settings.RAG_SIMILARITY_THRESHOLD
+        valid_docs_with_scores = [(doc, score) for doc, score in docs_with_scores if score < threshold]
+        # 필터별로 따로 뽑아 합쳤으니(위 주석 참고) 점수 오름차순(더 유사할수록 앞)으로
+        # 다시 정렬해야 어느 필터에서 나왔든 더 관련 있는 문서가 앞에 온다.
+        valid_docs_with_scores.sort(key=lambda pair: pair[1])
+
+        # 문서의 내용과 메타데이터를 함께 추출
+        chunks = [
+            DocumentChunk(content=doc.page_content, metadata=doc.metadata, score=score)
+            for doc, score in valid_docs_with_scores
+        ]
         logger.info(
-            f"DEBUG_SCORE: INGR={doc.metadata.get('ingr_name')}, score={score}, "
-            f"source_id={doc.metadata.get('source_id')}"
+            f"Found {len(chunks)} relevant chunks after filter and threshold (candidates: {len(docs_with_scores)})"
         )
-
-    # 임계값(score < threshold)을 만족하는 유효한 문서만 반환합니다. 값은 config에서
-    # 가져와 임베딩 백엔드별로 튜닝할 수 있게 한다(거리 스케일이 백엔드마다 다름).
-    threshold = settings.RAG_SIMILARITY_THRESHOLD
-    valid_docs_with_scores = [(doc, score) for doc, score in docs_with_scores if score < threshold]
-    # 필터별로 따로 뽑아 합쳤으니(위 주석 참고) 점수 오름차순(더 유사할수록 앞)으로
-    # 다시 정렬해야 어느 필터에서 나왔든 더 관련 있는 문서가 앞에 온다.
-    valid_docs_with_scores.sort(key=lambda pair: pair[1])
-
-    # 문서의 내용과 메타데이터를 함께 추출
-    chunks = [
-        DocumentChunk(content=doc.page_content, metadata=doc.metadata, score=score)
-        for doc, score in valid_docs_with_scores
-    ]
-    logger.info(f"Found {len(chunks)} relevant chunks after filter and threshold (candidates: {len(docs_with_scores)})")
-    return chunks
+        if span is not None:
+            span.update(
+                output=[{"source_id": c.metadata.get("source_id"), "score": c.score} for c in chunks],
+                metadata={
+                    "filters_matched": len(filters),
+                    "candidate_count": len(docs_with_scores),
+                    "threshold": threshold,
+                },
+            )
+        return chunks
