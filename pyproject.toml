@@ -45,6 +45,8 @@ ai = [
     # LLM 관측(T-LLM-2-langfuse-observability). v4 API(langfuse.langchain.CallbackHandler,
     # 전역 클라이언트 + 표준 환경변수) 기준으로 연동/검증했다 — ai_worker/core/observability.py.
     "langfuse>=4.0.0",
+    # export_source_from_mysql.py가 운영 MySQL에서 DUR CSV를 재생성할 때 쓰는 비동기 드라이버.
+    "asyncmy>=0.2.11",
 ]
 app = [
     "alembic>=1.14.0",
