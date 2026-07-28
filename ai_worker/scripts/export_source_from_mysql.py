@@ -147,12 +147,21 @@ EXPORTS: list[_Export] = [
         # source/ 드롭 폴더의 "여기엔 RAG 재료만 넣는다" 원칙을 어기지 않으면서도 같은
         # export 스크립트/디렉터리를 공유하려고 이 접두어를 쓴다.
         "_item_ingredient_map.csv",
-        # drugs_data와 조인하는 이유: item_ingredient_map 자체엔 item_name이 없고 item_seq만
-        # 있다(app/models/dur.py). dur_prod_master_list(23,421건)로 조인할 수도 있지만, 그러면
-        # 이 CSV의 ITEM_NAME이 retrieve_service.db_holder["drug_names"](drugs_data.csv 기준,
-        # 4,758건)의 표기와 어긋날 위험이 있다 — 실측(2026-07-20)으로 drugs_data 조인은
-        # 정확히 같은 문자열을 준다는 걸 확인했다(예: "타이레놀정500밀리그람(아세트아미노펜)").
-        "item_ingredient_map m JOIN drugs_data d ON m.item_seq = d.item_seq",
+        # T-LLM-2-rag-brand-name-bridge(2026-07-27): drugs_data(e약은요 부분집합, ~4,758건)
+        # 대신 drug_prdt_prmsn_list(전체 허가목록, 43,017건)와 조인한다. 이전엔 "이 CSV의
+        # ITEM_NAME이 retrieve_service.db_holder["drug_names"](drugs_data 기준)의 표기와
+        # 어긋나면 안 된다"는 이유로 drugs_data를 고집했는데, 실측 버그("인데놀"이 e약은요엔
+        # 없어 검색이 통째로 생략됨)로 그 좁은 범위 자체가 문제였다. 이제
+        # `retrieve_service.cache_searchable_names`가 이 브릿지의 ITEM_NAME 전체를
+        # `drug_names` 인덱스에도 병합하므로(호출부의 `extra_item_names` 참고), 여기서
+        # 표기를 좁게 맞출 필요가 없다 — 오히려 인덱스 쪽이 이 넓은 사전을 따라간다.
+        #
+        # 주의: item_ingredient_map.ingr_name은 종종 염(鹽) 형태("프로프라놀롤염산염")인데
+        # Chroma에 적재된 DUR 문서는 염을 뗀 원형("프로프라놀롤")으로 저장돼 있다. 이 표기
+        # 차이는 여기서 정리하지 않는다 — `retrieve_service._build_filters`가 쿼리 시점에
+        # `db_holder["ingr_names"].resolve()`로 정규화한다(이미 사용자 질의에도 쓰는 것과
+        # 같은 접두사 매칭). 여기서 미리 다듬으면 오히려 그 정규화 로직과 중복/불일치 위험이 있다.
+        "item_ingredient_map m JOIN drug_prdt_prmsn_list d ON m.item_seq = d.item_seq",
         {"ITEM_NAME": "d.item_name", "INGR_NAME": "m.ingr_name"},
     ),
     _Export(
