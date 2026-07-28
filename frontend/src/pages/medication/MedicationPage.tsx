@@ -355,6 +355,10 @@ export default function MedicationPage() {
 
   // 상태 관리
   const [file, setFile] = useState<File | null>(null);
+  // 카메라 촬영/갤러리 선택을 각각 별도 버튼으로 분리한다 - 가족 등록 화면(FamilyTrackerView)과
+  // 같은 이유로, 하나의 input만 쓰면 갤러리에서 고르는 게 아예 안 되는 브라우저가 있다.
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<RecognitionCandidate[]>([]);
@@ -1027,18 +1031,83 @@ export default function MedicationPage() {
                   </div>
                   <form
                     onSubmit={handleUploadSubmit}
-                    style={{ display: "flex", flexDirection: "column", gap: 8 }}
+                    style={{ display: "flex", flexDirection: "column", gap: 10 }}
                   >
                     <input
+                      ref={cameraInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                      style={{ display: "none" }}
+                    />
+                    <input
+                      ref={galleryInputRef}
                       type="file"
                       accept="image/*,application/pdf"
-                      onChange={(e) => setFile(e.target.files?.[0] || null)}
-                      required
-                      style={{ fontSize: 12 }}
+                      onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                      style={{ display: "none" }}
                     />
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        type="button"
+                        onClick={() => cameraInputRef.current?.click()}
+                        style={{
+                          flex: 1,
+                          background: pinkTheme.cardBg,
+                          border: `1px solid ${pinkTheme.border}`,
+                          borderRadius: 16,
+                          padding: "16px 14px",
+                          boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <p style={{ margin: "0 0 8px", fontSize: 20 }}>📷</p>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: pinkTheme.text,
+                          }}
+                        >
+                          카메라로 촬영
+                        </p>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => galleryInputRef.current?.click()}
+                        style={{
+                          flex: 1,
+                          background: pinkTheme.cardBg,
+                          border: `1px solid ${pinkTheme.border}`,
+                          borderRadius: 16,
+                          padding: "16px 14px",
+                          boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <p style={{ margin: "0 0 8px", fontSize: 20 }}>🖼️</p>
+                        <p
+                          style={{
+                            margin: 0,
+                            fontSize: 13,
+                            fontWeight: 700,
+                            color: pinkTheme.text,
+                          }}
+                        >
+                          갤러리에서 선택
+                        </p>
+                      </button>
+                    </div>
+                    {file && (
+                      <p style={{ margin: 0, fontSize: 12, color: pinkTheme.textMuted }}>
+                        선택된 파일: {file.name}
+                      </p>
+                    )}
                     <button
                       type="submit"
-                      disabled={isLoading}
+                      disabled={isLoading || !file}
                       style={{
                         padding: "8px 14px",
                         border: "none",
@@ -1047,8 +1116,8 @@ export default function MedicationPage() {
                         color: "#fff",
                         fontWeight: 700,
                         fontSize: 13,
-                        cursor: isLoading ? "not-allowed" : "pointer",
-                        opacity: isLoading ? 0.6 : 1,
+                        cursor: isLoading || !file ? "not-allowed" : "pointer",
+                        opacity: isLoading || !file ? 0.6 : 1,
                       }}
                     >
                       {isLoading ? "업로드 중..." : "처방전/알약 분석하기"}
