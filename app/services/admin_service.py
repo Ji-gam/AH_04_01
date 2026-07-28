@@ -5,7 +5,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import config
 from app.models.users import User
+from app.repositories.content_repository import ContentRepository
 from app.repositories.error_log_repository import ErrorLogRepository
+from app.repositories.notice_repository import NoticeRepository
 from app.repositories.ops_stats_repository import OpsStatsRepository
 from app.repositories.user_repository import AdminActionRepository, UserRepository
 
@@ -21,11 +23,15 @@ class AdminService:
         action_repo: AdminActionRepository | None = None,
         error_log_repo: ErrorLogRepository | None = None,
         ops_stats_repo: OpsStatsRepository | None = None,
+        notice_repo: NoticeRepository | None = None,
+        content_repo: ContentRepository | None = None,
     ) -> None:
         self._user_repo = user_repo or UserRepository()
         self._action_repo = action_repo or AdminActionRepository()
         self._error_log_repo = error_log_repo or ErrorLogRepository()
         self._ops_stats_repo = ops_stats_repo or OpsStatsRepository()
+        self._notice_repo = notice_repo or NoticeRepository()
+        self._content_repo = content_repo or ContentRepository()
 
     async def list_users(self, session: AsyncSession, search: str | None) -> list[User]:
         return await self._user_repo.list_users(session, search=search)
@@ -88,6 +94,89 @@ class AdminService:
 
     async def list_error_logs(self, session: AsyncSession) -> list:
         return await self._error_log_repo.list_recent(session)
+
+    # ── 공지 관리 (목록/수정/삭제) ──
+    async def list_notices_admin(self, session: AsyncSession):  # noqa: ANN201
+        return await self._notice_repo.list_all(session)
+
+    async def update_notice(self, session: AsyncSession, actor: User, notice_id: int, data):  # noqa: ANN001, ANN201
+        from app.models.notice import NoticeKind
+
+        notice = await self._notice_repo.get_by_id(session, notice_id)
+        if notice is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 공지를 찾을 수 없습니다.")
+        updated = await self._notice_repo.update(
+            session,
+            notice,
+            kind=NoticeKind(data.kind) if data.kind else None,
+            title=data.title,
+            body=data.body,
+        )
+        await self._action_repo.log(
+            session,
+            actor_user_id=actor.id,
+            action="update_notice",
+            target=f"notice:{notice_id}",
+            detail=f"{actor.email} updated notice '{updated.title}'",
+        )
+        await session.commit()
+        return updated
+
+    async def delete_notice(self, session: AsyncSession, actor: User, notice_id: int) -> None:
+        notice = await self._notice_repo.get_by_id(session, notice_id)
+        if notice is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 공지를 찾을 수 없습니다.")
+        title = notice.title
+        await self._notice_repo.delete(session, notice)
+        await self._action_repo.log(
+            session,
+            actor_user_id=actor.id,
+            action="delete_notice",
+            target=f"notice:{notice_id}",
+            detail=f"{actor.email} deleted notice '{title}'",
+        )
+        await session.commit()
+
+    # ── 건강 콘텐츠 관리 (목록/수정/삭제) ──
+    async def list_contents_admin(self, session: AsyncSession, limit: int = 100):  # noqa: ANN201
+        return await self._content_repo.list_by_diseases(session, None, None, limit=limit)
+
+    async def update_content(self, session: AsyncSession, actor: User, content_id: int, data):  # noqa: ANN001, ANN201
+        content = await self._content_repo.get_by_id(session, content_id)
+        if content is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 콘텐츠를 찾을 수 없습니다.")
+        updated = await self._content_repo.update_card(
+            session,
+            content,
+            title=data.title if data.title is not None else content.title,
+            summary=data.summary if data.summary is not None else content.summary,
+            body=data.body if data.body is not None else content.body,
+            image_prompt=content.image_prompt,
+        )
+        await self._action_repo.log(
+            session,
+            actor_user_id=actor.id,
+            action="update_content",
+            target=f"content:{content_id}",
+            detail=f"{actor.email} updated content '{updated.title}'",
+        )
+        await session.commit()
+        return updated
+
+    async def delete_content(self, session: AsyncSession, actor: User, content_id: int) -> None:
+        content = await self._content_repo.get_by_id(session, content_id)
+        if content is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 콘텐츠를 찾을 수 없습니다.")
+        title = content.title
+        await self._content_repo.delete(session, content)
+        await self._action_repo.log(
+            session,
+            actor_user_id=actor.id,
+            action="delete_content",
+            target=f"content:{content_id}",
+            detail=f"{actor.email} deleted content '{title}'",
+        )
+        await session.commit()
 
     async def get_ops_stats(self, session: AsyncSession) -> dict:
         """(관리자 대시보드 "운영 현황" 탭) DAU/WAU, 근사 복약 순응도, 상위 약품(소수

@@ -1,4 +1,4 @@
-import { apiFetch } from "./client";
+import { apiFetch, apiFetchRaw } from "./client";
 
 export interface AdminUserResult {
   id: number;
@@ -60,6 +60,36 @@ export interface AdminOpsStatsResult {
   ai_worker_status: "ok" | "down";
 }
 
+export interface AdminNoticeResult {
+  id: number;
+  kind: "NOTICE" | "MARKETING";
+  title: string;
+  body: string;
+  created_at: string;
+}
+
+export interface AdminNoticeUpdatePayload {
+  kind?: "NOTICE" | "MARKETING";
+  title?: string;
+  body?: string;
+}
+
+export interface AdminContentResult {
+  id: number;
+  disease_code: string;
+  category: string;
+  content_date: string;
+  title: string;
+  summary: string;
+  body: string;
+}
+
+export interface AdminContentUpdatePayload {
+  title?: string;
+  summary?: string;
+  body?: string;
+}
+
 export const adminApi = {
   listUsers: (search?: string) =>
     apiFetch<AdminUserResult[]>(
@@ -74,4 +104,20 @@ export const adminApi = {
   getStats: (days = 7) => apiFetch<AdminStatsResult>(`/admin/stats?days=${days}`),
   getErrorLogs: () => apiFetch<AdminErrorLogResult[]>("/admin/error-logs"),
   getOpsStats: () => apiFetch<AdminOpsStatsResult>("/admin/ops-stats"),
+  listNotices: () => apiFetch<AdminNoticeResult[]>("/admin/notices"),
+  updateNotice: (noticeId: number, data: AdminNoticeUpdatePayload) =>
+    apiFetch<AdminNoticeResult>(`/admin/notices/${noticeId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteNotice: (noticeId: number) =>
+    apiFetchRaw(`/admin/notices/${noticeId}`, { method: "DELETE" }),
+  listContents: () => apiFetch<AdminContentResult[]>("/admin/contents"),
+  updateContent: (contentId: number, data: AdminContentUpdatePayload) =>
+    apiFetch<AdminContentResult>(`/admin/contents/${contentId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteContent: (contentId: number) =>
+    apiFetchRaw(`/admin/contents/${contentId}`, { method: "DELETE" }),
 };
