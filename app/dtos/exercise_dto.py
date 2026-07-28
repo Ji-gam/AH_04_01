@@ -54,6 +54,7 @@ class ExerciseTodayResult(BaseModel):
     logs: Annotated[list[ExerciseLogItemResult], Field(description="오늘 기록된 운동 목록")]
     total_kcal: Annotated[float, Field(description="오늘 총 소모 칼로리(kcal)")]
     total_duration_minutes: Annotated[float, Field(description="오늘 총 운동 시간(분)")]
+    reference_minutes: Annotated[int, Field(description="비교 기준 운동시간 - 일반 권장량(30분) 고정")]
 
 
 class ExerciseRecentDayResult(BaseModel):

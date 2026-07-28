@@ -378,6 +378,7 @@ export interface ExerciseTodayResult {
   logs: ExerciseLogItemResult[];
   total_kcal: number;
   total_duration_minutes: number;
+  reference_minutes: number;
 }
 
 export interface ExerciseRecentDayResult {
@@ -387,6 +388,37 @@ export interface ExerciseRecentDayResult {
 
 export interface ExerciseRecentResult {
   days: ExerciseRecentDayResult[];
+}
+
+// 백엔드 app/dtos/sleep_dto.py와 1:1로 수동 동기화. 마이다이어리 > 수면 기록(REQ-TRCK-003).
+export interface SleepLogCreateRequest {
+  hours: number;
+  bed_time?: string; // "HH:MM" (선택)
+  quality: number; // 1~5, 5가 가장 좋음
+  reason?: string;
+}
+
+export interface SleepLogResult {
+  log_date: string;
+  hours: number;
+  bed_time: string | null;
+  quality: number;
+  reason: string | null;
+}
+
+export interface SleepTodayResult {
+  log: SleepLogResult | null;
+  reference_hours: number;
+}
+
+export interface SleepRecentDayResult {
+  log_date: string;
+  hours: number;
+  quality: number | null;
+}
+
+export interface SleepRecentResult {
+  days: SleepRecentDayResult[];
 }
 
 // 백엔드 app/dtos/weekly_report_dto.py와 1:1로 수동 동기화. 더보기 > 주간 리포트 - 매주

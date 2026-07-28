@@ -22,6 +22,10 @@ from app.repositories.exercise_repository import ExerciseRepository
 # (diet_service.py의 DIET_REFERENCE_KCAL과 같은 발상 - 개인화 데이터가 없어도 기능이 막히지 않게 함).
 DEFAULT_WEIGHT_KG = Decimal(60)
 
+# REQ-TRCK-003 홈 위젯의 운동 진행률 바 분모 - WHO 권장 하루 유산소 운동시간(30분).
+# diet_service.py의 DIET_REFERENCE_KCAL과 같은 방식으로, 개인 목표가 없어도 비교 기준을 준다.
+EXERCISE_REFERENCE_MINUTES = 30
+
 # 줄넘기(count 모드)의 분당 횟수 가정 - 실제 속도는 사람마다 다르지만, 시간 입력 없이 개수만으로
 # 소모 칼로리를 내려면 어떤 가정이든 필요하다. "보통 속도" 기준으로 통상 알려진 값을 썼다.
 JUMP_ROPE_REPS_PER_MINUTE = Decimal(100)
@@ -149,6 +153,7 @@ class ExerciseService:
             logs=items,
             total_kcal=sum(i.calorie_kcal for i in items),
             total_duration_minutes=sum(i.duration_minutes for i in items),
+            reference_minutes=EXERCISE_REFERENCE_MINUTES,
         )
 
     async def delete_log(self, session: AsyncSession, profile: Profile, log_id: int) -> ExerciseTodayResult:
