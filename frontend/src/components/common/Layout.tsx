@@ -1,5 +1,6 @@
-import { useNavigate, Outlet } from "react-router-dom";
+import { useNavigate, useLocation, Navigate, Outlet } from "react-router-dom";
 
+import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 import BottomNav from "./BottomNav";
@@ -12,9 +13,27 @@ import NotificationBell from "./NotificationBell";
  * 더보기/하단바에서 여전히 갈 수 있어 끊기는 화면이 없다. "뒤로가기"는 여기(전역 바)가 아니라
  * 더보기 화면 안에(다른 화면들과 같은 스타일로) 따로 있다 - MorePage.tsx 참고.
  * 햄버거 왼쪽엔 🔔 알림함(NotificationBell, 2026-07-26)을 둔다 - 복약알림/공지/가족알림/
- * 리포트 등 발송된 알림을 어느 화면에서든 바로 열어볼 수 있게 한다. */
+ * 리포트 등 발송된 알림을 어느 화면에서든 바로 열어볼 수 있게 한다.
+ *
+ * [2026-07-28 버그 수정] 통합 동의 게이트를 RequireAuth + LoginPage에만 넣어뒀는데,
+ * 소셜로그인은 그 두 곳을 아예 안 거치고 백엔드 콜백이 바로 "/"로 리다이렉트한다 -
+ * 그리고 "/"를 비롯한 대부분의 탭은 RequireAuth로 안 감싸져 있어(비로그인도 볼 수
+ * 있어야 해서) 소셜로그인 사용자가 동의 화면을 아예 안 보고 그냥 들어와버렸다. 이
+ * Layout이 거의 모든 라우트를 감싸는 공통 지점이라 여기서 한 번 더 확인한다 -
+ * 비로그인 사용자는 그대로 두고(로그인 자체를 강제하지 않음), 로그인은 했는데
+ * 필수 동의가 안 끝난 경우만 걸러낸다. */
 export default function Layout() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user, isAuthenticated } = useAuth();
+
+  const consentDone =
+    !!user?.terms_of_service_consented_at &&
+    !!user?.health_info_consented_at &&
+    !!user?.ai_chat_consented_at;
+  if (isAuthenticated && !consentDone && location.pathname !== "/health-info/consent") {
+    return <Navigate to="/health-info/consent" replace state={{ from: location.pathname }} />;
+  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100dvh" }}>

@@ -28,6 +28,7 @@ import InfoPage from "./pages/InfoPage/InfoPage";
 import LifestyleInfoPage from "./pages/LifestyleInfoPage/LifestyleInfoPage";
 import LoginPage from "./pages/LoginPage/LoginPage";
 import MedicationPage from "./pages/medication/MedicationPage";
+import AdminPage from "./pages/AdminPage/AdminPage";
 import MorePage from "./pages/MorePage/MorePage";
 import NoticeAdminPage from "./pages/NoticePage/NoticeAdminPage";
 import NoticePage from "./pages/NoticePage/NoticePage";
@@ -40,7 +41,10 @@ export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
   {
     // 계정설정은 로그인은 필요하지만 5탭 네비게이션은 안 필요한 화면이라 Layout 밖에 둔다.
-    element: <RequireAuth />,
+    // (2026-07-28) 이름/전화번호/성별 변경일 뿐 건강정보/동의와 무관해서 통합 동의
+    // 체크는 건너뛴다 - 안 그러면 통합 동의 3종이 비어있는 기존 계정이 계정관리에
+    // 들어가려 할 때마다 계속 동의 화면으로 튕겨서 실제로는 못 들어가는 문제가 있었다.
+    element: <RequireAuth skipConsentCheck />,
     children: [{ path: "/account-settings", element: <AccountSettingsPage /> }],
   },
   {
@@ -56,6 +60,7 @@ export const router = createBrowserRouter([
       { path: "/info", element: <InfoPage /> },
       { path: "/info/:id", element: <InfoDetailPage /> },
       { path: "/more", element: <MorePage /> },
+      { path: "/admin", element: <AdminPage /> },
       { path: "/notices", element: <NoticePage /> },
       { path: "/notices/admin", element: <NoticeAdminPage /> },
       { path: "/lifestyle-info", element: <LifestyleInfoPage /> },

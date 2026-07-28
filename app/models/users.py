@@ -30,6 +30,14 @@ class User(Base):
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # [개인정보보호법 제23조] 지금까지는 이 동의를 프론트(localStorage)에만 기록해서 서버엔
+    # "언제 동의했는지" 근거가 안 남았다 - 여기 서버 DB에도 시각을 남긴다. null이면 미동의.
+    health_info_consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # (2026-07-28) 회원가입 화면에서 한 번에 받는 나머지 3종. 위치정보는 브라우저 자체
+    # geolocation 권한요청이 이미 그 역할을 해서 별도 항목을 안 둔다.
+    ai_chat_consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    terms_of_service_consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    marketing_consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

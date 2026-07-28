@@ -87,6 +87,10 @@ export interface FamilyGuideCard {
 export interface FamilyFoodInteractionCheckResult {
   guide_cards: FamilyGuideCard[];
   checked_count: number;
+  // (2026-07-27) 백엔드는 이미 주고 있었는데 프론트 타입에 빠져있었음 - 빠른 응답(로컬
+  // 스냅샷)에서 못 찾은 약 이름들. 이게 있으면 /pending/family로 한 번 더 불러야 그
+  // 약들의 음식 정보까지 채워진다.
+  pending_medication_names: string[];
 }
 
 export const familyMedicationApi = {
@@ -183,6 +187,13 @@ export const familyMedicationApi = {
   checkFoodInteractionsForFamily: (targetProfileId: number) =>
     apiFetch<FamilyFoodInteractionCheckResult>(
       `/medications/food-interactions/family/${targetProfileId}`,
+    ),
+  // (2026-07-27) 빠른 응답에서 못 찾은 약들을 느린 실시간 API로 마저 확인한다 - 백엔드엔
+  // 이미 있었는데 프론트에서 한 번도 호출을 안 하고 있어서, 마스터DB 스냅샷에 없는 약이
+  // 하나라도 섞여 있으면 그 약의 음식정보가 영영 안 채워지고 있었다.
+  checkFoodInteractionsPendingForFamily: (targetProfileId: number) =>
+    apiFetch<FamilyFoodInteractionCheckResult>(
+      `/medications/food-interactions/pending/family/${targetProfileId}`,
     ),
 
   // 204 No Content라 apiFetch(res.json())를 쓰면 파싱 에러가 나서 raw fetch를 쓴다.

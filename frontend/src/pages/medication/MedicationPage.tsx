@@ -870,10 +870,31 @@ export default function MedicationPage() {
 
   // (가족관리) 가족 선택 시 본인 몫의 복잡한 OCR/매칭 로직은 그대로 두고, 화면 전체를
   // FamilyTrackerView(4탭 전부 가족 대상)로 바꿔치기한다.
+  //
+  // [2026-07-27] 헤더 배치를 본인 화면과 동일한 순서로 통일함 - 원래는 [뒤로가기+
+  // FamilySwitcher]가 한 줄, [제목]이 FamilyTrackerView 내부의 <h2>로 그 아래 별도 줄이라
+  // 본인 화면([뒤로가기]가 혼자 한 줄, [제목+FamilySwitcher]가 한 줄)과 짝이 반대였다.
+  // 제목을 이 래퍼로 끌어올리고 FamilyTrackerView의 <h2>는 제거해서, 완전히 같은
+  // 순서(뒤로가기 단독 줄 → 제목+스위처 줄)로 맞췄다.
   if (selectedFamily) {
     return (
       <div style={{ background: pinkTheme.pageBg, minHeight: "100%", padding: "20px 12px" }}>
         <div style={{ maxWidth: 480, margin: "0 auto", color: pinkTheme.text }}>
+          <button
+            type="button"
+            onClick={() => setSelectedFamily(null)}
+            style={{
+              background: "none",
+              border: "none",
+              color: pinkTheme.textMuted,
+              padding: 0,
+              marginBottom: 12,
+              fontSize: 13,
+              cursor: "pointer",
+            }}
+          >
+            ← 내 복약 관리로
+          </button>
           <div
             style={{
               display: "flex",
@@ -882,21 +903,7 @@ export default function MedicationPage() {
               marginBottom: 16,
             }}
           >
-            <button
-              type="button"
-              onClick={() => setSelectedFamily(null)}
-              style={{
-                border: "none",
-                background: "none",
-                color: pinkTheme.primary,
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-                padding: 0,
-              }}
-            >
-              ← 내 복약 관리로
-            </button>
+            <PageTitle icon={Pill}>{selectedFamily.name}님의 복약 관리</PageTitle>
             <FamilySwitcher
               selectedProfileId={selectedFamily.profileId}
               onSelect={setSelectedFamily}

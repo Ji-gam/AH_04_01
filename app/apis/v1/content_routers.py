@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
-from app.dependencies.security import get_current_profile_optional
+from app.dependencies.security import get_current_admin_user, get_current_profile_optional
 from app.dtos.content_dto import (
     ContentsFeedResponse,
     GenerateContentRequest,
@@ -13,6 +13,8 @@ from app.dtos.content_dto import (
 )
 from app.models.content import ContentCategory
 from app.models.profiles import Profile
+from app.models.users import User
+from app.repositories.user_repository import AdminActionRepository
 from app.services.ai_worker_gateway import (
     AIWorkerInvalidRequestError,
     AIWorkerProcessingError,
@@ -62,7 +64,10 @@ async def get_my_contents(
         '"정보" 탭(`GET /contents/me`)에도 그대로 반영된다 — 오프라인 배치 생성(`generate_'
         "health_content.py`)을 보완하는 온라인 단건 생성 경로다. "
         "disease_code/category/topic을 생략하면 서버가 무작위로 고른다. 같은 (질환, 카테고리, "
-        "오늘 날짜) 캐시가 있으면 새로 만들지 않고 그 카드를 갱신한다."
+        "오늘 날짜) 캐시가 있으면 새로 만들지 않고 그 카드를 갱신한다. "
+        "[2026-07-27] 원래 인증 자체가 전혀 없어서(로그인조차 불필요) 아무나 LLM 생성을 "
+        "트리거해 비용을 유발하고 전체 사용자가 보는 콘텐츠를 바꿀 수 있던 문제를 막기 위해 "
+        "get_current_admin_user 추가함. 이 행위는 admin_actions에 감사로그로 남는다."
     ),
     responses={
         503: {"description": "ai_worker가 응답하지 않거나 생성 불가 상태(예: API 키 미설정)."},
@@ -72,6 +77,7 @@ async def get_my_contents(
 )
 async def generate_content(
     payload: GenerateContentRequest,
+    admin: Annotated[User, Depends(get_current_admin_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> HealthContentResponse:
     try:
@@ -90,6 +96,15 @@ async def generate_content(
         raise HTTPException(status_code=400, detail=f"잘못된 생성 요청: {e}") from e
     except AIWorkerProcessingError as e:
         raise HTTPException(status_code=502, detail=f"생성 응답 형식 이상: {e}") from e
+
+    await AdminActionRepository().log(
+        session,
+        actor_user_id=admin.id,
+        action="generate_content",
+        target=f"content:{item.get('id')}",
+        detail=f"{admin.email} generated content (disease_code={payload.disease_code}, category={payload.category})",
+    )
+    await session.commit()
     return HealthContentResponse(**item)
 
 

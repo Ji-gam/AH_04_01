@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile, get_request_user
 from app.dtos.health_info import DiagnosisEntry, FamilyHistoryEntry, HealthInfoResponse, HealthInfoUpdateRequest
-from app.dtos.users import UserInfoResponse, UserUpdateRequest
+from app.dtos.users import ConsentStatusResponse, ConsentUpdateRequest, UserInfoResponse, UserUpdateRequest
 from app.models.disease_entries import DiagnosisEntry as DiagnosisEntryModel
 from app.models.disease_entries import FamilyHistoryEntry as FamilyHistoryEntryModel
 from app.models.profiles import Profile
@@ -29,6 +29,12 @@ def _to_user_info_response(user: User, profile: Profile) -> UserInfoResponse:
         phone_number=profile.phone_number,
         gender=profile.gender,
         created_at=user.created_at,
+        is_admin=user.is_admin,
+        health_info_consented_at=user.health_info_consented_at,
+        ai_chat_consented_at=user.ai_chat_consented_at,
+        terms_of_service_consented_at=user.terms_of_service_consented_at,
+        marketing_consented_at=user.marketing_consented_at,
+        has_password=user.hashed_password is not None,
     )
 
 
@@ -161,4 +167,51 @@ async def update_health_info(
 ) -> Response:
     updated_profile = await health_info_service.update_health_info(session, profile, update_data)
     response = await _to_health_info_response(session, updated_profile, diagnosis_repo, family_repo)
+    return Response(response.model_dump(), status_code=status.HTTP_200_OK)
+
+
+@user_router.get(
+    "/me/consent",
+    response_model=ConsentStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="동의 현황 조회",
+    description="개인건강정보 동의 시각을 조회한다. 미동의 시 null.",
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
+)
+async def get_consent_status(
+    user: Annotated[User, Depends(get_request_user)],
+) -> Response:
+    response = ConsentStatusResponse(
+        health_info_consented_at=user.health_info_consented_at,
+        ai_chat_consented_at=user.ai_chat_consented_at,
+        terms_of_service_consented_at=user.terms_of_service_consented_at,
+        marketing_consented_at=user.marketing_consented_at,
+    )
+    return Response(response.model_dump(), status_code=status.HTTP_200_OK)
+
+
+@user_router.patch(
+    "/me/consent",
+    response_model=ConsentStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="동의 기록",
+    description=(
+        "[개인정보보호법 제23조] 개인건강정보 동의를 서버에 시각과 함께 기록한다. "
+        "true로 보내면 그 시각으로 갱신되고, false/미전달이면 기존 상태를 유지한다."
+    ),
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
+)
+async def update_consent(
+    update_data: ConsentUpdateRequest,
+    user: Annotated[User, Depends(get_request_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    user_manage_service: Annotated[UserManageService, Depends(UserManageService)],
+) -> Response:
+    updated_user = await user_manage_service.update_consent(session, user, update_data)
+    response = ConsentStatusResponse(
+        health_info_consented_at=updated_user.health_info_consented_at,
+        ai_chat_consented_at=updated_user.ai_chat_consented_at,
+        terms_of_service_consented_at=updated_user.terms_of_service_consented_at,
+        marketing_consented_at=updated_user.marketing_consented_at,
+    )
     return Response(response.model_dump(), status_code=status.HTTP_200_OK)

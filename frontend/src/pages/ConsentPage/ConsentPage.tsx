@@ -1,41 +1,94 @@
 import { ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
+import { consentApi } from "../../api/healthInfoApi";
 import PageTitle from "../../components/common/PageTitle";
+import { CONSENT_ITEMS, type ConsentItem } from "../../constants/consentItems";
 import { useAuth } from "../../hooks/useAuth";
-import { pinkTheme } from "../../theme/pinkTheme";
-import { hasConsented, markConsented } from "../../utils/healthInfoConsent";
+import { pinkTheme as t } from "../../theme/pinkTheme";
+import Modal from "../AlarmPage/components/Modal";
 
-/** 개인건강정보로 들어가는 모든 경로(홈 배너 "확인", 더보기 > 개인건강정보 링크 등)가 공통으로
- * 경유하는 개인정보(민감정보=건강정보) 제공동의 화면. 개인정보보호법 제23조 - 민감정보는 다른
- * 동의와 별도로, 동의를 먼저 받고 나서 수집해야 한다. 한 번 동의하면 다음부터는 자동으로 건너뛴다
- * (계정별로 localStorage에 기억). 동의해야만 다음(개인건강정보 입력)으로 넘어갈 수 있다.
+/** (2026-07-28 전면 개편) 회원가입 시 한 화면에서 한 번에 받는 통합 동의 화면.
+ * RequireAuth가 이 중 필수 3개(이용약관/건강정보/AI챗봇)를 아직 안 마친 계정을
+ * 자동으로 여기로 보낸다 - 이메일 가입/로그인, 소셜 로그인 전부 동일하게 적용된다
+ * (LoginPage.tsx에서도 로그인/가입 직후 한 번 더 체크해서 보냄).
  *
- * [2026-07-24] AI 챗봇 데이터 활용 동의를 여기 같이 넣었다가, 위치/문구/저장 방식을 더
- * 논의하기로 하고 롤백함(대화 저장 기능 자체를 아직 안 만든 상태라 서두를 필요 없음) - 다음
- * 논의 때 챗봇 화면(ChatPage) 진입 시점 등 다른 위치를 검토할 예정. */
+ * - 마케팅만 선택, 나머지 3개는 필수.
+ * - 위치정보는 별도 동의 항목을 안 둔다 - 병원/약국 찾기 등에서 브라우저 자체
+ *   geolocation 권한요청이 이미 그 역할을 하고 있어 중복이라 판단(2026-07-28 결정).
+ * - 진짜 동의 여부의 근거는 서버 DB(users.*_consented_at)뿐이다(예전엔
+ *   localStorage에만 남겨서 서버에 근거가 없었음 - 그 문제를 고치는 김에 아예
+ *   localStorage 캐시 자체를 없애고 서버 값만 기준으로 삼는다).
+ * - 문구는 화면에서는 압축해서 보여주되(길게 늘어놓으면 안 읽음), "전문 보기"로
+ *   전체 내용을 확인할 수 있게 한다(layered notice 방식). 항목 정의 자체는
+ *   constants/consentItems.ts에 있음(DataConsentPage.tsx와 공유). */
+
 export default function ConsentPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const [agreed, setAgreed] = useState(false);
+  const location = useLocation();
+  const { user, refreshUser } = useAuth();
+  const [checked, setChecked] = useState<Record<ConsentItem["key"], boolean>>({
+    terms_of_service: false,
+    health_info: false,
+    ai_chat: false,
+    marketing: false,
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [detailItem, setDetailItem] = useState<ConsentItem | null>(null);
 
   useEffect(() => {
-    if (user && hasConsented(user.email)) {
-      navigate("/health-info", { replace: true });
+    if (
+      user?.terms_of_service_consented_at &&
+      user?.health_info_consented_at &&
+      user?.ai_chat_consented_at
+    ) {
+      const from = (location.state as { from?: string } | null)?.from;
+      navigate(from ?? "/", { replace: true });
     }
-  }, [navigate, user]);
+  }, [navigate, user, location.state]);
 
-  function handleAgreeAndContinue() {
-    if (user) markConsented(user.email);
-    navigate("/health-info", { replace: true });
+  const requiredDone = CONSENT_ITEMS.filter((i) => i.required).every((i) => checked[i.key]);
+  const allChecked = CONSENT_ITEMS.every((i) => checked[i.key]);
+
+  function toggleAll() {
+    const next = !allChecked;
+    setChecked({
+      terms_of_service: next,
+      health_info: next,
+      ai_chat: next,
+      marketing: next,
+    });
+  }
+
+  async function handleAgreeAndContinue() {
+    if (!requiredDone) return;
+    setIsSaving(true);
+    try {
+      await consentApi.update({
+        terms_of_service: checked.terms_of_service,
+        health_info: checked.health_info,
+        ai_chat: checked.ai_chat,
+        marketing: checked.marketing,
+      });
+      // (2026-07-28 버그 수정) 서버엔 저장됐는데 useAuth()의 캐시된 user는 그대로라,
+      // 홈으로 이동해도 Layout/RequireAuth가 여전히 "미동의"로 보고 다시 이 화면으로
+      // 튕겨서 홈으로 못 넘어가는 문제가 있었다 - 이동 전에 캐시부터 최신화한다.
+      await refreshUser();
+    } catch (err) {
+      console.error("동의 서버 기록 실패:", err);
+    } finally {
+      setIsSaving(false);
+    }
+    const from = (location.state as { from?: string } | null)?.from;
+    navigate(from ?? "/", { replace: true });
   }
 
   return (
     <div
       style={{
         minHeight: "100%",
-        background: pinkTheme.pageBg,
+        background: t.pageBg,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -45,107 +98,156 @@ export default function ConsentPage() {
       <div
         style={{
           width: "100%",
-          maxWidth: 360,
-          background: pinkTheme.cardBg,
-          border: `1px solid ${pinkTheme.border}`,
+          maxWidth: 400,
+          background: t.cardBg,
+          border: `1px solid ${t.border}`,
           borderRadius: "16px",
           padding: "24px",
           boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
         }}
       >
-        <button
-          type="button"
-          onClick={() => navigate("/")}
-          style={{
-            background: "none",
-            border: "none",
-            color: pinkTheme.textMuted,
-            padding: 0,
-            marginBottom: 12,
-            cursor: "pointer",
-          }}
-        >
-          ← 뒤로가기
-        </button>
-
-        <PageTitle icon={ShieldCheck} style={{ marginBottom: 12 }}>
-          개인정보(건강정보) 제공동의
+        <PageTitle icon={ShieldCheck} style={{ marginBottom: 4 }}>
+          서비스 이용을 위한 동의
         </PageTitle>
-        <div
-          style={{
-            background: pinkTheme.cardBg,
-            border: `1px solid ${pinkTheme.border}`,
-            borderRadius: 16,
-            padding: 18,
-            fontSize: 13,
-            color: pinkTheme.textMuted,
-            lineHeight: 1.6,
-            maxHeight: 200,
-            overflowY: "auto",
-          }}
-        >
-          <p style={{ margin: 0 }}>
-            건강정보(나이, 성별, 키, 체중, 진단병력, 가족력 등)는 「개인정보 보호법」상 민감정보에
-            해당하며, 서비스 이용을 위해 아래 목적으로만 수집·이용됩니다.
-          </p>
-          <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
-            <li>맞춤형 건강관리 콘텐츠 및 복약 정보 제공</li>
-            <li>서비스 품질 개선을 위한 통계 분석(비식별 처리)</li>
-          </ul>
-          <p style={{ margin: "8px 0 0" }}>
-            수집된 정보는 회원 탈퇴 시 지체없이 파기되며, 동의하지 않으셔도 됩니다(다만 동의하지
-            않으면 개인건강관리 기능은 이용할 수 없어요).
-          </p>
-        </div>
+        <p style={{ margin: "0 0 16px", fontSize: 12.5, color: t.textMuted }}>
+          아래 필수 항목에 동의하셔야 서비스를 이용할 수 있어요.
+        </p>
 
         <label
           style={{
             display: "flex",
             alignItems: "center",
-            gap: "8px",
-            margin: "16px 0",
+            gap: 8,
+            padding: "10px 4px",
+            borderBottom: `1px solid ${t.border}`,
+            marginBottom: 12,
             fontSize: 14,
-            color: pinkTheme.text,
+            fontWeight: 700,
+            color: t.text,
+            cursor: "pointer",
           }}
         >
-          <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />위
-          내용에 동의합니다. (필수)
+          <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+          전체 동의
         </label>
 
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            type="button"
-            onClick={handleAgreeAndContinue}
-            disabled={!agreed}
-            style={{
-              flex: 1,
-              padding: "12px",
-              border: "none",
-              borderRadius: "10px",
-              background: agreed ? pinkTheme.primary : pinkTheme.border,
-              color: "#fff",
-              fontWeight: 700,
-              cursor: agreed ? "pointer" : "not-allowed",
-            }}
-          >
-            동의하고 계속하기
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate("/")}
-            style={{
-              padding: "12px 16px",
-              border: `1px solid ${pinkTheme.border}`,
-              borderRadius: "10px",
-              background: pinkTheme.cardBg,
-              color: pinkTheme.textMuted,
-              cursor: "pointer",
-            }}
-          >
-            취소
-          </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+          {CONSENT_ITEMS.map((item) => (
+            <div key={item.key} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+              <label
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "flex-start",
+                  fontSize: 13,
+                  color: t.text,
+                  cursor: "pointer",
+                  flex: 1,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked[item.key]}
+                  onChange={(e) =>
+                    setChecked((prev) => ({ ...prev, [item.key]: e.target.checked }))
+                  }
+                  style={{ marginTop: 2 }}
+                />
+                <span>
+                  <span style={{ fontWeight: 700 }}>
+                    {item.title} {item.required ? "(필수)" : "(선택)"}
+                  </span>
+                  <br />
+                  <span style={{ fontSize: 12, color: t.textMuted }}>{item.summary}</span>
+                </span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setDetailItem(item)}
+                style={{
+                  flex: "none",
+                  background: "none",
+                  border: "none",
+                  color: t.primary,
+                  fontSize: 12,
+                  textDecoration: "underline",
+                  cursor: "pointer",
+                  padding: 0,
+                  marginTop: 2,
+                }}
+              >
+                전문 보기
+              </button>
+            </div>
+          ))}
         </div>
+
+        <button
+          type="button"
+          onClick={handleAgreeAndContinue}
+          disabled={!requiredDone || isSaving}
+          style={{
+            width: "100%",
+            padding: "12px",
+            border: "none",
+            borderRadius: "10px",
+            background: requiredDone ? t.primary : t.border,
+            color: "#fff",
+            fontWeight: 700,
+            cursor: requiredDone ? "pointer" : "not-allowed",
+          }}
+        >
+          {isSaving ? "저장 중..." : "동의하고 시작하기"}
+        </button>
       </div>
+
+      {detailItem && (
+        <Modal onClose={() => setDetailItem(null)}>
+          <div
+            style={{
+              background: t.cardBg,
+              border: `1px solid ${t.border}`,
+              borderRadius: 16,
+              padding: 20,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+            }}
+          >
+            <p style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, color: t.text }}>
+              {detailItem.title}
+            </p>
+            <div
+              style={{
+                fontSize: 13,
+                lineHeight: 1.7,
+                color: t.text,
+                whiteSpace: "pre-wrap",
+                maxHeight: "50vh",
+                overflowY: "auto",
+                marginBottom: 16,
+              }}
+            >
+              {detailItem.fullText}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setDetailItem(null)}
+                style={{
+                  padding: "9px 20px",
+                  borderRadius: 10,
+                  border: `1px solid ${t.border}`,
+                  background: t.cardBg,
+                  color: t.textMuted,
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

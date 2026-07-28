@@ -37,9 +37,21 @@ class LoginRequest(BaseModel):
 
 
 class WithdrawRequest(BaseModel):
-    """회원탈퇴 - 탈취된 토큰만으로 탈퇴되는 것을 막기 위해 현재 비밀번호 재확인을 요구한다."""
+    """회원탈퇴 - 탈취된 토큰만으로 탈퇴되는 것을 막기 위해 현재 비밀번호 재확인을 요구한다.
+    소셜 가입자는 비밀번호가 없어서 이 재확인 자체가 불가능했던 문제(2026-07-28 발견)를
+    고치면서, 소셜 계정은 비밀번호 없이도(None/미전달) 탈퇴할 수 있게 함 - 서비스가 다시
+    소셜 재인증(OAuth 재로그인)까지 요구하는 건 이번엔 범위 밖이라, 유효한 토큰만으로
+    탈퇴 가능한 수준으로 우선 풀어둠(이메일 가입자는 기존과 동일하게 비밀번호 필수)."""
 
-    password: Annotated[str, Field(min_length=8, description="본인 확인용 현재 비밀번호.", examples=["Password123!"])]
+    password: Annotated[
+        str | None,
+        Field(
+            None,
+            min_length=8,
+            description="본인 확인용 현재 비밀번호. 소셜 가입자는 비밀번호가 없어 생략 가능.",
+            examples=["Password123!"],
+        ),
+    ]
 
 
 class LoginResponse(BaseModel):

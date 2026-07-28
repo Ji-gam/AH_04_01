@@ -38,3 +38,42 @@ class UserInfoResponse(BaseSerializerModel):
     phone_number: Annotated[str | None, Field(description="Profile에 저장된 휴대폰번호. 미입력 시 null.")]
     gender: Annotated[Gender | None, Field(description="Profile에 저장된 성별. 미입력 시 null.")]
     created_at: Annotated[datetime, Field(description="User(계정) 생성 시각.")]
+    is_admin: Annotated[
+        bool,
+        Field(False, description="관리자 여부 - 프론트에서 관리자 메뉴 노출 여부에만 씀(실제 권한검증은 서버가 함)."),
+    ]
+    # (2026-07-28) 가입 시 통합 동의 화면 게이트(RequireAuth)가 매 페이지 이동마다 다시
+    # 물어볼 필요 없이 이 응답 하나로 판단할 수 있게 여기 포함시킨다.
+    health_info_consented_at: Annotated[datetime | None, Field(None, description="개인건강정보 동의 시각.")]
+    ai_chat_consented_at: Annotated[datetime | None, Field(None, description="AI 챗봇 데이터 활용 동의 시각.")]
+    terms_of_service_consented_at: Annotated[datetime | None, Field(None, description="이용약관 동의 시각.")]
+    marketing_consented_at: Annotated[datetime | None, Field(None, description="마케팅 정보 수신 동의 시각(선택).")]
+    # (2026-07-28) 소셜 가입자는 비밀번호가 없어서(hashed_password=None) 회원탈퇴 등에서
+    # 비밀번호 입력란 자체를 안 보여줘야 한다 - 프론트가 이걸로 판단한다.
+    has_password: Annotated[bool, Field(True, description="비밀번호 보유 여부. 소셜 가입자는 false.")]
+
+
+class ConsentUpdateRequest(BaseModel):
+    """[개인정보보호법 제23조 등] true로 보낸 항목만 그 시각으로 서버에 동의 시각이 남는다.
+    false/미전달은 "아직 응답 안 함"으로 두고(기존 상태 유지) - 명시적으로 동의를 철회하는
+    기능은 별도(회원탈퇴 등)로 다룬다.
+
+    (2026-07-28) 가입 시 한 화면에서 한 번에 받는 통합 동의로 재설계함 - 이용약관/
+    건강정보(민감정보 포함)/AI챗봇 데이터활용은 필수, 마케팅만 선택. 위치정보는 브라우저
+    자체 geolocation 권한요청이 이미 다루고 있어 별도 항목을 안 둔다."""
+
+    health_info: Annotated[bool, Field(False, description="개인건강정보(민감정보) 수집·이용 동의 여부. 필수.")]
+    ai_chat: Annotated[bool, Field(False, description="AI 챗봇 대화 데이터 활용 동의 여부. 필수.")]
+    terms_of_service: Annotated[bool, Field(False, description="이용약관 동의 여부. 필수.")]
+    marketing: Annotated[bool, Field(False, description="마케팅 정보 수신 동의 여부. 선택.")]
+
+
+class ConsentStatusResponse(BaseSerializerModel):
+    health_info_consented_at: Annotated[datetime | None, Field(description="개인건강정보 동의 시각. 미동의 시 null.")]
+    ai_chat_consented_at: Annotated[
+        datetime | None, Field(description="AI 챗봇 데이터 활용 동의 시각. 미동의 시 null.")
+    ]
+    terms_of_service_consented_at: Annotated[datetime | None, Field(description="이용약관 동의 시각. 미동의 시 null.")]
+    marketing_consented_at: Annotated[
+        datetime | None, Field(description="마케팅 정보 수신 동의 시각(선택). 미동의 시 null.")
+    ]

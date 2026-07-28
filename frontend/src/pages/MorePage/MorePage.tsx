@@ -305,67 +305,23 @@ export default function MorePage() {
           </Link>
 
           <Link to="/data-consent" style={menuCardStyle}>
-            <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              📋 데이터 활용 동의
-              <span
-                aria-hidden
-                style={{
-                  background: pinkTheme.primary,
-                  color: "#fff",
-                  borderRadius: 999,
-                  padding: "2px 8px",
-                  fontSize: 10.5,
-                  fontWeight: 700,
-                }}
-              >
-                혜택
-              </span>
-            </span>
+            <span>📋 내 동의 현황</span>
             <span aria-hidden style={{ color: pinkTheme.textMuted }}>
               ›
             </span>
           </Link>
+
+          {user?.is_admin && (
+            <Link to="/admin" style={menuCardStyle}>
+              <span>🔧 관리자</span>
+              <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+                ›
+              </span>
+            </Link>
+          )}
 
           <Link to="/notices" state={{ from: "more" }} style={menuCardStyle}>
             <span>📢 공지사항</span>
-            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
-              ›
-            </span>
-          </Link>
-
-          <Link to="/content-generation" style={menuCardStyle}>
-            <span>
-              🛠️ 관리자 컨텐츠생성
-              <span
-                style={{
-                  display: "block",
-                  fontSize: 12,
-                  color: pinkTheme.textMuted,
-                  marginTop: 2,
-                }}
-              >
-                실제 LLM으로 건강 콘텐츠 카드를 즉시 생성해 "정보" 탭에 반영해요
-              </span>
-            </span>
-            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
-              ›
-            </span>
-          </Link>
-
-          <Link to="/notices/admin" style={menuCardStyle}>
-            <span>
-              🛠️ 관리자 공지등록
-              <span
-                style={{
-                  display: "block",
-                  fontSize: 12,
-                  color: pinkTheme.textMuted,
-                  marginTop: 2,
-                }}
-              >
-                공지/마케팅 소식을 등록하고 알림설정을 켜둔 사용자에게 즉시 푸시해요
-              </span>
-            </span>
             <span aria-hidden style={{ color: pinkTheme.textMuted }}>
               ›
             </span>

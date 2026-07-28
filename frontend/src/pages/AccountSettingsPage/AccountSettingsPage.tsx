@@ -64,7 +64,7 @@ export default function AccountSettingsPage() {
     setWithdrawError(null);
     setIsWithdrawing(true);
     try {
-      await authApi.withdraw(withdrawPassword);
+      await authApi.withdraw(user?.has_password ? withdrawPassword : undefined);
       await logout();
       navigate("/login", { replace: true });
     } catch {
@@ -204,24 +204,29 @@ export default function AccountSettingsPage() {
                 탈퇴하시면 계정과 개인정보(건강정보, 복약알림 등 포함)가 즉시 완전히 삭제되며,
                 되돌릴 수 없습니다.
               </p>
-              <label
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 6,
-                  fontSize: 13,
-                  color: pinkTheme.textMuted,
-                }}
-              >
-                현재 비밀번호
-                <input
-                  type="password"
-                  value={withdrawPassword}
-                  onChange={(e) => setWithdrawPassword(e.target.value)}
-                  required
-                  style={inputStyle}
-                />
-              </label>
+              {/* (2026-07-28 버그 수정) 소셜 가입자는 비밀번호 자체가 없어서(hashed_password=None)
+                항상 검증에 실패해 탈퇴 자체가 불가능했다 - has_password가 false면 비밀번호
+                입력란을 아예 안 보여주고, 로그인된 상태(유효한 토큰)만으로 탈퇴 진행한다. */}
+              {user?.has_password && (
+                <label
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    fontSize: 13,
+                    color: pinkTheme.textMuted,
+                  }}
+                >
+                  현재 비밀번호
+                  <input
+                    type="password"
+                    value={withdrawPassword}
+                    onChange={(e) => setWithdrawPassword(e.target.value)}
+                    required
+                    style={inputStyle}
+                  />
+                </label>
+              )}
 
               {withdrawError && (
                 <p style={{ color: pinkTheme.danger, fontSize: 13, margin: 0 }}>{withdrawError}</p>

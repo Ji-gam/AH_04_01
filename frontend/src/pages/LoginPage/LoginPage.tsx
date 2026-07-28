@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { authApi, socialLoginUrl } from "../../api/authApi";
+import type { UserInfoResult } from "../../api/types";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
 
@@ -11,6 +12,14 @@ import { pinkTheme } from "../../theme/pinkTheme";
  * client.ts의 accessToken 방어(줄바꿈/공백 제거)와 같은 이유. */
 export function sanitizeCredential(value: string): string {
   return value.replace(/[\u200B-\u200D\uFEFF]/g, "").trim();
+}
+
+/** (2026-07-28) 회원가입 시 한 화면에서 받는 통합 동의 - 이용약관/건강정보/AI챗봇은 필수,
+ * 마케팅은 선택이라 여기 체크에서 뺀다. RequireAuth.tsx와 동일한 기준. */
+function consentIncomplete(me: UserInfoResult): boolean {
+  return (
+    !me.terms_of_service_consented_at || !me.health_info_consented_at || !me.ai_chat_consented_at
+  );
 }
 
 type Tab = "login" | "signup";
@@ -59,8 +68,8 @@ export default function LoginPage() {
     setLoginError(null);
     setIsLoggingIn(true);
     try {
-      await login(sanitizeCredential(email), sanitizeCredential(password));
-      navigate("/", { replace: true });
+      const me = await login(sanitizeCredential(email), sanitizeCredential(password));
+      navigate(consentIncomplete(me) ? "/health-info/consent" : "/", { replace: true });
     } catch (err) {
       setLoginError(err instanceof Error ? err.message : "로그인에 실패했습니다.");
     } finally {
@@ -77,8 +86,10 @@ export default function LoginPage() {
       const cleanPassword = sanitizeCredential(signupPassword);
       await authApi.signup({ name: signupName, email: cleanEmail, password: cleanPassword });
       // 가입 성공 후 로그인 탭으로 넘기지 않고, 방금 만든 계정으로 바로 로그인시켜서 홈으로 보낸다.
-      await login(cleanEmail, cleanPassword);
-      navigate("/", { replace: true });
+      // [2026-07-28] 신규 가입자는 통합 동의(이용약관/건강정보/AI챗봇)를 아직 안 거쳤으니
+      // 무조건 그 화면부터 보낸다.
+      const me = await login(cleanEmail, cleanPassword);
+      navigate(consentIncomplete(me) ? "/health-info/consent" : "/", { replace: true });
     } catch (err) {
       setSignupError(err instanceof Error ? err.message : "회원가입에 실패했습니다.");
     } finally {

@@ -25,8 +25,13 @@ interface AuthContextValue {
   user: UserInfoResult | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<UserInfoResult>;
   logout: () => Promise<void>;
+  // (2026-07-28) 동의 화면에서 서버에 동의 시각을 저장한 뒤, 캐시된 user를 새로 안
+  // 불러오면 Layout/RequireAuth가 여전히 "미동의"로 판단해 홈으로 못 넘어가고 다시
+  // 동의화면으로 튕기는 버그가 있었다 - ConsentPage가 저장 직후 이걸 호출해서 캐시를
+  // 갱신한다.
+  refreshUser: () => Promise<UserInfoResult>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -69,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const me = await fetchMe();
       // 탭을 안 닫고 로그아웃 후 재로그인하는 경우에도 건강정보 배너를 다시 물어보게 한다.
       clearDismissalForNewLogin(me.profile_id);
+      return me;
     },
     [fetchMe],
   );
@@ -86,7 +92,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated: user !== null, isLoading, login, logout }}
+      value={{
+        user,
+        isAuthenticated: user !== null,
+        isLoading,
+        login,
+        logout,
+        refreshUser: fetchMe,
+      }}
     >
       {children}
     </AuthContext.Provider>

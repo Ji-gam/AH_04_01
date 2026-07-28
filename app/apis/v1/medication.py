@@ -419,7 +419,8 @@ async def search_medications(
         "OCR로 인식한 처방전을 요청자 본인이 아니라, 요청자가 보호자로 등록된 가족 구성원 "
         "(target_profile_id) 몫으로 등록한다. 기존 /confirm과 별개 엔드포인트로 분리했다 - "
         "다른 조원이 확정등록 로직(마스터 DB 매칭 등)을 계속 다듬고 있어 병합 충돌을 피하기 "
-        "위함(의도적 중복, 나중에 합칠지는 상의 후 결정)."
+        "위함(의도적 중복). [2026-07-27] 본인용(/confirm)이 받은 최적화(음식궁합 카드 fast만 "
+        "사용, 부작용 알림 백그라운드 처리)를 이 엔드포인트도 동일하게 받도록 맞춤."
     ),
 )
 async def confirm_recognition_job_for_family(
@@ -427,6 +428,7 @@ async def confirm_recognition_job_for_family(
     body: RecognitionConfirmForFamilyRequest,
     profile: Annotated[Profile, Depends(get_current_profile)],
     session: Annotated[AsyncSession, Depends(get_db)],
+    background_tasks: BackgroundTasks,
 ) -> RecognitionConfirmResult:
     service = MedicationService()
     return await service.confirm_recognition_job_for_family(
@@ -436,6 +438,7 @@ async def confirm_recognition_job_for_family(
         target_profile_id=body.target_profile_id,
         selected_candidate_drug_code=body.selected_candidate_drug_code,
         confirmed_fields=body.confirmed_fields,
+        background_tasks=background_tasks,
     )
 
 
