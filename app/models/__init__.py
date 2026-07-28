@@ -23,6 +23,7 @@ from app.models.medication_intake import MedicationIntakeLog
 from app.models.medication_model import MedicationRecognitionJob, MedicationSchedule
 from app.models.notification_schedules import NotificationSchedule
 from app.models.profiles import Profile
+from app.models.sleep_logs import SleepLog
 from app.models.users import User
 from app.models.weekly_reports import WeeklyReport
 
@@ -53,6 +54,7 @@ __all__ = [
     "MedicationIntakeLog",
     "NotificationSchedule",
     "Profile",
+    "SleepLog",
     "User",
     "MedicationSchedule",
     "MedicationRecognitionJob",

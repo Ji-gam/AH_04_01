@@ -19,6 +19,7 @@ from app.apis.v1.notification_log_routers import notification_log_router
 from app.apis.v1.notification_routers import notification_router
 from app.apis.v1.notification_settings_routers import notification_settings_router
 from app.apis.v1.push_routers import push_router
+from app.apis.v1.sleep_routers import sleep_router
 from app.apis.v1.user_routers import user_router
 from app.apis.v1.weekly_report_routers import weekly_report_router
 
@@ -43,4 +44,5 @@ v1_routers.include_router(goal_router)
 v1_routers.include_router(intake_router)
 v1_routers.include_router(diet_router)
 v1_routers.include_router(exercise_router)
+v1_routers.include_router(sleep_router)
 v1_routers.include_router(weekly_report_router)
