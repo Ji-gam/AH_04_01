@@ -53,15 +53,16 @@ Langfuse v4는 `from langfuse import get_client`가 **1단계 `CallbackHandler`�
 시점에 재검토한다. 이번 작업 범위에 마스킹 구현은 포함하지 않는다.
 
 ### 완료 정의 (Definition of Done)
-- [ ] `observability.py`에 `get_langfuse_client()`/`observe_span()` 추가, 키 미설정 시 no-op 확인
-- [ ] `search_documents()`가 `as_type="retriever"` span으로 계측되고, 필터/후보수/반환수/임계값이
+- [x] `observability.py`에 `get_langfuse_client()`/`observe_span()` 추가, 키 미설정 시 no-op 확인
+- [x] `search_documents()`가 `as_type="retriever"` span으로 계측되고, 필터/후보수/반환수/임계값이
       output·metadata로 남는다
-- [ ] `search_papers()`도 동일하게 계측된다(질환 매칭 결과 포함)
-- [ ] `stream_chat_answer()`에 루트 span 추가 — 실 키로 수동 확인 시 대시보드에서 검색 span과
-      LLM generation이 **하나의 trace** 아래 부모-자식으로 보인다
-- [ ] 키 미설정 시(로컬/CI) 챗봇 동작 무회귀 — conftest의 `_disable_langfuse`가 `get_langfuse_client`도
+- [x] `search_papers()`도 동일하게 계측된다(질환 매칭 결과 포함)
+- [x] `stream_chat_answer()`에 루트 span 추가 — 실 키로 수동 확인 시 대시보드에서 검색 span과
+      LLM generation이 **하나의 trace** 아래 부모-자식으로 보인다 (실측: trace 하나에 `chat_turn`
+      루트 아래 `search_documents`·`ChatOpenAI`가 형제 span으로 확인됨)
+- [x] 키 미설정 시(로컬/CI) 챗봇 동작 무회귀 — conftest의 `_disable_langfuse`가 `get_langfuse_client`도
       막도록 확장
-- [ ] (공통) 테스트 함수명 영문, ruff/mypy 통과(CI 게이트: `ruff check` + `ruff format --check` + `mypy`)
+- [x] (공통) 테스트 함수명 영문, ruff/mypy 통과(CI 게이트: `ruff check` + `ruff format --check` + `mypy`)
 
 ### 허용 경로
 ```
@@ -89,4 +90,24 @@ docs/tasks/_active.json (등록/해제 외 수정 금지)
   포맷을 바꿔야 한다는 결론이 나면 — 진행하지 말고 보고.
 
 ### 완료 보고 (구현 후 작성)
-_구현 후 채움._
+- 완료 정의 체크리스트 결과: 전 항목 충족(위 체크박스). 실 Langfuse 키로 `search_documents`
+  단독 호출(루트 span 없음, 독립 trace) + `stream_chat_answer` 전체 실행(루트 span 있음) 둘 다
+  확인. 후자는 Langfuse API(`client.api.trace.get`)로 trace를 직접 조회해 `chat_turn`(루트) 아래
+  `search_documents`와 `ChatOpenAI`(1단계 콜백 핸들러가 만든 generation)가 같은
+  `parent_observation_id`를 갖는 형제 span으로 기록됨을 실측 확인. 인데놀 브랜드명 브릿지
+  (T-LLM-2-rag-brand-name-bridge)도 무회귀(같은 질의로 3건 검색, 최종 답변 정상).
+- 구현 중 발견해 계획 대비 추가로 고친 것: `observe_span`의 최초 구현이 버그였다 —
+  `@contextmanager` 제너레이터 안에서 `try/except`로 **호출부(`with` 블록) 예외까지** 잡아
+  두 번째 `yield`를 시도해, 실행 시 `RuntimeError: generator didn't stop after throw()`로
+  죽는 구조였다. span **생성**(`client.start_as_current_observation(...).__enter__()`) 실패와
+  호출부 예외를 분리해, 전자만 잡고 후자는 `span_cm.__exit__(*sys.exc_info())` 후 재전파하도록
+  고쳤다. 이 경로를 고정하는 회귀 테스트(`test_observe_span_propagates_caller_exception_without_yielding_twice`)
+  추가.
+- 가정(Assumptions):
+  - `get_client()`가 `CallbackHandler()`와 v4 SDK 내부의 같은 전역 싱글톤을 공유한다는 전제로
+    설계했다 — 실측(API로 trace 직접 조회)으로 확인됨, 별도 trace_id 수동 전달 불필요.
+  - span의 `input`/`output`엔 질의 원문(`query`)이 그대로 들어간다 — 마스킹은 이번 범위 밖으로
+    확인됨(POC 데이터, 위 "환자 텍스트 마스킹" 절 참고).
+- 공유 계약 변경 필요 사항: 없음. 사용자 대면 응답 스키마·스트리밍 이벤트 포맷 무변경.
+- 미완/후속: 없음(1단계 계획 문서의 미결 항목 (b)(c) 모두 이번으로 종결).
+- 브랜치명: `feat/T-LLM-2-langfuse-retrieval-span`

@@ -6,26 +6,49 @@ LangChain 콜백 핸들러 팩토리. 두 task 모듈이 각자 `_build_llm()`/`
 
 관측은 **선택**이다: Langfuse 키가 없으면(로컬 개발, CI) `None`을 돌려주고 호출부는 콜백을
 그냥 생략한다 — 챗봇/구조화 생성은 종전과 완전히 동일하게 동작한다(무회귀).
+
+T-LLM-2-langfuse-retrieval-span(2단계): `get_langfuse_client()`/`observe_span()`은 RAG 검색
+단계(`retrieve_service.search_documents`, `paper_retrieve_service.search_papers`)를 수동
+span으로 계측하는 데 쓴다. `get_client()`가 `CallbackHandler()`와 같은 v4 전역 싱글톤을
+돌려주므로(실측 확인됨), 여기서 연 span과 LLM 호출부가 만드는 generation이 별도 설정 없이도
+같은 trace로 묶인다.
 """
 
 from __future__ import annotations
 
 import os
-from typing import Any
+import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any, Literal
 
 from ai_worker.core.config import settings
 from ai_worker.core.logger import setup_logger
 
 logger = setup_logger("ai_worker.observability")
 
-# 핸들러 생성은 한 번만 시도하고 결과(핸들러 or None)를 캐싱한다.
-# _handler는 성공 시 Langfuse CallbackHandler, 실패/미설정 시 None.
+# 핸들러/클라이언트 생성은 한 번만 시도하고 결과(값 or None)를 캐싱한다.
 _handler: Any = None
-_initialized = False
+_handler_initialized = False
+_client: Any = None
+_client_initialized = False
 
 
 def _is_configured() -> bool:
     return bool(settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY)
+
+
+def _bridge_env() -> None:
+    """pydantic-settings는 .env를 `settings`로만 읽고 os.environ에는 넣지 않는다.
+    Langfuse SDK(v4)는 전역 클라이언트를 표준 환경변수에서 초기화하므로, 여기서
+    settings 값을 환경변수로 브릿지해 "설정 단일 소스 = config.py"를 유지한다.
+    호스트 변수명이 SDK 패치 버전에 따라 LANGFUSE_HOST / LANGFUSE_BASE_URL로 갈려
+    있어 둘 다 세팅한다(같은 값, 무해). `get_langfuse_handler()`/`get_langfuse_client()`
+    어느 쪽이 먼저 불려도 안전하도록 매번 호출해도 무해하게(idempotent) 만든다."""
+    os.environ["LANGFUSE_PUBLIC_KEY"] = settings.LANGFUSE_PUBLIC_KEY
+    os.environ["LANGFUSE_SECRET_KEY"] = settings.LANGFUSE_SECRET_KEY
+    os.environ["LANGFUSE_HOST"] = settings.LANGFUSE_BASE_URL
+    os.environ["LANGFUSE_BASE_URL"] = settings.LANGFUSE_BASE_URL
 
 
 def get_langfuse_handler() -> Any:
@@ -34,25 +57,17 @@ def get_langfuse_handler() -> Any:
     호출부는 반환값이 있을 때만 ``config={"callbacks": [handler]}``로 넘기면 된다.
     최초 1회만 초기화하고 이후엔 캐싱된 값을 돌려준다.
     """
-    global _handler, _initialized
-    if _initialized:
+    global _handler, _handler_initialized
+    if _handler_initialized:
         return _handler
-    _initialized = True
+    _handler_initialized = True
 
     if not _is_configured():
         logger.info("Langfuse 키 미설정 — 관측 비활성화(no-op).")
         _handler = None
         return None
 
-    # pydantic-settings는 .env를 `settings`로만 읽고 os.environ에는 넣지 않는다.
-    # Langfuse SDK(v3)는 전역 클라이언트를 표준 환경변수에서 초기화하므로, 여기서
-    # settings 값을 환경변수로 브릿지해 "설정 단일 소스 = config.py"를 유지한다.
-    # 호스트 변수명이 SDK 패치 버전에 따라 LANGFUSE_HOST / LANGFUSE_BASE_URL로 갈려
-    # 있어 둘 다 세팅한다(같은 값, 무해).
-    os.environ["LANGFUSE_PUBLIC_KEY"] = settings.LANGFUSE_PUBLIC_KEY
-    os.environ["LANGFUSE_SECRET_KEY"] = settings.LANGFUSE_SECRET_KEY
-    os.environ["LANGFUSE_HOST"] = settings.LANGFUSE_BASE_URL
-    os.environ["LANGFUSE_BASE_URL"] = settings.LANGFUSE_BASE_URL
+    _bridge_env()
 
     try:
         # 지연 import: langfuse 미설치 환경(관측 안 쓰는 배포)에서도 이 모듈이 깨지지 않게.
@@ -66,3 +81,69 @@ def get_langfuse_handler() -> Any:
         _handler = None
 
     return _handler
+
+
+def get_langfuse_client() -> Any:
+    """수동 span 계측용 Langfuse 클라이언트를 반환하거나, 미설정이면 ``None``을 반환한다.
+
+    `get_langfuse_handler()`가 만드는 `CallbackHandler`와 v4 SDK 내부의 같은 전역 싱글톤을
+    공유한다(둘 다 결국 SDK의 `get_client()` 경로로 수렴) — 그래서 여기서 연 span 안에서
+    LLM을 호출하면 그 generation이 자동으로 같은 trace의 하위로 들어간다.
+    """
+    global _client, _client_initialized
+    if _client_initialized:
+        return _client
+    _client_initialized = True
+
+    if not _is_configured():
+        _client = None
+        return None
+
+    _bridge_env()
+
+    try:
+        from langfuse import get_client
+
+        _client = get_client()
+    except Exception:
+        logger.exception("Langfuse 클라이언트 초기화 실패 — 검색 span 없이 계속 진행.")
+        _client = None
+
+    return _client
+
+
+ObservationType = Literal[
+    "span", "generation", "embedding", "agent", "tool", "chain", "retriever", "evaluator", "guardrail"
+]
+
+
+@contextmanager
+def observe_span(name: str, as_type: ObservationType = "span", **input_kwargs: Any) -> Iterator[Any]:
+    """이름이 붙은 span으로 블록을 감싼다. Langfuse 미설정 시 ``None``을 yield하는 no-op —
+    호출부는 반환된 span이 ``None``일 수 있다는 것만 알고 `span.update(...)`를 조건부로 쓰면 된다.
+
+    span 생성 실패(클라이언트 없음/SDK 오류)와 호출부(``with`` 블록) 내부의 예외를 반드시
+    구분해야 한다 — `@contextmanager` 제너레이터는 정확히 한 번만 yield할 수 있어서, 호출부
+    예외까지 여기서 잡아 두 번째 `yield`를 시도하면 ``RuntimeError: generator didn't stop
+    after throw()``로 죽는다. 그래서 진입(`__enter__`)만 try/except로 감싸고, 이후 호출부
+    예외는 그대로 통과시킨다."""
+    client = get_langfuse_client()
+    if client is None:
+        yield None
+        return
+
+    try:
+        span_cm = client.start_as_current_observation(name=name, as_type=as_type, input=input_kwargs or None)
+        span = span_cm.__enter__()
+    except Exception:
+        logger.exception("Langfuse span('%s') 생성 실패 — 관측 없이 계속 진행.", name)
+        yield None
+        return
+
+    try:
+        yield span
+    except BaseException:
+        span_cm.__exit__(*sys.exc_info())
+        raise
+    else:
+        span_cm.__exit__(None, None, None)

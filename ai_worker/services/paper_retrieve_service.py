@@ -2,6 +2,7 @@ from typing import Any
 
 from langchain_chroma import Chroma
 
+from ai_worker.core import observability
 from ai_worker.core.config import settings
 from ai_worker.core.logger import setup_logger
 from ai_worker.ingest.pipeline import build_vector_store
@@ -56,19 +57,27 @@ def search_papers(db: Chroma, query: str, limit: int) -> list[DocumentChunk]:
 
     logger.info(f"Retrieving paper chunks for query: '{query}' (diseases: {diseases}, limit: {limit})")
 
-    # 값이 str(단일)일 수도 dict($in, 복수)일 수도 있어 dict[str, Any]로 명시한다.
-    filter_dict: dict[str, Any] = {"disease": diseases[0]} if len(diseases) == 1 else {"disease": {"$in": diseases}}
-    docs_with_scores = db.similarity_search_with_score(query, k=limit, filter=filter_dict)
+    with observability.observe_span(
+        "search_papers", as_type="retriever", query=query, limit=limit, diseases=diseases
+    ) as span:
+        # 값이 str(단일)일 수도 dict($in, 복수)일 수도 있어 dict[str, Any]로 명시한다.
+        filter_dict: dict[str, Any] = {"disease": diseases[0]} if len(diseases) == 1 else {"disease": {"$in": diseases}}
+        docs_with_scores = db.similarity_search_with_score(query, k=limit, filter=filter_dict)
 
-    for doc, score in docs_with_scores:
-        logger.info(f"DEBUG_SCORE: PMID={doc.metadata.get('pmid')}, score={score}")
+        for doc, score in docs_with_scores:
+            logger.info(f"DEBUG_SCORE: PMID={doc.metadata.get('pmid')}, score={score}")
 
-    threshold = settings.PAPER_SIMILARITY_THRESHOLD
-    valid_docs_with_scores = [(doc, score) for doc, score in docs_with_scores if score < threshold]
+        threshold = settings.PAPER_SIMILARITY_THRESHOLD
+        valid_docs_with_scores = [(doc, score) for doc, score in docs_with_scores if score < threshold]
 
-    chunks = [
-        DocumentChunk(content=doc.page_content, metadata=doc.metadata, score=score)
-        for doc, score in valid_docs_with_scores
-    ]
-    logger.info(f"Found {len(chunks)} relevant paper chunks after threshold (candidates: {len(docs_with_scores)})")
-    return chunks
+        chunks = [
+            DocumentChunk(content=doc.page_content, metadata=doc.metadata, score=score)
+            for doc, score in valid_docs_with_scores
+        ]
+        logger.info(f"Found {len(chunks)} relevant paper chunks after threshold (candidates: {len(docs_with_scores)})")
+        if span is not None:
+            span.update(
+                output=[{"pmid": c.metadata.get("pmid"), "score": c.score} for c in chunks],
+                metadata={"candidate_count": len(docs_with_scores), "threshold": threshold},
+            )
+        return chunks
