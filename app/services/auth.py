@@ -164,18 +164,25 @@ class AuthService:
         if await self.profile_repo.exists_by_phone_number(session, phone_number):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="이미 사용중인 휴대폰 번호입니다.")
 
-    async def withdraw(self, session: AsyncSession, user: User, password: str) -> None:
+    async def withdraw(self, session: AsyncSession, user: User, password: str | None) -> None:
         """회원탈퇴. 개인정보보호법상 탈퇴 시 지체없이 파기해야 하므로 소프트삭제가 아니라
         즉시 완전 삭제한다. User를 지우면 Profile도 cascade(delete-orphan)로 같이 삭제된다.
-        소셜 가입자는 비밀번호가 없다 - 이 메서드는 아직 이메일 가입자 전용이다(소셜 탈퇴는 다음 단계에서 다룬다).
+
+        [2026-07-28 수정] 원래 "소셜 가입자는 비밀번호가 없다 - 이 메서드는 아직 이메일
+        가입자 전용이다(소셜 탈퇴는 다음 단계에서 다룬다)"는 상태로 남아있어서, 소셜
+        가입자는 사실상 탈퇴가 불가능했다(hashed_password가 항상 None이라 검증을 항상
+        실패함). 소셜 계정은 비밀번호 재확인 없이(유효한 토큰만으로) 탈퇴 가능하게 풀었다 -
+        OAuth 재인증까지 요구하는 더 엄격한 방식은 범위 밖으로 남겨둔다.
 
         [익명화 통계] 완전 삭제 전에, 진단병력/가족력을 식별정보 없이 통계용으로 남긴다
         (WithdrawnHealthStat - profile_id/user_id/이름 등 전혀 안 남고, 나이도 나이대로
         일반화). 개인정보보호법 제28조의2(가명정보의 통계작성 목적 처리)에 근거 - 팀 논의
         내용은 withdraw_data_policy_summary.md 참고. 탈퇴 안내 문구에도 "통계 목적으로
         익명처리된 형태로만 일부 남을 수 있다"고 명시한다."""
-        if user.hashed_password is None or not verify_password(password, user.hashed_password):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="비밀번호가 올바르지 않습니다.")
+        if user.hashed_password is not None:
+            if password is None or not verify_password(password, user.hashed_password):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="비밀번호가 올바르지 않습니다.")
+        # else: 소셜 가입자 - 비밀번호 자체가 없으므로 검증 없이 진행(유효한 토큰만으로 탈퇴 허용)
 
         result = await session.execute(
             select(Profile)

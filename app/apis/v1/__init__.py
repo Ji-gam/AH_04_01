@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.apis.v1.admin_routers import admin_router
 from app.apis.v1.auth_routers import auth_router
 from app.apis.v1.chat_routers import chat_router
 from app.apis.v1.content_routers import content_router
@@ -23,6 +24,7 @@ from app.apis.v1.weekly_report_routers import weekly_report_router
 
 v1_routers = APIRouter(prefix="/api/v1")
 v1_routers.include_router(auth_router)
+v1_routers.include_router(admin_router)
 v1_routers.include_router(user_router)
 v1_routers.include_router(chat_router)
 v1_routers.include_router(content_router)

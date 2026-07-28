@@ -29,10 +29,11 @@ export const authApi = {
       body: JSON.stringify(payload),
     }),
   // 204 No Content라 JSON 바디가 없다 — apiFetch(res.json())를 쓰면 파싱 에러가 나서 raw fetch를 쓴다.
-  withdraw: async (password: string) => {
+  // (2026-07-28) 소셜 가입자는 비밀번호가 없어서 password를 아예 안 보내도 되게 선택값으로 변경.
+  withdraw: async (password?: string) => {
     await apiFetchRaw("/auth/withdraw", {
       method: "DELETE",
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ password: password ?? null }),
     });
   },
 };

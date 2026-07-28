@@ -1,7 +1,10 @@
+from datetime import datetime
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import config
 from app.core.utils.common import normalize_phone_number
-from app.dtos.users import UserUpdateRequest
+from app.dtos.users import ConsentUpdateRequest, UserUpdateRequest
 from app.models.profiles import Profile
 from app.models.users import User
 from app.repositories.profile_repository import ProfileRepository
@@ -25,3 +28,19 @@ class UserManageService:
         await self.profile_repo.update_instance(session, profile, profile_fields)
         await session.commit()
         return user, profile
+
+    async def update_consent(self, session: AsyncSession, user: User, data: ConsentUpdateRequest) -> User:
+        """[개인정보보호법 제23조 등] true를 보내면 그 시각으로 갱신한다 - false/미전달은 기존
+        상태(동의 안 함, 또는 이미 동의한 시각)를 그대로 둔다. 한 번 동의를 명시적으로 철회하는
+        기능은 여기서 다루지 않는다(회원탈퇴 시 계정 자체가 삭제되므로 별도 철회 API는 불필요)."""
+        now = datetime.now(tz=config.TIMEZONE)
+        if data.health_info:
+            user.health_info_consented_at = now
+        if data.ai_chat:
+            user.ai_chat_consented_at = now
+        if data.terms_of_service:
+            user.terms_of_service_consented_at = now
+        if data.marketing:
+            user.marketing_consented_at = now
+        await session.commit()
+        return user

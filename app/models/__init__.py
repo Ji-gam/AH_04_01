@@ -1,4 +1,6 @@
+from app.models.admin_action import AdminAction
 from app.models.chat import ChatMessage, ChatSession
+from app.models.error_log import ErrorLog
 from app.models.content import ContentCategory, HealthContent
 from app.models.diary_entries import DiaryEntry
 from app.models.diet_logs import DietLog
@@ -26,6 +28,7 @@ from app.models.weekly_reports import WeeklyReport
 
 __all__ = [
     "ALL_DUR_MODELS",
+    "AdminAction",
     "ChatMessage",
     "ChatSession",
     "ContentCategory",
@@ -34,6 +37,7 @@ __all__ = [
     "DietLog",
     "DiagnosisEntry",
     "DiseaseSubtype",
+    "ErrorLog",
     "ExerciseLog",
     "FamilyHistoryEntry",
     "FamilyInviteCode",

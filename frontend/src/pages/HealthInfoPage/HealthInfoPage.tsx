@@ -14,7 +14,6 @@ import type {
 import PageTitle from "../../components/common/PageTitle";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
-import { hasConsented } from "../../utils/healthInfoConsent";
 
 import BirthDateInput from "./BirthDateInput";
 import DiseaseSubtypeSearchInput from "./DiseaseSubtypeSearchInput";
@@ -579,9 +578,17 @@ export default function HealthInfoPage() {
   }
 
   useEffect(() => {
-    if (!user || !hasConsented(user.email)) {
-      // 홈 배너를 거치지 않고 더보기 등에서 바로 들어온 경우 - 동의화면부터 거치게 한다.
-      navigate("/health-info/consent", { replace: true });
+    // (2026-07-28) 예전엔 localStorage(hasConsented)로 체크했는데, 통합 동의가
+    // 서버 DB 기준으로 바뀌면서 그 캐시를 없앴다 - 이제 user 객체(서버 응답) 기준으로
+    // 직접 확인한다. RequireAuth가 이미 이 라우트를 막고 있어 사실상 이중 방어에
+    // 가깝지만, 더보기 등에서 바로 들어오는 경로까지 안전하게 커버한다.
+    if (
+      !user ||
+      !user.terms_of_service_consented_at ||
+      !user.health_info_consented_at ||
+      !user.ai_chat_consented_at
+    ) {
+      navigate("/health-info/consent", { replace: true, state: { from: "/health-info" } });
       return;
     }
     load();

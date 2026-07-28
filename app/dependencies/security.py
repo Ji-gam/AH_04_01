@@ -55,3 +55,15 @@ async def get_current_profile_optional(
         return await ProfileRepository().get_profile(session, verified.payload["profile_id"])
     except Exception:
         return None
+
+
+async def get_current_admin_user(
+    user: Annotated[User, Depends(get_request_user)],
+) -> User:
+    """[2026-07-27] 공지사항 발송(POST /notices) 등 관리자 전용이어야 할 엔드포인트에
+    로그인 여부만 확인하고 관리자 여부는 확인 안 하던 문제(누구나 전체 사용자에게 푸시
+    발송 가능)를 막기 위해 추가. User.is_admin은 원래 모델에 있었지만 이 의존성이
+    생기기 전까진 앱 어디에서도 실제로 검사되지 않았다."""
+    if not user.is_admin:
+        raise HTTPException(detail="관리자만 접근할 수 있습니다.", status_code=status.HTTP_403_FORBIDDEN)
+    return user

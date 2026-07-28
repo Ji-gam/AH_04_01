@@ -1676,15 +1676,19 @@ class MedicationService:
         target_profile_id: int,
         selected_candidate_drug_code: str | None,
         confirmed_fields: dict | None,
+        background_tasks: BackgroundTasks,
     ) -> RecognitionConfirmResult:
         """(가족관리) OCR로 인식한 처방전을 요청자 본인이 아니라, 요청자가 보호자로 등록된
         가족 구성원(target_profile_id) 몫으로 등록한다.
 
-        [의도적 중복 - TODO] confirm_recognition_job과 로직이 거의 동일하다. 이 시점에 다른
-        조원이 confirm_recognition_job(OCR/수동 등록 마스터 DB 매칭)을 계속 다듬고 있어서,
-        공통 헬퍼로 묶는 리팩터링은 병합 충돌 위험이 있다고 판단해 완전히 분리된 함수로
-        추가했다. 두 함수를 합칠지는 조원과 상의 후 결정 예정 - 상의 전까지는 이 함수를
-        건드리지 않고 confirm_recognition_job 쪽만 개선/수정한다."""
+        [2026-07-27] confirm_recognition_job(본인용)이 PR #288에서 받은 최적화(음식궁합
+        카드는 fast만 쓰고 느린 실시간 API는 안 타게, 부작용 알림은 background_tasks로 분리)를
+        이 함수는 못 받아서 옛날 경로(느린 실시간 API + 응답 안에서 알림 동기 대기)로 남아있었다
+        - 프론트가 Promise.all로 약 여러 개를 동시에 confirm하는데, 그중 로컬 스냅샷에 없는 약이
+        하나라도 있으면 실시간 API 호출까지 겹쳐서 배포 서버에서 500이 났다(가족 사진등록만
+        실패, 검색등록은 정상이었던 것도 이 경로만 안 타서였음). 본인용과 동일한 경로로 맞춰서
+        해결함 - 이 함수는 내가(study115) 추가한 코드라 다른 조원 코드 충돌 걱정 없이 바로 고침.
+        """
         is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, target_profile_id)
         if not is_guardian:
             raise HTTPException(
@@ -1722,11 +1726,18 @@ class MedicationService:
                 source_job_id=job_id,
             )
             await self._repository.create_schedule(session, schedule)
-            await self._side_effect_notification_service.notify_if_side_effects(session, target_profile_id, drug_name)
+            # (2026-07-27) 응답 안에서 직접 기다리던 것을 본인용과 동일하게 백그라운드로 뺌 -
+            # 등록 응답을 부작용 알림(최대 10초 걸릴 수 있음) 때문에 지연/실패시키지 않는다.
+            background_tasks.add_task(_notify_side_effects_task, target_profile_id, drug_name)
 
+        # (2026-07-27) 본인용(confirm_recognition_job)과 동일하게 fast(로컬 데이터)만 쓰고,
+        # 로컬에 없으면 그냥 비워서 "음식" 탭의 기존 pending 조회에 맡긴다 - 느린 실시간 API
+        # (_build_food_interaction_guide_card_slow)는 여기서 타지 않는다.
         guide_cards = []
         if drug_name:
-            guide_cards.append(await _build_food_interaction_guide_card(session, drug_name))
+            fast_card = await _build_food_interaction_guide_card_fast(session, drug_name)
+            if fast_card is not None:
+                guide_cards.append(fast_card)
 
         return RecognitionConfirmResult(status="confirmed", guide_cards=guide_cards)
 

@@ -1,13 +1,14 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
 
 from app.apis.v1 import v1_routers
 from app.core import config
 from app.core.config import Env
 from app.core.db.databases import AsyncSessionLocal
+from app.repositories.error_log_repository import ErrorLogRepository
 from app.scripts.seed_health_content import seed_health_content
 from app.services import medication_open_api_client
 from app.services.medication_service import refresh_food_drug_interaction_cache
@@ -70,7 +71,37 @@ app = FastAPI(
 
 app.include_router(v1_routers)
 
+
+async def _log_unhandled_exception(request: Request, exc: Exception) -> ORJSONResponse:
+    """(2026-07-28) 챗봇 오류는 이미 파일 로그로 개인정보 제거해서 남기고 있었는데,
+    나머지 API는 안 잡힌 예외가 나도 도커 로그에만 흘러가고 DB에 남거나 관리자 화면에서
+    조회할 방법이 없었다 - 이 핸들러 + error_logs 테이블로 그 공백을 메운다. 같은 이유로
+    전체 트레이스백/요청 바디는 안 남기고 예외 타입 + 잘라낸 메시지 + 경로만 남긴다.
+    로깅 자체가 실패해도(DB 문제 등) 원래 500 응답은 그대로 내려가야 한다."""
+    try:
+        async with AsyncSessionLocal() as session:
+            await ErrorLogRepository().log(
+                session,
+                method=request.method,
+                path=request.url.path,
+                exception_type=type(exc).__name__,
+                message=str(exc),
+                status_code=500,
+            )
+    except Exception:
+        pass
+    return ORJSONResponse(status_code=500, content={"detail": "서버 오류가 발생했습니다."})
+
+
+app.add_exception_handler(Exception, _log_unhandled_exception)
+
 if config.ENV == Env.LOCAL:
     from app.admin import register_admin
 
     register_admin(app)
+
+    # [임시, 로컬 전용] error_logs 파이프라인 자체가 제대로 동작하는지 확인하기 위한
+    # 테스트용 엔드포인트 - 일부러 예외를 던진다. 확인 끝나면 이 블록 통째로 지우면 됨.
+    @app.get("/api/v1/_debug/trigger-error")
+    async def _debug_trigger_error() -> None:
+        raise RuntimeError("버그 리포트 파이프라인 테스트용 - 실제 버그 아님")

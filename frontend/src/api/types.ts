@@ -22,6 +22,15 @@ export interface UserInfoResult {
   phone_number: string | null;
   gender: "MALE" | "FEMALE" | null;
   created_at: string;
+  // 관리자 메뉴 노출 여부에만 씀 - 실제 권한검증은 서버(get_current_admin_user)가 함.
+  is_admin: boolean;
+  // (2026-07-28) RequireAuth의 통합 동의 게이트가 매번 API를 더 안 불러도 되게 여기 포함.
+  health_info_consented_at: string | null;
+  ai_chat_consented_at: string | null;
+  terms_of_service_consented_at: string | null;
+  marketing_consented_at: string | null;
+  // 소셜 가입자는 비밀번호가 없어서 회원탈퇴 등에서 비밀번호 입력란 자체를 안 보여줘야 한다.
+  has_password: boolean;
 }
 
 export interface ChatSessionCreateResult {
@@ -232,6 +241,23 @@ export interface UserUpdatePayload {
   name?: string;
   phone_number?: string;
   gender?: "MALE" | "FEMALE";
+}
+
+// GET/PATCH /users/me/consent 응답. 미동의 시 null.
+export interface ConsentStatusResult {
+  health_info_consented_at: string | null;
+  ai_chat_consented_at: string | null;
+  terms_of_service_consented_at: string | null;
+  marketing_consented_at: string | null;
+}
+
+// PATCH /users/me/consent 요청 바디. true를 보내면 서버 시각으로 갱신되고, false/미전달은
+// 기존 상태를 그대로 둔다(명시적 철회 기능 아님).
+export interface ConsentUpdatePayload {
+  health_info?: boolean;
+  ai_chat?: boolean;
+  terms_of_service?: boolean;
+  marketing?: boolean;
 }
 
 // 백엔드 app/dtos/habit.py와 1:1로 수동 동기화. 홈 화면 습관 트래커.
