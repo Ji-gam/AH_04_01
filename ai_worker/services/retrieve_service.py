@@ -1,4 +1,5 @@
 import csv
+from collections.abc import Iterable
 from typing import Any
 
 from langchain_chroma import Chroma
@@ -57,18 +58,25 @@ def _load_product_ingredient_map() -> dict[str, tuple[str, ...]]:
     return mapping
 
 
-def cache_searchable_names(db: Chroma) -> None:
+def cache_searchable_names(db: Chroma, extra_item_names: Iterable[str] = ()) -> None:
     """적재된 문서에서 질의에 쓸 이름을 뽑아 캐싱한다 — 성분명과 약 이름 **둘 다**.
 
     약 이름을 같이 담는 이유: 사람은 "아세트아미노펜 부작용"이 아니라 "타이레놀 부작용"이라고
-    묻는다. 성분명만 보던 시절엔 그런 질문이 전부 0건이었다(`drug_name_resolver` 참고)."""
+    묻는다. 성분명만 보던 시절엔 그런 질문이 전부 0건이었다(`drug_name_resolver` 참고).
+
+    `extra_item_names`(T-LLM-2-rag-brand-name-bridge): Chroma에 적재된 문서는 e약은요
+    부분집합뿐이라(~4,758건), "인데놀"처럼 e약은요엔 없지만 전체 허가목록(43K)엔 있는
+    브랜드는 이 스캔만으로는 절대 안 걸린다. 호출부가 브랜드->성분 브릿지
+    (`_load_product_ingredient_map`의 키, 즉 전체 허가목록 유래 제품명)를 여기 같이
+    넘겨 `drug_names` 인덱스 자체를 넓힌다 — 문서가 없어도 "이 이름은 아는 약이다"까지는
+    알아보게 한다."""
     try:
         logger.info("Extracting searchable names (ingredients + drug names) from ChromaDB...")
         # metadatas만 조회 (langchain-chroma의 공개 API — 사설 `_collection` 미사용)
         data = db.get(include=["metadatas"])
         metadatas = (data.get("metadatas") or []) if data else []
         ingr_names: set[str] = set()
-        item_names: set[str] = set()
+        item_names: set[str] = set(extra_item_names)
         for meta in metadatas:
             if not meta:
                 continue
@@ -101,8 +109,10 @@ def initialize_rag() -> None:
     try:
         db = build_vector_store(COLLECTION_NAME)
         db_holder["db"] = db
-        cache_searchable_names(db)
+        # 브릿지를 먼저 로드해야 그 제품명 전체를 drug_names 인덱스에 병합할 수 있다
+        # (cache_searchable_names의 extra_item_names 참고) — 순서를 바꾸면 안 된다.
         db_holder["product_ingredients"] = _load_product_ingredient_map()
+        cache_searchable_names(db, extra_item_names=db_holder["product_ingredients"].keys())
         warm_up_embeddings()
         logger.info("RAG Initialization completed.")
     except Exception as e:
@@ -126,13 +136,14 @@ def ensure_db() -> Chroma:
     if db is None:
         db = build_vector_store(COLLECTION_NAME)
         db_holder["db"] = db
-        cache_searchable_names(db)
         db_holder["product_ingredients"] = _load_product_ingredient_map()
+        cache_searchable_names(db, extra_item_names=db_holder["product_ingredients"].keys())
     return db
 
 
-def _build_filters(query: str) -> list[dict[str, Any]]:
-    """질의에서 성분명이나 약 이름을 찾아 메타데이터 필터 목록을 만든다. 못 찾으면 빈 리스트.
+def _build_filters(query: str) -> list[tuple[dict[str, Any], str]]:
+    """질의에서 성분명이나 약 이름을 찾아 (메타데이터 필터, 검색 문구) 쌍의 목록을 만든다.
+    못 찾으면 빈 리스트. 필터마다 검색 문구를 따로 두는 이유는 아래 브릿지 설명 참고.
 
     성분명을 먼저 본다 — DUR 금기/주의 규칙이 성분 단위라 더 구체적인 답이기 때문이다.
     성분명이 없으면 약 이름으로 e약은요(효능/용법/부작용 산문)를 찾는다. 둘 다 같은 접두사
@@ -155,24 +166,48 @@ def _build_filters(query: str) -> list[dict[str, Any]]:
     if matched_ingr is not None:
         key, ingredients = matched_ingr
         logger.info(f"Dynamic metadata filter applied: ingr '{key}' -> {len(ingredients)}개 성분")
-        return [{"ingr_name": ingredients[0] if len(ingredients) == 1 else {"$in": ingredients}}]
+        return [({"ingr_name": ingredients[0] if len(ingredients) == 1 else {"$in": ingredients}}, query)]
 
     matched_drug = db_holder["drug_names"].resolve(query)
     if matched_drug is not None:
         key, products = matched_drug
         logger.info(f"Dynamic metadata filter applied: drug '{key}' -> {len(products)}개 제품")
         # 브랜드 하나에 제품이 여럿이다("타이레놀" -> 정/서방정/현탁액...). 하나만 고르면
-        # 엉뚱한 제형이 잡히므로 전부 넘기고 유사도가 고르게 한다.
-        filters = [{"item_name": products[0] if len(products) == 1 else {"$in": products}}]
+        # 엉뚱한 제형이 잡히므로 전부 넘기고 유사도가 고르게 한다. e약은요 문서는 본문에
+        # 브랜드명을 그대로 쓰므로(예: "itemName: 인데놀정10mg...") 원본 질의 그대로 비교해도 된다.
+        filters: list[tuple[dict[str, Any], str]] = [
+            ({"item_name": products[0] if len(products) == 1 else {"$in": products}}, query)
+        ]
 
+        # 브릿지가 주는 성분명 표기는 MySQL item_ingredient_map 원문이라 염(鹽) 형태
+        # ("프로프라놀롤염산염")일 수 있고, DUR 문서엔 염을 뗀 원형("프로프라놀롤")으로
+        # 저장돼 있다(T-LLM-2-rag-brand-name-bridge 실측). 원문을 그대로 필터 값으로 쓰면
+        # Chroma 정확매치가 항상 0건이 되므로, 사용자 질의를 정규화할 때와 같은 인덱스
+        # (`ingr_names`)로 한 번 더 정규화해 실제 문서에 저장된 표기를 찾는다. 정규화가
+        # 실패하면(그 성분에 대한 DUR 문서가 애초에 없음) 조용히 건너뛴다 — 억지로 걸어도
+        # 어차피 0건이라 다름없다.
         bridged_ingredients: set[str] = set()
         for product in products:
-            bridged_ingredients.update(db_holder["product_ingredients"].get(product, ()))
+            for raw_ingr_name in db_holder["product_ingredients"].get(product, ()):
+                resolved = db_holder["ingr_names"].resolve(raw_ingr_name)
+                if resolved is not None:
+                    bridged_ingredients.update(resolved[1])
 
         if bridged_ingredients:
             ingr_list = sorted(bridged_ingredients)
             logger.info(f"Dynamic metadata filter applied: drug '{key}' -> 성분 브릿지 {len(ingr_list)}개")
-            filters.append({"ingr_name": ingr_list[0] if len(ingr_list) == 1 else {"$in": ingr_list}})
+            ingr_filter = {"ingr_name": ingr_list[0] if len(ingr_list) == 1 else {"$in": ingr_list}}
+            # DUR 문서는 브랜드명("인데놀")을 절대 쓰지 않고 성분명("프로프라놀롤")만 쓴다.
+            # 원본 질의 그대로 임베딩 비교하면 브랜드명이 문서 어휘와 안 겹쳐 유사도 점수가
+            # 나쁘게 나와, 실제로 관련 있는 문서가 임계값(RAG_SIMILARITY_THRESHOLD)에 걸려
+            # 탈락한다(T-LLM-2-rag-brand-name-bridge 실측: "인데놀 노인이 먹어도 돼?" -> DUR
+            # 문서 점수 0.42, 임계값 0.35 미달 — 기존 브랜드 "타이레놀"도 같은 문제였으나
+            # e약은요 문서가 늘 함께 걸려 가려져 있었다). 임계값 자체는 건드리지 않는다(그
+            # 값은 무관 질문을 걸러내는 별개의 방어선 — config.py 참고) — 이 필터에 한해서만
+            # 검색 문구에 정규화된 성분명을 덧붙여 문서 어휘와 겹치게 한다. 원본 질의는
+            # 그대로 뒤에 남겨 "노인이 먹어도 돼?" 같은 질문 의도는 보존한다.
+            search_text = f"{' '.join(ingr_list)} {query}"
+            filters.append((ingr_filter, search_text))
 
         return filters
 
@@ -199,10 +234,11 @@ def search_documents(db: Chroma, query: str, limit: int) -> list[DocumentChunk]:
 
     # 필터마다 따로 top-k를 뽑아 합친다(단일 $or로 합치지 않는 이유는 _build_filters
     # 참고) — 제품명 브릿지가 걸리면 필터가 2개(item_name, ingr_name)라 최대 limit*2건이
-    # 후보로 모일 수 있다.
+    # 후보로 모일 수 있다. 필터마다 검색 문구(search_text)도 다를 수 있다 — 성분 브릿지
+    # 필터는 원본 질의 대신 정규화된 성분명을 덧붙인 문구로 비교한다(_build_filters 참고).
     docs_with_scores: list[tuple[Any, float]] = []
-    for filter_dict in filters:
-        docs_with_scores.extend(db.similarity_search_with_score(query, k=limit, filter=filter_dict))
+    for filter_dict, search_text in filters:
+        docs_with_scores.extend(db.similarity_search_with_score(search_text, k=limit, filter=filter_dict))
 
     # 디버깅 로그 출력 (유사도 거리 분석용)
     for doc, score in docs_with_scores:

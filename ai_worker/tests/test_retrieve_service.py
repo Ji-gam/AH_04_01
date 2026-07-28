@@ -27,6 +27,7 @@ class FakeChromaDb:
     ) -> None:
         self._docs_with_scores = docs_with_scores
         self._metadatas = metadatas or []
+        self.received_queries: list[tuple[str, dict | None]] = []
 
     def _matches(self, doc: Document, filter: dict) -> bool:
         for key, want in filter.items():
@@ -40,6 +41,7 @@ class FakeChromaDb:
         return True
 
     def similarity_search_with_score(self, query: str, k: int, filter: dict | None = None):
+        self.received_queries.append((query, filter))
         if filter is None:
             return self._docs_with_scores[:k]
         return [(doc, score) for doc, score in self._docs_with_scores if self._matches(doc, filter)][:k]
@@ -65,6 +67,18 @@ def test_cache_searchable_names_collects_ingredients_and_drug_names():
 
     assert retrieve_service.db_holder["ingr_names"].resolve("졸피뎀타르타르산염 관련 질문") is not None
     assert retrieve_service.db_holder["drug_names"].resolve("타이레놀 부작용") is not None
+
+
+def test_cache_searchable_names_merges_extra_item_names_from_bridge():
+    """T-LLM-2-rag-brand-name-bridge: "인데놀"은 e약은요 문서가 없어 Chroma 메타데이터에
+    안 잡히지만, 전체 허가목록 기준 브릿지(_item_ingredient_map.csv)의 제품명 사전엔 있다.
+    그 사전을 extra_item_names로 넘기면, 문서가 하나도 없는 브랜드도 "아는 약 이름"으로
+    인식돼야 한다 — 이게 안 되면 브릿지까지 도달하기 전에 _build_filters가 검색을 생략한다."""
+    db = FakeChromaDb([], metadatas=[])  # 인데놀 e약은요 문서 없음(실제 상황과 동일)
+
+    retrieve_service.cache_searchable_names(db, extra_item_names=["인데놀정10mg(프로프라놀롤염산염)"])
+
+    assert retrieve_service.db_holder["drug_names"].resolve("인데놀 노인이 먹어도 돼?") is not None
 
 
 def test_search_documents_filters_by_similarity_threshold(monkeypatch):
@@ -174,7 +188,12 @@ def test_search_documents_finds_dur_rule_by_product_name(monkeypatch):
     """ "타이레놀 같이 먹어도 돼?"는 제품명 질의지만 DUR 병용금기는 성분(아세트아미노펜)
     단위로 키가 걸려 있다. product_ingredients 브릿지가 제품명 매칭에서 성분명을 찾아
     $or로 함께 걸어야, item_name만 있는 e약은요 문서뿐 아니라 ingr_name만 있는 DUR
-    문서까지 같이 뽑힌다."""
+    문서까지 같이 뽑힌다.
+
+    ingr_names를 실제 DUR 문서(아세트아미노펜 규칙)로 채워두는 이유: 프로덕션에서는
+    cache_searchable_names가 같은 문서 스캔에서 ingr_names와 drug_names를 함께 채우므로
+    "그 성분의 DUR 문서가 Chroma에 있는데 ingr_names엔 없다"는 조합은 실제로 없다
+    (_build_filters가 브릿지 성분명을 ingr_names로 정규화하기 때문)."""
     monkeypatch.setattr(retrieve_service.settings, "RAG_SIMILARITY_THRESHOLD", 10.0)
     dur_rule = Document(page_content="아세트아미노펜 병용금기 규칙", metadata={"ingr_name": "아세트아미노펜"})
     summary = Document(
@@ -182,7 +201,7 @@ def test_search_documents_finds_dur_rule_by_product_name(monkeypatch):
     )
     other = Document(page_content="무관 성분 규칙", metadata={"ingr_name": "와파린"})
     db = FakeChromaDb([(dur_rule, 0.1), (summary, 0.1), (other, 0.1)])
-    retrieve_service.db_holder["ingr_names"] = DrugNameIndex()
+    retrieve_service.db_holder["ingr_names"] = build_ingredient_index(["아세트아미노펜", "와파린"])
     retrieve_service.db_holder["drug_names"] = build_index(["타이레놀정500밀리그람(아세트아미노펜)"])
     retrieve_service.db_holder["product_ingredients"] = {"타이레놀정500밀리그람(아세트아미노펜)": ("아세트아미노펜",)}
 
@@ -190,6 +209,66 @@ def test_search_documents_finds_dur_rule_by_product_name(monkeypatch):
 
     contents = {chunk.content for chunk in chunks}
     assert contents == {dur_rule.page_content, summary.page_content}
+
+
+def test_search_documents_normalizes_salt_form_bridge_ingredient(monkeypatch):
+    """T-LLM-2-rag-brand-name-bridge 실측 버그: 전체 허가목록 기준으로 넓힌 브릿지는
+    item_ingredient_map 원문을 그대로 준다 — "인데놀" -> "프로프라놀롤염산염"(염 형태).
+    그런데 DUR 문서엔 염을 뗀 원형 "프로프라놀롤"로만 저장돼 있다. 브릿지 원문을 그대로
+    필터에 쓰면 정확매치가 항상 0건이 된다 — ingr_names로 한 번 더 정규화해야 실제
+    문서의 표기를 찾는다."""
+    monkeypatch.setattr(retrieve_service.settings, "RAG_SIMILARITY_THRESHOLD", 10.0)
+    dur_rule = Document(page_content="프로프라놀롤 노인주의 규칙", metadata={"ingr_name": "프로프라놀롤"})
+    db = FakeChromaDb([(dur_rule, 0.1)])
+    retrieve_service.db_holder["ingr_names"] = build_ingredient_index(["프로프라놀롤"])
+    retrieve_service.db_holder["drug_names"] = build_index(["인데놀정10mg(프로프라놀롤염산염)"])
+    # MySQL item_ingredient_map 원문 그대로 — 염 형태, DUR 문서 표기와 다름.
+    retrieve_service.db_holder["product_ingredients"] = {"인데놀정10mg(프로프라놀롤염산염)": ("프로프라놀롤염산염",)}
+
+    chunks = retrieve_service.search_documents(db, "인데놀 노인이 먹어도 돼?", limit=3)
+
+    assert len(chunks) == 1
+    assert chunks[0].content == dur_rule.page_content
+
+
+def test_search_documents_augments_bridge_search_text_with_resolved_ingredient(monkeypatch):
+    """DUR 문서는 브랜드명("인데놀")을 절대 안 쓰고 성분명("프로프라놀롤")만 쓴다. 성분
+    브릿지 필터로 검색할 때 원본 질의 그대로 비교하면 임베딩 유사도가 나쁘게 나와 임계값에
+    걸려 탈락한다(실측: 0.42, 임계값 0.35 미달) — 기존 브랜드 "타이레놀"도 e약은요 문서가
+    함께 걸려 가려졌을 뿐 같은 문제였다. 성분 브릿지 필터에 한해서만 검색 문구에 정규화된
+    성분명을 덧붙여야 한다(item_name 필터는 원본 질의 그대로 둬야 한다 — e약은요 문서는
+    본문에 브랜드명을 그대로 쓴다)."""
+    monkeypatch.setattr(retrieve_service.settings, "RAG_SIMILARITY_THRESHOLD", 10.0)
+    dur_rule = Document(page_content="프로프라놀롤 노인주의 규칙", metadata={"ingr_name": "프로프라놀롤"})
+    db = FakeChromaDb([(dur_rule, 0.1)])
+    retrieve_service.db_holder["ingr_names"] = build_ingredient_index(["프로프라놀롤"])
+    retrieve_service.db_holder["drug_names"] = build_index(["인데놀정10mg(프로프라놀롤염산염)"])
+    retrieve_service.db_holder["product_ingredients"] = {"인데놀정10mg(프로프라놀롤염산염)": ("프로프라놀롤염산염",)}
+
+    retrieve_service.search_documents(db, "인데놀 노인이 먹어도 돼?", limit=3)
+
+    queries_by_filter_key = {tuple(sorted((f or {}).keys())): q for q, f in db.received_queries}
+    assert queries_by_filter_key[("item_name",)] == "인데놀 노인이 먹어도 돼?"
+    ingr_name_query = queries_by_filter_key[("ingr_name",)]
+    assert "프로프라놀롤" in ingr_name_query
+    assert "인데놀 노인이 먹어도 돼?" in ingr_name_query
+
+
+def test_search_documents_skips_bridge_ingredient_without_dur_document(monkeypatch):
+    """브릿지 성분명이 ingr_names에서 정규화되지 않으면(그 성분에 대한 DUR 문서가 애초에
+    없음) 조용히 건너뛰고 item_name 필터만 남는다 — 존재하지 않는 표기로 필터를 걸어 헛김을
+    보내지 않는다."""
+    monkeypatch.setattr(retrieve_service.settings, "RAG_SIMILARITY_THRESHOLD", 10.0)
+    summary = Document(page_content="게보린 e약은요 요약", metadata={"item_name": "게보린정"})
+    db = FakeChromaDb([(summary, 0.1)])
+    retrieve_service.db_holder["ingr_names"] = DrugNameIndex()  # 이 성분에 대한 DUR 문서 없음
+    retrieve_service.db_holder["drug_names"] = build_index(["게보린정"])
+    retrieve_service.db_holder["product_ingredients"] = {"게보린정": ("무관성분코드",)}
+
+    chunks = retrieve_service.search_documents(db, "게보린 부작용", limit=3)
+
+    assert len(chunks) == 1
+    assert chunks[0].content == summary.page_content
 
 
 def test_search_documents_falls_back_to_item_name_only_without_bridge_entry(monkeypatch):
