@@ -7,9 +7,13 @@ from app.core.db.databases import get_db
 from app.dependencies.security import get_current_admin_user
 from app.dtos.admin import (
     AdminActionResponse,
+    AdminContentResponse,
+    AdminNoticeResponse,
     AdminStatsResponse,
     AdminUserResponse,
+    ContentUpdateRequest,
     ErrorLogResponse,
+    NoticeUpdateRequest,
     OpsStatsResponse,
     SetAdminRequest,
 )
@@ -53,6 +57,100 @@ async def get_ops_stats(
     service = AdminService()
     stats = await service.get_ops_stats(session)
     return OpsStatsResponse(**stats)
+
+
+@admin_router.get(
+    "/notices",
+    response_model=list[AdminNoticeResponse],
+    status_code=status.HTTP_200_OK,
+    summary="공지 목록 조회 (관리자 전용)",
+)
+async def list_notices_admin(
+    admin: Annotated[User, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> list[AdminNoticeResponse]:
+    service = AdminService()
+    notices = await service.list_notices_admin(session)
+    return [AdminNoticeResponse.model_validate(n) for n in notices]
+
+
+@admin_router.patch(
+    "/notices/{notice_id}",
+    response_model=AdminNoticeResponse,
+    status_code=status.HTTP_200_OK,
+    summary="공지 수정 (관리자 전용)",
+    description="보낸 필드만 갱신한다. 수정만 하고 재발송은 하지 않는다(이미 받은 사람에게 중복 알림 방지).",
+)
+async def update_notice_admin(
+    notice_id: int,
+    body: NoticeUpdateRequest,
+    admin: Annotated[User, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> AdminNoticeResponse:
+    service = AdminService()
+    updated = await service.update_notice(session, admin, notice_id, body)
+    return AdminNoticeResponse.model_validate(updated)
+
+
+@admin_router.delete(
+    "/notices/{notice_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="공지 삭제 (관리자 전용)",
+)
+async def delete_notice_admin(
+    notice_id: int,
+    admin: Annotated[User, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    service = AdminService()
+    await service.delete_notice(session, admin, notice_id)
+
+
+@admin_router.get(
+    "/contents",
+    response_model=list[AdminContentResponse],
+    status_code=status.HTTP_200_OK,
+    summary="건강 콘텐츠 목록 조회 (관리자 전용)",
+)
+async def list_contents_admin(
+    admin: Annotated[User, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> list[AdminContentResponse]:
+    service = AdminService()
+    contents = await service.list_contents_admin(session)
+    return [AdminContentResponse.model_validate(c) for c in contents]
+
+
+@admin_router.patch(
+    "/contents/{content_id}",
+    response_model=AdminContentResponse,
+    status_code=status.HTTP_200_OK,
+    summary="건강 콘텐츠 수정 (관리자 전용)",
+    description="보낸 필드만 갱신한다. 질환/카테고리/날짜는 유니크 제약 키라 여기서 안 바꾼다.",
+)
+async def update_content_admin(
+    content_id: int,
+    body: ContentUpdateRequest,
+    admin: Annotated[User, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> AdminContentResponse:
+    service = AdminService()
+    updated = await service.update_content(session, admin, content_id, body)
+    return AdminContentResponse.model_validate(updated)
+
+
+@admin_router.delete(
+    "/contents/{content_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="건강 콘텐츠 삭제 (관리자 전용)",
+)
+async def delete_content_admin(
+    content_id: int,
+    admin: Annotated[User, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    service = AdminService()
+    await service.delete_content(session, admin, content_id)
 
 
 @admin_router.get(
