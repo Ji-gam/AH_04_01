@@ -43,7 +43,9 @@ export default function DataConsentPage() {
     consentApi
       .get()
       .then(setStatus)
-      .catch((err) => setError(err instanceof Error ? err.message : "동의 현황을 불러오지 못했습니다."))
+      .catch((err) =>
+        setError(err instanceof Error ? err.message : "동의 현황을 불러오지 못했습니다."),
+      )
       .finally(() => setLoading(false));
   }, []);
 
@@ -90,7 +92,13 @@ export default function DataConsentPage() {
                     padding: 14,
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
                     <span style={{ fontWeight: 700, fontSize: 14 }}>
                       {item.title} {item.required ? "(필수)" : "(선택)"}
                     </span>
@@ -108,7 +116,9 @@ export default function DataConsentPage() {
                       {consentedAt ? "동의함" : "미동의"}
                     </span>
                   </div>
-                  <p style={{ margin: "6px 0 0", fontSize: 12.5, color: t.textMuted }}>{item.summary}</p>
+                  <p style={{ margin: "6px 0 0", fontSize: 12.5, color: t.textMuted }}>
+                    {item.summary}
+                  </p>
                   {consentedAt && (
                     <p style={{ margin: "6px 0 0", fontSize: 11, color: t.textMuted }}>
                       동의 시각: {new Date(consentedAt).toLocaleString("ko-KR")}

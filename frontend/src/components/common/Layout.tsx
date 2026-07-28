@@ -28,7 +28,9 @@ export default function Layout() {
   const { user, isAuthenticated } = useAuth();
 
   const consentDone =
-    !!user?.terms_of_service_consented_at && !!user?.health_info_consented_at && !!user?.ai_chat_consented_at;
+    !!user?.terms_of_service_consented_at &&
+    !!user?.health_info_consented_at &&
+    !!user?.ai_chat_consented_at;
   if (isAuthenticated && !consentDone && location.pathname !== "/health-info/consent") {
     return <Navigate to="/health-info/consent" replace state={{ from: location.pathname }} />;
   }

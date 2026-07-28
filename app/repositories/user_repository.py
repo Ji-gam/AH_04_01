@@ -92,11 +92,7 @@ class UserRepository:
         0으로 채워서 그래프 x축이 끊기지 않게 한다."""
         since = datetime.now(tz=config.TIMEZONE) - timedelta(days=days - 1)
         day_col = func.date(User.created_at)
-        stmt = (
-            select(day_col.label("day"), func.count().label("cnt"))
-            .where(User.created_at >= since)
-            .group_by(day_col)
-        )
+        stmt = select(day_col.label("day"), func.count().label("cnt")).where(User.created_at >= since).group_by(day_col)
         result = await session.execute(stmt)
         counts_by_day = {str(row.day): row.cnt for row in result.all()}
 

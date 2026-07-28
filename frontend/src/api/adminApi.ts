@@ -62,7 +62,9 @@ export interface AdminOpsStatsResult {
 
 export const adminApi = {
   listUsers: (search?: string) =>
-    apiFetch<AdminUserResult[]>(`/admin/users${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+    apiFetch<AdminUserResult[]>(
+      `/admin/users${search ? `?search=${encodeURIComponent(search)}` : ""}`,
+    ),
   setAdmin: (userId: number, isAdmin: boolean) =>
     apiFetch<AdminUserResult>(`/admin/users/${userId}/admin`, {
       method: "PATCH",

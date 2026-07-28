@@ -291,7 +291,10 @@ export default function AdminPage() {
           responsive: true,
           maintainAspectRatio: false,
           plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } },
+          scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } },
+            x: { grid: { display: false } },
+          },
         },
       });
     }
@@ -317,7 +320,10 @@ export default function AdminPage() {
           responsive: true,
           maintainAspectRatio: false,
           plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } },
+          scales: {
+            y: { beginAtZero: true, ticks: { precision: 0 } },
+            x: { grid: { display: false } },
+          },
         },
       });
     }
@@ -328,7 +334,9 @@ export default function AdminPage() {
         type: "bar",
         data: {
           labels: opsStats.withdrawal_trend.map((p) => p.date.slice(5)),
-          datasets: [{ data: opsStats.withdrawal_trend.map((p) => p.count), backgroundColor: "#e24b4a" }],
+          datasets: [
+            { data: opsStats.withdrawal_trend.map((p) => p.count), backgroundColor: "#e24b4a" },
+          ],
         },
         options: {
           responsive: true,
@@ -437,9 +445,18 @@ export default function AdminPage() {
         <option value="FOOD">음식</option>
         <option value="MEDICAL_NEWS">의학뉴스</option>
       </select>
-      {contentError && <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{contentError}</p>}
-      {contentMessage && <p style={{ margin: 0, color: pinkTheme.primary, fontSize: 13 }}>{contentMessage}</p>}
-      <button type="button" onClick={handleGenerateContent} disabled={contentGenerating} style={buttonStyle}>
+      {contentError && (
+        <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{contentError}</p>
+      )}
+      {contentMessage && (
+        <p style={{ margin: 0, color: pinkTheme.primary, fontSize: 13 }}>{contentMessage}</p>
+      )}
+      <button
+        type="button"
+        onClick={handleGenerateContent}
+        disabled={contentGenerating}
+        style={buttonStyle}
+      >
         {contentGenerating ? "생성 중..." : "콘텐츠 생성하기"}
       </button>
     </div>
@@ -480,8 +497,12 @@ export default function AdminPage() {
         rows={3}
         style={{ ...inputStyle, resize: "vertical" }}
       />
-      {noticeError && <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{noticeError}</p>}
-      {noticeMessage && <p style={{ margin: 0, color: pinkTheme.primary, fontSize: 13 }}>{noticeMessage}</p>}
+      {noticeError && (
+        <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{noticeError}</p>
+      )}
+      {noticeMessage && (
+        <p style={{ margin: 0, color: pinkTheme.primary, fontSize: 13 }}>{noticeMessage}</p>
+      )}
       <button
         type="button"
         onClick={handleSendNotice}
@@ -519,10 +540,19 @@ export default function AdminPage() {
         >
           ← 뒤로가기
         </button>
-        <h2 style={{ margin: 0, color: pinkTheme.text }}>🔧 관리자{!isDesktop && " · 빠른 작업"}</h2>
+        <h2 style={{ margin: 0, color: pinkTheme.text }}>
+          🔧 관리자{!isDesktop && " · 빠른 작업"}
+        </h2>
 
         {isDesktop && (
-          <div style={{ display: "flex", gap: 4, borderBottom: `1px solid ${pinkTheme.border}`, flexWrap: "wrap" }}>
+          <div
+            style={{
+              display: "flex",
+              gap: 4,
+              borderBottom: `1px solid ${pinkTheme.border}`,
+              flexWrap: "wrap",
+            }}
+          >
             {(
               [
                 ["dashboard", "대시보드"],
@@ -533,7 +563,12 @@ export default function AdminPage() {
                 ["log", "활동 로그"],
               ] as [Tab, string][]
             ).map(([key, label]) => (
-              <button key={key} type="button" onClick={() => setTab(key)} style={tabButtonStyle(tab === key)}>
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                style={tabButtonStyle(tab === key)}
+              >
                 {label}
               </button>
             ))}
@@ -544,18 +579,32 @@ export default function AdminPage() {
         {isDesktop && tab === "dashboard" && (
           <>
             <div
-              style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: 12,
+              }}
             >
               <div style={metricCardStyle}>
-                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>전체 사용자</p>
-                <p style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>{stats?.total_users ?? "-"}</p>
+                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>
+                  전체 사용자
+                </p>
+                <p style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>
+                  {stats?.total_users ?? "-"}
+                </p>
               </div>
               <div style={metricCardStyle}>
-                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>관리자 수</p>
-                <p style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>{stats?.total_admins ?? "-"}</p>
+                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>
+                  관리자 수
+                </p>
+                <p style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>
+                  {stats?.total_admins ?? "-"}
+                </p>
               </div>
               <div style={metricCardStyle}>
-                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>건강정보 동의율</p>
+                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>
+                  건강정보 동의율
+                </p>
                 <p style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>
                   {stats && stats.total_users > 0
                     ? `${Math.round((stats.consent_summary.health_info / stats.total_users) * 100)}%`
@@ -563,7 +612,9 @@ export default function AdminPage() {
                 </p>
               </div>
               <div style={metricCardStyle}>
-                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>최근 24시간 오류</p>
+                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>
+                  최근 24시간 오류
+                </p>
                 <p
                   style={{
                     margin: 0,
@@ -577,11 +628,15 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {statsLoading && <p style={{ color: pinkTheme.textMuted, fontSize: 13 }}>불러오는 중...</p>}
+            {statsLoading && (
+              <p style={{ color: pinkTheme.textMuted, fontSize: 13 }}>불러오는 중...</p>
+            )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12 }}>
               <div style={cardStyle}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                >
                   <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>가입자 추이</p>
                   <div style={{ display: "flex", gap: 4 }}>
                     {[7, 14, 30].map((d) => (
@@ -605,11 +660,17 @@ export default function AdminPage() {
                   </div>
                 </div>
                 <div style={{ position: "relative", width: "100%", height: 220 }}>
-                  <canvas ref={signupCanvasRef} role="img" aria-label="가입자 수 라인 차트"></canvas>
+                  <canvas
+                    ref={signupCanvasRef}
+                    role="img"
+                    aria-label="가입자 수 라인 차트"
+                  ></canvas>
                 </div>
               </div>
               <div style={cardStyle}>
-                <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>동의 항목별 인원</p>
+                <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>
+                  동의 항목별 인원
+                </p>
                 {/* (그래프 대신 항상 숫자가 보이는 막대 나열 - 마우스를 안 올려도 바로 읽혀야 함) */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {(
@@ -655,9 +716,15 @@ export default function AdminPage() {
             </div>
 
             {/* ── 운영 현황(2026-07-28 대시보드에 통합) ── */}
-            {opsStatsLoading && <p style={{ color: pinkTheme.textMuted, fontSize: 13 }}>불러오는 중...</p>}
+            {opsStatsLoading && (
+              <p style={{ color: pinkTheme.textMuted, fontSize: 13 }}>불러오는 중...</p>
+            )}
             <div
-              style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12 }}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: 12,
+              }}
             >
               <div style={metricCardStyle}>
                 <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>
@@ -676,12 +743,18 @@ export default function AdminPage() {
                   복약 순응도(근사, 7일)
                 </p>
                 <p style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>
-                  {opsStats?.adherence_rate != null ? `${Math.round(opsStats.adherence_rate * 100)}%` : "-"}
+                  {opsStats?.adherence_rate != null
+                    ? `${Math.round(opsStats.adherence_rate * 100)}%`
+                    : "-"}
                 </p>
               </div>
               <div style={metricCardStyle}>
-                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>가족 연결 건수</p>
-                <p style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>{opsStats?.family_link_count ?? "-"}</p>
+                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>
+                  가족 연결 건수
+                </p>
+                <p style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>
+                  {opsStats?.family_link_count ?? "-"}
+                </p>
               </div>
               <div style={metricCardStyle}>
                 <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>
@@ -692,13 +765,16 @@ export default function AdminPage() {
                 </p>
               </div>
               <div style={metricCardStyle}>
-                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>AI-worker 상태</p>
+                <p style={{ margin: "0 0 6px", fontSize: 13, color: pinkTheme.textMuted }}>
+                  AI-worker 상태
+                </p>
                 <p
                   style={{
                     margin: 0,
                     fontSize: 24,
                     fontWeight: 700,
-                    color: opsStats?.ai_worker_status === "ok" ? pinkTheme.success : pinkTheme.danger,
+                    color:
+                      opsStats?.ai_worker_status === "ok" ? pinkTheme.success : pinkTheme.danger,
                   }}
                 >
                   {opsStats == null ? "-" : opsStats.ai_worker_status === "ok" ? "정상" : "다운"}
@@ -708,9 +784,15 @@ export default function AdminPage() {
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
               <div style={cardStyle}>
-                <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>챗봇 메시지 수 (최근 7일)</p>
+                <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>
+                  챗봇 메시지 수 (최근 7일)
+                </p>
                 <div style={{ position: "relative", width: "100%", height: 200 }}>
-                  <canvas ref={chatCanvasRef} role="img" aria-label="챗봇 메시지 수 라인 차트"></canvas>
+                  <canvas
+                    ref={chatCanvasRef}
+                    role="img"
+                    aria-label="챗봇 메시지 수 라인 차트"
+                  ></canvas>
                 </div>
               </div>
               <div style={cardStyle}>
@@ -718,15 +800,25 @@ export default function AdminPage() {
                   알림 발송 건수 (최근 7일, 성공/실패는 미추적)
                 </p>
                 <div style={{ position: "relative", width: "100%", height: 200 }}>
-                  <canvas ref={notifCanvasRef} role="img" aria-label="알림 발송 건수 라인 차트"></canvas>
+                  <canvas
+                    ref={notifCanvasRef}
+                    role="img"
+                    aria-label="알림 발송 건수 라인 차트"
+                  ></canvas>
                 </div>
               </div>
             </div>
 
             <div style={cardStyle}>
-              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>탈퇴 추이 (최근 30일, 근사치)</p>
+              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>
+                탈퇴 추이 (최근 30일, 근사치)
+              </p>
               <div style={{ position: "relative", width: "100%", height: 180 }}>
-                <canvas ref={withdrawalCanvasRef} role="img" aria-label="탈퇴 관련 통계 기록 추이 막대 차트"></canvas>
+                <canvas
+                  ref={withdrawalCanvasRef}
+                  role="img"
+                  aria-label="탈퇴 관련 통계 기록 추이 막대 차트"
+                ></canvas>
               </div>
             </div>
 
@@ -770,12 +862,14 @@ export default function AdminPage() {
                   </thead>
                   <tbody>
                     {opsStats &&
-                      Object.entries(opsStats.content_count_by_category).map(([category, count]) => (
-                        <tr key={category}>
-                          <td style={tdStyle}>{category}</td>
-                          <td style={tdStyle}>{count}</td>
-                        </tr>
-                      ))}
+                      Object.entries(opsStats.content_count_by_category).map(
+                        ([category, count]) => (
+                          <tr key={category}>
+                            <td style={tdStyle}>{category}</td>
+                            <td style={tdStyle}>{count}</td>
+                          </tr>
+                        ),
+                      )}
                   </tbody>
                 </table>
               </div>
@@ -796,11 +890,17 @@ export default function AdminPage() {
                 onKeyDown={(e) => e.key === "Enter" && loadUsers(search || undefined)}
                 style={{ ...inputStyle, flex: 1 }}
               />
-              <button type="button" onClick={() => loadUsers(search || undefined)} style={buttonStyle}>
+              <button
+                type="button"
+                onClick={() => loadUsers(search || undefined)}
+                style={buttonStyle}
+              >
                 검색
               </button>
             </div>
-            {usersError && <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{usersError}</p>}
+            {usersError && (
+              <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{usersError}</p>
+            )}
             {usersLoading ? (
               <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>불러오는 중...</p>
             ) : (
@@ -819,7 +919,8 @@ export default function AdminPage() {
                     }}
                   >
                     <span style={{ color: pinkTheme.text }}>
-                      {u.email} {u.is_admin && <strong style={{ color: pinkTheme.primary }}>· 관리자</strong>}
+                      {u.email}{" "}
+                      {u.is_admin && <strong style={{ color: pinkTheme.primary }}>· 관리자</strong>}
                     </span>
                     <button
                       type="button"
@@ -836,7 +937,9 @@ export default function AdminPage() {
                   </div>
                 ))}
                 {users.length === 0 && (
-                  <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>결과가 없어요.</p>
+                  <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>
+                    결과가 없어요.
+                  </p>
                 )}
               </div>
             )}
@@ -888,7 +991,9 @@ export default function AdminPage() {
                   </tbody>
                 </table>
                 {users.length === 0 && (
-                  <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>결과가 없어요.</p>
+                  <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>
+                    결과가 없어요.
+                  </p>
                 )}
               </div>
             )}
@@ -897,7 +1002,9 @@ export default function AdminPage() {
 
         {/* ── 공지 발송 + 콘텐츠 생성 (PC: 전용 탭, 모바일: 항상 표시) ── */}
         {(!isDesktop || tab === "content") && (
-          <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr", gap: 16 }}>
+          <div
+            style={{ display: "grid", gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr", gap: 16 }}
+          >
             {noticeForm}
             {contentGenerateForm}
           </div>
@@ -952,18 +1059,23 @@ export default function AdminPage() {
         {/* ── 활동 로그 (PC 전용) ── */}
         {isDesktop && tab === "log" && (
           <div style={cardStyle}>
-            <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>최근 관리자 활동 로그</p>
+            <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>
+              최근 관리자 활동 로그
+            </p>
             {actionsLoading ? (
               <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>불러오는 중...</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {actions.map((a) => (
                   <div key={a.id} style={{ fontSize: 12, color: pinkTheme.textMuted }}>
-                    [{new Date(a.created_at).toLocaleString("ko-KR")}] {a.detail || `${a.action} (${a.target})`}
+                    [{new Date(a.created_at).toLocaleString("ko-KR")}]{" "}
+                    {a.detail || `${a.action} (${a.target})`}
                   </div>
                 ))}
                 {actions.length === 0 && (
-                  <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>아직 기록이 없어요.</p>
+                  <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>
+                    아직 기록이 없어요.
+                  </p>
                 )}
               </div>
             )}

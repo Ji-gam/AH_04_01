@@ -17,7 +17,9 @@ export function sanitizeCredential(value: string): string {
 /** (2026-07-28) 회원가입 시 한 화면에서 받는 통합 동의 - 이용약관/건강정보/AI챗봇은 필수,
  * 마케팅은 선택이라 여기 체크에서 뺀다. RequireAuth.tsx와 동일한 기준. */
 function consentIncomplete(me: UserInfoResult): boolean {
-  return !me.terms_of_service_consented_at || !me.health_info_consented_at || !me.ai_chat_consented_at;
+  return (
+    !me.terms_of_service_consented_at || !me.health_info_consented_at || !me.ai_chat_consented_at
+  );
 }
 
 type Tab = "login" | "signup";

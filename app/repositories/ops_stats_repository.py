@@ -25,9 +25,7 @@ class OpsStatsRepository:
         result = await session.execute(stmt)
         return result.scalar_one()
 
-    async def top_drugs(
-        self, session: AsyncSession, min_count: int = 3, limit: int = 10
-    ) -> list[tuple[str, int]]:
+    async def top_drugs(self, session: AsyncSession, min_count: int = 3, limit: int = 10) -> list[tuple[str, int]]:
         """등록 건수 기준 상위 약품. min_count 미만인 항목(등록자가 아주 적은 약)은
         결과에서 아예 빼서, 희귀 약 하나로 특정 소수 사용자가 역추적되는 걸 막는다."""
         stmt = (
@@ -94,11 +92,7 @@ class OpsStatsRepository:
         return trend
 
     async def family_link_count(self, session: AsyncSession) -> int:
-        stmt = (
-            select(func.count())
-            .select_from(FamilyLink)
-            .where(FamilyLink.status == FamilyLinkStatus.ACCEPTED)
-        )
+        stmt = select(func.count()).select_from(FamilyLink).where(FamilyLink.status == FamilyLinkStatus.ACCEPTED)
         result = await session.execute(stmt)
         return result.scalar_one()
 
@@ -114,9 +108,7 @@ class OpsStatsRepository:
 
         since_date = date.today() - timedelta(days=days - 1)
         checked_stmt = (
-            select(func.count())
-            .select_from(MedicationIntakeLog)
-            .where(MedicationIntakeLog.intake_date >= since_date)
+            select(func.count()).select_from(MedicationIntakeLog).where(MedicationIntakeLog.intake_date >= since_date)
         )
         checked_result = await session.execute(checked_stmt)
         checked = checked_result.scalar_one()

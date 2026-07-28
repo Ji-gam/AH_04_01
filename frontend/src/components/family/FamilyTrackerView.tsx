@@ -460,9 +460,9 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
             수동 약품 등록
           </h3>
           <p style={{ fontSize: 13, color: t.textMuted, margin: 0 }}>
-            약품명을 검색해서 목록에서 선택하면 바로 복약 일정이 등록됩니다. 검색 결과에 원하는
-            약이 없으면, 입력한 이름 그대로 새로 등록할 수도 있습니다(마스터 DB에 없는 약도 등록
-            자체는 막히지 않습니다).
+            약품명을 검색해서 목록에서 선택하면 바로 복약 일정이 등록됩니다. 검색 결과에 원하는 약이
+            없으면, 입력한 이름 그대로 새로 등록할 수도 있습니다(마스터 DB에 없는 약도 등록 자체는
+            막히지 않습니다).
           </p>
 
           {/* (2026-07-27) 본인용과 동일하게 복용횟수/시각을 검색보다 먼저 배치 - 약을 고르기
@@ -593,8 +593,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
                         !durInfo &&
                         searchDurUnmatched.includes(r.medication_name) && (
                           <div style={{ fontSize: 11, color: t.textMuted, marginTop: 4 }}>
-                            DUR 데이터베이스에서 이 약을 찾지 못해 주의사항을 확인할 수
-                            없습니다.
+                            DUR 데이터베이스에서 이 약을 찾지 못해 주의사항을 확인할 수 없습니다.
                           </div>
                         )}
                       {durInfo &&
@@ -814,13 +813,14 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
                           !durInfo &&
                           candidateDurUnmatched.includes(c.medication_name) && (
                             <div style={{ fontSize: 11, color: t.textMuted, marginTop: 4 }}>
-                              DUR 데이터베이스에서 이 약을 찾지 못해 주의사항을 확인할 수
-                              없습니다.
+                              DUR 데이터베이스에서 이 약을 찾지 못해 주의사항을 확인할 수 없습니다.
                             </div>
                           )}
                         {durInfo &&
                           (activeFlags.length > 0 ? (
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                            <div
+                              style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}
+                            >
                               {activeFlags.map((f) => (
                                 <span
                                   key={f.rule_code}
@@ -875,8 +875,8 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
                   >
                     ⚠️ 선택한 약들 사이에 병용금기·효능군중복 등 상호작용이{" "}
                     {candidateDurInteractions.drug_intrc.interactions.length}건, 리콜 정보가{" "}
-                    {candidateDurInteractions.drug_intrc.recalls.length}건 있어요. 등록 목록 →
-                    "약품 궁합" 탭에서 자세히 확인할 수 있어요.
+                    {candidateDurInteractions.drug_intrc.recalls.length}건 있어요. 등록 목록 → "약품
+                    궁합" 탭에서 자세히 확인할 수 있어요.
                   </div>
                 )}
 
@@ -1143,8 +1143,7 @@ function ListTab({ targetProfileId }: { targetProfileId: number }) {
                     </div>
                     {isUnverifiedDrug(item.item_seq) && (
                       <div style={{ fontSize: 11, color: "#b26a00", marginTop: 4 }}>
-                        ⚠️ 마스터 DB에 없는 약이라 상호작용(병용금기) 검사가 제공되지
-                        않습니다.
+                        ⚠️ 마스터 DB에 없는 약이라 상호작용(병용금기) 검사가 제공되지 않습니다.
                       </div>
                     )}
                     {item.source_job_id && (
@@ -1325,7 +1324,12 @@ function FamilyDurIngredientCard({ ingredient }: { ingredient: DurIngredientDeta
           {ingredient.rules.map((rule, idx) => (
             <div
               key={idx}
-              style={{ fontSize: 12, lineHeight: 1.5, paddingLeft: 10, borderLeft: `2px solid ${t.border}` }}
+              style={{
+                fontSize: 12,
+                lineHeight: 1.5,
+                paddingLeft: 10,
+                borderLeft: `2px solid ${t.border}`,
+              }}
             >
               <b>{rule.rule_type}</b> — {rule.prohbt_content}
             </div>
@@ -1367,7 +1371,8 @@ function InteractionsTab({ targetProfileId }: { targetProfileId: number }) {
         setIngredients(ingredient);
       })
       .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "상호작용 확인에 실패했습니다.");
+        if (!cancelled)
+          setError(err instanceof Error ? err.message : "상호작용 확인에 실패했습니다.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -1526,7 +1531,6 @@ function InteractionsTab({ targetProfileId }: { targetProfileId: number }) {
   );
 }
 
-
 const FAMILY_FOOD_POLARITY_STYLES: Record<
   FamilyFoodItem["polarity"],
   { icon: string; label: string; color: string; bg: string }
@@ -1563,9 +1567,8 @@ function FoodTab({ targetProfileId }: { targetProfileId: number }) {
         if (fast.pending_medication_names.length > 0) {
           setPendingLoading(true);
           try {
-            const pending = await familyMedicationApi.checkFoodInteractionsPendingForFamily(
-              targetProfileId,
-            );
+            const pending =
+              await familyMedicationApi.checkFoodInteractionsPendingForFamily(targetProfileId);
             if (cancelled) return;
             setResult((prev) => ({
               guide_cards: [...(prev?.guide_cards ?? []), ...pending.guide_cards],

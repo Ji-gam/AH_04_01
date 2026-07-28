@@ -148,7 +148,9 @@ export default function ConsentPage() {
                 <input
                   type="checkbox"
                   checked={checked[item.key]}
-                  onChange={(e) => setChecked((prev) => ({ ...prev, [item.key]: e.target.checked }))}
+                  onChange={(e) =>
+                    setChecked((prev) => ({ ...prev, [item.key]: e.target.checked }))
+                  }
                   style={{ marginTop: 2 }}
                 />
                 <span>

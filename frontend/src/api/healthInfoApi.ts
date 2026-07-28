@@ -1,5 +1,10 @@
 import { apiFetch } from "./client";
-import type { ConsentStatusResult, ConsentUpdatePayload, HealthInfoResult, HealthInfoUpdatePayload } from "./types";
+import type {
+  ConsentStatusResult,
+  ConsentUpdatePayload,
+  HealthInfoResult,
+  HealthInfoUpdatePayload,
+} from "./types";
 
 export const healthInfoApi = {
   get: () => apiFetch<HealthInfoResult>("/users/me/health-info"),
