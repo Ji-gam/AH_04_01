@@ -72,6 +72,11 @@ class ContentRepository:
         result = await session.execute(select(HealthContent).where(HealthContent.id == content_id))
         return result.scalar_one_or_none()
 
+    async def delete(self, session: AsyncSession, content: HealthContent) -> None:
+        """(관리자 화면) 부적절하거나 잘못 생성된 콘텐츠 삭제용."""
+        await session.delete(content)
+        await session.commit()
+
     async def list_related(
         self,
         session: AsyncSession,

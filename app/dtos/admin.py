@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Annotated
+from datetime import date, datetime
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -52,6 +52,42 @@ class AdminStatsResponse(BaseModel):
     signup_trend: Annotated[list[SignupTrendPoint], Field(description="최근 7일 가입자 추이(날짜 오름차순).")]
     consent_summary: Annotated[ConsentSummary, Field(description="항목별 동의자 수.")]
     error_count_24h: Annotated[int, Field(description="최근 24시간 서버 오류 건수.")]
+
+
+class AdminNoticeResponse(BaseSerializerModel):
+    id: Annotated[int, Field(description="공지 PK.")]
+    kind: Annotated[str, Field(description="'NOTICE' 또는 'MARKETING'.")]
+    title: Annotated[str, Field(description="공지 제목.")]
+    body: Annotated[str, Field(description="공지 본문.")]
+    created_at: Annotated[datetime, Field(description="등록 시각.")]
+
+
+class NoticeUpdateRequest(BaseModel):
+    """부분 수정 - 보낸 필드만 갱신한다. 수정만 하고 재발송은 안 함(이미 받은 사람에게
+    중복 알림이 가지 않도록 발송은 최초 등록 시 1회로 제한)."""
+
+    kind: Annotated[Literal["NOTICE", "MARKETING"] | None, Field(None, description="공지 종류.")]
+    title: Annotated[str | None, Field(None, min_length=1, max_length=200, description="공지 제목.")]
+    body: Annotated[str | None, Field(None, min_length=1, description="공지 본문.")]
+
+
+class AdminContentResponse(BaseSerializerModel):
+    id: Annotated[int, Field(description="콘텐츠 PK.")]
+    disease_code: Annotated[str, Field(description="질환 코드.")]
+    category: Annotated[str, Field(description="콘텐츠 카테고리.")]
+    content_date: Annotated[date, Field(description="콘텐츠 기준 날짜.")]
+    title: Annotated[str, Field(description="카드 제목.")]
+    summary: Annotated[str, Field(description="카드 요약.")]
+    body: Annotated[str, Field(description="카드 본문.")]
+
+
+class ContentUpdateRequest(BaseModel):
+    """부분 수정 - 보낸 필드만 갱신한다. 질환/카테고리/날짜는 유니크 제약 키라 여기서
+    안 바꾼다(바꾸고 싶으면 삭제 후 재생성)."""
+
+    title: Annotated[str | None, Field(None, min_length=1, max_length=200, description="카드 제목.")]
+    summary: Annotated[str | None, Field(None, min_length=1, description="카드 요약.")]
+    body: Annotated[str | None, Field(None, min_length=1, description="카드 본문.")]
 
 
 class ErrorLogResponse(BaseSerializerModel):

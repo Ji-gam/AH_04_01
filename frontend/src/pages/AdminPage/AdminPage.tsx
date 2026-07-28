@@ -5,14 +5,15 @@ import { useNavigate } from "react-router-dom";
 import {
   adminApi,
   type AdminActionResult,
+  type AdminContentResult,
   type AdminErrorLogResult,
+  type AdminNoticeResult,
   type AdminOpsStatsResult,
   type AdminStatsResult,
   type AdminUserResult,
 } from "../../api/adminApi";
 import { contentApi } from "../../api/contentApi";
 import { noticeApi } from "../../api/noticeApi";
-import type { ContentCategory } from "../../api/types";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
 
@@ -86,7 +87,7 @@ const tdStyle: React.CSSProperties = {
   verticalAlign: "top",
 };
 
-type Tab = "dashboard" | "users" | "consent" | "content" | "log" | "bugs";
+type Tab = "dashboard" | "users" | "consent" | "notices" | "contents" | "log" | "bugs";
 
 /** 관리자 전용 화면(더보기 > 관리자, is_admin인 계정에게만 메뉴 노출). 실제 권한검증은
  * 서버(get_current_admin_user)가 하므로, 이 화면 자체를 프론트에서 숨기는 건 UX일 뿐 -
@@ -117,14 +118,28 @@ export default function AdminPage() {
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [noticeError, setNoticeError] = useState<string | null>(null);
 
-  const [contentDiseaseCode, setContentDiseaseCode] = useState("");
-  const [contentCategory, setContentCategory] = useState<ContentCategory | "">("");
   const [contentGenerating, setContentGenerating] = useState(false);
   const [contentMessage, setContentMessage] = useState<string | null>(null);
   const [contentError, setContentError] = useState<string | null>(null);
 
   const [actions, setActions] = useState<AdminActionResult[]>([]);
   const [actionsLoading, setActionsLoading] = useState(false);
+
+  const [notices, setNotices] = useState<AdminNoticeResult[]>([]);
+  const [noticesLoading, setNoticesLoading] = useState(false);
+  const [expandedNoticeId, setExpandedNoticeId] = useState<number | null>(null);
+  const [editingNoticeId, setEditingNoticeId] = useState<number | null>(null);
+  const [editNoticeKind, setEditNoticeKind] = useState<"NOTICE" | "MARKETING">("NOTICE");
+  const [editNoticeTitle, setEditNoticeTitle] = useState("");
+  const [editNoticeBody, setEditNoticeBody] = useState("");
+
+  const [contents, setContents] = useState<AdminContentResult[]>([]);
+  const [contentsLoading, setContentsLoading] = useState(false);
+  const [expandedContentId, setExpandedContentId] = useState<number | null>(null);
+  const [editingContentId, setEditingContentId] = useState<number | null>(null);
+  const [editContentTitle, setEditContentTitle] = useState("");
+  const [editContentSummary, setEditContentSummary] = useState("");
+  const [editContentBody, setEditContentBody] = useState("");
 
   const [errorLogs, setErrorLogs] = useState<AdminErrorLogResult[]>([]);
   const [errorLogsLoading, setErrorLogsLoading] = useState(false);
@@ -213,6 +228,94 @@ export default function AdminPage() {
     }
   }
 
+  async function loadNotices() {
+    setNoticesLoading(true);
+    try {
+      setNotices(await adminApi.listNotices());
+    } catch {
+      // 목록도 부가 정보 - 실패해도 발송 폼은 그대로 쓸 수 있어야 한다.
+    } finally {
+      setNoticesLoading(false);
+    }
+  }
+
+  function startEditNotice(n: AdminNoticeResult) {
+    setEditingNoticeId(n.id);
+    setEditNoticeKind(n.kind);
+    setEditNoticeTitle(n.title);
+    setEditNoticeBody(n.body);
+  }
+
+  async function handleSaveNotice(id: number) {
+    try {
+      await adminApi.updateNotice(id, {
+        kind: editNoticeKind,
+        title: editNoticeTitle,
+        body: editNoticeBody,
+      });
+      setEditingNoticeId(null);
+      await loadNotices();
+      await loadActions();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "공지 수정에 실패했습니다.");
+    }
+  }
+
+  async function handleDeleteNotice(id: number) {
+    if (!window.confirm("이 공지를 삭제할까요?")) return;
+    try {
+      await adminApi.deleteNotice(id);
+      await loadNotices();
+      await loadActions();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "공지 삭제에 실패했습니다.");
+    }
+  }
+
+  async function loadContents() {
+    setContentsLoading(true);
+    try {
+      setContents(await adminApi.listContents());
+    } catch {
+      // 목록도 부가 정보 - 실패해도 생성 폼은 그대로 쓸 수 있어야 한다.
+    } finally {
+      setContentsLoading(false);
+    }
+  }
+
+  function startEditContent(c: AdminContentResult) {
+    setEditingContentId(c.id);
+    setEditContentTitle(c.title);
+    setEditContentSummary(c.summary);
+    setEditContentBody(c.body);
+  }
+
+  async function handleSaveContent(id: number) {
+    try {
+      await adminApi.updateContent(id, {
+        title: editContentTitle,
+        summary: editContentSummary,
+        body: editContentBody,
+      });
+      setEditingContentId(null);
+      await loadContents();
+      await loadActions();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "콘텐츠 수정에 실패했습니다.");
+    }
+  }
+
+  async function handleDeleteContent(id: number) {
+    if (!window.confirm("이 콘텐츠를 삭제할까요?")) return;
+    try {
+      await adminApi.deleteContent(id);
+      await loadContents();
+      await loadActions();
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "콘텐츠 삭제에 실패했습니다.");
+    }
+  }
+
   useEffect(() => {
     loadUsers();
     loadActions();
@@ -220,6 +323,14 @@ export default function AdminPage() {
       loadStats(trendDays);
       loadErrorLogs();
       loadOpsStats();
+      loadNotices();
+      loadContents();
+    } else {
+      // 모바일 탭바엔 "대시보드"가 없어서(기본값), 모바일로 들어오면 첫 탭(사용자 관리)으로
+      // 맞춰준다. 공지/콘텐츠 목록도 모바일에서 이제 탭으로 보여주므로 같이 로드한다.
+      setTab((prev) => (["users", "notices", "contents"].includes(prev) ? prev : "users"));
+      loadNotices();
+      loadContents();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDesktop]);
@@ -390,14 +501,14 @@ export default function AdminPage() {
     setContentMessage(null);
     setContentError(null);
     try {
-      const result = await contentApi.generate({
-        disease_code: contentDiseaseCode.trim() || undefined,
-        category: contentCategory || undefined,
-      });
+      // (2026-07-28) 원본(ContentGenerationPage.tsx)처럼 인자 없이 호출해서 서버가
+      // 무작위로 질환/카테고리를 고르게 한다 - 질환명이 고정 목록이 아니라 계속
+      // 자라나는 열린 목록(disease_subtypes)이라 입력폼을 두면 오타 위험만 커진다.
+      // 특정 질환을 지정해서 만들고 싶으면 나중에 별도로 다시 논의하기로 함.
+      const result = await contentApi.generate();
       setContentMessage(`"${result.title}" 콘텐츠를 생성했어요.`);
-      setContentDiseaseCode("");
-      setContentCategory("");
       await loadActions();
+      await loadContents();
     } catch (err) {
       setContentError(err instanceof Error ? err.message : "콘텐츠 생성에 실패했습니다.");
     } finally {
@@ -422,29 +533,14 @@ export default function AdminPage() {
   });
 
   // 콘텐츠 생성 폼 - 모바일 "빠른 작업"에서도 쓸 수 있게 별도 컴포넌트로 안 빼고 인라인 재사용.
+  // (2026-07-28) 원본과 동일하게 버튼 하나만 - 질환/카테고리는 서버가 무작위로 고른다.
   const contentGenerateForm = (
     <div style={cardStyle}>
       <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>건강 콘텐츠 생성</p>
       <p style={{ margin: 0, fontSize: 12, color: pinkTheme.textMuted }}>
-        실제 LLM으로 콘텐츠 카드를 생성해 "정보" 탭에 반영해요. 비워두면 서버가 무작위로 골라요.
+        실제 LLM으로 콘텐츠 카드 1건을 생성해 "정보" 탭에 반영해요. 질환/카테고리는 서버가 무작위로
+        골라요.
       </p>
-      <input
-        type="text"
-        placeholder="질환 코드 (선택)"
-        value={contentDiseaseCode}
-        onChange={(e) => setContentDiseaseCode(e.target.value)}
-        style={inputStyle}
-      />
-      <select
-        value={contentCategory}
-        onChange={(e) => setContentCategory(e.target.value as ContentCategory | "")}
-        style={inputStyle}
-      >
-        <option value="">카테고리 (선택)</option>
-        <option value="LIFESTYLE">생활습관</option>
-        <option value="FOOD">음식</option>
-        <option value="MEDICAL_NEWS">의학뉴스</option>
-      </select>
       {contentError && (
         <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{contentError}</p>
       )}
@@ -518,7 +614,9 @@ export default function AdminPage() {
     <div style={{ minHeight: "100%", background: pinkTheme.pageBg, padding: "20px 12px" }}>
       <div
         style={{
-          maxWidth: isDesktop ? 960 : 480,
+          maxWidth: isDesktop ? 960 : "100%",
+          width: "100%",
+          boxSizing: "border-box",
           margin: "0 auto",
           display: "flex",
           flexDirection: "column",
@@ -558,7 +656,8 @@ export default function AdminPage() {
                 ["dashboard", "대시보드"],
                 ["users", "사용자"],
                 ["consent", "동의 현황"],
-                ["content", "공지·콘텐츠"],
+                ["notices", "공지 관리"],
+                ["contents", "콘텐츠 관리"],
                 ["bugs", "버그 리포트"],
                 ["log", "활동 로그"],
               ] as [Tab, string][]
@@ -568,6 +667,42 @@ export default function AdminPage() {
                 type="button"
                 onClick={() => setTab(key)}
                 style={tabButtonStyle(tab === key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* (2026-07-28) 모바일 전용 탭바 - 대시보드/동의현황/버그리포트/활동로그처럼
+          "한눈에 훑어보는" 화면은 빼고, 짧고 단발성인 작업 3개만 탭으로 나눈다.
+          예전엔 이 3개를 한 화면에 전부 세로로 쌓아뒀는데, 배포 계정이 17개로
+          늘면서 사용자 목록이 길어지면 아래 공지/콘텐츠 폼까지 스크롤이 너무
+          길어지는 문제가 있었다 - 탭으로 나눠서 한 번에 하나씩만 보이게 한다. */}
+        {!isDesktop && (
+          <div style={{ display: "flex", gap: 4 }}>
+            {(
+              [
+                ["users", "사용자 관리"],
+                ["notices", "공지·마케팅"],
+                ["contents", "콘텐츠 생성"],
+              ] as [Tab, string][]
+            ).map(([key, label]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                style={{
+                  flex: 1,
+                  padding: "8px 4px",
+                  borderRadius: 10,
+                  border: tab === key ? "none" : `1px solid ${pinkTheme.border}`,
+                  background: tab === key ? pinkTheme.primary : pinkTheme.cardBg,
+                  color: tab === key ? "#fff" : pinkTheme.textMuted,
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
               >
                 {label}
               </button>
@@ -632,7 +767,13 @@ export default function AdminPage() {
               <p style={{ color: pinkTheme.textMuted, fontSize: 13 }}>불러오는 중...</p>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
+                gap: 12,
+              }}
+            >
               <div style={cardStyle}>
                 <div
                   style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
@@ -782,7 +923,13 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                gap: 12,
+              }}
+            >
               <div style={cardStyle}>
                 <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>
                   챗봇 메시지 수 (최근 7일)
@@ -822,7 +969,13 @@ export default function AdminPage() {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                gap: 12,
+              }}
+            >
               <div style={cardStyle}>
                 <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>
                   자주 등록되는 약품 (3명 미만은 제외)
@@ -878,7 +1031,7 @@ export default function AdminPage() {
         )}
 
         {/* ── 사용자 관리 (PC: 전용 탭, 모바일: 항상 표시) ── */}
-        {(!isDesktop || tab === "users") && (
+        {tab === "users" && (
           <div style={cardStyle}>
             <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>사용자 관리</p>
             <div style={{ display: "flex", gap: 8 }}>
@@ -916,17 +1069,26 @@ export default function AdminPage() {
                       background: pinkTheme.pageBg,
                       borderRadius: 8,
                       fontSize: 13,
+                      gap: 8,
                     }}
                   >
-                    <span style={{ color: pinkTheme.text }}>
-                      {u.email}{" "}
-                      {u.is_admin && <strong style={{ color: pinkTheme.primary }}>· 관리자</strong>}
-                    </span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ color: pinkTheme.text, wordBreak: "break-word" }}>
+                        {u.email}{" "}
+                        {u.is_admin && (
+                          <strong style={{ color: pinkTheme.primary }}>· 관리자</strong>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: pinkTheme.textMuted, marginTop: 2 }}>
+                        가입일 {new Date(u.created_at).toLocaleDateString("ko-KR")}
+                      </div>
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleToggleAdmin(u)}
                       style={{
                         ...buttonStyle,
+                        flex: "none",
                         padding: "5px 10px",
                         background: u.is_admin ? pinkTheme.border : pinkTheme.primary,
                         color: u.is_admin ? pinkTheme.text : "#fff",
@@ -1001,12 +1163,407 @@ export default function AdminPage() {
         )}
 
         {/* ── 공지 발송 + 콘텐츠 생성 (PC: 전용 탭, 모바일: 항상 표시) ── */}
-        {(!isDesktop || tab === "content") && (
+        {/* ── 공지 관리 (PC: 전용 탭, 모바일: 발송 폼만) ── */}
+        {tab === "notices" && (
           <div
-            style={{ display: "grid", gridTemplateColumns: isDesktop ? "1fr 1fr" : "1fr", gap: 16 }}
+            style={{
+              display: "grid",
+              gridTemplateColumns: isDesktop ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr)",
+              gap: 16,
+            }}
           >
             {noticeForm}
+            <div style={cardStyle}>
+              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>등록된 공지 목록</p>
+              {noticesLoading ? (
+                <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>
+                  불러오는 중...
+                </p>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    maxHeight: 420,
+                    overflowY: "auto",
+                  }}
+                >
+                  {notices
+                    .slice()
+                    .reverse()
+                    .map((n) =>
+                      editingNoticeId === n.id ? (
+                        <div
+                          key={n.id}
+                          style={{
+                            border: `1px solid ${pinkTheme.primary}`,
+                            borderRadius: 10,
+                            padding: 10,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 6,
+                          }}
+                        >
+                          <div style={{ display: "flex", gap: 6 }}>
+                            {(["NOTICE", "MARKETING"] as const).map((k) => (
+                              <button
+                                key={k}
+                                type="button"
+                                onClick={() => setEditNoticeKind(k)}
+                                style={{
+                                  ...buttonStyle,
+                                  flex: 1,
+                                  padding: "4px 8px",
+                                  fontSize: 11,
+                                  background:
+                                    editNoticeKind === k ? pinkTheme.primary : pinkTheme.cardBg,
+                                  color: editNoticeKind === k ? "#fff" : pinkTheme.textMuted,
+                                  border: `1px solid ${pinkTheme.border}`,
+                                }}
+                              >
+                                {k === "NOTICE" ? "공지사항" : "마케팅"}
+                              </button>
+                            ))}
+                          </div>
+                          <input
+                            value={editNoticeTitle}
+                            onChange={(e) => setEditNoticeTitle(e.target.value)}
+                            style={inputStyle}
+                          />
+                          <textarea
+                            value={editNoticeBody}
+                            onChange={(e) => setEditNoticeBody(e.target.value)}
+                            rows={3}
+                            style={{ ...inputStyle, resize: "vertical" }}
+                          />
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveNotice(n.id)}
+                              style={{ ...buttonStyle, flex: 1 }}
+                            >
+                              저장
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingNoticeId(null)}
+                              style={{
+                                ...buttonStyle,
+                                flex: 1,
+                                background: pinkTheme.border,
+                                color: pinkTheme.text,
+                              }}
+                            >
+                              취소
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div
+                          key={n.id}
+                          style={{
+                            border: `1px solid ${pinkTheme.border}`,
+                            borderRadius: 10,
+                            padding: 10,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 6,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "flex-start",
+                              gap: 8,
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedNoticeId(expandedNoticeId === n.id ? null : n.id)
+                              }
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                textAlign: "left",
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                padding: 0,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: 10.5,
+                                  fontWeight: 700,
+                                  color: pinkTheme.textMuted,
+                                  border: `1px solid ${pinkTheme.border}`,
+                                  borderRadius: 999,
+                                  padding: "1px 7px",
+                                  marginRight: 6,
+                                }}
+                              >
+                                {n.kind === "NOTICE" ? "공지" : "마케팅"}
+                              </span>
+                              <span
+                                style={{ fontSize: 13, fontWeight: 600, color: pinkTheme.text }}
+                              >
+                                {n.title}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  color: pinkTheme.textMuted,
+                                  marginLeft: 6,
+                                }}
+                              >
+                                {expandedNoticeId === n.id ? "▲" : "▼"}
+                              </span>
+                            </button>
+                            <div style={{ display: "flex", gap: 4, flex: "none" }}>
+                              <button
+                                type="button"
+                                onClick={() => startEditNotice(n)}
+                                style={{ ...buttonStyle, padding: "4px 8px", fontSize: 11 }}
+                              >
+                                수정
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteNotice(n.id)}
+                                style={{
+                                  ...buttonStyle,
+                                  padding: "4px 8px",
+                                  fontSize: 11,
+                                  background: pinkTheme.danger,
+                                }}
+                              >
+                                삭제
+                              </button>
+                            </div>
+                          </div>
+                          {expandedNoticeId === n.id && (
+                            <p
+                              style={{
+                                margin: 0,
+                                fontSize: 12.5,
+                                color: pinkTheme.text,
+                                whiteSpace: "pre-wrap",
+                              }}
+                            >
+                              {n.body}
+                            </p>
+                          )}
+                        </div>
+                      ),
+                    )}
+                  {notices.length === 0 && (
+                    <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>
+                      등록된 공지가 없어요.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── 콘텐츠 관리 (PC: 전용 탭, 모바일: 생성 폼만) ── */}
+        {tab === "contents" && (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isDesktop ? "minmax(0, 1fr) minmax(0, 1fr)" : "minmax(0, 1fr)",
+              gap: 16,
+            }}
+          >
             {contentGenerateForm}
+            <div style={cardStyle}>
+              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>
+                생성된 콘텐츠 목록
+              </p>
+              {contentsLoading ? (
+                <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>
+                  불러오는 중...
+                </p>
+              ) : (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    maxHeight: 420,
+                    overflowY: "auto",
+                  }}
+                >
+                  {contents.map((c) =>
+                    editingContentId === c.id ? (
+                      <div
+                        key={c.id}
+                        style={{
+                          border: `1px solid ${pinkTheme.primary}`,
+                          borderRadius: 10,
+                          padding: 10,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 6,
+                        }}
+                      >
+                        <input
+                          value={editContentTitle}
+                          onChange={(e) => setEditContentTitle(e.target.value)}
+                          placeholder="제목"
+                          style={inputStyle}
+                        />
+                        <textarea
+                          value={editContentSummary}
+                          onChange={(e) => setEditContentSummary(e.target.value)}
+                          placeholder="요약"
+                          rows={2}
+                          style={{ ...inputStyle, resize: "vertical" }}
+                        />
+                        <textarea
+                          value={editContentBody}
+                          onChange={(e) => setEditContentBody(e.target.value)}
+                          placeholder="본문"
+                          rows={4}
+                          style={{ ...inputStyle, resize: "vertical" }}
+                        />
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveContent(c.id)}
+                            style={{ ...buttonStyle, flex: 1 }}
+                          >
+                            저장
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingContentId(null)}
+                            style={{
+                              ...buttonStyle,
+                              flex: 1,
+                              background: pinkTheme.border,
+                              color: pinkTheme.text,
+                            }}
+                          >
+                            취소
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        key={c.id}
+                        style={{
+                          border: `1px solid ${pinkTheme.border}`,
+                          borderRadius: 10,
+                          padding: 10,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 6,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            gap: 8,
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedContentId(expandedContentId === c.id ? null : c.id)
+                            }
+                            style={{
+                              flex: 1,
+                              minWidth: 0,
+                              textAlign: "left",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: 0,
+                            }}
+                          >
+                            <span
+                              style={{
+                                display: "inline-block",
+                                fontSize: 10.5,
+                                fontWeight: 700,
+                                color: pinkTheme.textMuted,
+                                border: `1px solid ${pinkTheme.border}`,
+                                borderRadius: 999,
+                                padding: "1px 7px",
+                                marginRight: 6,
+                                maxWidth: "100%",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                verticalAlign: "bottom",
+                              }}
+                            >
+                              {c.category} · {c.disease_code}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 13,
+                                fontWeight: 600,
+                                color: pinkTheme.text,
+                                wordBreak: "break-word",
+                              }}
+                            >
+                              {c.title}
+                            </span>
+                            <span
+                              style={{ fontSize: 11, color: pinkTheme.textMuted, marginLeft: 6 }}
+                            >
+                              {expandedContentId === c.id ? "▲" : "▼"}
+                            </span>
+                          </button>
+                          <div style={{ display: "flex", gap: 4, flex: "none" }}>
+                            <button
+                              type="button"
+                              onClick={() => startEditContent(c)}
+                              style={{ ...buttonStyle, padding: "4px 8px", fontSize: 11 }}
+                            >
+                              수정
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteContent(c.id)}
+                              style={{
+                                ...buttonStyle,
+                                padding: "4px 8px",
+                                fontSize: 11,
+                                background: pinkTheme.danger,
+                              }}
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        </div>
+                        {expandedContentId === c.id && (
+                          <div style={{ fontSize: 12.5, color: pinkTheme.text }}>
+                            <p style={{ margin: "0 0 6px", color: pinkTheme.textMuted }}>
+                              {c.summary}
+                            </p>
+                            <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{c.body}</p>
+                          </div>
+                        )}
+                      </div>
+                    ),
+                  )}
+                  {contents.length === 0 && (
+                    <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>
+                      생성된 콘텐츠가 없어요.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
