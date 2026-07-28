@@ -60,7 +60,10 @@ class ErrorLogResponse(BaseSerializerModel):
     method: Annotated[str, Field(description="HTTP 메서드.")]
     path: Annotated[str, Field(description="요청 경로.")]
     exception_type: Annotated[str, Field(description="예외 클래스명.")]
-    message: Annotated[str | None, Field(description="잘라낸 예외 메시지(최대 200자). 민감정보 방지 위해 전체 트레이스백은 저장 안 함.")]
+    message: Annotated[
+        str | None,
+        Field(description="잘라낸 예외 메시지(최대 200자). 민감정보 방지 위해 전체 트레이스백은 저장 안 함."),
+    ]
     status_code: Annotated[int, Field(description="응답 상태 코드.")]
 
 
@@ -94,7 +97,5 @@ class OpsStatsResponse(BaseModel):
         list[TrendPoint], Field(description="최근 7일 알림 발송 시도 건수 추이(전달 성공/실패 여부는 미추적).")
     ]
     family_link_count: Annotated[int, Field(description="수락 완료된 가족 연결 건수.")]
-    withdrawal_trend: Annotated[
-        list[TrendPoint], Field(description="최근 30일 탈퇴 관련 익명 통계 기록 분포(근사치).")
-    ]
+    withdrawal_trend: Annotated[list[TrendPoint], Field(description="최근 30일 탈퇴 관련 익명 통계 기록 분포(근사치).")]
     ai_worker_status: Annotated[str, Field(description='AI-worker 연결 상태. "ok" 또는 "down".')]

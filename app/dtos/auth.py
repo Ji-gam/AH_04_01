@@ -44,7 +44,13 @@ class WithdrawRequest(BaseModel):
     탈퇴 가능한 수준으로 우선 풀어둠(이메일 가입자는 기존과 동일하게 비밀번호 필수)."""
 
     password: Annotated[
-        str | None, Field(None, min_length=8, description="본인 확인용 현재 비밀번호. 소셜 가입자는 비밀번호가 없어 생략 가능.", examples=["Password123!"])
+        str | None,
+        Field(
+            None,
+            min_length=8,
+            description="본인 확인용 현재 비밀번호. 소셜 가입자는 비밀번호가 없어 생략 가능.",
+            examples=["Password123!"],
+        ),
     ]
 
 

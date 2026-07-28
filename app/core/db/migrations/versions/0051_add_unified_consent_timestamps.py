@@ -21,9 +21,7 @@ def upgrade() -> None:
     # (건강정보는 0050에서 이미 추가됨). 위치정보는 브라우저 자체 geolocation 권한
     # 요청으로 이미 다뤄지고 있어 별도 동의 항목을 안 둔다(2026-07-28 결정).
     op.add_column("users", sa.Column("ai_chat_consented_at", sa.DateTime(timezone=True), nullable=True))
-    op.add_column(
-        "users", sa.Column("terms_of_service_consented_at", sa.DateTime(timezone=True), nullable=True)
-    )
+    op.add_column("users", sa.Column("terms_of_service_consented_at", sa.DateTime(timezone=True), nullable=True))
     op.add_column("users", sa.Column("marketing_consented_at", sa.DateTime(timezone=True), nullable=True))
 
 

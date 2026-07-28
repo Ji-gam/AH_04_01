@@ -38,7 +38,10 @@ class UserInfoResponse(BaseSerializerModel):
     phone_number: Annotated[str | None, Field(description="Profile에 저장된 휴대폰번호. 미입력 시 null.")]
     gender: Annotated[Gender | None, Field(description="Profile에 저장된 성별. 미입력 시 null.")]
     created_at: Annotated[datetime, Field(description="User(계정) 생성 시각.")]
-    is_admin: Annotated[bool, Field(False, description="관리자 여부 - 프론트에서 관리자 메뉴 노출 여부에만 씀(실제 권한검증은 서버가 함).")]
+    is_admin: Annotated[
+        bool,
+        Field(False, description="관리자 여부 - 프론트에서 관리자 메뉴 노출 여부에만 씀(실제 권한검증은 서버가 함)."),
+    ]
     # (2026-07-28) 가입 시 통합 동의 화면 게이트(RequireAuth)가 매 페이지 이동마다 다시
     # 물어볼 필요 없이 이 응답 하나로 판단할 수 있게 여기 포함시킨다.
     health_info_consented_at: Annotated[datetime | None, Field(None, description="개인건강정보 동의 시각.")]
@@ -66,13 +69,11 @@ class ConsentUpdateRequest(BaseModel):
 
 
 class ConsentStatusResponse(BaseSerializerModel):
-    health_info_consented_at: Annotated[
-        datetime | None, Field(description="개인건강정보 동의 시각. 미동의 시 null.")
+    health_info_consented_at: Annotated[datetime | None, Field(description="개인건강정보 동의 시각. 미동의 시 null.")]
+    ai_chat_consented_at: Annotated[
+        datetime | None, Field(description="AI 챗봇 데이터 활용 동의 시각. 미동의 시 null.")
     ]
-    ai_chat_consented_at: Annotated[datetime | None, Field(description="AI 챗봇 데이터 활용 동의 시각. 미동의 시 null.")]
-    terms_of_service_consented_at: Annotated[
-        datetime | None, Field(description="이용약관 동의 시각. 미동의 시 null.")
-    ]
+    terms_of_service_consented_at: Annotated[datetime | None, Field(description="이용약관 동의 시각. 미동의 시 null.")]
     marketing_consented_at: Annotated[
         datetime | None, Field(description="마케팅 정보 수신 동의 시각(선택). 미동의 시 null.")
     ]
