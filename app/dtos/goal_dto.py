@@ -3,11 +3,23 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
+from app.models.goals import GoalType
+
 GoalTerm = Literal["단기", "장기"]
 
 
 class GoalCreateRequest(BaseModel):
     title: Annotated[str, Field(min_length=1, max_length=100, description="목표명(예: 3kg 감량하기)")]
+    goal_type: Annotated[
+        GoalType,
+        Field(
+            default=GoalType.NUMERIC,
+            description=(
+                "NUMERIC(수치형, 기본값) - 체중감량처럼 현재 수치를 직접 입력. "
+                "FREQUENCY(횟수형) - 운동하기처럼 하루 1회 '완료' 처리로 수치가 자동 증가."
+            ),
+        ),
+    ]
     start_value: Annotated[float | None, Field(default=None, description="시작 시점 수치(예: 68)")]
     target_value: Annotated[float | None, Field(default=None, description="목표 수치(예: 65)")]
     current_value: Annotated[float | None, Field(default=None, description="현재 수치 - 없으면 start_value와 동일")]
@@ -43,6 +55,7 @@ class GoalProgressLogItemResult(BaseModel):
 class GoalItemResult(BaseModel):
     id: Annotated[int, Field(description="목표 id")]
     title: Annotated[str, Field(description="목표명")]
+    goal_type: Annotated[GoalType, Field(description="NUMERIC(수치형) 또는 FREQUENCY(횟수형) - 생성 후 변경 불가")]
     start_value: Annotated[float | None, Field(description="시작 시점 수치")]
     target_value: Annotated[float | None, Field(description="목표 수치")]
     current_value: Annotated[float | None, Field(description="현재 수치")]

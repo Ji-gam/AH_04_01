@@ -478,9 +478,13 @@ export interface NotificationLogListResult {
 
 // 백엔드 app/dtos/goal_dto.py와 1:1로 수동 동기화. F-GOAL-1(목표 CRUD) + F-GOAL-2(AI 가이드).
 export type GoalTerm = "단기" | "장기";
+// NUMERIC(수치형) - 체중감량처럼 현재 수치를 직접 입력. FREQUENCY(횟수형) - 운동하기처럼
+// "오늘 완료" 버튼 한 번으로 현재 수치가 1씩 늘어난다. 생성 후 변경 불가.
+export type GoalType = "NUMERIC" | "FREQUENCY";
 
 export interface GoalCreateRequest {
   title: string;
+  goal_type?: GoalType;
   start_value?: number;
   target_value?: number;
   current_value?: number;
@@ -513,6 +517,7 @@ export interface GoalProgressLogItemResult {
 export interface GoalItemResult {
   id: number;
   title: string;
+  goal_type: GoalType;
   start_value: number | null;
   target_value: number | null;
   current_value: number | null;
