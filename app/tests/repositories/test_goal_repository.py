@@ -16,8 +16,10 @@ from app.tests.conftest import TestSessionLocal
 async def _create_profile(session, email: str) -> int:
     user = await UserRepository().create_user(session, email=email, hashed_password="hashed")
     profile = await ProfileRepository().create_profile(
-        session, user_id=user.id, name="테스터", gender=Gender.MALE, relation=ProfileRelation.SELF
+        session, user_id=user.id, name="테스터", relation=ProfileRelation.SELF
     )
+    profile.health_profile.gender = Gender.MALE
+    await session.flush()
     return profile.id
 
 
