@@ -8,6 +8,7 @@ import re
 import time
 import uuid
 from collections import OrderedDict
+from pathlib import Path
 from typing import NamedTuple, cast
 
 import httpx
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import config
 from app.core.db.databases import AsyncSessionLocal
+from app.core.storage.encrypted_file_storage import delete_file, encrypt_and_write, read_and_decrypt
 from app.dtos.medication_dto import (
     FoodInteractionCheckResult,
     FoodItem,
@@ -32,6 +34,7 @@ from app.dtos.medication_dto import (
     RecognitionCandidate,
     RecognitionConfirmResult,
     RecognitionJobCreateResult,
+    RecognitionJobSummary,
     RecognitionResult,
 )
 from app.models.medication_model import MedicationRecognitionJob, MedicationSchedule
@@ -39,6 +42,7 @@ from app.repositories.dur_drug_repository import DurDrugRepository
 from app.repositories.family_repository import FamilyRepository
 from app.repositories.food_drug_interaction_repository import FoodDrugInteractionRepository
 from app.repositories.medication_repository import MedicationRepository
+from app.repositories.profile_repository import ProfileRepository
 from app.services import medication_open_api_client
 from app.services.ai_worker_gateway import (
     AIWorkerGateway,
@@ -55,6 +59,39 @@ logger = logging.getLogger("app.medication_service")
 # 401/403 같은 인증 오류나 응답 파싱 실패는 재시도해도 결과가 같으므로 즉시 실패 처리한다.
 _CLOVA_OCR_MAX_ATTEMPTS = 2
 _CLOVA_OCR_RETRY_DELAY_SECONDS = 0.5
+
+# REQ-DOC-003: 원본 문서(처방전/약봉투/진료기록) 업로드 검증. 폰 카메라 사진 기준으로 넉넉하되
+# 디스크/메모리를 무한정 쓰지 못하게 상한을 둔다.
+_MAX_DOCUMENT_UPLOAD_BYTES = 15 * 1024 * 1024  # 15MB
+_ALLOWED_IMAGE_MIME_TYPES = {"JPEG": "image/jpeg", "PNG": "image/png", "WEBP": "image/webp"}
+
+
+def _validate_uploaded_image(file_bytes: bytes) -> str:
+    """(REQ-DOC-003) 업로드된 바이트가 실제로 열리는 이미지인지 검증하고 MIME 타입을
+    반환한다. 클라이언트가 보낸 Content-Type 헤더는 위조 가능하므로 신뢰하지 않고, Pillow로
+    실제 픽셀 데이터를 열어본다. 크기 상한도 여기서 함께 확인한다."""
+    if len(file_bytes) > _MAX_DOCUMENT_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"파일 크기가 너무 큽니다 (최대 {_MAX_DOCUMENT_UPLOAD_BYTES // (1024 * 1024)}MB).",
+        )
+    try:
+        with Image.open(io.BytesIO(file_bytes)) as img:
+            img.verify()
+            image_format = img.format
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효한 이미지 파일이 아닙니다.") from exc
+    mime_type = _ALLOWED_IMAGE_MIME_TYPES.get(image_format or "")
+    if mime_type is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="지원하지 않는 이미지 형식입니다 (JPEG/PNG/WEBP만 가능)."
+        )
+    return mime_type
+
+
+def _document_storage_path(profile_id: int, job_id: str) -> Path:
+    return Path(config.DOCUMENT_STORAGE_ROOT) / str(profile_id) / f"{job_id}.enc"
+
 
 # 약품명 후보로 볼 만한 OCR 텍스트 블록 판별 기준.
 # "정"/"캡슐" 같은 제형 접미사만으로는 "환자정보", "서방정"(잘린 조각) 등 일반 텍스트도
@@ -1359,6 +1396,9 @@ class MedicationService:
         if source_type not in ["pill_photo", "prescription", "medical_record", "medication_guide"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효하지 않은 source_type 입니다.")
 
+        # REQ-DOC-003: OCR로 넘기기 전에 먼저 검증 - 실패하면 job도 만들지 않고 즉시 400.
+        mime_type = _validate_uploaded_image(file_bytes)
+
         job_id = str(uuid.uuid4())
         job = MedicationRecognitionJob(
             id=job_id,
@@ -1369,6 +1409,20 @@ class MedicationService:
             extracted_fields={},
         )
         await self._repository.create_recognition_job(session, job)
+
+        # REQ-DOC-003: 원본 이미지를 암호화해서 보관 - "촬영한 원본 이미지를 날짜별로 재열람"
+        # 요구사항을 위해 OCR과 별개로 저장한다. FIELD_ENCRYPTION_KEY가 없으면
+        # encrypt_and_write가 저장을 건너뛰고 False를 반환하므로, 그 경우 job에는 이미지
+        # 포인터를 남기지 않는다(OCR/약품인식 자체는 그대로 진행).
+        storage_path = _document_storage_path(profile_id, job_id)
+        if encrypt_and_write(storage_path, file_bytes):
+            await self._repository.set_recognition_job_image(
+                session,
+                job_id,
+                image_storage_key=str(storage_path.relative_to(config.DOCUMENT_STORAGE_ROOT)),
+                image_mime_type=mime_type,
+                image_size_bytes=len(file_bytes),
+            )
 
         # 백그라운드 태스크 등록 (요청 세션은 넘기지 않고, 태스크 내부에서 자체 세션을 생성한다)
         background_tasks.add_task(run_ocr_task, job_id, file_bytes, file_name, dummy_mode=dummy_mode)
@@ -1392,6 +1446,70 @@ class MedicationService:
             candidates=candidates,
             extracted_fields=job.extracted_fields,
         )
+
+    async def list_recognition_jobs(
+        self, session: AsyncSession, profile_id: int, source_type: str | None = None
+    ) -> list[RecognitionJobSummary]:
+        """(REQ-DOC-003) "내 문서함" 목록 - 본인 것만. 날짜별 그룹핑은 프론트에서 처리한다."""
+        jobs = await self._repository.list_recognition_jobs_by_profile(session, profile_id, source_type)
+        return [
+            RecognitionJobSummary(
+                job_id=job.id,
+                source_type=job.source_type,
+                status=job.status,
+                created_at=job.created_at,
+                has_image=job.image_storage_key is not None,
+                image_deleted_at=job.image_deleted_at,
+            )
+            for job in jobs
+        ]
+
+    async def _resolve_document_viewer_access(
+        self, session: AsyncSession, job: MedicationRecognitionJob, requester_profile_id: int
+    ) -> None:
+        """(REQ-DOC-003) 조회 권한: 본인이거나, (대상 프로필이 옵트인했고) 승인된 보호자만.
+        존재 여부를 노출하지 않기 위해 소유권 불일치/이미지 없음/가족 미허용을 전부 동일하게
+        404로 처리한다(다른 사용자의 job에 대해 403 vs 404로 존재를 유추하지 못하게)."""
+        if job.profile_id == requester_profile_id:
+            return
+        target_profile = await ProfileRepository().get_profile(session, job.profile_id)
+        if target_profile is None or not target_profile.allow_guardian_document_access:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 작업(Job)을 찾을 수 없습니다.")
+        is_guardian = await self._family_repository.is_guardian_of(session, requester_profile_id, job.profile_id)
+        if not is_guardian:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 작업(Job)을 찾을 수 없습니다.")
+
+    async def get_recognition_job_image(
+        self, session: AsyncSession, job_id: str, requester_profile_id: int
+    ) -> tuple[bytes, str]:
+        """(REQ-DOC-003) 원본 이미지 조회. 반환값은 (복호화된 바이트, MIME 타입)."""
+        job = await self._repository.get_recognition_job(session, job_id)
+        if not job:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 작업(Job)을 찾을 수 없습니다.")
+        await self._resolve_document_viewer_access(session, job, requester_profile_id)
+        if job.image_storage_key is None or job.image_mime_type is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="삭제되었거나 존재하지 않는 이미지입니다."
+            )
+        storage_path = Path(config.DOCUMENT_STORAGE_ROOT) / job.image_storage_key
+        try:
+            data = read_and_decrypt(storage_path)
+        except FileNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="삭제되었거나 존재하지 않는 이미지입니다."
+            ) from exc
+        return data, job.image_mime_type
+
+    async def delete_recognition_job_document(self, session: AsyncSession, job_id: str, profile_id: int) -> None:
+        """(REQ-DOC-003) 원본 이미지 + 추출데이터 완전 삭제. 본인만 가능(가족/보호자 불가).
+        job 행 자체는 MedicationSchedule.source_job_id 참조 무결성 때문에 지우지 않는다.
+        이미 삭제된 상태에서 다시 호출해도 멱등하게 204로 처리한다."""
+        job = await self._repository.get_recognition_job(session, job_id)
+        if not job or job.profile_id != profile_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 작업(Job)을 찾을 수 없습니다.")
+        if job.image_storage_key is not None:
+            delete_file(Path(config.DOCUMENT_STORAGE_ROOT) / job.image_storage_key)
+        await self._repository.clear_recognition_job_document(session, job)
 
     async def confirm_recognition_job(
         self,

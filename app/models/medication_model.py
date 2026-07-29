@@ -51,7 +51,13 @@ class MedicationDataCache(Base):
 
 
 class MedicationRecognitionJob(Base):
-    """비동기 알약/처방전 OCR 분석 작업 기록 테이블."""
+    """비동기 알약/처방전 OCR 분석 작업 기록 테이블.
+
+    [REQ-DOC-003 - NFR-SEC-001: never expose via admin_routers.py] image_* 컬럼은 사용자가 촬영한
+    처방전/약봉투/진료기록 원본 이미지를 가리킨다(암호화 저장, app/core/storage/
+    encrypted_file_storage.py). 최고관리자를 포함해 누구도 개별 사용자의 이 데이터를 볼 수 없어야
+    하므로, admin 쪽 코드는 이 모델을 import조차 하면 안 된다.
+    """
 
     __tablename__ = "medication_recognition_jobs"
 
@@ -67,6 +73,18 @@ class MedicationRecognitionJob(Base):
         JSON, nullable=True
     )  # 후보군 리스트 [{'drug_name': ..., 'match_rate': ..., 'drug_code': ...}]
     extracted_fields: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # 추출된 텍스트 필드 정보들
+    # REQ-DOC-003: 원본 이미지는 DB가 아니라 app.core.config.DOCUMENT_STORAGE_ROOT 하위에
+    # "{profile_id}/{id}.enc" 형태로 암호화되어 저장된다(image_storage_key가 그 상대경로).
+    # FIELD_ENCRYPTION_KEY 미설정 환경에서는 저장 자체를 건너뛰므로 image_storage_key가
+    # None으로 남을 수 있다(OCR/인식 자체는 정상 진행됨) - "이미지 없음"과 동일하게 취급한다.
+    image_storage_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    image_mime_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    image_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # 사용자가 "원본+추출데이터 완전삭제"를 실행한 시각. job 행 자체는 MedicationSchedule.
+    # source_job_id 참조 무결성 때문에 삭제하지 않고, 이 4개 image_* 컬럼과 candidates/
+    # extracted_fields만 비운다(app/services/medication_service.py의
+    # delete_recognition_job_document 참고).
+    image_deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

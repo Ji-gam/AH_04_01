@@ -87,6 +87,10 @@ class Profile(Base):
     # 있는 필드라, DB 암호화 대상으로 골랐다(2026-07-21) - EncryptedText 참고.
     special_notes: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)  # 특이사항
     other_notes: Mapped[str | None] = mapped_column(EncryptedText, nullable=True)  # 기타
+    # REQ-DOC-003: 처방전/약봉투/진료기록 원본 이미지는 복약스케줄보다 훨씬 민감한 개인정보라
+    # 기본은 비공개(False)이며, 본인이 명시적으로 켜야만 연결된 보호자(가족)가 문서함에서
+    # 원본 이미지를 조회할 수 있다. 삭제는 이 값과 무관하게 항상 본인만 가능하다.
+    allow_guardian_document_access: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

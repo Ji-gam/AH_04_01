@@ -304,6 +304,13 @@ export default function MorePage() {
             </span>
           </Link>
 
+          <Link to="/document-box" style={menuCardStyle}>
+            <span>📁 내 문서함</span>
+            <span aria-hidden style={{ color: pinkTheme.textMuted }}>
+              ›
+            </span>
+          </Link>
+
           <Link to="/data-consent" style={menuCardStyle}>
             <span>📋 내 동의 현황</span>
             <span aria-hidden style={{ color: pinkTheme.textMuted }}>
