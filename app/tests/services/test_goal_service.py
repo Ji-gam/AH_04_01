@@ -229,9 +229,7 @@ async def test_create_frequency_goal_persists_goal_type():
     """goal_type=FREQUENCY로 만들면 그대로 저장·반환돼야 한다."""
     gateway = FakeGateway()
     service = _build_service(gateway, profile=FakeProfile(id=4))
-    data = _create_request(
-        goal_type=GoalType.FREQUENCY, start_value=0, target_value=3, current_value=0, unit="회"
-    )
+    data = _create_request(goal_type=GoalType.FREQUENCY, start_value=0, target_value=3, current_value=0, unit="회")
 
     result = await service.create(cast(AsyncSession, FakeSession()), profile_id=4, data=data)
 
@@ -243,7 +241,9 @@ async def test_ai_failure_uses_fallback_guide():
     gateway = FakeGateway(error=AIWorkerUnavailableError("ai_worker 연결 실패"))
     service = _build_service(gateway, profile=FakeProfile(id=5))
 
-    result = await service.create(cast(AsyncSession, FakeSession()), profile_id=5, data=_create_request(title="꾸준히 걷기"))
+    result = await service.create(
+        cast(AsyncSession, FakeSession()), profile_id=5, data=_create_request(title="꾸준히 걷기")
+    )
 
     assert result.guide_content == _fallback_guide("꾸준히 걷기")
     assert result.guide_generated_at is not None
@@ -334,7 +334,9 @@ async def test_log_progress_upserts_same_day_instead_of_duplicating():
     created = await service.create(cast(AsyncSession, FakeSession()), profile_id=11, data=_create_request())
     today = date(2026, 7, 29)
 
-    await service.log_progress(cast(AsyncSession, FakeSession()), profile_id=11, goal_id=created.id, value=79.0, log_date=today)
+    await service.log_progress(
+        cast(AsyncSession, FakeSession()), profile_id=11, goal_id=created.id, value=79.0, log_date=today
+    )
     result = await service.log_progress(
         cast(AsyncSession, FakeSession()), profile_id=11, goal_id=created.id, value=78.0, log_date=today
     )

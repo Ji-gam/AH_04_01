@@ -284,12 +284,10 @@ export default function GoalContent() {
           {/* 목표 종류 - 생성 후에는 바꿀 수 없어서 수정 화면에서는 안 보여준다 */}
           {editingId === null && (
             <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-              {(
-                [
-                  { key: "NUMERIC" as const, label: "수치형 (예: 체중감량)" },
-                  { key: "FREQUENCY" as const, label: "횟수형 (예: 운동하기)" },
-                ]
-              ).map((opt) => (
+              {[
+                { key: "NUMERIC" as const, label: "수치형 (예: 체중감량)" },
+                { key: "FREQUENCY" as const, label: "횟수형 (예: 운동하기)" },
+              ].map((opt) => (
                 <button
                   key={opt.key}
                   type="button"
@@ -453,7 +451,12 @@ export default function GoalContent() {
                     type="button"
                     onClick={() => openEditForm(goal)}
                     aria-label="목표 수정"
-                    style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 15 }}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      fontSize: 15,
+                    }}
                   >
                     ✏️
                   </button>
@@ -461,7 +464,12 @@ export default function GoalContent() {
                     type="button"
                     onClick={() => handleDelete(goal.id)}
                     aria-label="목표 삭제"
-                    style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 15 }}
+                    style={{
+                      border: "none",
+                      background: "transparent",
+                      cursor: "pointer",
+                      fontSize: 15,
+                    }}
                   >
                     🗑️
                   </button>
@@ -478,8 +486,12 @@ export default function GoalContent() {
               {/* 진행률 */}
               {progressPct !== null && (
                 <div style={{ marginBottom: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, color: t.textMuted, fontWeight: 500 }}>진행률</span>
+                  <div
+                    style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}
+                  >
+                    <span style={{ fontSize: 12, color: t.textMuted, fontWeight: 500 }}>
+                      진행률
+                    </span>
                     <span style={{ fontSize: 13, fontWeight: 700, color: t.primary }}>
                       {progressPct}%
                     </span>
@@ -514,9 +526,17 @@ export default function GoalContent() {
                 }}
               >
                 {isFrequency ? (
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
                     <div>
-                      <p style={{ margin: "0 0 2px", fontSize: 12, color: t.textMuted }}>현재 수치</p>
+                      <p style={{ margin: "0 0 2px", fontSize: 12, color: t.textMuted }}>
+                        현재 수치
+                      </p>
                       <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: t.text }}>
                         {goal.current_value ?? 0}
                         {goal.target_value !== null ? ` / ${goal.target_value}` : ""}
@@ -538,13 +558,25 @@ export default function GoalContent() {
                         cursor: isLoggedToday || loggingGoalId === goal.id ? "default" : "pointer",
                       }}
                     >
-                      {loggingGoalId === goal.id ? "기록 중..." : isLoggedToday ? "오늘 완료 ✓" : "오늘 완료"}
+                      {loggingGoalId === goal.id
+                        ? "기록 중..."
+                        : isLoggedToday
+                          ? "오늘 완료 ✓"
+                          : "오늘 완료"}
                     </button>
                   </div>
                 ) : !isLogging ? (
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                    }}
+                  >
                     <div>
-                      <p style={{ margin: "0 0 2px", fontSize: 12, color: t.textMuted }}>현재 수치</p>
+                      <p style={{ margin: "0 0 2px", fontSize: 12, color: t.textMuted }}>
+                        현재 수치
+                      </p>
                       <p style={{ margin: 0, fontSize: 18, fontWeight: 600, color: t.text }}>
                         {goal.current_value ?? "-"}
                         {goal.unit ?? ""}
@@ -574,7 +606,9 @@ export default function GoalContent() {
                         type="number"
                         autoFocus
                         value={logText[goal.id] ?? ""}
-                        onChange={(e) => setLogText((prev) => ({ ...prev, [goal.id]: e.target.value }))}
+                        onChange={(e) =>
+                          setLogText((prev) => ({ ...prev, [goal.id]: e.target.value }))
+                        }
                         placeholder={`오늘 수치${goal.unit ? ` (${goal.unit})` : ""}`}
                         style={{ ...inputStyle, flex: 1, marginBottom: 0 }}
                       />
@@ -625,14 +659,24 @@ export default function GoalContent() {
                   </div>
                 )}
                 {isFrequency && logError[goal.id] && (
-                  <p style={{ color: t.danger, fontSize: 11.5, margin: "6px 0 0" }}>{logError[goal.id]}</p>
+                  <p style={{ color: t.danger, fontSize: 11.5, margin: "6px 0 0" }}>
+                    {logError[goal.id]}
+                  </p>
                 )}
               </div>
 
               {/* 최근 기록 미니 막대그래프 - 막대는 항상 고정 너비(기록이 1~2개뿐이어도 카드
                   전체 너비로 늘어나 통짜 배너처럼 보이지 않게, flex:1 대신 flex-basis 고정) */}
               {goal.recent_logs.length > 0 && (
-                <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 40, marginBottom: 12 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    alignItems: "flex-end",
+                    height: 40,
+                    marginBottom: 12,
+                  }}
+                >
                   {(() => {
                     const maxValue = Math.max(1, ...goal.recent_logs.map((l) => l.value));
                     return goal.recent_logs.map((log) => (
@@ -687,14 +731,24 @@ export default function GoalContent() {
                   >
                     ✨ AI 가이드
                   </p>
-                  <p style={{ margin: 0, fontSize: 12.5, color: t.text, lineHeight: 1.6, whiteSpace: "pre-line" }}>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 12.5,
+                      color: t.text,
+                      lineHeight: 1.6,
+                      whiteSpace: "pre-line",
+                    }}
+                  >
                     {goal.guide_content}
                   </p>
                 </div>
               )}
 
               {/* 하단 메타: 가이드 생성 시각 + 기간구분/달성여부 */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div
+                style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+              >
                 <span style={{ fontSize: 11, color: t.textMuted }}>
                   {goal.guide_generated_at
                     ? `가이드 생성됨 • ${goal.guide_generated_at.slice(0, 10)}`

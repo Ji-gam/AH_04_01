@@ -116,9 +116,7 @@ async def test_update_goal_changes_title_and_keeps_guide_present():
         headers = {"Authorization": f"Bearer {token}"}
         created = (await client.post("/api/v1/goals", json=_numeric_payload(), headers=headers)).json()
 
-        response = await client.patch(
-            f"/api/v1/goals/{created['id']}", json={"title": "새 목표명"}, headers=headers
-        )
+        response = await client.patch(f"/api/v1/goals/{created['id']}", json={"title": "새 목표명"}, headers=headers)
 
     body = response.json()
     assert response.status_code == status.HTTP_200_OK
@@ -142,9 +140,7 @@ async def test_update_goal_owned_by_other_profile_returns_404():
         token_a = await _signup_and_login(client, "goal_hijack_owner@example.com")
         token_b = await _signup_and_login(client, "goal_hijack_attacker@example.com")
         created = (
-            await client.post(
-                "/api/v1/goals", json=_numeric_payload(), headers={"Authorization": f"Bearer {token_a}"}
-            )
+            await client.post("/api/v1/goals", json=_numeric_payload(), headers={"Authorization": f"Bearer {token_a}"})
         ).json()
 
         response = await client.patch(
@@ -162,9 +158,7 @@ async def test_log_progress_updates_current_value_and_progress_rate():
         headers = {"Authorization": f"Bearer {token}"}
         created = (await client.post("/api/v1/goals", json=_numeric_payload(), headers=headers)).json()
 
-        response = await client.post(
-            f"/api/v1/goals/{created['id']}/logs", json={"value": 77.5}, headers=headers
-        )
+        response = await client.post(f"/api/v1/goals/{created['id']}/logs", json={"value": 77.5}, headers=headers)
 
     body = response.json()
     assert response.status_code == status.HTTP_200_OK
