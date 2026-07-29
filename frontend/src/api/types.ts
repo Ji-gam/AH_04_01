@@ -126,6 +126,8 @@ export interface ChatMessageChunk {
 export interface ChatSessionResponse {
   id: number;
   created_at: string;
+  /** 마지막 메시지가 저장된 시각 - 세션 목록은 이 값 기준 최신순으로 내려온다. */
+  updated_at: string;
 }
 
 export interface ChatMessageResponse {

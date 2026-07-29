@@ -33,7 +33,7 @@ export default function ChatPage() {
     startNewChat,
   } = useChatStream({ skipRestoreOnMount: hasAutoMessageRef.current });
   const [input, setInput] = useState("");
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   // 출처 칩을 클릭해 연 메시지 인덱스 — 화면 중앙 모달로 해당 메시지의 출처 목록을 보여준다.
   const [sourcesModalIndex, setSourcesModalIndex] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -104,123 +104,7 @@ export default function ChatPage() {
           background: pinkTheme.pageBg,
         }}
       >
-        {/* 상담 목록은 화면 크기와 무관하게 항상 메뉴 버튼으로 여는 Drawer 하나로 통일한다 —
-            480px 폭 안에 사이드바를 상시 노출하면 채팅창이 너무 좁아져 글자가 세로로
-            찌그러진다(2026-07-29 실측). */}
-        {isMobileMenuOpen && (
-          <div
-            style={{
-              position: "fixed",
-              top: 0,
-              left: 0,
-              width: "100vw",
-              height: "100vh",
-              background: "rgba(90, 74, 78, 0.45)",
-              zIndex: 1000,
-              display: "flex",
-            }}
-            onClick={() => setIsMobileMenuOpen(false)}
-          >
-            <div
-              style={{
-                width: "250px",
-                background: pinkTheme.cardBg,
-                height: "100%",
-                padding: "15px",
-                boxSizing: "border-box",
-                display: "flex",
-                flexDirection: "column",
-                borderRight: `1px solid ${pinkTheme.border}`,
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div
-                style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px" }}
-              >
-                <strong style={{ color: pinkTheme.text }}>메뉴</strong>
-                <button
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  style={{
-                    border: `1px solid ${pinkTheme.border}`,
-                    borderRadius: 8,
-                    background: pinkTheme.cardBg,
-                    color: pinkTheme.textMuted,
-                    cursor: "pointer",
-                    padding: "2px 10px",
-                  }}
-                >
-                  닫기
-                </button>
-              </div>
-
-              <button
-                onClick={() => {
-                  startNewChat();
-                  setIsMobileMenuOpen(false);
-                }}
-                style={{
-                  background: pinkTheme.primary,
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 10,
-                  padding: "11px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  marginBottom: "15px",
-                }}
-              >
-                + 새로운 상담 시작
-              </button>
-
-              <h3 style={{ fontSize: "12px", marginBottom: "10px", color: pinkTheme.textMuted }}>
-                이전 상담 기록
-              </h3>
-              <div
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "6px",
-                }}
-              >
-                {sessionList.map((session) => {
-                  const isActive = String(session.id) === currentSessionId;
-                  return (
-                    <div
-                      key={session.id}
-                      onClick={() => {
-                        void selectSession(String(session.id));
-                        setIsMobileMenuOpen(false);
-                      }}
-                      style={{
-                        padding: "10px 12px",
-                        borderRadius: 10,
-                        border: isActive
-                          ? `1.5px solid ${pinkTheme.primary}`
-                          : `1px solid ${pinkTheme.border}`,
-                        background: isActive ? pinkTheme.primarySoft : pinkTheme.cardBg,
-                        color: pinkTheme.text,
-                        fontWeight: isActive ? 700 : 400,
-                        cursor: "pointer",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "2px",
-                      }}
-                    >
-                      <span style={{ fontSize: "13px" }}>상담 #{session.id}</span>
-                      <span style={{ fontSize: "11px", color: pinkTheme.textMuted }}>
-                        {formatDate(session.created_at)}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* 3. 우측 채팅 메시지 메인창 */}
+        {/* 우측 채팅 메시지 메인창 */}
         <div
           style={{
             flex: 1,
@@ -256,8 +140,11 @@ export default function ChatPage() {
             >
               ← 뒤로가기
             </button>
+            <h3 style={{ margin: 0, fontSize: 15, color: pinkTheme.primary, flex: 1 }}>
+              💬 {currentSessionId ? `상담 (#${currentSessionId})` : "신규 상담방"}
+            </h3>
             <button
-              onClick={() => setIsMobileMenuOpen(true)}
+              onClick={() => setIsHistoryModalOpen(true)}
               style={{
                 background: pinkTheme.cardBg,
                 border: `1px solid ${pinkTheme.border}`,
@@ -265,13 +152,11 @@ export default function ChatPage() {
                 color: pinkTheme.text,
                 cursor: "pointer",
                 padding: "4px 10px",
+                flexShrink: 0,
               }}
             >
-              메뉴
+              대화이력
             </button>
-            <h3 style={{ margin: 0, fontSize: 15, color: pinkTheme.primary }}>
-              💬 {currentSessionId ? `상담 (#${currentSessionId})` : "신규 상담방"}
-            </h3>
           </div>
 
           <DisclaimerBanner />
@@ -551,6 +436,132 @@ export default function ChatPage() {
                     {s.name}
                   </span>
                 ),
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 대화이력 모달 — 출처 모달과 같은 중앙 모달 관례를 쓴다(왼쪽에서 미끄러져 나오는
+          Drawer는 앱의 다른 모달들과 결이 달라 통일했다, 2026-07-29). 마지막 대화일 기준
+          최신순으로 이미 정렬돼 내려온다(useChatStream 참고). */}
+      {isHistoryModalOpen && (
+        <div
+          onClick={() => setIsHistoryModalOpen(false)}
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100vw",
+            height: "100vh",
+            background: "rgba(90, 74, 78, 0.45)",
+            zIndex: 2000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(90vw, 360px)",
+              maxHeight: "70vh",
+              display: "flex",
+              flexDirection: "column",
+              background: pinkTheme.cardBg,
+              borderRadius: 14,
+              border: `1px solid ${pinkTheme.border}`,
+              boxShadow: "0 8px 28px rgba(90, 74, 78, 0.25)",
+              padding: "14px 16px",
+              boxSizing: "border-box",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "10px",
+              }}
+            >
+              <strong style={{ fontSize: "13px", color: pinkTheme.text }}>대화이력</strong>
+              <button
+                onClick={() => setIsHistoryModalOpen(false)}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  color: pinkTheme.textMuted,
+                  fontSize: "16px",
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: "2px 4px",
+                }}
+                aria-label="닫기"
+              >
+                ×
+              </button>
+            </div>
+
+            <button
+              onClick={() => {
+                startNewChat();
+                setIsHistoryModalOpen(false);
+              }}
+              style={{
+                background: pinkTheme.primary,
+                color: "#fff",
+                border: "none",
+                borderRadius: 10,
+                padding: "11px",
+                fontWeight: 700,
+                cursor: "pointer",
+                marginBottom: "10px",
+                flexShrink: 0,
+              }}
+            >
+              + 새로운 상담 시작
+            </button>
+
+            <div
+              style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: "6px" }}
+            >
+              {sessionList.map((session) => {
+                const isActive = String(session.id) === currentSessionId;
+                return (
+                  <div
+                    key={session.id}
+                    onClick={() => {
+                      void selectSession(String(session.id));
+                      setIsHistoryModalOpen(false);
+                    }}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: isActive
+                        ? `1.5px solid ${pinkTheme.primary}`
+                        : `1px solid ${pinkTheme.border}`,
+                      background: isActive ? pinkTheme.primarySoft : pinkTheme.cardBg,
+                      color: pinkTheme.text,
+                      fontWeight: isActive ? 700 : 400,
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "2px",
+                    }}
+                  >
+                    <span style={{ fontSize: "13px" }}>상담 #{session.id}</span>
+                    <span style={{ fontSize: "11px", color: pinkTheme.textMuted }}>
+                      {formatDate(session.updated_at)}
+                    </span>
+                  </div>
+                );
+              })}
+              {sessionList.length === 0 && (
+                <p style={{ fontSize: "12px", color: pinkTheme.textMuted, textAlign: "center" }}>
+                  이전 상담이 없습니다.
+                </p>
               )}
             </div>
           </div>
