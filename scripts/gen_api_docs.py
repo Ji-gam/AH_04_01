@@ -12,6 +12,7 @@
 엔드포인트/모델을 추가·변경했으면 같은 PR에서 이 스크립트를 돌려 문서를 갱신한다
 (AGENTS.md §8, docs/CODING_RULES.md §6).
 """
+
 import sys
 from datetime import date
 from pathlib import Path
@@ -69,26 +70,43 @@ def default_of(c):
 
 # (TableGroup 슬러그, 섹션 제목, 테이블 목록) — 목록이 None이면 "나머지 전부"
 GROUPS = [
-    ("account_auth", "계정 · 인증",
-     ["users", "profiles", "issued_refresh_tokens", "withdrawn_health_stats"]),
-    ("family", "가족 연동",
-     ["family_links", "family_invite_codes"]),
-    ("health_profile", "건강 프로필 · 문진",
-     ["diagnosis_entries", "disease_subtypes", "family_history_entries"]),
-    ("medication", "복약",
-     ["medication_schedules", "medication_intake_logs", "medication_recognition_jobs",
-      "medication_data_cache"]),
-    ("lifelog_goal", "생활기록 · 목표",
-     ["diary_entries", "diet_logs", "exercise_logs", "sleep_logs", "habit_logs",
-      "habit_selections", "habit_subtype_suggestions", "goals", "goal_progress_logs",
-      "weekly_reports"]),
-    ("chat_content", "챗봇 · 콘텐츠",
-     ["chat_sessions", "chat_messages", "health_contents", "notices"]),
-    ("notification", "알림 · 푸시",
-     ["notification_schedules", "notification_settings", "notification_logs",
-      "push_subscriptions", "push_send_logs"]),
-    ("ops_log", "운영 · 로그",
-     ["admin_actions", "error_logs"]),
+    ("account_auth", "계정 · 인증", ["users", "profiles", "issued_refresh_tokens", "withdrawn_health_stats"]),
+    ("family", "가족 연동", ["family_links", "family_invite_codes"]),
+    ("health_profile", "건강 프로필 · 문진", ["diagnosis_entries", "disease_subtypes", "family_history_entries"]),
+    (
+        "medication",
+        "복약",
+        ["medication_schedules", "medication_intake_logs", "medication_recognition_jobs", "medication_data_cache"],
+    ),
+    (
+        "lifelog_goal",
+        "생활기록 · 목표",
+        [
+            "diary_entries",
+            "diet_logs",
+            "exercise_logs",
+            "sleep_logs",
+            "habit_logs",
+            "habit_selections",
+            "habit_subtype_suggestions",
+            "goals",
+            "goal_progress_logs",
+            "weekly_reports",
+        ],
+    ),
+    ("chat_content", "챗봇 · 콘텐츠", ["chat_sessions", "chat_messages", "health_contents", "notices"]),
+    (
+        "notification",
+        "알림 · 푸시",
+        [
+            "notification_schedules",
+            "notification_settings",
+            "notification_logs",
+            "push_subscriptions",
+            "push_send_logs",
+        ],
+    ),
+    ("ops_log", "운영 · 로그", ["admin_actions", "error_logs"]),
     ("drug_reference", "외부 의약품/식품 참조데이터 (DUR·식약처 캐시)", None),
 ]
 
@@ -98,9 +116,7 @@ def render_column(t, c):
     if c.primary_key:
         attrs.append("pk")
         if c.autoincrement is True or (
-            c.autoincrement == "auto"
-            and len(t.primary_key.columns) == 1
-            and "int" in col_type(c)
+            c.autoincrement == "auto" and len(t.primary_key.columns) == 1 and "int" in col_type(c)
         ):
             attrs.append("increment")
     if not c.nullable and not c.primary_key:
@@ -123,10 +139,7 @@ def render_table(t):
     lines += [render_column(t, c) for c in t.columns]
 
     idx = list(t.indexes)
-    multi_uc = [
-        cst for cst in t.constraints
-        if cst.__class__.__name__ == "UniqueConstraint" and len(cst.columns) > 1
-    ]
+    multi_uc = [cst for cst in t.constraints if cst.__class__.__name__ == "UniqueConstraint" and len(cst.columns) > 1]
     if idx or multi_uc:
         lines.append("")
         lines.append("  indexes {")
@@ -218,9 +231,7 @@ def gen_md(spec):
                 continue
             tag = (op.get("tags") or ["기타"])[0]
             auth = "O" if op.get("security") else ""
-            by_tag.setdefault(tag, []).append(
-                (method.upper(), path, op.get("summary", "").strip(), auth)
-            )
+            by_tag.setdefault(tag, []).append((method.upper(), path, op.get("summary", "").strip(), auth))
     total = sum(len(v) for v in by_tag.values())
     lines = [
         "# ReMedi API 명세 요약 (v1)",
