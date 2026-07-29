@@ -1,9 +1,10 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import config
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
 from app.dtos.push import (
@@ -13,12 +14,14 @@ from app.dtos.push import (
     PushSubscribeRequest,
     PushUnsubscribeRequest,
     ReduceFrequencyRequest,
+    SnoozeRequest,
     VapidPublicKeyResult,
 )
 from app.models.medication_model import MedicationSchedule
 from app.models.notification_schedules import NotificationSchedule
 from app.models.profiles import Profile
 from app.models.push_subscription import PushPlatform
+from app.repositories.snooze_reminder_repository import SnoozeReminderRepository
 from app.services.medication_intake_service import MedicationIntakeService
 from app.services.push_service import PushService
 
@@ -162,3 +165,37 @@ async def reduce_frequency_push(
         if len(remaining) < len(med_schedule.times):
             med_schedule.times = remaining
             await session.commit()
+
+
+async def _resolve_owner_profile_id(session: AsyncSession, source_type: str, source_id: int) -> int | None:
+    if source_type == "notification_schedule":
+        schedule = await session.get(NotificationSchedule, source_id)
+        return schedule.profile_id if schedule else None
+    med_schedule = await session.get(MedicationSchedule, source_id)
+    return med_schedule.profile_id if med_schedule else None
+
+
+@push_router.post(
+    "/snooze",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="알림 미루기 (30분/1시간 후 다시 알림)",
+    description=(
+        "알림을 눌러 연 인앱 화면(바텀시트)에서 '30분 후에'/'1시간 후에'를 누르면 호출된다"
+        "(F-NTFY-3). mark-taken/reduce-frequency와 같은 이유로 인증 없이 profile_id를 직접 "
+        "받되, source_id 소유권은 서버가 검증한다. 지정한 시간이 지나면 push_scheduler가 "
+        "한 번 더 알림을 보내고 예약은 삭제된다(1회성)."
+    ),
+    responses={status.HTTP_404_NOT_FOUND: {"description": "해당 profile_id 소유가 아니거나 존재하지 않는 알림"}},
+)
+async def snooze_push(
+    body: SnoozeRequest,
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    owner_id = await _resolve_owner_profile_id(session, body.source_type, body.source_id)
+    if owner_id is None or owner_id != body.profile_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="해당 알림을 찾을 수 없습니다.")
+
+    remind_at = datetime.now(tz=config.TIMEZONE) + timedelta(minutes=body.minutes)
+    await SnoozeReminderRepository().create(
+        session, body.profile_id, body.source_type, body.source_id, body.name, body.alarm_time, remind_at
+    )

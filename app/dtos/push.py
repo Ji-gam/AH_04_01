@@ -63,3 +63,18 @@ class MarkTakenRequest(BaseModel):
     source_type: Literal["notification_schedule", "medication_schedule"]
     source_id: int
     alarm_time: str
+
+
+class SnoozeRequest(BaseModel):
+    """알림을 눌러 연 인앱 화면(바텀시트)에서 "30분 후에"/"1시간 후에"를 누르면 보내는
+    요청(F-NTFY-3). 액션 버튼 2개(복용완료/빈도줄이기)는 여전히 서비스워커가 인증 없이
+    직접 보내지만, 스누즈는 앱을 열어야 고를 수 있는 화면이라 실제로는 로그인 세션이 있다 -
+    그래도 두 엔드포인트와 성격을 통일하기 위해 똑같이 profile_id를 받고 서버가 소유권을
+    검증한다. name은 지정한 시간 뒤 다시 보낼 알림 문구에 쓸 약품명이다."""
+
+    profile_id: int
+    source_type: Literal["notification_schedule", "medication_schedule"]
+    source_id: int
+    name: str
+    alarm_time: str
+    minutes: Literal[30, 60]

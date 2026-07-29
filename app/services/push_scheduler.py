@@ -15,6 +15,7 @@ from app.repositories.dur_drug_repository import DurDrugRepository
 from app.repositories.goal_repository import GoalRepository
 from app.repositories.habit_repository import HabitRepository
 from app.repositories.push_send_log_repository import PushSendLogRepository
+from app.repositories.snooze_reminder_repository import SnoozeReminderRepository
 from app.services.notification_settings_service import NotificationSettingsService
 from app.services.periodic_report_service import PeriodicReportService
 from app.services.push_service import PushService
@@ -182,11 +183,38 @@ async def _send_due_items(
                 profile_id,
                 title="복약 알림",
                 body=body,
-                intake_sources=[(item.source_type, item.source_id, item.alarm_time) for item in claimed],
+                intake_sources=[(item.source_type, item.source_id, item.alarm_time, item.name) for item in claimed],
                 link_url="/alarms",
             )
         except Exception:
             logger.exception("알림 발송 중 오류 (profile_id=%s)", profile_id)
+
+
+async def _send_due_snoozes(session: AsyncSession, push_service: PushService, now: datetime) -> None:
+    """F-NTFY-3 - 인앱 바텀시트에서 "30분/1시간 후에"로 예약해둔 재알림(remind_at이 지난 것)을
+    한 번 더 보내고 바로 삭제한다(반복 스케줄이 아니라 1회성이라 발송 후엔 남아있을 이유가
+    없음). 매분 틱마다 remind_at을 "지난 것"만 확인하면 되므로 정확히 그 분에 맞힐 필요가
+    없다. [알려진 한계] start_push_scheduler의 멀티워커 중복발송 한계와 동일하게, 여기도
+    같은 예약을 두 워커가 동시에 집어 중복 발송할 가능성이 이론상 있다(트래픽 규모상 감내)."""
+    reminder_repo = SnoozeReminderRepository()
+    for reminder in await reminder_repo.list_due(session, now):
+        try:
+            await push_service.send_to_profile_and_guardians(
+                session,
+                reminder.profile_id,
+                title="복약 알림 (미루기)",
+                body=f"{reminder.medication_name} 드실 시간이에요!",
+                intake_sources=[
+                    (reminder.source_type, reminder.source_id, reminder.alarm_time, reminder.medication_name)
+                ],
+                link_url="/alarms",
+            )
+        except Exception:
+            logger.exception(
+                "스누즈 재알림 발송 중 오류 (profile_id=%s, reminder_id=%s)", reminder.profile_id, reminder.id
+            )
+        finally:
+            await reminder_repo.delete(session, reminder.id)
 
 
 async def _send_weekly_adherence_feedback_if_due(
@@ -346,6 +374,7 @@ async def _check_and_send_due_notifications() -> None:
         due_items = await _collect_due_notification_schedules(session, js_weekday, current_hhmm)
         due_items += await _collect_due_medication_schedules(session, current_hhmm)
         await _send_due_items(session, push_service, settings, send_log_repo, now, current_hhmm, due_items)
+        await _send_due_snoozes(session, push_service, now)
 
         await _send_weekly_adherence_feedback_if_due(
             session, settings, send_log_repo, report_service, now, current_hhmm
