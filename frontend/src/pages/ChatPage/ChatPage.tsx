@@ -104,88 +104,9 @@ export default function ChatPage() {
           background: pinkTheme.pageBg,
         }}
       >
-        {/* 1. 데스크톱 사이드바 */}
-        <div
-          className="chat-sidebar"
-          style={{
-            width: "250px",
-            borderRight: `1px solid ${pinkTheme.border}`,
-            background: pinkTheme.cardBg,
-            display: "flex",
-            flexDirection: "column",
-            height: "100%",
-            padding: "12px",
-            boxSizing: "border-box",
-          }}
-        >
-          <button
-            onClick={startNewChat}
-            style={{
-              background: pinkTheme.primary,
-              color: "#fff",
-              border: "none",
-              borderRadius: 10,
-              padding: "11px",
-              fontSize: "14px",
-              fontWeight: 700,
-              cursor: "pointer",
-              marginBottom: "15px",
-            }}
-          >
-            + 새로운 상담 시작
-          </button>
-
-          <h3 style={{ fontSize: "12px", marginBottom: "10px", color: pinkTheme.textMuted }}>
-            이전 상담 기록
-          </h3>
-
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              display: "flex",
-              flexDirection: "column",
-              gap: "6px",
-            }}
-          >
-            {sessionList.map((session) => {
-              const isActive = String(session.id) === currentSessionId;
-              return (
-                <div
-                  key={session.id}
-                  onClick={() => void selectSession(String(session.id))}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: isActive
-                      ? `1.5px solid ${pinkTheme.primary}`
-                      : `1px solid ${pinkTheme.border}`,
-                    background: isActive ? pinkTheme.primarySoft : pinkTheme.cardBg,
-                    color: pinkTheme.text,
-                    fontWeight: isActive ? 700 : 400,
-                    cursor: "pointer",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "2px",
-                  }}
-                  className="session-item"
-                >
-                  <span style={{ fontSize: "13px" }}>상담 #{session.id}</span>
-                  <span style={{ fontSize: "11px", color: pinkTheme.textMuted }}>
-                    {formatDate(session.created_at)}
-                  </span>
-                </div>
-              );
-            })}
-            {sessionList.length === 0 && (
-              <p style={{ fontSize: "12px", color: pinkTheme.textMuted, textAlign: "center" }}>
-                이전 상담이 없습니다.
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* 2. 모바일용 사이드바 Drawer */}
+        {/* 상담 목록은 화면 크기와 무관하게 항상 메뉴 버튼으로 여는 Drawer 하나로 통일한다 —
+            480px 폭 안에 사이드바를 상시 노출하면 채팅창이 너무 좁아져 글자가 세로로
+            찌그러진다(2026-07-29 실측). */}
         {isMobileMenuOpen && (
           <div
             style={{
@@ -336,7 +257,6 @@ export default function ChatPage() {
               ← 뒤로가기
             </button>
             <button
-              className="menu-toggle-btn"
               onClick={() => setIsMobileMenuOpen(true)}
               style={{
                 background: pinkTheme.cardBg,
@@ -344,7 +264,6 @@ export default function ChatPage() {
                 borderRadius: 8,
                 color: pinkTheme.text,
                 cursor: "pointer",
-                display: "none",
                 padding: "4px 10px",
               }}
             >
@@ -639,14 +558,6 @@ export default function ChatPage() {
       )}
 
       <style>{`
-        @media (max-width: 768px) {
-          .chat-sidebar {
-            display: none !important;
-          }
-          .menu-toggle-btn {
-            display: block !important;
-          }
-        }
         .chat-bubble-content p {
           margin: 0;
         }
