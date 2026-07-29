@@ -203,9 +203,7 @@ async def _link_guardian_and_member(client: AsyncClient, guardian_headers: dict,
     )
     assert invite_res.status_code == status.HTTP_201_CREATED
     code = invite_res.json()["code"]
-    redeem_res = await client.post(
-        "/api/v1/family/invite-code/redeem", headers=member_headers, json={"code": code}
-    )
+    redeem_res = await client.post("/api/v1/family/invite-code/redeem", headers=member_headers, json={"code": code})
     assert redeem_res.status_code == status.HTTP_200_OK
 
 
@@ -228,9 +226,7 @@ async def test_guardian_view_gated_by_opt_in_toggle(monkeypatch):
         assert settings_res.status_code == status.HTTP_200_OK
         assert settings_res.json()["allow_guardian_document_access"] is False
 
-        guardian_view_before = await client.get(
-            f"/api/v1/recognition/jobs/{job_id}/image", headers=guardian_headers
-        )
+        guardian_view_before = await client.get(f"/api/v1/recognition/jobs/{job_id}/image", headers=guardian_headers)
         assert guardian_view_before.status_code == status.HTTP_404_NOT_FOUND
 
         # 본인이 토글 ON
@@ -242,9 +238,7 @@ async def test_guardian_view_gated_by_opt_in_toggle(monkeypatch):
         assert toggle_res.status_code == status.HTTP_200_OK
         assert toggle_res.json()["allow_guardian_document_access"] is True
 
-        guardian_view_after = await client.get(
-            f"/api/v1/recognition/jobs/{job_id}/image", headers=guardian_headers
-        )
+        guardian_view_after = await client.get(f"/api/v1/recognition/jobs/{job_id}/image", headers=guardian_headers)
         assert guardian_view_after.status_code == status.HTTP_200_OK
 
         # 삭제는 토글 여부와 무관하게 보호자에게 항상 거부되어야 한다
@@ -254,7 +248,5 @@ async def test_guardian_view_gated_by_opt_in_toggle(monkeypatch):
         assert guardian_delete_res.status_code == status.HTTP_404_NOT_FOUND
 
         # 본인은 여전히 삭제 가능
-        owner_delete_res = await client.delete(
-            f"/api/v1/recognition/jobs/{job_id}/document", headers=member_headers
-        )
+        owner_delete_res = await client.delete(f"/api/v1/recognition/jobs/{job_id}/document", headers=member_headers)
         assert owner_delete_res.status_code == status.HTTP_204_NO_CONTENT

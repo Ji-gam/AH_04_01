@@ -118,7 +118,11 @@ export default function DocumentBoxPage() {
   };
 
   const handleDelete = async (jobId: string) => {
-    if (!window.confirm("이 문서와 추출된 정보를 완전히 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.")) {
+    if (
+      !window.confirm(
+        "이 문서와 추출된 정보를 완전히 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+      )
+    ) {
       return;
     }
     try {
@@ -138,7 +142,14 @@ export default function DocumentBoxPage() {
         <button
           type="button"
           onClick={() => navigate("/more")}
-          style={{ background: "none", border: "none", color: t.textMuted, padding: 0, marginBottom: 12, cursor: "pointer" }}
+          style={{
+            background: "none",
+            border: "none",
+            color: t.textMuted,
+            padding: 0,
+            marginBottom: 12,
+            cursor: "pointer",
+          }}
         >
           ← 뒤로가기
         </button>
@@ -256,7 +267,9 @@ export default function DocumentBoxPage() {
           <div style={{ background: t.cardBg, borderRadius: 16, padding: 16 }}>
             {viewingError && <p style={{ color: t.danger, fontSize: 13 }}>{viewingError}</p>}
             {!viewingError && !viewingImageUrl && (
-              <p style={{ color: t.textMuted, fontSize: 14, textAlign: "center", padding: "40px 0" }}>
+              <p
+                style={{ color: t.textMuted, fontSize: 14, textAlign: "center", padding: "40px 0" }}
+              >
                 불러오는 중...
               </p>
             )}

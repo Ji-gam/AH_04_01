@@ -80,9 +80,7 @@ def _validate_uploaded_image(file_bytes: bytes) -> str:
             img.verify()
             image_format = img.format
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="유효한 이미지 파일이 아닙니다."
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="유효한 이미지 파일이 아닙니다.") from exc
     mime_type = _ALLOWED_IMAGE_MIME_TYPES.get(image_format or "")
     if mime_type is None:
         raise HTTPException(
@@ -93,6 +91,7 @@ def _validate_uploaded_image(file_bytes: bytes) -> str:
 
 def _document_storage_path(profile_id: int, job_id: str) -> Path:
     return Path(config.DOCUMENT_STORAGE_ROOT) / str(profile_id) / f"{job_id}.enc"
+
 
 # 약품명 후보로 볼 만한 OCR 텍스트 블록 판별 기준.
 # "정"/"캡슐" 같은 제형 접미사만으로는 "환자정보", "서방정"(잘린 조각) 등 일반 텍스트도
