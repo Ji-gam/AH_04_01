@@ -99,7 +99,7 @@ class PushService:
         profile_id: int,
         title: str,
         body: str,
-        intake_sources: list[tuple[str, int, str]] | None = None,
+        intake_sources: list[tuple[str, int, str, str]] | None = None,
         consult_url: str | None = None,
         link_url: str | None = None,
     ) -> None:
@@ -107,15 +107,18 @@ class PushService:
         구독 하나가 실패해도(예: 브라우저에서 구독 취소했는데 서버 DB에는 아직 남아있는
         경우) 나머지 기기 발송은 계속한다.
 
-        intake_sources=[(source_type, source_id, alarm_time), ...]를 주면 알림에 "복용완료"/
-        "빈도 줄이기" 액션 버튼을 붙인다(service-worker.js가 payload.actions/data를 그대로
-        showNotification에 넘긴다) - 복약알림 본인 몫에만 쓰고, 가족에게 전달하는 사본에는 안
-        붙인다(복용 체크/빈도 조정은 본인이 결정할 일이라 가족이 대신 할 수 있으면 안 된다).
-        액션 버튼은 브라우저마다 보통 최대 2개까지만 확실히 렌더링돼서(실기기 확인), 둘 다
-        넣으면 일부 기기에서 3번째 버튼이 아예 안 보일 수 있다 - 그래서 "30분 후 다시"(스누즈)는
-        뺐다(팀 결정, 2026-07-23. 대신 F-NTFY-2로 같은 시각 여러 약을 한 알림에 묶을 수 있게
-        됐으니, 리스트에 항목이 여러 개면 "복용완료"/"빈도 줄이기" 둘 다 그 알림에 묶인 항목
-        전체에 적용된다 - service-worker.js가 리스트를 순회하며 항목마다 요청을 반복한다).
+        intake_sources=[(source_type, source_id, alarm_time, name), ...]를 주면 알림에
+        "복용완료"/"빈도 줄이기" 액션 버튼을 붙인다(service-worker.js가 payload.actions/data를
+        그대로 showNotification에 넘긴다) - 복약알림 본인 몫에만 쓰고, 가족에게 전달하는
+        사본에는 안 붙인다(복용 체크/빈도 조정은 본인이 결정할 일이라 가족이 대신 할 수 있으면
+        안 된다). 액션 버튼은 브라우저마다 보통 최대 2개까지만 확실히 렌더링돼서(실기기 확인),
+        둘 다 넣으면 일부 기기에서 3번째 버튼이 아예 안 보일 수 있다 - 그래서 "30분 후 다시"
+        (스누즈)는 액션 버튼으로 넣지 않는다(팀 결정, 2026-07-23). 대신 알림 본문(액션 버튼이
+        아닌 부분)을 탭하면 인앱 바텀시트에서 스누즈를 고를 수 있다(F-NTFY-3, 2026-07-29) -
+        그래서 각 항목에 name도 함께 실어보내 그 화면에서 약품명을 바로 보여줄 수 있게 한다.
+        F-NTFY-2로 같은 시각 여러 약을 한 알림에 묶을 수 있게 됐으니, 리스트에 항목이
+        여러 개면 "복용완료"/"빈도 줄이기" 둘 다 그 알림에 묶인 항목 전체에 적용된다
+        (service-worker.js가 리스트를 순회하며 항목마다 요청을 반복한다).
 
         alarm_time("HH:MM")은 각 항목이 "실제로 울린 시각"이다 - "복용완료"는 F-ADH-1
         복용기록(MedicationIntakeLog.scheduled_time)에, "빈도 줄이기"는 medication_schedule의
@@ -140,8 +143,8 @@ class PushService:
             payload["data"] = {
                 "profile_id": profile_id,
                 "items": [
-                    {"source_type": source_type, "source_id": source_id, "alarm_time": alarm_time}
-                    for source_type, source_id, alarm_time in intake_sources
+                    {"source_type": source_type, "source_id": source_id, "alarm_time": alarm_time, "name": name}
+                    for source_type, source_id, alarm_time, name in intake_sources
                 ],
             }
             payload["actions"] = [
@@ -221,7 +224,7 @@ class PushService:
         profile_id: int,
         title: str,
         body: str,
-        intake_sources: list[tuple[str, int, str]] | None = None,
+        intake_sources: list[tuple[str, int, str, str]] | None = None,
         link_url: str | None = None,
     ) -> None:
         """`send_to_profile`은 그대로 두고, 여기에 "이 사람을 관리하는 보호자들에게도 같이

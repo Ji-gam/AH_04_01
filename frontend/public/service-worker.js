@@ -90,12 +90,24 @@ self.addEventListener("notificationclick", (event) => {
     return;
   }
 
+  // 액션 버튼이 아니라 알림 본문(배너) 자체를 탭한 경우 - 복약 알림(F-NTFY-1/2)이면
+  // "30분/1시간 후에" 스누즈를 고를 수 있는 인앱 바텀시트(F-NTFY-3, SnoozeSheet.tsx)로
+  // 보낸다. items/profile_id가 없으면(가족 사본, 습관 달성 알림 등) 그냥 /alarms로만 이동.
+  const { profile_id: snoozeProfileId, items: snoozeItems } = notification.data || {};
+  const targetUrl =
+    snoozeProfileId && snoozeItems && snoozeItems.length > 0
+      ? `/alarms?snoozeProfileId=${snoozeProfileId}&snoozeItems=${encodeURIComponent(JSON.stringify(snoozeItems))}`
+      : "/alarms";
+
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
+        if ("navigate" in client && "focus" in client) {
+          return client.navigate(targetUrl).then((navigated) => navigated.focus());
+        }
         if ("focus" in client) return client.focus();
       }
-      if (self.clients.openWindow) return self.clients.openWindow("/alarms");
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
       return undefined;
     }),
   );

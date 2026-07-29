@@ -18,6 +18,7 @@ import AlarmCalendar from "./components/AlarmCalendar";
 import AlarmForm, { type AlarmFormSubmit } from "./components/AlarmForm";
 import MedTimeForm from "./components/MedTimeForm";
 import Modal from "./components/Modal";
+import SnoozeSheet, { type SnoozeItem } from "./components/SnoozeSheet";
 import ToggleSwitch from "./components/ToggleSwitch";
 import { toDateString } from "./dateUtils";
 
@@ -93,6 +94,28 @@ export default function AlarmPage() {
   // (웹푸시) 탭이 닫혀있어도 알림을 받으려면 이 구독이 필요하다 - 기존
   // requestNotificationPermission()은 탭이 열려있을 때만 동작하는 별개 메커니즘이라 그대로 둠.
   const [pushStatus, setPushStatus] = useState<PushSubscribeStatus | "idle">("idle");
+
+  // 알림 본문을 탭해서 열렸을 때(F-NTFY-3 스누즈) - service-worker.js가 채운 쿼리스트링을
+  // 한 번만 읽어 바텀시트로 띄우고, 새로고침 시 재노출되지 않도록 URL에서 지운다.
+  const [snoozeSheet, setSnoozeSheet] = useState<{ profileId: number; items: SnoozeItem[] } | null>(
+    null,
+  );
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const profileIdRaw = params.get("snoozeProfileId");
+    const itemsRaw = params.get("snoozeItems");
+    if (!profileIdRaw || !itemsRaw) return;
+    try {
+      const items = JSON.parse(itemsRaw) as SnoozeItem[];
+      if (Array.isArray(items) && items.length > 0) {
+        setSnoozeSheet({ profileId: Number(profileIdRaw), items });
+      }
+    } catch {
+      // 형식이 이상하면 조용히 무시 - 바텀시트를 안 띄우는 것으로 충분하다.
+    }
+    navigate(location.pathname, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleEnablePush() {
     const status = await enableWebPush();
@@ -558,6 +581,17 @@ export default function AlarmPage() {
               errorMessage={formError}
               onCancel={() => setEditingMed(null)}
               onSubmit={handleUpdateMedTime}
+            />
+          </Modal>
+        )}
+
+        {/* 알림 본문을 탭해서 열렸을 때(F-NTFY-3 스누즈) - 복용완료/30분·1시간 후에/빈도줄이기. */}
+        {snoozeSheet && (
+          <Modal onClose={() => setSnoozeSheet(null)}>
+            <SnoozeSheet
+              profileId={snoozeSheet.profileId}
+              items={snoozeSheet.items}
+              onClose={() => setSnoozeSheet(null)}
             />
           </Modal>
         )}
