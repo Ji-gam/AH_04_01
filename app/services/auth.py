@@ -187,15 +187,23 @@ class AuthService:
         result = await session.execute(
             select(Profile)
             .where(Profile.user_id == user.id)
-            .options(selectinload(Profile.diagnosis_entries), selectinload(Profile.family_history_entries))
+            .options(
+                selectinload(Profile.health_profile),
+                selectinload(Profile.diagnosis_entries),
+                selectinload(Profile.family_history_entries),
+            )
         )
         profiles = result.scalars().all()
         for profile in profiles:
-            group = age_group(profile.birth_date)
+            hp = profile.health_profile
+            group = age_group(hp.birth_date if hp else None)
             for diagnosis in profile.diagnosis_entries:
                 session.add(
                     WithdrawnHealthStat(
-                        disease=diagnosis.disease, is_family_history=False, age_group=group, gender=profile.gender
+                        disease=diagnosis.disease,
+                        is_family_history=False,
+                        age_group=group,
+                        gender=hp.gender if hp else None,
                     )
                 )
             for family_entry in profile.family_history_entries:
@@ -204,7 +212,7 @@ class AuthService:
                         disease=family_entry.disease,
                         is_family_history=True,
                         age_group=group,
-                        gender=profile.gender,
+                        gender=hp.gender if hp else None,
                     )
                 )
 

@@ -249,7 +249,13 @@ export default function HomePage() {
   function handleConfirm() {
     if (user) dismissForSession(user.profile_id);
     setShowBanner(false);
-    navigate("/health-info/consent");
+    // [2026-07-29 버그 수정] 예전엔 여기서 /health-info/consent(건강정보 전용 동의)로
+    // 보냈는데, 그 경로가 이제 회원가입 통합동의 화면(ConsentPage.tsx)으로 재활용되면서
+    // 문제가 생겼다 - 가입 시 이미 동의를 마친 사용자가 여기 도착하면 ConsentPage가
+    // "이미 동의 완료"로 판단해 즉시 홈으로 되돌려보내서, 입력창엔 아예 도달을 못 했다.
+    // 동의는 이제 가입 시점에 끝나므로, 이 경유지 없이 바로 실제 입력 화면으로 보낸다
+    // (HealthInfoPage.tsx 자체에도 미동의 시 재확인하는 안전장치가 남아있음).
+    navigate("/health-info");
   }
 
   const today = new Date();

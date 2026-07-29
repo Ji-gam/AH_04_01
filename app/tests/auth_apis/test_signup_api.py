@@ -1,5 +1,6 @@
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from starlette import status
 
 from app.main import app
@@ -21,13 +22,21 @@ async def test_signup_success():
     assert response.status_code == status.HTTP_201_CREATED
     assert response.json() == {"detail": "회원가입이 성공적으로 완료되었습니다."}
 
-    # 회원가입 시 User와 함께 본인(SELF) Profile도 같이 생성되고, 나이/성별/휴대폰번호는 전부 null이어야 한다
+    # 회원가입 시 User와 함께 본인(SELF) Profile도 같이 생성되고, 나이/성별/휴대폰번호는 전부 null이어야 한다.
+    # [2026-07-29 PII/건강정보 분리] gender/age는 이제 health_profile 경유 - selectinload로
+    # 명시적으로 같이 불러온다(그래야 async 세션에서 lazy load 에러 없이 접근 가능).
+    # health_profile 자체는 가입 시 항상 같이 생성되는 게 불변식이므로 None이면 안 된다.
     async with TestSessionLocal() as session:
         user = (await session.execute(select(User).where(User.email == "test@example.com"))).scalar_one()
-        profile = (await session.execute(select(Profile).where(Profile.user_id == user.id))).scalar_one()
+        profile = (
+            await session.execute(
+                select(Profile).where(Profile.user_id == user.id).options(selectinload(Profile.health_profile))
+            )
+        ).scalar_one()
         assert profile.relation == ProfileRelation.SELF
         assert profile.name == "테스터"
-        assert profile.gender is None
+        assert profile.health_profile is not None, "가입 시 health_profile이 같이 생성되지 않음"
+        assert profile.health_profile.gender is None
         assert profile.age is None
         assert profile.phone_number is None
 

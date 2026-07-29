@@ -53,6 +53,6 @@ class ChatContextService:
                 for m in medications
             ],
             "goals": [],
-            "is_pregnant": bool(profile.is_pregnant),
+            "is_pregnant": bool(profile.health_profile.is_pregnant) if profile.health_profile else False,
             "is_geriatric": profile.age is not None and profile.age >= _GERIATRIC_AGE_THRESHOLD,
         }

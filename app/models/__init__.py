@@ -19,6 +19,7 @@ from app.models.food_drug_interaction import (
 from app.models.habit_logs import HabitLog
 from app.models.habit_selections import HabitSelection
 from app.models.habit_subtype_suggestions import HabitSubtypeSuggestion
+from app.models.health_profiles import HealthProfile
 from app.models.medication_intake import MedicationIntakeLog
 from app.models.medication_model import MedicationRecognitionJob, MedicationSchedule
 from app.models.notification_schedules import NotificationSchedule
@@ -51,6 +52,7 @@ __all__ = [
     "HabitLog",
     "HabitSelection",
     "HabitSubtypeSuggestion",
+    "HealthProfile",
     "MedicationIntakeLog",
     "NotificationSchedule",
     "Profile",

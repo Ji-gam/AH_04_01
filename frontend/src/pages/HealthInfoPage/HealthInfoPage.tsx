@@ -1,4 +1,4 @@
-import { HeartPulse } from "lucide-react";
+import { Check, HeartPulse, Pill } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -14,6 +14,7 @@ import type {
 import PageTitle from "../../components/common/PageTitle";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
+import Modal from "../AlarmPage/components/Modal";
 
 import BirthDateInput from "./BirthDateInput";
 import DiseaseSubtypeSearchInput from "./DiseaseSubtypeSearchInput";
@@ -723,7 +724,6 @@ export default function HealthInfoPage() {
           개인건강정보
         </PageTitle>
 
-        {savedMessage && <p style={{ color: pinkTheme.success, fontSize: 14 }}>{savedMessage}</p>}
         {error && <p style={{ color: pinkTheme.danger, fontSize: 14 }}>{error}</p>}
 
         {mode === "view" ? (
@@ -1013,6 +1013,74 @@ export default function HealthInfoPage() {
           </form>
         )}
       </div>
+
+      {savedMessage && (
+        <Modal onClose={() => setSavedMessage(null)}>
+          <div
+            style={{
+              background: pinkTheme.cardBg,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 16,
+              padding: 24,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ position: "relative", width: 52, height: 52, margin: "0 auto 12px" }}>
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: "50%",
+                  background: pinkTheme.primarySoft,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Pill size={26} color={pinkTheme.primary} />
+              </div>
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: -2,
+                  right: -2,
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  background: pinkTheme.primary,
+                  border: `2px solid ${pinkTheme.cardBg}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Check size={12} color="#fff" strokeWidth={3} />
+              </div>
+            </div>
+            <p style={{ margin: "0 0 18px", fontSize: 15, fontWeight: 700, color: pinkTheme.text }}>
+              {savedMessage}
+            </p>
+            <button
+              type="button"
+              onClick={() => setSavedMessage(null)}
+              style={{
+                width: "100%",
+                padding: "10px",
+                border: "none",
+                borderRadius: 10,
+                background: pinkTheme.primary,
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              확인
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -12,7 +12,10 @@ class UserUpdateRequest(BaseModel):
     """전달한 필드만 갱신한다(부분 수정). 전부 Profile에 반영된다.
     email은 로그인 식별자라 여기서 수정할 수 없다(가입 후 고정) - 이메일 인증 절차가 없는 상태에서
     검증 없이 바꾸면 계정을 잃어버릴 위험이 있어서, 실서비스 전환 시 이메일 인증 기능과 함께 재검토한다.
-    [변경] 생년월일은 더 이상 안 쓴다 - 나이는 더보기 > 개인건강정보에서 관리한다."""
+    [변경] 생년월일은 더 이상 안 쓴다 - 나이는 더보기 > 개인건강정보에서 관리한다.
+    [2026-07-29 PII/건강정보 분리] gender도 여기서 뺐다 - 성별은 건강정보(민감정보)로 분류돼
+    health_profiles에 저장되므로, 오직 /users/me/health-info(HealthInfoUpdateRequest)를 통해서만
+    수정 가능하다(계정설정 화면에도 애초에 gender 입력 UI가 없어 실사용 경로에 영향 없음)."""
 
     name: Annotated[
         str | None, Field(None, description="Profile의 이름(닉네임)", min_length=2, max_length=20, examples=["길동이"])
@@ -21,10 +24,6 @@ class UserUpdateRequest(BaseModel):
         str | None,
         Field(None, description="Available Format: +8201011112222, 01011112222, 010-1111-2222"),
         optional_after_validator(validate_phone_number),
-    ]
-    gender: Annotated[
-        Gender | None,
-        Field(None, description="'MALE' or 'FEMALE'"),
     ]
 
 
