@@ -1,3 +1,4 @@
+import { Check, Pill } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -87,7 +88,7 @@ export default function FamilyTrackerView({
         화면과 헤더 배치(뒤로가기 단독 줄 → 제목+FamilySwitcher 줄)를 통일하기 위함.
         여기서 targetName은 이제 아래 탭 콘텐츠에서만 쓰인다(직접 쓰이는 곳 없으면
         ESLint가 미사용 경고를 낼 수 있음 - 아래 탭 컴포넌트들에 넘겨줄 뿐 여기선 안 씀). */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: "5px", marginBottom: "15px" }}>
         {(
           [
             ["register", "시간표 / 분석"],
@@ -126,7 +127,7 @@ export default function FamilyTrackerView({
 }
 
 function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
-  const [subTab, setSubTab] = useState<"search" | "photo">("search");
+  const [subTab, setSubTab] = useState<"search" | "photo">("photo");
 
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<MedicationSearchResult[]>([]);
@@ -404,9 +405,9 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div>
       <OcrFullscreenOverlay status={jobStatus} />
-      <div style={{ display: "flex", gap: 6 }}>
+      <div style={{ display: "flex", gap: "5px", marginBottom: "15px" }}>
         <button
           type="button"
           onClick={() => setSubTab("photo")}
@@ -675,6 +676,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
               border: `1px solid ${t.border}`,
               borderRadius: 16,
               padding: 18,
+              marginBottom: "15px",
               background: t.cardBg,
               boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
               display: "flex",
@@ -956,8 +958,75 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
         </div>
       )}
 
-      {message && <p style={{ margin: 0, fontSize: 12, color: t.success }}>{message}</p>}
       {error && <p style={{ margin: 0, fontSize: 12, color: t.danger }}>{error}</p>}
+
+      {message && (
+        <Modal onClose={() => setMessage(null)}>
+          <div
+            style={{
+              background: t.cardBg,
+              border: `1px solid ${t.border}`,
+              borderRadius: 16,
+              padding: 24,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+              textAlign: "center",
+            }}
+          >
+            <div style={{ position: "relative", width: 52, height: 52, margin: "0 auto 12px" }}>
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: "50%",
+                  background: t.primarySoft,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Pill size={26} color={t.primary} />
+              </div>
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: -2,
+                  right: -2,
+                  width: 20,
+                  height: 20,
+                  borderRadius: "50%",
+                  background: t.primary,
+                  border: `2px solid ${t.cardBg}`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Check size={12} color="#fff" strokeWidth={3} />
+              </div>
+            </div>
+            <p style={{ margin: "0 0 18px", fontSize: 15, fontWeight: 700, color: t.text }}>
+              {message}
+            </p>
+            <button
+              type="button"
+              onClick={() => setMessage(null)}
+              style={{
+                width: "100%",
+                padding: "10px",
+                border: "none",
+                borderRadius: 10,
+                background: t.primary,
+                color: "#fff",
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              확인
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

@@ -77,7 +77,8 @@ class ExerciseService:
     async def log_exercise(
         self, session: AsyncSession, profile: Profile, request: ExerciseLogCreateRequest
     ) -> ExerciseTodayResult:
-        weight_kg = Decimal(str(profile.weight_kg)) if profile.weight_kg is not None else DEFAULT_WEIGHT_KG
+        hp = profile.health_profile
+        weight_kg = Decimal(str(hp.weight_kg)) if hp and hp.weight_kg is not None else DEFAULT_WEIGHT_KG
         duration_minutes: Decimal
         distance_km: Decimal | None = None
         count: int | None = None

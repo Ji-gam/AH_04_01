@@ -49,12 +49,20 @@ class FakeDiagnosisEntry:
 
 
 @dataclass
+class FakeHealthProfile:
+    """[2026-07-29 PII/건강정보 분리] is_pregnant는 이제 profile.health_profile 경유로
+    읽힌다 - 실제 HealthProfile 모델과 같은 인터페이스(속성명)를 흉내낸 테스트 더블."""
+
+    is_pregnant: bool | None = None
+
+
+@dataclass
 class FakeProfile:
     # [정규화] diagnosis_history(JSON) -> diagnosis_entries(관계형 리스트)로 필드명/타입 변경.
     id: int
     name: str = "사용자"
     age: int | None = None
-    is_pregnant: bool | None = None
+    health_profile: FakeHealthProfile | None = None
     diagnosis_entries: list[FakeDiagnosisEntry] = field(default_factory=list)
     family_history_entries: list[FakeDiagnosisEntry] = field(default_factory=list)
 

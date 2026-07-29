@@ -237,10 +237,12 @@ export interface HealthInfoUpdatePayload {
 }
 
 // PATCH /users/me 요청 바디. email은 로그인 식별자라 백엔드가 애초에 안 받는다(가입 후 고정).
+// (2026-07-29 PII/건강정보 분리) gender는 건강정보(민감정보)로 분류되어 이 경로에서
+// 빠졌다 - 백엔드 UserUpdateRequest도 이제 gender를 안 받는다(무시됨). 성별 수정은
+// HealthInfoUpdatePayload(/users/me/health-info)로만 가능하다.
 export interface UserUpdatePayload {
   name?: string;
   phone_number?: string;
-  gender?: "MALE" | "FEMALE";
 }
 
 // GET/PATCH /users/me/consent 응답. 미동의 시 null.

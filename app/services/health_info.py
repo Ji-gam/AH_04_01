@@ -8,7 +8,7 @@ from app.repositories.disease_entry_repository import (
     DiseaseSubtypeRepository,
     FamilyHistoryEntryRepository,
 )
-from app.repositories.profile_repository import ProfileRepository
+from app.repositories.profile_repository import HealthProfileRepository
 
 
 class HealthInfoService:
@@ -20,10 +20,14 @@ class HealthInfoService:
     검색/자동생성(get_or_create)해서 실제 FK로 연결한다 - 원티드 스킬태그 검색과 같은 방식.
 
     [재설계] 나이는 저장하지 않는다 - birth_date만 저장하고, 나이는 항상 그로부터 자동 계산된다
-    (Profile.age 프로퍼티 참고). 그래서 여기서 "나이 입력 시점"을 따로 추적할 필요가 없어졌다."""
+    (Profile.age 프로퍼티 참고). 그래서 여기서 "나이 입력 시점"을 따로 추적할 필요가 없어졌다.
+
+    [2026-07-29 PII/건강정보 분리] 이 서비스가 다루는 필드(성별/생년월일/임신여부/키/몸무게/
+    특이사항)는 전부 health_profiles 테이블로 이관됐다 - profile_repo 대신
+    health_profile_repo를 통해 profile.health_profile을 갱신한다."""
 
     def __init__(self):
-        self.profile_repo = ProfileRepository()
+        self.health_profile_repo = HealthProfileRepository()
         self.subtype_repo = DiseaseSubtypeRepository()
         self.diagnosis_repo = DiagnosisEntryRepository()
         self.family_repo = FamilyHistoryEntryRepository()
@@ -33,7 +37,8 @@ class HealthInfoService:
     ) -> Profile:
         fields = data.model_dump(exclude_none=True, exclude={"diagnosis_history", "family_history"})
 
-        await self.profile_repo.update_instance(session, profile, fields)
+        health_profile = await self.health_profile_repo.get_or_create_for_profile(session, profile)
+        await self.health_profile_repo.update_instance(session, health_profile, fields)
 
         if data.diagnosis_history is not None:
             diagnosis_rows: list[DiagnosisEntry] = []

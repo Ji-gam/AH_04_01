@@ -1,5 +1,5 @@
 """[1회성 마이그레이션] EncryptedText 적용 이전에 평문으로 저장돼있던 기존 건강정보
-텍스트(Profile.special_notes/other_notes, DiagnosisEntry.detail,
+텍스트(HealthProfile.special_notes/other_notes, DiagnosisEntry.detail,
 FamilyHistoryEntry.detail)를 암호화해서 다시 써넣는다.
 
 사용법 (FIELD_ENCRYPTION_KEY를 .env에 설정한 뒤 딱 한 번만 실행):
@@ -23,9 +23,12 @@ from app.core import config
 from app.core.db.databases import AsyncSessionLocal
 
 # (테이블명, 기본키 컬럼명, 암호화 대상 컬럼명)
+# [2026-07-29] special_notes/other_notes는 PII/건강정보 분리로 profiles → health_profiles로
+# 이관됐다 - 이 스크립트를 다시 돌릴 일이 생기면(예: 새로 유입된 평문 데이터) 옮겨진
+# 테이블을 대상으로 해야 한다.
 _TARGETS = [
-    ("profiles", "id", "special_notes"),
-    ("profiles", "id", "other_notes"),
+    ("health_profiles", "id", "special_notes"),
+    ("health_profiles", "id", "other_notes"),
     ("diagnosis_entries", "id", "detail"),
     ("family_history_entries", "id", "detail"),
 ]

@@ -12,12 +12,20 @@ class FakeDiagnosisEntry:
 
 
 @dataclass
+class FakeHealthProfile:
+    """[2026-07-29 PII/건강정보 분리] is_pregnant는 이제 profile.health_profile 경유로
+    읽힌다 - 실제 HealthProfile 모델과 같은 인터페이스(속성명)를 흉내낸 테스트 더블."""
+
+    is_pregnant: bool | None = None
+
+
+@dataclass
 class FakeProfile:
     # [정규화] diagnosis_history(JSON) -> diagnosis_entries(관계형 리스트)로 필드명/타입 변경.
     id: int
     name: str = "사용자"
     age: int | None = None
-    is_pregnant: bool | None = None
+    health_profile: FakeHealthProfile | None = None
     diagnosis_entries: list[FakeDiagnosisEntry] = field(default_factory=list)
     family_history_entries: list[FakeDiagnosisEntry] = field(default_factory=list)
 
@@ -63,8 +71,8 @@ def test_age_under_threshold_is_not_geriatric():
 
 
 def test_is_pregnant_true_reads_from_profile():
-    """[#71 해결] 이제 Profile.is_pregnant를 개인건강정보에서 실제로 입력받아 그대로 읽는다."""
-    profile = FakeProfile(id=1, is_pregnant=True)
+    """[#71 해결] 이제 HealthProfile.is_pregnant를 개인건강정보에서 실제로 입력받아 그대로 읽는다."""
+    profile = FakeProfile(id=1, health_profile=FakeHealthProfile(is_pregnant=True))
 
     context = ChatContextService().build(profile, [])
 
@@ -72,7 +80,7 @@ def test_is_pregnant_true_reads_from_profile():
 
 
 def test_is_pregnant_false_reads_from_profile():
-    profile = FakeProfile(id=1, is_pregnant=False)
+    profile = FakeProfile(id=1, health_profile=FakeHealthProfile(is_pregnant=False))
 
     context = ChatContextService().build(profile, [])
 
@@ -82,7 +90,7 @@ def test_is_pregnant_false_reads_from_profile():
 def test_is_pregnant_defaults_to_false_when_unanswered():
     """미입력(None)이면 임부금기 경고 게이팅 목적상 False로 취급한다(모른다 != 아니다이지만,
     현재는 안전하게 "경고 비활성"으로 처리)."""
-    profile = FakeProfile(id=1, is_pregnant=None)
+    profile = FakeProfile(id=1, health_profile=FakeHealthProfile(is_pregnant=None))
 
     context = ChatContextService().build(profile, [])
 

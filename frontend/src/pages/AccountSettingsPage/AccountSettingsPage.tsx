@@ -66,7 +66,9 @@ export default function AccountSettingsPage() {
     try {
       await authApi.withdraw(user?.has_password ? withdrawPassword : undefined);
       await logout();
-      navigate("/login", { replace: true });
+      // (2026-07-29) 탈퇴 직후 /login으로 보내면 뒤로가기 버튼도 없이 뚝 끊기는 느낌이라,
+      // 로그인 안 해도 볼 수 있는 홈으로 보낸다 - 홈엔 하단 탭바가 있어 갇힌 느낌이 없다.
+      navigate("/", { replace: true });
     } catch {
       setWithdrawError("비밀번호가 잘못되었습니다.");
     } finally {

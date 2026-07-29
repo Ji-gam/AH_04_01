@@ -15,6 +15,7 @@ from sqlalchemy import select, text
 import app.models  # noqa: F401 - 전체 모델 등록 보장
 from app.core import config
 from app.models.disease_entries import DiagnosisEntry, FamilyHistoryEntry
+from app.models.health_profiles import HealthProfile
 from app.models.profiles import Disease, Profile
 from app.models.users import User
 from app.repositories.disease_entry_repository import DiagnosisEntryRepository
@@ -35,10 +36,13 @@ def _field_encryption_key():
 
 
 async def _create_user_and_profile(session, email: str) -> Profile:
+    """[2026-07-29 PII/건강정보 분리] special_notes/other_notes는 이제 Profile이 아니라
+    HealthProfile에 있다 - 이 테스트가 필요로 하는 health_profile도 같이 만들어둔다."""
     user = User(email=email, hashed_password="x")
     session.add(user)
     await session.flush()
     profile = Profile(user_id=user.id, name="테스트")
+    profile.health_profile = HealthProfile()
     session.add(profile)
     await session.commit()
     await session.refresh(profile)
@@ -47,19 +51,23 @@ async def _create_user_and_profile(session, email: str) -> Profile:
 
 async def test_encrypted_field_stores_ciphertext_but_reads_back_plaintext():
     """ORM으로 평문을 저장하면, DB에는 암호문이 저장되지만(raw SQL로 확인) ORM으로
-    다시 읽으면 평문 그대로 보인다(투명 복호화) - EncryptedText의 핵심 동작."""
+    다시 읽으면 평문 그대로 보인다(투명 복호화) - EncryptedText의 핵심 동작.
+    [2026-07-29] special_notes는 이제 health_profiles 테이블에 있다."""
     async with TestSessionLocal() as session:
         profile = await _create_user_and_profile(session, "encrypt_roundtrip@example.com")
-        profile.special_notes = "땅콩 알레르기 있음"
+        profile.health_profile.special_notes = "땅콩 알레르기 있음"
         await session.commit()
 
-        raw = await session.execute(text("SELECT special_notes FROM profiles WHERE id = :id"), {"id": profile.id})
+        raw = await session.execute(
+            text("SELECT special_notes FROM health_profiles WHERE profile_id = :id"), {"id": profile.id}
+        )
         raw_value = raw.scalar_one()
         assert raw_value != "땅콩 알레르기 있음", "DB에 평문 그대로 저장됨 - 암호화가 전혀 안 됨"
         assert "땅콩" not in raw_value, "DB에 평문 일부가 그대로 노출됨"
 
-        await session.refresh(profile)
-        assert profile.special_notes == "땅콩 알레르기 있음"
+        await session.refresh(profile, attribute_names=["health_profile"])
+        await session.refresh(profile.health_profile)
+        assert profile.health_profile.special_notes == "땅콩 알레르기 있음"
 
 
 async def test_diagnosis_detail_encrypted_but_disease_stays_queryable_by_sql():
@@ -134,12 +142,15 @@ async def test_phone_number_stays_queryable_by_sql_for_signup_duplicate_check():
 
 async def test_encryption_is_off_when_key_not_configured(monkeypatch):
     """FIELD_ENCRYPTION_KEY가 설정 안 된 상태(로컬 개발 초기 등)에서는, 평문 그대로
-    저장/조회돼서 기존 동작과 100% 동일해야 한다(하위호환)."""
+    저장/조회돼서 기존 동작과 100% 동일해야 한다(하위호환). [2026-07-29] other_notes는
+    이제 health_profiles 테이블에 있다."""
     monkeypatch.setattr(config, "FIELD_ENCRYPTION_KEY", None)
     async with TestSessionLocal() as session:
         profile = await _create_user_and_profile(session, "no_key@example.com")
-        profile.other_notes = "키 없을 때 평문 테스트"
+        profile.health_profile.other_notes = "키 없을 때 평문 테스트"
         await session.commit()
 
-        raw = await session.execute(text("SELECT other_notes FROM profiles WHERE id = :id"), {"id": profile.id})
+        raw = await session.execute(
+            text("SELECT other_notes FROM health_profiles WHERE profile_id = :id"), {"id": profile.id}
+        )
         assert raw.scalar_one() == "키 없을 때 평문 테스트", "키 미설정 시에도 암호화되어버림 - 하위호환 깨짐"
