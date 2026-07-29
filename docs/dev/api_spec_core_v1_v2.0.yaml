@@ -1,9 +1,9 @@
 # 자동 생성 파일 — 직접 수정하지 말고 `python scripts/gen_api_docs.py`로 재생성하세요.
 openapi: 3.1.0
 info:
-  title: ReMedi API v1
+  title: ReMedi API — v1 (전체 범위)
   summary: 복약·건강관리 서비스(ReMedi) 백엔드 API
-  description: 'AH_04_01(ReMedi) 백엔드 전체 API 명세.
+  description: 'AH_04_01(ReMedi) 백엔드 전체 API 명세 (문서 v2.0).
 
 
     - 생성 방식: FastAPI 앱(`app/main.py`)의 런타임 OpenAPI 스키마를 추출 — 코드가 유일한 진실.
@@ -14,8 +14,27 @@ info:
 
     - 갱신: `python scripts/gen_api_docs.py` (엔드포인트 추가/변경 시 같은 PR에서 재생성).
 
+    - 이전 버전(`api_spec_core_v1_v1.1.yaml`, Phase 1 설계 초안)은 삭제하지 않고 보존한다.
+
     '
-  version: 1.0.0
+  version: 2.0.0
+  x-changelog:
+  - version: 0.1.0 (문서 v1.0)
+    date: 2026-07
+    changes: 초안 — Phase 1 Core 범위(Auth/문서인식/복약/Chat/Push구독), 인증은 httpOnly 쿠키 기반
+  - version: 0.2.0
+    date: '2026-07-06'
+    changes: '인증 방식을 httpOnly 쿠키에서 JWT(Authorization: Bearer)로 전환'
+  - version: 0.3.0
+    date: '2026-07-07'
+    changes: 복약 알림 일정(T-NTFY) CRUD 추가 — /notifications/schedules
+  - version: 0.4.0 (문서 v1.1)
+    date: '2026-07-14'
+    changes: DUR 3단계 스크리닝(T-MED-14) 추가 — /dur/screening/basic|interaction|ingredient
+  - version: 2.0.0 (문서 v2.0)
+    date: '2026-07-29'
+    changes: 설계 초안(수기) → 코드 기반 자동 생성으로 전환. 구현된 전체 범위 반영(사용자/프로필, 복약·인식·DUR, 생활기록·목표·주간리포트, 가족연동, 챗봇·콘텐츠·공지, 알림·푸시, 관리자·운영로그).
+      이전 버전 문서는 그대로 보존.
 paths:
   /api/v1/auth/signup:
     post:

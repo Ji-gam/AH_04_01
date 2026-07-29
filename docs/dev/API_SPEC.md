@@ -1,13 +1,22 @@
-# ReMedi API 명세 요약 (v1)
+# ReMedi API 명세 요약 (API v1 · 문서 v2.0)
 
 - 생성 방식: FastAPI 런타임 OpenAPI 추출 · 최종 갱신 2026-07-29 · 총 116개 엔드포인트
-- 전체 스키마(요청/응답 본문, 필드 설명): [`api_spec_v1.yaml`](api_spec_v1.yaml)
+- 전체 스키마(요청/응답 본문, 필드 설명): [`api_spec_core_v1_v2.0.yaml`](api_spec_core_v1_v2.0.yaml)
   · Swagger UI: 로컬 실행 후 <http://localhost:8000/docs>
 - 인증: `Authorization: Bearer <access_token>` (Access 30분 / Refresh 14일)
 - 도메인 데이터 스코핑 기준은 `user_id`가 아니라 `profile_id`
-- ERD: [`ERD.dbml`](ERD.dbml) (dbdiagram.io에 붙여넣기)
+- ERD: [`ERD.dbml`](ERD.dbml) — 문서 v2.0 (dbdiagram.io에 붙여넣기)
 - 재생성: `python scripts/gen_api_docs.py` — 엔드포인트/모델 변경 시 같은 PR에서 함께 갱신
-- `api_spec_core_v1_v1.1.yaml`은 Phase 1 설계 단계의 수기 초안으로, 위 문서로 대체됨(참고용)
+
+## 문서 버전 이력
+
+이전 버전 파일은 지우지 않고 그대로 둔다. 스펙이 바뀌면 `scripts/gen_api_docs.py`의
+`SPEC_DOC_VERSION`을 올려 새 파일을 만든다.
+
+| 문서 버전 | 파일 | 범위 |
+| --- | --- | --- |
+| v1.1 | [`api_spec_core_v1_v1.1.yaml`](api_spec_core_v1_v1.1.yaml) | Phase 1 Core 설계 초안 (수기 작성, 보존) |
+| v2.0 (현행) | [`api_spec_core_v1_v2.0.yaml`](api_spec_core_v1_v2.0.yaml) | 구현된 전체 범위 (코드 기반 자동 생성) |
 
 ## Chat
 

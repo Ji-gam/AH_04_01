@@ -2,15 +2,19 @@
 
 코드(FastAPI 라우터 / SQLAlchemy 모델)를 유일한 진실로 삼아 아래 3개 문서를 다시 만든다.
 
-  - docs/dev/api_spec_v1.yaml : 런타임 OpenAPI 스키마 전체
-  - docs/dev/API_SPEC.md      : 엔드포인트 요약표(태그별)
-  - docs/dev/ERD.dbml         : dbdiagram.io용 ERD
+  - docs/dev/api_spec_core_v1_v{SPEC_DOC_VERSION}.yaml : 런타임 OpenAPI 스키마 전체
+  - docs/dev/API_SPEC.md                              : 엔드포인트 요약표(태그별)
+  - docs/dev/ERD.dbml                                 : dbdiagram.io용 ERD
 
 사용법 (레포 루트에서):
     python scripts/gen_api_docs.py
 
 엔드포인트/모델을 추가·변경했으면 같은 PR에서 이 스크립트를 돌려 문서를 갱신한다
 (AGENTS.md §8, docs/CODING_RULES.md §6).
+
+문서 버전 정책: 기존 버전 파일은 지우지 않고 그대로 남기고, 스펙이 바뀌면 아래
+SPEC_DOC_VERSION을 올려 새 파일을 만든다(api_spec_core_v1_v1.1.yaml → _v2.0.yaml → ...).
+ERD.dbml은 파일 하나를 유지하며 헤더의 문서 버전만 올린다(CODING_RULES §6).
 """
 
 import sys
@@ -26,11 +30,47 @@ import app.models  # noqa: F401,E402  (전 모델 임포트로 metadata 채움)
 from app.main import app as fastapi_app  # noqa: E402
 from app.models.base import Base  # noqa: E402
 
+SPEC_DOC_VERSION = "2.0"  # 스펙이 바뀌면 이 값을 올려 새 파일을 만든다(이전 파일은 보존)
+ERD_DOC_VERSION = "v2.0"
+
 DEV_DOCS = ROOT / "docs" / "dev"
 OUT_DBML = DEV_DOCS / "ERD.dbml"
-OUT_YAML = DEV_DOCS / "api_spec_v1.yaml"
+OUT_YAML = DEV_DOCS / f"api_spec_core_v1_v{SPEC_DOC_VERSION}.yaml"
 OUT_MD = DEV_DOCS / "API_SPEC.md"
 TODAY = date.today().isoformat()
+
+# 이전 버전 문서에서 이어받은 이력 — 파일은 지우지 않고 남겨두므로 계보를 여기서 관리한다.
+SPEC_CHANGELOG = [
+    {
+        "version": "0.1.0 (문서 v1.0)",
+        "date": "2026-07",
+        "changes": "초안 — Phase 1 Core 범위(Auth/문서인식/복약/Chat/Push구독), 인증은 httpOnly 쿠키 기반",
+    },
+    {
+        "version": "0.2.0",
+        "date": "2026-07-06",
+        "changes": "인증 방식을 httpOnly 쿠키에서 JWT(Authorization: Bearer)로 전환",
+    },
+    {
+        "version": "0.3.0",
+        "date": "2026-07-07",
+        "changes": "복약 알림 일정(T-NTFY) CRUD 추가 — /notifications/schedules",
+    },
+    {
+        "version": "0.4.0 (문서 v1.1)",
+        "date": "2026-07-14",
+        "changes": "DUR 3단계 스크리닝(T-MED-14) 추가 — /dur/screening/basic|interaction|ingredient",
+    },
+    {
+        "version": "2.0.0 (문서 v2.0)",
+        "date": TODAY,
+        "changes": (
+            "설계 초안(수기) → 코드 기반 자동 생성으로 전환. 구현된 전체 범위 반영"
+            "(사용자/프로필, 복약·인식·DUR, 생활기록·목표·주간리포트, 가족연동, 챗봇·콘텐츠·공지, "
+            "알림·푸시, 관리자·운영로그). 이전 버전 문서는 그대로 보존."
+        ),
+    },
+]
 
 
 def col_type(c):
@@ -166,11 +206,11 @@ def gen_dbml():
     n_tables = len(all_names)
     header = f"""// AH_04_01 (ReMedi) ERD — dbdiagram.io (https://dbdiagram.io)에 그대로 붙여넣어 보면 됩니다.
 //
-// 문서 버전: v2.0 · 최종 수정: {TODAY}
+// 문서 버전: {ERD_DOC_VERSION} · 최종 수정: {TODAY}
 // 생성 방식: SQLAlchemy 모델(app/models/*.py) 기준으로 추출 — 코드가 유일한 진실
 // 변경 이력:
 //   - v1.0~v1.3 (2026-07-07~08): 수기 작성 (users/profiles/chat/notification_schedules/health_contents)
-//   - v2.0 ({TODAY}): 전체 재작성. 현재 매핑된 {n_tables}개 테이블(복약/생활기록/목표/가족연동/알림/운영로그/
+//   - {ERD_DOC_VERSION} ({TODAY}): 전체 재작성. 현재 매핑된 {n_tables}개 테이블(복약/생활기록/목표/가족연동/알림/운영로그/
 //     DUR·식약처 참조데이터) 전부 반영.
 //
 // 규칙 (docs/CODING_RULES.md 6번):
@@ -206,15 +246,17 @@ def gen_dbml():
 
 def gen_openapi():
     spec = fastapi_app.openapi()
-    spec["info"]["title"] = "ReMedi API v1"
-    spec["info"]["version"] = "1.0.0"
+    spec["info"]["title"] = "ReMedi API — v1 (전체 범위)"
+    spec["info"]["version"] = f"{SPEC_DOC_VERSION}.0"
     spec["info"]["description"] = (
-        "AH_04_01(ReMedi) 백엔드 전체 API 명세.\n\n"
+        f"AH_04_01(ReMedi) 백엔드 전체 API 명세 (문서 v{SPEC_DOC_VERSION}).\n\n"
         "- 생성 방식: FastAPI 앱(`app/main.py`)의 런타임 OpenAPI 스키마를 추출 — 코드가 유일한 진실.\n"
         "- 인증: JWT (`Authorization: Bearer <access_token>`), Access 30분 / Refresh 14일.\n"
         "- 도메인 데이터는 `user_id`가 아니라 `profile_id` 기준으로 스코핑한다.\n"
         "- 갱신: `python scripts/gen_api_docs.py` (엔드포인트 추가/변경 시 같은 PR에서 재생성).\n"
+        "- 이전 버전(`api_spec_core_v1_v1.1.yaml`, Phase 1 설계 초안)은 삭제하지 않고 보존한다.\n"
     )
+    spec["info"]["x-changelog"] = SPEC_CHANGELOG
     spec["servers"] = [
         {"url": "http://localhost:8000", "description": "로컬 개발"},
         {"url": "https://api.remedi.app", "description": "운영(예정)"},
@@ -234,16 +276,27 @@ def gen_md(spec):
             by_tag.setdefault(tag, []).append((method.upper(), path, op.get("summary", "").strip(), auth))
     total = sum(len(v) for v in by_tag.values())
     lines = [
-        "# ReMedi API 명세 요약 (v1)",
+        f"# ReMedi API 명세 요약 (API v1 · 문서 v{SPEC_DOC_VERSION})",
         "",
         f"- 생성 방식: FastAPI 런타임 OpenAPI 추출 · 최종 갱신 {TODAY} · 총 {total}개 엔드포인트",
-        "- 전체 스키마(요청/응답 본문, 필드 설명): [`api_spec_v1.yaml`](api_spec_v1.yaml)",
+        f"- 전체 스키마(요청/응답 본문, 필드 설명): [`{OUT_YAML.name}`]({OUT_YAML.name})",
         "  · Swagger UI: 로컬 실행 후 <http://localhost:8000/docs>",
         "- 인증: `Authorization: Bearer <access_token>` (Access 30분 / Refresh 14일)",
         "- 도메인 데이터 스코핑 기준은 `user_id`가 아니라 `profile_id`",
-        "- ERD: [`ERD.dbml`](ERD.dbml) (dbdiagram.io에 붙여넣기)",
+        f"- ERD: [`ERD.dbml`](ERD.dbml) — 문서 {ERD_DOC_VERSION} (dbdiagram.io에 붙여넣기)",
         "- 재생성: `python scripts/gen_api_docs.py` — 엔드포인트/모델 변경 시 같은 PR에서 함께 갱신",
-        "- `api_spec_core_v1_v1.1.yaml`은 Phase 1 설계 단계의 수기 초안으로, 위 문서로 대체됨(참고용)",
+        "",
+        "## 문서 버전 이력",
+        "",
+        "이전 버전 파일은 지우지 않고 그대로 둔다. 스펙이 바뀌면 `scripts/gen_api_docs.py`의",
+        "`SPEC_DOC_VERSION`을 올려 새 파일을 만든다.",
+        "",
+        "| 문서 버전 | 파일 | 범위 |",
+        "| --- | --- | --- |",
+        "| v1.1 | [`api_spec_core_v1_v1.1.yaml`](api_spec_core_v1_v1.1.yaml) | "
+        "Phase 1 Core 설계 초안 (수기 작성, 보존) |",
+        f"| v{SPEC_DOC_VERSION} (현행) | [`{OUT_YAML.name}`]({OUT_YAML.name}) | "
+        "구현된 전체 범위 (코드 기반 자동 생성) |",
         "",
     ]
     for tag in sorted(by_tag):
