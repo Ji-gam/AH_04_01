@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatMessage, ChatSession, MessageRole
@@ -17,8 +17,11 @@ class ChatRepository:
         return await session.get(ChatSession, session_id)
 
     async def list_sessions(self, session: AsyncSession, profile_id: int) -> list[ChatSession]:
+        # 마지막 대화(메시지)가 있었던 순서다 - 생성일 순이면 오래전에 만들어 두고 방금
+        # 이어서 대화한 세션이 목록 아래로 밀려난다. save_message가 매 메시지마다
+        # ChatSession.updated_at을 갱신해줘야 이 정렬이 의미를 갖는다(아래 참고).
         result = await session.execute(
-            select(ChatSession).where(ChatSession.profile_id == profile_id).order_by(ChatSession.created_at.desc())
+            select(ChatSession).where(ChatSession.profile_id == profile_id).order_by(ChatSession.updated_at.desc())
         )
         return list(result.scalars().all())
 
@@ -33,6 +36,11 @@ class ChatRepository:
     ) -> ChatMessage:
         message = ChatMessage(session_id=session_id, role=role, content=content, sources=sources, disclaimer=disclaimer)
         session.add(message)
+        # ChatSession.updated_at은 onupdate=func.now()로 선언돼 있지만, 이 세션 행 자체를
+        # 건드리는 곳이 없어 지금까지 한 번도 갱신된 적이 없었다(항상 created_at과 같음).
+        # list_sessions의 "마지막 대화일" 정렬이 실제로 동작하려면 매 메시지 저장마다
+        # 여기서 명시적으로 찍어줘야 한다.
+        await session.execute(update(ChatSession).where(ChatSession.id == session_id).values(updated_at=func.now()))
         await session.commit()
         await session.refresh(message)
         return message
