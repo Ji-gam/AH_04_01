@@ -142,6 +142,17 @@ def ensure_db() -> Chroma:
     return db
 
 
+def _ingr_filter(ingredients: list[str]) -> dict[str, Any]:
+    """성분명 필터를 만든다. `ingr_name`(주성분)과 `mixture_ingr_name`(병용금기 상대성분)
+    둘 다 본다 — T-LLM-2-dur-interaction-mixture-index: 병용금기 원본은 성분을 주/상대
+    두 칸에 나눠 적는데(예: "메나테트레논+와파린"), 상대 칸에만 등장하는 이름(전체의
+    33%, 와파린 포함)은 `ingr_name`만 보면 절대 못 찾는다. 다른 DUR 파일엔
+    `mixture_ingr_name` 자체가 없어(그 메타데이터 키가 없음) $or의 두 번째 절이 항상
+    False라 무해하다."""
+    value: Any = ingredients[0] if len(ingredients) == 1 else {"$in": ingredients}
+    return {"$or": [{"ingr_name": value}, {"mixture_ingr_name": value}]}
+
+
 def _build_filters(query: str) -> list[tuple[dict[str, Any], str]]:
     """질의에서 성분명이나 약 이름을 찾아 (메타데이터 필터, 검색 문구) 쌍의 목록을 만든다.
     못 찾으면 빈 리스트. 필터마다 검색 문구를 따로 두는 이유는 아래 브릿지 설명 참고.
@@ -167,7 +178,7 @@ def _build_filters(query: str) -> list[tuple[dict[str, Any], str]]:
     if matched_ingr is not None:
         key, ingredients = matched_ingr
         logger.info(f"Dynamic metadata filter applied: ingr '{key}' -> {len(ingredients)}개 성분")
-        return [({"ingr_name": ingredients[0] if len(ingredients) == 1 else {"$in": ingredients}}, query)]
+        return [(_ingr_filter(ingredients), query)]
 
     matched_drug = db_holder["drug_names"].resolve(query)
     if matched_drug is not None:
@@ -197,7 +208,7 @@ def _build_filters(query: str) -> list[tuple[dict[str, Any], str]]:
         if bridged_ingredients:
             ingr_list = sorted(bridged_ingredients)
             logger.info(f"Dynamic metadata filter applied: drug '{key}' -> 성분 브릿지 {len(ingr_list)}개")
-            ingr_filter = {"ingr_name": ingr_list[0] if len(ingr_list) == 1 else {"$in": ingr_list}}
+            ingr_filter = _ingr_filter(ingr_list)
             # DUR 문서는 브랜드명("인데놀")을 절대 쓰지 않고 성분명("프로프라놀롤")만 쓴다.
             # 원본 질의 그대로 임베딩 비교하면 브랜드명이 문서 어휘와 안 겹쳐 유사도 점수가
             # 나쁘게 나와, 실제로 관련 있는 문서가 임계값(RAG_SIMILARITY_THRESHOLD)에 걸려
