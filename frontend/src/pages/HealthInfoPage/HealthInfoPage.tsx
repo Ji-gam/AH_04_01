@@ -552,6 +552,10 @@ export default function HealthInfoPage() {
       }
       setGender(data.gender ?? "MALE");
       setIsPregnant(boolToSelectValue(data.is_pregnant));
+      // (2026-07-30 버그 수정) 다른 필드(체중 등)는 다 여기서 초기화되는데 키(height_cm)만
+      // 빠져있어서, 페이지 처음 열 때 저장된 키 값이 안 채워지고 계속 placeholder만 보이던
+      // 버그가 있었다 - 저장된 데이터 자체는 멀쩡했고, 화면에 불러오는(표시) 로직만 빠짐.
+      setHeightCm(data.height_cm !== null ? String(data.height_cm) : "");
       setWeightKg(data.weight_kg !== null ? String(data.weight_kg) : "");
       setSpecialNotes(data.special_notes ?? "");
       setOtherNotes(data.other_notes ?? "");
