@@ -1,3 +1,6 @@
+# [DEPRECATED · 2026-07-29] Phase 1 설계 단계의 수기 초안입니다.
+# 현행 명세는 코드에서 자동 생성되는 `api_spec_v1.yaml` / 요약표 `API_SPEC.md`를 보세요.
+# 이 파일은 설계 의도 참고용으로만 남겨둡니다.
 openapi: 3.0.3
 info:
   title: ReMedi API — Phase 1 (Core)
