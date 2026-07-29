@@ -70,6 +70,15 @@ class ProfileRepository:
         result = await session.execute(select(Profile).where(Profile.phone_number == phone_number))
         return result.scalar_one_or_none() is not None
 
+    async def set_guardian_document_access(self, session: AsyncSession, profile: Profile, allow: bool) -> None:
+        """(REQ-DOC-003) 가족(보호자) 문서함 이미지 공개 여부 토글. 처방전/진료기록 원본
+        이미지는 다른 개인건강정보 필드보다 훨씬 민감해서, 범용 update_instance/
+        ALLOWED_UPDATE_FIELDS 경로(HealthInfoUpdateRequest 등 다른 필드와 함께 묶여 실수로
+        바뀌는 것을 피하기 위해)와는 별도로 전용 메서드로 분리한다."""
+        profile.allow_guardian_document_access = allow
+        await session.commit()
+        await session.refresh(profile)
+
     async def update_instance(self, session: AsyncSession, profile: Profile, data: dict[str, Any]) -> None:
         update_fields = []
         for key, value in data.items():

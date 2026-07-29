@@ -4,7 +4,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.goals import Goal
+from app.models.goals import Goal, GoalType
 
 
 class GoalRepository:
@@ -13,6 +13,7 @@ class GoalRepository:
         session: AsyncSession,
         profile_id: int,
         title: str,
+        goal_type: GoalType,
         start_value: Decimal | None,
         target_value: Decimal | None,
         current_value: Decimal | None,
@@ -23,6 +24,7 @@ class GoalRepository:
         goal = Goal(
             profile_id=profile_id,
             title=title,
+            goal_type=goal_type,
             start_value=start_value,
             target_value=target_value,
             current_value=current_value,

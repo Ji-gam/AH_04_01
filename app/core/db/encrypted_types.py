@@ -37,6 +37,12 @@ def _get_fernet() -> Fernet | None:
     return Fernet(config.FIELD_ENCRYPTION_KEY.encode("utf-8"))
 
 
+# REQ-DOC-003: app/core/storage/encrypted_file_storage.py가 문서 이미지(바이너리) 암호화에
+# 이 키 관리 로직을 그대로 재사용한다 - 위의 "일부러 캐싱 안 함" 이유가 여기도 동일하게
+# 적용되므로 별도 구현 대신 이 함수를 공개해서 import한다.
+get_fernet = _get_fernet
+
+
 class EncryptedText(TypeDecorator):
     """DB 컬럼 타입은 그대로 TEXT를 쓰되(암호문도 결국 문자열이라 마이그레이션으로 컬럼
     타입을 바꿀 필요가 없다), 저장 직전(`process_bind_param`)에 암호화하고 조회 직후

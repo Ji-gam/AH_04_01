@@ -51,6 +51,11 @@ services:
     volumes:
       - static_volume:/app/templates
       - media_volume:/app/media
+      # REQ-DOC-003: 처방전/약봉투/진료기록 원본 이미지(암호화 저장) 전용 프라이빗 볼륨.
+      # media_volume과 달리 nginx/certbot 어디에도 마운트하지 않는다 - media_volume은
+      # nginx의 /vol/web/media로도 마운트되어 정적 서빙되지만, 이 볼륨은 fastapi에만
+      # 마운트해 인증된 API를 거치지 않으면 절대 노출되지 않게 한다.
+      - document_storage:/app/private_media
     restart: always
     ports:
       - "8000:8000"
@@ -74,6 +79,11 @@ services:
       # 재생성(재배포/OOM 재시작 등)을 견딘다 - 볼륨 없이는 재생성마다 색인이 통째로
       # 사라져 매번 수동으로 다시 인제스트해야 한다(2026-07-22 EC2 장애로 확인됨).
       - chroma_data:/app/ai_worker/chroma_data
+      # export_source_from_mysql.py가 만드는 DUR CSV 9개. 컨테이너 이미지엔 안 들어있고
+      # (.gitignore, 빌드 산출물) 런타임에 컨테이너 쓰기 계층에만 생기는데, 이름있는
+      # 볼륨이 아니면 다른 서비스 배포로 컨테이너가 재생성될 때마다 통째로 사라져
+      # export/ingest를 처음부터 다시 해야 한다(2026-07-28 확인).
+      - ai_worker_source:/app/ai_worker/source
     networks:
       - ws
     depends_on:
@@ -124,6 +134,10 @@ volumes:
     name: certbot-www
   chroma_data:
     name: chroma_data
+  document_storage:
+    name: document_storage
+  ai_worker_source:
+    name: ai_worker_source
 
 networks:
   ws:

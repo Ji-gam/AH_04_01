@@ -3,17 +3,26 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../../api/client";
+import { dietApi } from "../../api/dietApi";
+import { exerciseApi } from "../../api/exerciseApi";
 import { familyApi, type FamilyLinkItem } from "../../api/familyApi";
 import { habitApi } from "../../api/habitApi";
 import { healthInfoApi } from "../../api/healthInfoApi";
 import { notificationApi } from "../../api/notificationApi";
+import { sleepApi } from "../../api/sleepApi";
 import type {
+  DietTodayResult,
+  ExerciseTodayResult,
   HabitsTodayResult,
   HealthInfoResult,
   NotificationScheduleResult,
+  SleepTodayResult,
 } from "../../api/types";
+import DietLogContent from "../../components/diet/DietLogContent";
+import ExerciseLogContent from "../../components/exercise/ExerciseLogContent";
 import HabitSelectionContent from "../../components/habit/HabitSelectionContent";
 import SelectedHabitsModal from "../../components/habit/SelectedHabitsModal";
+import SleepLogContent from "../../components/sleep/SleepLogContent";
 import { useAuth } from "../../hooks/useAuth";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { useNearbyRegionLabel } from "../../hooks/useNearbyRegionLabel";
@@ -92,6 +101,33 @@ export default function HomePage() {
   // 가까운 병원/약국 찾기 카드 — 위치를 허용하면 그 지역 기준으로, 아니면 서울 기준으로 검색한다.
   const nearbyLocation = useNearbyRegionLabel();
 
+  // 오늘의 건강 지표 카드(REQ-TRCK-003) — 식사/운동/수면 진행률 바 3개. 각각 마이다이어리에서
+  // 이미 기록된 오늘치 데이터를 그대로 가져오고, 목표 대신 일반 권장기준(식사 2000kcal/운동
+  // 30분/수면 8시간)과 비교한다 - diet_service.py의 DIET_REFERENCE_KCAL과 같은 발상.
+  const [dietToday, setDietToday] = useState<DietTodayResult | null>(null);
+  const [exerciseToday, setExerciseToday] = useState<ExerciseTodayResult | null>(null);
+  const [sleepToday, setSleepToday] = useState<SleepTodayResult | null>(null);
+  // 각 지표를 눌렀을 때 마이다이어리 전체 메뉴가 아니라 해당 기록 화면으로 바로 가게 한다.
+  const [showDietModal, setShowDietModal] = useState(false);
+  const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [showSleepModal, setShowSleepModal] = useState(false);
+
+  async function refreshTodayMetrics() {
+    if (!user) return;
+    try {
+      const [d, e, s] = await Promise.all([
+        dietApi.getToday(),
+        exerciseApi.getToday(),
+        sleepApi.getToday(),
+      ]);
+      setDietToday(d);
+      setExerciseToday(e);
+      setSleepToday(s);
+    } catch {
+      // 오늘의 건강 지표는 참고용 요약이라, 실패해도 화면 전체를 막지 않고 조용히 넘어간다.
+    }
+  }
+
   useEffect(() => {
     if (user && !isDismissedThisSession(user.profile_id) && !hasEnteredHealthInfo(healthInfo)) {
       setShowBanner(true);
@@ -112,6 +148,17 @@ export default function HomePage() {
       .finally(() => setLoading(false));
     loadChecked(toDateString(new Date())).then(setCheckedToday);
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setDietToday(null);
+      setExerciseToday(null);
+      setSleepToday(null);
+      return;
+    }
+    refreshTodayMetrics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   useEffect(() => {
     // [QA 전용 디버그 카드] 테스트 중 "지금 로그인한 계정에 뭐가 입력돼 있었는지" 헷갈리지
@@ -536,6 +583,148 @@ export default function HomePage() {
           </div>
         )}
 
+        {/* 오늘의 건강 지표(REQ-TRCK-003) — 식사/운동/수면 진행률 바 3개. 카드 전체가 아니라
+            칸 하나하나가 각자의 기록 화면으로 바로 연결되는 버튼이다(전체를 감싸는 버튼으로
+            만들면 개별 칸이 눌리지 않는 문제가 있었음 - 2026-07-28 수정). */}
+        {user && (dietToday || exerciseToday || sleepToday) && (
+          <div
+            style={{
+              background: pinkTheme.cardBg,
+              border: `1px solid ${pinkTheme.border}`,
+              borderRadius: 16,
+              padding: 18,
+              marginBottom: 16,
+              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+            }}
+          >
+            <p
+              style={{
+                margin: "0 0 12px",
+                fontSize: 14,
+                fontWeight: 700,
+                color: pinkTheme.primary,
+              }}
+            >
+              오늘의 건강 지표
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+              {[
+                {
+                  key: "diet",
+                  icon: "🍚",
+                  label: "식사",
+                  value: dietToday?.total_kcal ?? 0,
+                  reference: dietToday?.reference_kcal ?? 2000,
+                  unit: "kcal",
+                  onOpen: () => setShowDietModal(true),
+                },
+                {
+                  key: "exercise",
+                  icon: "🏃",
+                  label: "운동",
+                  value: exerciseToday?.total_duration_minutes ?? 0,
+                  reference: exerciseToday?.reference_minutes ?? 30,
+                  unit: "분",
+                  onOpen: () => setShowExerciseModal(true),
+                },
+                {
+                  key: "sleep",
+                  icon: "😴",
+                  label: "수면",
+                  value: sleepToday?.log?.hours ?? 0,
+                  reference: sleepToday?.reference_hours ?? 8,
+                  unit: "h",
+                  onOpen: () => setShowSleepModal(true),
+                },
+              ].map((m) => {
+                const ratio = m.reference > 0 ? Math.min(m.value / m.reference, 1) : 0;
+                return (
+                  <button
+                    key={m.key}
+                    type="button"
+                    onClick={m.onOpen}
+                    style={{
+                      background: pinkTheme.primarySoft,
+                      border: "none",
+                      borderRadius: 10,
+                      padding: "9px 8px",
+                      textAlign: "left",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <p style={{ margin: "0 0 3px", fontSize: 14 }}>{m.icon}</p>
+                    <p
+                      style={{
+                        margin: "0 0 5px",
+                        fontSize: 10.5,
+                        fontWeight: 700,
+                        color: pinkTheme.text,
+                      }}
+                    >
+                      {m.label}
+                    </p>
+                    <div
+                      style={{
+                        height: 5,
+                        borderRadius: 3,
+                        background: "#ffffff",
+                        overflow: "hidden",
+                        marginBottom: 5,
+                      }}
+                    >
+                      <div
+                        style={{
+                          height: "100%",
+                          width: `${ratio * 100}%`,
+                          borderRadius: 3,
+                          background: pinkTheme.primary,
+                        }}
+                      />
+                    </div>
+                    <p style={{ margin: 0, fontSize: 10.5, color: pinkTheme.textMuted }}>
+                      {Math.round(m.value * 10) / 10}/{m.reference}
+                      {m.unit}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {showDietModal && (
+          <Modal
+            onClose={() => {
+              setShowDietModal(false);
+              refreshTodayMetrics();
+            }}
+          >
+            <DietLogContent />
+          </Modal>
+        )}
+
+        {showExerciseModal && (
+          <Modal
+            onClose={() => {
+              setShowExerciseModal(false);
+              refreshTodayMetrics();
+            }}
+          >
+            <ExerciseLogContent />
+          </Modal>
+        )}
+
+        {showSleepModal && (
+          <Modal
+            onClose={() => {
+              setShowSleepModal(false);
+              refreshTodayMetrics();
+            }}
+          >
+            <SleepLogContent />
+          </Modal>
+        )}
+
         {/* 오늘의 습관 트래커 미리보기 — 선택한 게 있으면 모달로 체크 화면이 뜨고, 아직 하나도
             선택 안 했으면(카드 자체는 계속 보여준다 - 사라지면 습관 기능이 있다는 걸 아예
             모를 수 있다) 눌렀을 때 바로 습관 선택 페이지로 보낸다. */}
@@ -594,7 +783,15 @@ export default function HomePage() {
             홈에서 바로 고르고 저장까지 할 수 있게 모달로 띄운다. 저장되면 이 카드의
             habitsToday도 같이 갱신되어 모달을 닫으면 바로 "n/n개 완료"로 보인다. */}
         {showHabitSelectionModal && (
-          <Modal onClose={() => setShowHabitSelectionModal(false)}>
+          <Modal
+            onClose={() => {
+              setShowHabitSelectionModal(false);
+              // 이 모달 안에서 식단/운동/수면 기록도 같이 할 수 있어서, 닫을 때 "오늘의 건강
+              // 지표" 카드도 최신 값으로 다시 불러온다(안 하면 방금 기록해도 카드 숫자가 그대로
+              // 남는다 - showScheduleModal의 checkedToday 재조회와 같은 이유).
+              refreshTodayMetrics();
+            }}
+          >
             <div
               style={{
                 background: pinkTheme.cardBg,

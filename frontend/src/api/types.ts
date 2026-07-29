@@ -126,6 +126,8 @@ export interface ChatMessageChunk {
 export interface ChatSessionResponse {
   id: number;
   created_at: string;
+  /** 마지막 메시지가 저장된 시각 - 세션 목록은 이 값 기준 최신순으로 내려온다. */
+  updated_at: string;
 }
 
 export interface ChatMessageResponse {
@@ -380,6 +382,7 @@ export interface ExerciseTodayResult {
   logs: ExerciseLogItemResult[];
   total_kcal: number;
   total_duration_minutes: number;
+  reference_minutes: number;
 }
 
 export interface ExerciseRecentDayResult {
@@ -389,6 +392,37 @@ export interface ExerciseRecentDayResult {
 
 export interface ExerciseRecentResult {
   days: ExerciseRecentDayResult[];
+}
+
+// 백엔드 app/dtos/sleep_dto.py와 1:1로 수동 동기화. 마이다이어리 > 수면 기록(REQ-TRCK-003).
+export interface SleepLogCreateRequest {
+  hours: number;
+  bed_time?: string; // "HH:MM" (선택)
+  quality: number; // 1~5, 5가 가장 좋음
+  reason?: string;
+}
+
+export interface SleepLogResult {
+  log_date: string;
+  hours: number;
+  bed_time: string | null;
+  quality: number;
+  reason: string | null;
+}
+
+export interface SleepTodayResult {
+  log: SleepLogResult | null;
+  reference_hours: number;
+}
+
+export interface SleepRecentDayResult {
+  log_date: string;
+  hours: number;
+  quality: number | null;
+}
+
+export interface SleepRecentResult {
+  days: SleepRecentDayResult[];
 }
 
 // 백엔드 app/dtos/weekly_report_dto.py와 1:1로 수동 동기화. 더보기 > 주간 리포트 - 매주
@@ -446,9 +480,13 @@ export interface NotificationLogListResult {
 
 // 백엔드 app/dtos/goal_dto.py와 1:1로 수동 동기화. F-GOAL-1(목표 CRUD) + F-GOAL-2(AI 가이드).
 export type GoalTerm = "단기" | "장기";
+// NUMERIC(수치형) - 체중감량처럼 현재 수치를 직접 입력. FREQUENCY(횟수형) - 운동하기처럼
+// "오늘 완료" 버튼 한 번으로 현재 수치가 1씩 늘어난다. 생성 후 변경 불가.
+export type GoalType = "NUMERIC" | "FREQUENCY";
 
 export interface GoalCreateRequest {
   title: string;
+  goal_type?: GoalType;
   start_value?: number;
   target_value?: number;
   current_value?: number;
@@ -481,6 +519,7 @@ export interface GoalProgressLogItemResult {
 export interface GoalItemResult {
   id: number;
   title: string;
+  goal_type: GoalType;
   start_value: number | null;
   target_value: number | null;
   current_value: number | null;

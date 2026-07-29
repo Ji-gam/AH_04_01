@@ -29,9 +29,9 @@
     "branch": "feat/T-MED-16-item-seq-direct-ref",
     "started": "2026-07-20"
   },
-  "T-LLM-2-langfuse-retrieval-span": {
+  "T-LLM-2-dur-interaction-mixture-index": {
     "owner": "agent-Genie",
-    "branch": "feat/T-LLM-2-langfuse-retrieval-span",
+    "branch": "feat/T-LLM-2-dur-interaction-mixture-index",
     "started": "2026-07-28"
   }
 }

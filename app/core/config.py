@@ -79,6 +79,11 @@ class Config(BaseSettings):
     # 내용은 app/core/db/encrypted_types.py의 EncryptedText 참고.
     FIELD_ENCRYPTION_KEY: str | None = None
 
+    # REQ-DOC-003: 처방전/약봉투/진료기록 원본 이미지를 암호화해서 저장하는 프라이빗 디렉터리.
+    # docker-compose에서 fastapi 컨테이너에만 마운트되는 볼륨(nginx에는 마운트 안 함 - 웹에서
+    # 직접 서빙 불가, 반드시 인증된 API를 통해서만 접근). 테스트에서는 tmp_path로 오버라이드.
+    DOCUMENT_STORAGE_ROOT: str = "/app/private_media"
+
     # T-LLM-2-async-gateway: ai-worker 서비스 기본 URL (docker-compose 네트워크 내부 호스트명).
     # AIWorkerGateway가 여기에 /retrieve, /generate-structured 경로를 붙여 호출한다.
     AI_WORKER_BASE_URL: str = "http://ai-worker:8001"

@@ -30,6 +30,8 @@ class FakeChromaDb:
         self.received_queries: list[tuple[str, dict | None]] = []
 
     def _matches(self, doc: Document, filter: dict) -> bool:
+        if "$or" in filter:
+            return any(self._matches(doc, clause) for clause in filter["$or"])
         for key, want in filter.items():
             got = doc.metadata.get(key)
             # 약 이름은 브랜드 하나에 제품이 여럿이라 $in으로 넘어온다("타이레놀" -> 4제품).
@@ -249,7 +251,7 @@ def test_search_documents_augments_bridge_search_text_with_resolved_ingredient(m
 
     queries_by_filter_key = {tuple(sorted((f or {}).keys())): q for q, f in db.received_queries}
     assert queries_by_filter_key[("item_name",)] == "인데놀 노인이 먹어도 돼?"
-    ingr_name_query = queries_by_filter_key[("ingr_name",)]
+    ingr_name_query = queries_by_filter_key[("$or",)]
     assert "프로프라놀롤" in ingr_name_query
     assert "인데놀 노인이 먹어도 돼?" in ingr_name_query
 
@@ -286,6 +288,27 @@ def test_search_documents_falls_back_to_item_name_only_without_bridge_entry(monk
 
     assert len(chunks) == 1
     assert chunks[0].content == summary.page_content
+
+
+def test_search_documents_finds_rule_by_mixture_side_ingredient(monkeypatch):
+    """T-LLM-2-dur-interaction-mixture-index 실측 버그: 병용금기 원본은 성분을 주성분/
+    상대성분 두 칸에 나눠 적는다(예: "메나테트레논+와파린"). 와파린은 이 데이터에서 항상
+    상대성분 칸에만 나오는데, ingr_name(주성분 칸)만 보는 필터로는 절대 못 찾았다 —
+    데이터는 있는데 반대쪽 칸에 있다는 이유만으로 0건("와파린 노인이 먹어도 돼?" 실측).
+    mixture_ingr_name도 $or로 같이 봐야 한다."""
+    monkeypatch.setattr(retrieve_service.settings, "RAG_SIMILARITY_THRESHOLD", 10.0)
+    interaction_rule = Document(
+        page_content="메나테트레논-와파린 병용금기 규칙",
+        metadata={"ingr_name": "메나테트레논", "mixture_ingr_name": "와파린"},
+    )
+    unrelated = Document(page_content="무관 규칙", metadata={"ingr_name": "무관성분"})
+    db = FakeChromaDb([(interaction_rule, 0.1), (unrelated, 0.1)])
+    retrieve_service.db_holder["ingr_names"] = build_ingredient_index(["와파린", "무관성분"])
+
+    chunks = retrieve_service.search_documents(db, "와파린 노인이 먹어도 돼?", limit=3)
+
+    assert len(chunks) == 1
+    assert chunks[0].content == interaction_rule.page_content
 
 
 def test_drug_name_index_is_empty_by_default():

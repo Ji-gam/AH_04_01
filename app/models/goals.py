@@ -1,10 +1,20 @@
 from datetime import date, datetime
 from decimal import Decimal
+from enum import StrEnum
 
 from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
+
+
+class GoalType(StrEnum):
+    """NUMERIC(수치형) - 체중감량처럼 직접 측정값을 입력. FREQUENCY(횟수형) - 운동하기처럼
+    "오늘 완료" 버튼 한 번으로 현재 수치가 1씩 늘어난다(입력 UX만 다르고 저장 방식은 동일)."""
+
+    NUMERIC = "NUMERIC"
+    FREQUENCY = "FREQUENCY"
 
 
 class Goal(Base):
@@ -32,6 +42,9 @@ class Goal(Base):
     target_value: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     current_value: Mapped[Decimal | None] = mapped_column(Numeric(8, 2), nullable=True)
     unit: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    goal_type: Mapped[GoalType] = mapped_column(
+        SAEnum(GoalType, native_enum=False, length=10), nullable=False, default=GoalType.NUMERIC
+    )
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     is_achieved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

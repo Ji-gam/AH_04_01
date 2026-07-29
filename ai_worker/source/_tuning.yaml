@@ -44,6 +44,10 @@ exclude_columns:
 metadata_columns:
   INGR_NAME: ingr_name
   INGR_KOR_NAME: ingr_name # 병용금기만 컬럼명이 이렇다. 같은 키로 흡수한다.
+  # 병용금기(dur_usjnt_taboo)만 있는 상대성분 칸. T-LLM-2-dur-interaction-mixture-index:
+  # 이 칸을 안 챙기면 상대성분으로만 등장하는 이름(예: 와파린, 이 파일 고유 성분의 33%)은
+  # 검색이 절대 못 찾는다 — retrieve_service._build_filters가 ingr_name과 함께 $or로 본다.
+  MIXTURE_INGR_KOR_NAME: mixture_ingr_name
   itemSeq: item_seq
   itemName: item_name
   pmid: pmid

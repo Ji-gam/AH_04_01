@@ -2,7 +2,7 @@ from datetime import date, datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -76,6 +76,13 @@ class Profile(Base):
     relation: Mapped[ProfileRelation] = mapped_column(
         SAEnum(ProfileRelation, native_enum=False, length=10), default=ProfileRelation.SELF, nullable=False
     )
+    # REQ-DOC-003: 처방전/약봉투/진료기록 원본 이미지는 복약스케줄보다 훨씬 민감한 개인정보라
+    # 기본은 비공개(False)이며, 본인이 명시적으로 켜야만 연결된 보호자(가족)가 문서함에서
+    # 원본 이미지를 조회할 수 있다. 삭제는 이 값과 무관하게 항상 본인만 가능하다.
+    # (2026-07-29 PII/건강정보 분리 - 이 필드는 접근권한 플래그라 건강정보가 아니므로
+    # profiles에 그대로 둔다. height_cm/weight_kg/special_notes/other_notes는
+    # health_profiles로 이관됐다.)
+    allow_guardian_document_access: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

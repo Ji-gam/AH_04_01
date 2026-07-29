@@ -81,7 +81,6 @@ export function useChatStream(options: Options = {}) {
     if (currentSessionId) return currentSessionId;
     const { session_id } = await chatApi.createSession();
     setCurrentSessionId(session_id);
-    void loadSessions(); // 새로운 세션이 생겼으므로 목록을 갱신합니다.
     return session_id;
   }
 
@@ -133,6 +132,10 @@ export function useChatStream(options: Options = {}) {
       ]);
     } finally {
       setIsStreaming(false);
+      // 세션 목록은 "마지막 대화일" 기준 최신순이라(app/repositories/chat_repository.py),
+      // 기존 세션에 메시지를 이어 보낼 때마다(ensureSession이 새 세션일 때만 갱신하므로
+      // 여기선 빠짐) 다시 불러와야 방금 대화한 세션이 목록 맨 위로 올라온다.
+      void loadSessions();
     }
   }
 

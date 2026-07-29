@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.dur import DrugIdentification, DrugMaster, DurProdMasterList
@@ -93,6 +93,49 @@ class MedicationRepository:
             await session.commit()
             await session.refresh(job)
         return job
+
+    async def set_recognition_job_image(
+        self,
+        session: AsyncSession,
+        job_id: str,
+        image_storage_key: str,
+        image_mime_type: str,
+        image_size_bytes: int,
+    ) -> None:
+        """(REQ-DOC-003) OCR 인식과 별개로, 암호화 저장이 성공한 직후 job 행에 이미지
+        포인터만 기록한다. 저장이 스킵된 경우(FIELD_ENCRYPTION_KEY 미설정)는 호출 자체가
+        안 되므로 image_storage_key는 None으로 남는다."""
+        job = await self.get_recognition_job(session, job_id)
+        if job:
+            job.image_storage_key = image_storage_key
+            job.image_mime_type = image_mime_type
+            job.image_size_bytes = image_size_bytes
+            await session.commit()
+
+    async def list_recognition_jobs_by_profile(
+        self, session: AsyncSession, profile_id: int, source_type: str | None = None
+    ) -> list[MedicationRecognitionJob]:
+        """(REQ-DOC-003) "내 문서함" 목록 - 최신순. 날짜별 그룹핑은 프론트에서 created_at
+        기준으로 한다."""
+        stmt = select(MedicationRecognitionJob).where(MedicationRecognitionJob.profile_id == profile_id)
+        if source_type is not None:
+            stmt = stmt.where(MedicationRecognitionJob.source_type == source_type)
+        stmt = stmt.order_by(MedicationRecognitionJob.created_at.desc())
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def clear_recognition_job_document(self, session: AsyncSession, job: MedicationRecognitionJob) -> None:
+        """(REQ-DOC-003) "원본+추출데이터 완전삭제" - job 행 자체는 MedicationSchedule.
+        source_job_id 참조 무결성 때문에 지우지 않고, 민감한 페이로드만 비운다. 파일 삭제는
+        호출부(서비스 계층)가 이 메서드를 부르기 전에 이미 처리한다."""
+        job.image_storage_key = None
+        job.image_mime_type = None
+        job.image_size_bytes = None
+        job.image_deleted_at = func.now()
+        job.candidates = []
+        job.extracted_fields = {}
+        await session.commit()
+        await session.refresh(job)
 
     async def get_cached_master_data(self, session: AsyncSession, query_name: str) -> dict | None:
         """`medication_open_api_client.fetch_medication_master_data()` write-back 캐시 조회
