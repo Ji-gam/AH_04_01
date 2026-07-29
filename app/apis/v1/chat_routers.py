@@ -68,14 +68,14 @@ async def send_chat_message(
     "/sessions",
     response_model=list[ChatSessionResponse],
     summary="채팅 세션 목록 조회",
-    description="현재 로그인한 프로필의 이전 채팅 세션(대화방) 리스트를 최신순으로 조회한다.",
+    description="현재 로그인한 프로필의 이전 채팅 세션(대화방) 리스트를 마지막 대화일 기준 최신순으로 조회한다.",
 )
 async def list_chat_sessions(
     profile: Annotated[Profile, Depends(get_current_profile)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> list[ChatSessionResponse]:
     sessions = await ChatRepository().list_sessions(session, profile.id)
-    return [ChatSessionResponse(id=s.id, created_at=s.created_at) for s in sessions]
+    return [ChatSessionResponse(id=s.id, created_at=s.created_at, updated_at=s.updated_at) for s in sessions]
 
 
 @chat_router.get(

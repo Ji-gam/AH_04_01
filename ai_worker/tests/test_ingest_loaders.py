@@ -76,6 +76,21 @@ def test_csv_renames_columns_into_metadata_keys_the_search_layer_expects(tmp_pat
     assert next(CsvLoader(combo).lazy_load()).metadata["ingr_name"] == "아스피린"
 
 
+def test_csv_maps_mixture_ingredient_column_to_its_own_metadata_key(tmp_path):
+    """T-LLM-2-dur-interaction-mixture-index: 병용금기(dur_usjnt_taboo)는 한 행에
+    INGR_KOR_NAME(주성분)과 MIXTURE_INGR_KOR_NAME(상대성분)이 같이 있다. 상대성분도
+    별도 메타데이터 키로 챙겨야 검색(_build_filters)이 상대쪽 이름으로도 찾을 수 있다."""
+    tuning = {"INGR_KOR_NAME": "ingr_name", "MIXTURE_INGR_KOR_NAME": "mixture_ingr_name"}
+    source = _source(
+        tmp_path, "a.csv", "INGR_KOR_NAME,MIXTURE_INGR_KOR_NAME,X\n메나테트레논,와파린,1\n", metadata_columns=tuning
+    )
+
+    doc = next(CsvLoader(source).lazy_load())
+
+    assert doc.metadata["ingr_name"] == "메나테트레논"
+    assert doc.metadata["mixture_ingr_name"] == "와파린"
+
+
 def test_loaders_stamp_source_and_collection_and_labels(tmp_path):
     """`source`는 index()의 source_id_key다 — cleanup이 이 키로 파일별 문서를 묶는다."""
     source = _source(tmp_path, "a.csv", "X\n1\n", metadata={"display_name": "임부금기의약품"})

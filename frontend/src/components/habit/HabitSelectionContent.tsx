@@ -6,6 +6,7 @@ import DiaryEntryContent from "../../components/diary/DiaryEntryContent";
 import DietLogContent from "../../components/diet/DietLogContent";
 import ExerciseLogContent from "../../components/exercise/ExerciseLogContent";
 import GoalContent from "../../components/goal/GoalContent";
+import SleepLogContent from "../../components/sleep/SleepLogContent";
 import { useAuth } from "../../hooks/useAuth";
 import Modal from "../../pages/AlarmPage/components/Modal";
 import { pinkTheme as t } from "../../theme/pinkTheme";
@@ -51,6 +52,7 @@ export default function HabitSelectionContent({ onSaved }: Props) {
   const [showRecommendationModal, setShowRecommendationModal] = useState(false);
   const [showDietModal, setShowDietModal] = useState(false);
   const [showExerciseModal, setShowExerciseModal] = useState(false);
+  const [showSleepModal, setShowSleepModal] = useState(false);
   const [showDiaryModal, setShowDiaryModal] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -143,6 +145,11 @@ export default function HabitSelectionContent({ onSaved }: Props) {
         🏃 오늘의 운동 기록
       </button>
 
+      {/* 오늘의 수면 기록 — 누르면 SleepLogContent(REQ-TRCK-003)를 모달로 보여준다. */}
+      <button type="button" onClick={() => setShowSleepModal(true)} style={menuButtonStyle}>
+        😴 오늘의 수면 기록
+      </button>
+
       {/* 오늘의 한 줄 — 누르면 DiaryEntryContent(일기)를 모달로 보여준다. */}
       <button type="button" onClick={() => setShowDiaryModal(true)} style={menuButtonStyle}>
         📝 오늘의 한 줄
@@ -180,6 +187,12 @@ export default function HabitSelectionContent({ onSaved }: Props) {
       {showExerciseModal && (
         <Modal onClose={() => setShowExerciseModal(false)}>
           <ExerciseLogContent />
+        </Modal>
+      )}
+
+      {showSleepModal && (
+        <Modal onClose={() => setShowSleepModal(false)}>
+          <SleepLogContent />
         </Modal>
       )}
 

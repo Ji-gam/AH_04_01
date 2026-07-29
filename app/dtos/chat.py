@@ -14,6 +14,7 @@ class ChatMessageRequest(BaseModel):
 class ChatSessionResponse(BaseModel):
     id: int = Field(description="채팅 세션 ID", examples=[1])
     created_at: datetime = Field(description="세션 생성 시각")
+    updated_at: datetime = Field(description="마지막 메시지가 저장된 시각 (목록 정렬 기준)")
 
 
 class ChatSourceRef(BaseModel):
