@@ -76,6 +76,16 @@ export interface RecognitionJobResult {
   } | null;
 }
 
+// REQ-DOC-003: "내 문서함" - 촬영/업로드한 원본 문서(처방전/약봉투/진료기록/알약사진) 목록 항목.
+export interface RecognitionJobSummary {
+  job_id: string;
+  source_type: string;
+  status: string;
+  created_at: string;
+  has_image: boolean; // false면 원본이 저장되지 않았거나(키 미설정) 이미 삭제된 것 - "이미지 없음"
+  image_deleted_at?: string | null;
+}
+
 export function useMedication() {
   const [schedules, setSchedules] = useState<MedicationSchedule[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -250,6 +260,39 @@ export function useMedication() {
     }
   };
 
+  // REQ-DOC-003: "내 문서함" - 최신순 목록. 날짜별 그룹핑은 화면(DocumentBoxPage)에서
+  // created_at 기준으로 한다.
+  const listRecognitionJobs = async (): Promise<RecognitionJobSummary[]> => {
+    return await apiFetch<RecognitionJobSummary[]>("/recognition/jobs");
+  };
+
+  // 이미지 응답은 JSON이 아니라 바이너리라 apiFetch가 아니라 apiFetchRaw(인증/401 재시도는
+  // 동일하게 처리됨)를 쓰고, blob으로 변환해 <img src={URL.createObjectURL(blob)}>에 쓴다.
+  // 호출부가 더 이상 안 쓰는 시점에 URL.revokeObjectURL을 직접 호출해 메모리를 정리해야 한다.
+  const getRecognitionJobImageBlob = async (jobId: string): Promise<Blob> => {
+    const res = await apiFetchRaw(`/recognition/jobs/${jobId}/image`);
+    return await res.blob();
+  };
+
+  const deleteRecognitionJobDocument = async (jobId: string): Promise<void> => {
+    await apiFetchRaw(`/recognition/jobs/${jobId}/document`, { method: "DELETE" });
+  };
+
+  const getGuardianDocumentAccess = async (): Promise<boolean> => {
+    const res = await apiFetch<{ allow_guardian_document_access: boolean }>(
+      "/recognition/jobs/settings/guardian-document-access",
+    );
+    return res.allow_guardian_document_access;
+  };
+
+  const setGuardianDocumentAccess = async (allow: boolean): Promise<boolean> => {
+    const res = await apiFetch<{ allow_guardian_document_access: boolean }>(
+      "/recognition/jobs/settings/guardian-document-access",
+      { method: "PATCH", body: JSON.stringify({ allow_guardian_document_access: allow }) },
+    );
+    return res.allow_guardian_document_access;
+  };
+
   const clearError = () => setError(null);
 
   return {
@@ -267,5 +310,10 @@ export function useMedication() {
     uploadJob,
     getJobStatus,
     confirmJob,
+    listRecognitionJobs,
+    getRecognitionJobImageBlob,
+    deleteRecognitionJobDocument,
+    getGuardianDocumentAccess,
+    setGuardianDocumentAccess,
   };
 }

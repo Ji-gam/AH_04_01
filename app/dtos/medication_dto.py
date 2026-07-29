@@ -1,9 +1,35 @@
+from datetime import datetime
+
 from pydantic import BaseModel, field_validator
 
 
 class RecognitionJobCreateResult(BaseModel):
     job_id: str
     status: str
+
+
+class RecognitionJobSummary(BaseModel):
+    """(REQ-DOC-003) "내 문서함" 목록 항목 - 이미지 원본/OCR 텍스트 같은 민감 데이터는
+    담지 않고, 목록에 필요한 최소 정보만 노출한다. 날짜별 그룹핑은 프론트가 created_at
+    기준으로 한다."""
+
+    job_id: str
+    source_type: str
+    status: str
+    created_at: datetime
+    has_image: bool  # image_storage_key가 있는지 (없으면 "이미지 없음" 표시)
+    image_deleted_at: datetime | None = None
+
+
+class GuardianDocumentAccessUpdateRequest(BaseModel):
+    """(REQ-DOC-003) 기본값은 항상 False(비공개) - 본인이 명시적으로 켜야만 승인된
+    보호자가 문서함 원본 이미지를 조회할 수 있다. 삭제는 이 값과 무관하게 항상 본인만 가능."""
+
+    allow_guardian_document_access: bool
+
+
+class GuardianDocumentAccessResponse(BaseModel):
+    allow_guardian_document_access: bool
 
 
 class RecognitionCandidate(BaseModel):

@@ -51,6 +51,11 @@ services:
     volumes:
       - static_volume:/app/templates
       - media_volume:/app/media
+      # REQ-DOC-003: 처방전/약봉투/진료기록 원본 이미지(암호화 저장) 전용 프라이빗 볼륨.
+      # media_volume과 달리 nginx/certbot 어디에도 마운트하지 않는다 - media_volume은
+      # nginx의 /vol/web/media로도 마운트되어 정적 서빙되지만, 이 볼륨은 fastapi에만
+      # 마운트해 인증된 API를 거치지 않으면 절대 노출되지 않게 한다.
+      - document_storage:/app/private_media
     restart: always
     ports:
       - "8000:8000"
@@ -124,6 +129,8 @@ volumes:
     name: certbot-www
   chroma_data:
     name: chroma_data
+  document_storage:
+    name: document_storage
 
 networks:
   ws:

@@ -2,11 +2,21 @@ import asyncio
 import io
 
 from httpx import ASGITransport, AsyncClient
+from PIL import Image
 from starlette import status
 
 from app.main import app
 from app.repositories.medication_repository import MedicationRepository
 from app.services import medication_open_api_client, medication_service
+
+
+def _dummy_jpeg_bytes() -> bytes:
+    """(REQ-DOC-003) `_validate_uploaded_image`가 실제로 열리는 이미지인지 Pillow로
+    검증하므로, 테스트도 진짜 픽셀 데이터를 가진 최소 크기 JPEG을 써야 한다 - 실제 처방전/
+    알약 샘플 이미지는 수량이 한정돼 있어 자동화 테스트에서는 절대 쓰지 않는다."""
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10), color="red").save(buf, format="JPEG")
+    return buf.getvalue()
 
 
 class _FakeDurDrugRepository:
@@ -100,7 +110,7 @@ async def test_recognition_job_creation_and_completion(monkeypatch):
         headers = {"Authorization": f"Bearer {token}"}
 
         # 1. 업로드 & 비동기 Job 생성 요청
-        file_content = b"fake pill photo bytes"
+        file_content = _dummy_jpeg_bytes()
         files = {"file": ("pill.jpg", io.BytesIO(file_content), "image/jpeg")}
         data = {"source_type": "pill_photo"}
 
@@ -152,7 +162,7 @@ async def test_recognition_job_dummy_mode_returns_deterministic_candidates_and_i
         token = await _signup_and_login(client, "dummy_mode_test@example.com")
         headers = {"Authorization": f"Bearer {token}"}
 
-        files = {"file": ("pill.jpg", io.BytesIO(b"fake pill photo bytes"), "image/jpeg")}
+        files = {"file": ("pill.jpg", io.BytesIO(_dummy_jpeg_bytes()), "image/jpeg")}
         data = {"source_type": "pill_photo", "dummy_mode": "true"}
 
         response = await client.post("/api/v1/recognition/jobs", headers=headers, files=files, data=data)
@@ -193,7 +203,7 @@ async def test_recognition_job_real_ocr_failure_does_not_silently_fall_back_to_d
         token = await _signup_and_login(client, "ocr_failure_fallback@example.com")
         headers = {"Authorization": f"Bearer {token}"}
 
-        files = {"file": ("pill.jpg", io.BytesIO(b"fake pill photo bytes"), "image/jpeg")}
+        files = {"file": ("pill.jpg", io.BytesIO(_dummy_jpeg_bytes()), "image/jpeg")}
         data = {"source_type": "pill_photo"}
 
         response = await client.post("/api/v1/recognition/jobs", headers=headers, files=files, data=data)
@@ -511,7 +521,7 @@ async def test_cross_profile_job_access_is_forbidden():
         token2 = await _signup_and_login(client, "user2@example.com")
 
         # user1로 Job 생성
-        files = {"file": ("pill.jpg", io.BytesIO(b"pill"), "image/jpeg")}
+        files = {"file": ("pill.jpg", io.BytesIO(_dummy_jpeg_bytes()), "image/jpeg")}
         data = {"source_type": "pill_photo"}
         headers1 = {"Authorization": f"Bearer {token1}"}
         res = await client.post("/api/v1/recognition/jobs", headers=headers1, files=files, data=data)
@@ -521,6 +531,14 @@ async def test_cross_profile_job_access_is_forbidden():
         headers2 = {"Authorization": f"Bearer {token2}"}
         get_res = await client.get(f"/api/v1/recognition/jobs/{job_id}", headers=headers2)
         assert get_res.status_code == status.HTTP_404_NOT_FOUND
+
+        # (REQ-DOC-003) 타인의 원본 이미지 조회도 동일하게 404 (존재 여부 노출 안 함)
+        image_res = await client.get(f"/api/v1/recognition/jobs/{job_id}/image", headers=headers2)
+        assert image_res.status_code == status.HTTP_404_NOT_FOUND
+
+        # (REQ-DOC-003) 타인의 문서 삭제 시도도 404
+        delete_res = await client.delete(f"/api/v1/recognition/jobs/{job_id}/document", headers=headers2)
+        assert delete_res.status_code == status.HTTP_404_NOT_FOUND
 
 
 async def test_search_medications_dur_success():

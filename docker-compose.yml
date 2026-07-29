@@ -65,6 +65,10 @@ services:
     volumes:
       - ./app:/app/app  # 로컬의 app 디렉토리를 컨테이너의 /app/app에 마운트(수정사항 즉시 반영)
       - static_volume:/app/templates
+      # REQ-DOC-003: 처방전/약봉투/진료기록 원본 이미지(암호화 저장) 전용 프라이빗 볼륨.
+      # fastapi에만 마운트하고 nginx/ai-worker에는 마운트하지 않는다 - 웹에서 직접 정적
+      # 서빙되지 않고 반드시 인증된 API(/recognition/jobs/{job_id}/image)를 통해서만 접근된다.
+      - document_storage:/app/private_media
     restart: always
     ports:
       - "8000:8000"
@@ -130,6 +134,7 @@ volumes:
   mysql_data:
   static_volume:
   hf_cache:
+  document_storage:
 
 networks:
   ws:

@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import config
@@ -8,6 +8,8 @@ from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
 from app.dtos.medication_dto import (
     FoodInteractionCheckResult,
+    GuardianDocumentAccessResponse,
+    GuardianDocumentAccessUpdateRequest,
     InteractionCheckResult,
     MedicationScheduleCreateRequest,
     MedicationScheduleResponse,
@@ -18,10 +20,12 @@ from app.dtos.medication_dto import (
     RecognitionConfirmRequest,
     RecognitionConfirmResult,
     RecognitionJobCreateResult,
+    RecognitionJobSummary,
     RecognitionResult,
 )
 from app.models.profiles import Profile
 from app.repositories.dur_drug_repository import DrugProfile, DurDrugRepository
+from app.repositories.profile_repository import ProfileRepository
 from app.services import medication_open_api_client
 from app.services.medication_service import (
     MedicationService,
@@ -85,6 +89,92 @@ async def get_recognition_job(
 ) -> RecognitionResult:
     service = MedicationService()
     return await service.get_recognition_job(session, job_id, profile.id)
+
+
+@medication_router.get(
+    "/recognition/jobs",
+    response_model=list[RecognitionJobSummary],
+    summary="내 문서함 - 인식 작업(원본 문서) 목록",
+    description=(
+        "REQ-DOC-003: 촬영/업로드한 원본 문서(처방전/약봉투/진료기록/알약사진)를 최신순으로 "
+        "조회한다. 날짜별 그룹핑은 프론트에서 created_at 기준으로 한다. 본인 것만 조회 가능."
+    ),
+)
+async def list_recognition_jobs(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    source_type: Annotated[str | None, Query()] = None,
+) -> list[RecognitionJobSummary]:
+    service = MedicationService()
+    return await service.list_recognition_jobs(session, profile.id, source_type)
+
+
+@medication_router.get(
+    "/recognition/jobs/{job_id}/image",
+    summary="원본 문서 이미지 조회",
+    description=(
+        "REQ-DOC-003: 촬영한 원본 이미지를 복호화해서 스트리밍한다. 본인이거나, 대상 "
+        "프로필이 가족 공개를 켜둔 상태에서 승인된 보호자만 조회 가능하며, 그 외에는 "
+        "존재 여부를 노출하지 않기 위해 전부 404로 응답한다."
+    ),
+)
+async def get_recognition_job_image(
+    job_id: str,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    service = MedicationService()
+    data, mime_type = await service.get_recognition_job_image(session, job_id, profile.id)
+    return Response(content=data, media_type=mime_type)
+
+
+@medication_router.delete(
+    "/recognition/jobs/{job_id}/document",
+    status_code=204,
+    summary="원본 문서 이미지 + 추출 데이터 완전 삭제",
+    description=(
+        "REQ-DOC-003: 저장된 원본 이미지 파일과 OCR로 추출된 데이터를 완전히 삭제한다. "
+        "본인만 가능(가족/보호자는 조회 공개 여부와 무관하게 삭제 불가). 이미 삭제된 "
+        "상태에서 다시 호출해도 멱등하게 204를 반환한다."
+    ),
+)
+async def delete_recognition_job_document(
+    job_id: str,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> None:
+    service = MedicationService()
+    await service.delete_recognition_job_document(session, job_id, profile.id)
+
+
+@medication_router.get(
+    "/recognition/jobs/settings/guardian-document-access",
+    response_model=GuardianDocumentAccessResponse,
+    summary="가족(보호자)에게 문서함 이미지 공개 여부 조회",
+)
+async def get_guardian_document_access(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+) -> GuardianDocumentAccessResponse:
+    return GuardianDocumentAccessResponse(allow_guardian_document_access=profile.allow_guardian_document_access)
+
+
+@medication_router.patch(
+    "/recognition/jobs/settings/guardian-document-access",
+    response_model=GuardianDocumentAccessResponse,
+    summary="가족(보호자)에게 문서함 이미지 공개 여부 설정",
+    description=(
+        "REQ-DOC-003: 기본값은 항상 비공개(False)다. 켜면 승인된 보호자가 본인의 문서함 "
+        "원본 이미지를 조회할 수 있게 되지만(삭제는 여전히 본인만 가능), 처방전/진료기록은 "
+        "복약스케줄보다 훨씬 민감한 정보이므로 명시적으로 켜야 한다."
+    ),
+)
+async def update_guardian_document_access(
+    body: GuardianDocumentAccessUpdateRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> GuardianDocumentAccessResponse:
+    await ProfileRepository().set_guardian_document_access(session, profile, body.allow_guardian_document_access)
+    return GuardianDocumentAccessResponse(allow_guardian_document_access=profile.allow_guardian_document_access)
 
 
 @medication_router.post(
