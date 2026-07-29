@@ -70,6 +70,7 @@ def _to_result(goal: Goal, recent_logs: list[GoalProgressLog]) -> GoalItemResult
     return GoalItemResult(
         id=goal.id,
         title=goal.title,
+        goal_type=goal.goal_type,
         start_value=float(goal.start_value) if goal.start_value is not None else None,
         target_value=float(goal.target_value) if goal.target_value is not None else None,
         current_value=float(goal.current_value) if goal.current_value is not None else None,
@@ -130,6 +131,7 @@ class GoalService:
             session,
             profile_id,
             title=data.title,
+            goal_type=data.goal_type,
             start_value=Decimal(str(data.start_value)) if data.start_value is not None else None,
             target_value=Decimal(str(data.target_value)) if data.target_value is not None else None,
             current_value=(
