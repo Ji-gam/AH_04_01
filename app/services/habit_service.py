@@ -39,6 +39,9 @@ class HabitDef:
     icon: str
     unit: str
     target: int
+    # 진단병력에서 나온 맞춤 습관인지 - pick_recommendations()가 이 값으로 질병 관련 습관을
+    # 우선 채운다(일반 라이프스타일 습관보다 먼저 보여줘야 한다는 요청, 2026-07-29).
+    is_disease_related: bool = False
 
 
 # 등록 여부와 무관하게 누구에게나 뜨는 기본 세트(디자인 시안 반영, 8개). 진단명을 적게(또는
@@ -60,14 +63,24 @@ BASE_HABITS: list[HabitDef] = [
 # 없거나, 있어도 LLM 생성이 실패했을 때의 폴백으로 쓰인다(2단계 이후에는 항상 이게 최종
 # 폴백이라, 이 6개는 계속 유지한다).
 DISEASE_HABITS: dict[Disease, HabitDef] = {
-    Disease.DIABETES: HabitDef(key="diabetes_walk", label="식후 10분 걷기", icon="🍽️", unit="회", target=1),
-    Disease.HEART_DISEASE: HabitDef(key="heart_low_salt", label="저염식 식사하기", icon="🧂", unit="회", target=1),
-    Disease.CEREBROVASCULAR_DISEASE: HabitDef(
-        key="cerebro_stretch", label="스트레칭 5분", icon="🧘", unit="회", target=1
+    Disease.DIABETES: HabitDef(
+        key="diabetes_walk", label="식후 10분 걷기", icon="🍽️", unit="회", target=1, is_disease_related=True
     ),
-    Disease.LIVER_DISEASE: HabitDef(key="liver_no_alcohol", label="금주 실천하기", icon="🚫", unit="회", target=1),
-    Disease.CANCER: HabitDef(key="cancer_rest", label="충분한 휴식 취하기", icon="😴", unit="회", target=1),
-    Disease.OTHER: HabitDef(key="other_condition_check", label="오늘 컨디션 체크하기", icon="📝", unit="회", target=1),
+    Disease.HEART_DISEASE: HabitDef(
+        key="heart_low_salt", label="저염식 식사하기", icon="🧂", unit="회", target=1, is_disease_related=True
+    ),
+    Disease.CEREBROVASCULAR_DISEASE: HabitDef(
+        key="cerebro_stretch", label="스트레칭 5분", icon="🧘", unit="회", target=1, is_disease_related=True
+    ),
+    Disease.LIVER_DISEASE: HabitDef(
+        key="liver_no_alcohol", label="금주 실천하기", icon="🚫", unit="회", target=1, is_disease_related=True
+    ),
+    Disease.CANCER: HabitDef(
+        key="cancer_rest", label="충분한 휴식 취하기", icon="😴", unit="회", target=1, is_disease_related=True
+    ),
+    Disease.OTHER: HabitDef(
+        key="other_condition_check", label="오늘 컨디션 체크하기", icon="📝", unit="회", target=1, is_disease_related=True
+    ),
 }
 
 
@@ -104,16 +117,31 @@ _SUBTYPE_HABIT_SYSTEM_PROMPT = (
 )
 
 
+def _rotate(items: list[HabitDef], profile_id: int, today: date, count: int) -> list[HabitDef]:
+    """items에서 count개를, 날짜가 하루 지날 때마다 정확히 한 칸씩 미는 방식으로 고른다.
+    profile_id를 더해 계정마다 시작 위치가 달라지되, 요일 간 회전 자체는 늘 +1이라 "우연히
+    며칠 연속 같은 결과가 나오는" 문제(해시 나머지 방식의 알려진 결함)가 구조적으로 없다."""
+    if not items:
+        return []
+    start = (today.toordinal() + profile_id) % len(items)
+    return [items[(start + i) % len(items)] for i in range(count)]
+
+
 def pick_recommendations(pool: list[HabitDef], profile_id: int, today: date) -> list[HabitDef]:
-    """후보군이 MAX_RECOMMENDATIONS개 이하면 전부 추천하고, 그보다 많으면(진단명별 LLM 습관이
-    늘어나는 경우) 날짜가 하루 지날 때마다 정확히 한 칸씩 미는 방식으로 MAX_RECOMMENDATIONS개를
-    고른다. profile_id를 더해 계정마다 시작 위치가 달라지게 하되, 요일 간 회전 자체는 늘 +1이라
-    "우연히 며칠 연속 같은 결과가 나오는" 문제(해시 나머지 방식의 알려진 결함)가 구조적으로
-    없다."""
+    """진단병력 기반 맞춤 습관(is_disease_related)을 일반 라이프스타일 습관보다 항상 먼저
+    채운다("습관 리스트는 질병 관련부터 보여줘야 한다", 2026-07-29). 질병 관련 습관만으로
+    MAX_RECOMMENDATIONS를 못 채우면 남는 자리만 일반 습관으로(날짜별 로테이션) 메운다."""
+    disease_habits = [h for h in pool if h.is_disease_related]
+    base_habits = [h for h in pool if not h.is_disease_related]
+
     if len(pool) <= MAX_RECOMMENDATIONS:
-        return pool
-    start = (today.toordinal() + profile_id) % len(pool)
-    return [pool[(start + i) % len(pool)] for i in range(MAX_RECOMMENDATIONS)]
+        return disease_habits + base_habits
+
+    if len(disease_habits) >= MAX_RECOMMENDATIONS:
+        return _rotate(disease_habits, profile_id, today, MAX_RECOMMENDATIONS)
+
+    remaining = MAX_RECOMMENDATIONS - len(disease_habits)
+    return disease_habits + _rotate(base_habits, profile_id, today, remaining)
 
 
 class HabitService:
@@ -163,6 +191,7 @@ class HabitService:
                     icon=row.icon,
                     unit=row.unit,
                     target=row.target,
+                    is_disease_related=True,
                 )
                 for row in cached
             ]
@@ -199,6 +228,7 @@ class HabitService:
                 icon=row.icon,
                 unit=row.unit,
                 target=row.target,
+                is_disease_related=True,
             )
             for row in saved
         ]
