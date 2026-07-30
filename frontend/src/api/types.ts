@@ -335,6 +335,7 @@ export interface DietTodayResult {
   total_carb_g: number;
   total_fat_g: number;
   reference_kcal: number;
+  reference_kcal_reason: string;
 }
 
 export interface DietRecentDayResult {

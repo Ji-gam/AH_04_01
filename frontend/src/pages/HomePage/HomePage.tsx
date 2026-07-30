@@ -20,7 +20,7 @@ import type {
 } from "../../api/types";
 import DietLogContent from "../../components/diet/DietLogContent";
 import ExerciseLogContent from "../../components/exercise/ExerciseLogContent";
-import HabitSelectionContent from "../../components/habit/HabitSelectionContent";
+import HabitRecommendationFlow from "../../components/habit/HabitRecommendationFlow";
 import SelectedHabitsModal from "../../components/habit/SelectedHabitsModal";
 import SleepLogContent from "../../components/sleep/SleepLogContent";
 import { useAuth } from "../../hooks/useAuth";
@@ -779,31 +779,21 @@ export default function HomePage() {
           />
         )}
 
-        {/* 아직 습관을 하나도 안 골랐을 때 — 예전엔 /habit-selection으로 페이지 이동했는데,
-            홈에서 바로 고르고 저장까지 할 수 있게 모달로 띄운다. 저장되면 이 카드의
+        {/* 아직 습관을 하나도 안 골랐을 때 — 마이다이어리 허브 전체가 아니라 습관 선택
+            목록이 바로 떠야 한다(2026-07-30 피드백: 예전엔 이 카드를 누르면 마이다이어리
+            메뉴가 통째로 떠서 한 번 더 눌러야 목록이 나왔다). 저장되면 이 카드의
             habitsToday도 같이 갱신되어 모달을 닫으면 바로 "n/n개 완료"로 보인다. */}
         {showHabitSelectionModal && (
-          <Modal
+          <HabitRecommendationFlow
             onClose={() => {
               setShowHabitSelectionModal(false);
-              // 이 모달 안에서 식단/운동/수면 기록도 같이 할 수 있어서, 닫을 때 "오늘의 건강
-              // 지표" 카드도 최신 값으로 다시 불러온다(안 하면 방금 기록해도 카드 숫자가 그대로
-              // 남는다 - showScheduleModal의 checkedToday 재조회와 같은 이유).
+              // 이 모달을 닫을 때 "오늘의 건강 지표" 카드도 최신 값으로 다시 불러온다(안 하면
+              // 방금 선택해도 카드 숫자가 그대로 남는다 - showScheduleModal의 checkedToday
+              // 재조회와 같은 이유).
               refreshTodayMetrics();
             }}
-          >
-            <div
-              style={{
-                background: pinkTheme.cardBg,
-                border: `1px solid ${pinkTheme.border}`,
-                borderRadius: 16,
-                padding: 18,
-                boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
-              }}
-            >
-              <HabitSelectionContent onSaved={setHabitsToday} />
-            </div>
-          </Modal>
+            onSaved={setHabitsToday}
+          />
         )}
 
         {/* 빠른 메뉴 2x2 + AI 건강 상담 질문창 + 건강 정보 미리보기 */}

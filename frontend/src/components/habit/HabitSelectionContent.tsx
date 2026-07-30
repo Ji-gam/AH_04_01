@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { habitApi } from "../../api/habitApi";
-import type { HabitRecommendationItemResult, HabitsTodayResult } from "../../api/types";
+import type { HabitsTodayResult } from "../../api/types";
 import DiaryEntryContent from "../../components/diary/DiaryEntryContent";
 import DietLogContent from "../../components/diet/DietLogContent";
 import ExerciseLogContent from "../../components/exercise/ExerciseLogContent";
@@ -11,9 +10,7 @@ import { useAuth } from "../../hooks/useAuth";
 import Modal from "../../pages/AlarmPage/components/Modal";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 
-import HabitRecommendationModal from "./HabitRecommendationModal";
-
-const MAX_SELECTIONS = 5;
+import HabitRecommendationFlow from "./HabitRecommendationFlow";
 
 const menuButtonStyle: React.CSSProperties = {
   display: "block",
@@ -47,53 +44,12 @@ interface Props {
  * 바로 연결되니 기능 자체는 그대로 남아있다. */
 export default function HabitSelectionContent({ onSaved }: Props) {
   const { user } = useAuth();
-  const [habits, setHabits] = useState<HabitRecommendationItemResult[] | null>(null);
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [showRecommendationModal, setShowRecommendationModal] = useState(false);
   const [showDietModal, setShowDietModal] = useState(false);
   const [showExerciseModal, setShowExerciseModal] = useState(false);
   const [showSleepModal, setShowSleepModal] = useState(false);
   const [showDiaryModal, setShowDiaryModal] = useState(false);
   const [showGoalModal, setShowGoalModal] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    habitApi
-      .getRecommendations()
-      .then((recommendations) => {
-        setHabits(recommendations.habits);
-        setSelectedKeys(new Set(recommendations.selected_keys));
-      })
-      .catch((err: unknown) => {
-        setError(err instanceof Error ? err.message : "추천 습관을 불러오지 못했습니다.");
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  function toggle(key: string) {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else if (next.size < MAX_SELECTIONS) {
-        next.add(key);
-      }
-      return next;
-    });
-    setSaved(false);
-  }
-
-  async function handleSave() {
-    try {
-      const result = await habitApi.selectHabits(Array.from(selectedKeys));
-      setSaved(true);
-      onSaved?.(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "저장 중 오류가 발생했습니다.");
-    }
-  }
 
   return (
     <>
@@ -165,16 +121,9 @@ export default function HabitSelectionContent({ onSaved }: Props) {
       </button>
 
       {showRecommendationModal && (
-        <HabitRecommendationModal
-          habits={habits}
-          selectedKeys={selectedKeys}
-          maxSelections={MAX_SELECTIONS}
-          loading={loading}
-          error={error}
-          saved={saved}
-          onToggle={toggle}
-          onSave={handleSave}
+        <HabitRecommendationFlow
           onClose={() => setShowRecommendationModal(false)}
+          onSaved={onSaved}
         />
       )}
 

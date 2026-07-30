@@ -46,7 +46,13 @@ class DietTodayResult(BaseModel):
     total_protein_g: Annotated[float, Field(description="오늘 총 단백질(g)")]
     total_carb_g: Annotated[float, Field(description="오늘 총 탄수화물(g)")]
     total_fat_g: Annotated[float, Field(description="오늘 총 지방(g)")]
-    reference_kcal: Annotated[int, Field(description="비교 기준 칼로리 - 개인화 목표 없이 일반 권장량(2000) 고정")]
+    reference_kcal: Annotated[
+        int,
+        Field(description="비교 기준 칼로리 - 키/몸무게/나이/성별이 있으면 개인화 계산값, 없으면 일반 권장량(2000)"),
+    ]
+    reference_kcal_reason: Annotated[
+        str, Field(description="기준 칼로리 산정 이유 한 줄 (AI 생성 또는 규칙 기반 폴백)")
+    ]
 
 
 class DietRecentDayResult(BaseModel):
