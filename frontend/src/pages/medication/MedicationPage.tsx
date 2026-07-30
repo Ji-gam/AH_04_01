@@ -14,6 +14,7 @@ import type {
 import PageTitle from "../../components/common/PageTitle";
 import FamilySwitcher from "../../components/family/FamilySwitcher";
 import FamilyTrackerView from "../../components/family/FamilyTrackerView";
+import ConfirmModal from "../../components/ui/ConfirmModal";
 import MedicationResultModal from "../../components/ui/MedicationResultModal";
 import OcrFullscreenOverlay from "../../components/ui/OcrFullscreenOverlay";
 import type { OcrJobStatus } from "../../components/ui/OcrProgressBar";
@@ -442,6 +443,14 @@ export default function MedicationPage() {
   // 지울 수 있도록 체크박스 선택 상태를 둔다.
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<number[]>([]);
 
+  // (#331) 삭제 확인 — window.confirm(OS 대화상자) 대신 앱 디자인의 ConfirmModal을 쓴다.
+  // 개별/일괄 삭제가 확인 문구와 실행 내용만 다르므로, 실행할 동작을 run에 담아둔다.
+  const [pendingDelete, setPendingDelete] = useState<{
+    message: string;
+    run: () => Promise<void>;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // 약물 상호작용(12번) — DurScreeningPage.tsx 화면4와 동일하게 durApi.screenInteraction/
   // screenIngredient를 등록약 이름으로 호출해서 상호작용/리콜/공유성분 3종을 함께 보여준다
   // (기존 /medications/interactions은 병용금기만 다뤄 효능군중복·공유성분을 놓쳤다).
@@ -860,14 +869,12 @@ export default function MedicationPage() {
     }
   };
 
-  // 스케줄 삭제 핸들러 (잘못 등록된 항목 취소용)
-  const handleDeleteSchedule = async (scheduleId: number) => {
-    if (!window.confirm("이 복약 스케줄을 삭제하시겠습니까?")) return;
-    try {
-      await deleteSchedule(scheduleId);
-    } catch (err) {
-      console.error(err);
-    }
+  // 스케줄 삭제 핸들러 (잘못 등록된 항목 취소용) — 실제 삭제는 확인 모달에서 진행한다.
+  const handleDeleteSchedule = (scheduleId: number, drugName: string) => {
+    setPendingDelete({
+      message: `"${drugName}" 복약 스케줄을 삭제하시겠습니까?`,
+      run: () => deleteSchedule(scheduleId),
+    });
   };
 
   const toggleScheduleSelection = (scheduleId: number) => {
@@ -883,17 +890,31 @@ export default function MedicationPage() {
   };
 
   // 복수 선택 삭제 — deleteSchedule이 건마다 목록을 재조회하므로, 경합을 피하려고 순차 처리한다.
-  const handleBulkDeleteSchedules = async () => {
+  const handleBulkDeleteSchedules = () => {
     if (selectedScheduleIds.length === 0) return;
-    if (!window.confirm(`선택한 ${selectedScheduleIds.length}개의 복약 스케줄을 삭제하시겠습니까?`))
-      return;
+    setPendingDelete({
+      message: `선택한 ${selectedScheduleIds.length}개의 복약 스케줄을 삭제하시겠습니까?`,
+      run: async () => {
+        for (const scheduleId of selectedScheduleIds) {
+          await deleteSchedule(scheduleId);
+        }
+        setSelectedScheduleIds([]);
+      },
+    });
+  };
+
+  // 삭제 확인 모달의 "삭제"를 눌렀을 때 실제 삭제를 실행한다. 실패하면 useMedication의 error가
+  // 세팅되어 기존 오류 모달이 뜨므로, 여기서는 모달만 닫는다.
+  const runPendingDelete = async () => {
+    if (!pendingDelete || isDeleting) return;
+    setIsDeleting(true);
     try {
-      for (const scheduleId of selectedScheduleIds) {
-        await deleteSchedule(scheduleId);
-      }
-      setSelectedScheduleIds([]);
+      await pendingDelete.run();
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
     }
   };
 
@@ -1931,7 +1952,7 @@ export default function MedicationPage() {
                         </div>
                       </label>
                       <button
-                        onClick={() => handleDeleteSchedule(s.id)}
+                        onClick={() => handleDeleteSchedule(s.id, s.drug_name)}
                         disabled={isLoading}
                         style={{
                           backgroundColor: pinkTheme.danger,
@@ -2254,6 +2275,17 @@ export default function MedicationPage() {
           </div>
         )}
       </div>
+
+      {pendingDelete && (
+        <ConfirmModal
+          message={pendingDelete.message}
+          isBusy={isDeleting}
+          onConfirm={runPendingDelete}
+          onCancel={() => {
+            if (!isDeleting) setPendingDelete(null);
+          }}
+        />
+      )}
 
       {resultModal && (
         <MedicationResultModal

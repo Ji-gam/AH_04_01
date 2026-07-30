@@ -19,6 +19,7 @@ import type {
 import Modal from "../../pages/AlarmPage/components/Modal";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import { isUnverifiedDrug } from "../../utils/medication";
+import ConfirmModal from "../ui/ConfirmModal";
 import MedicationResultModal from "../ui/MedicationResultModal";
 import OcrFullscreenOverlay from "../ui/OcrFullscreenOverlay";
 import TimeInputField from "../ui/TimeInputField";
@@ -995,6 +996,14 @@ function ListTab({ targetProfileId }: { targetProfileId: number }) {
   // (2026-07-27) 본인용(MedicationPage.tsx)엔 있는데 가족용엔 없던 전체선택/일괄삭제 -
   // 본인 담당 화면이라 바로 포팅함.
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<{
+    message: string;
+    run: () => Promise<void>;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  // 삭제 실패는 목록 조회 실패(error)와 분리해서 모달로 알린다 — error를 쓰면 아래 early
+  // return이 목록 전체를 에러 문구로 바꿔버려, 삭제만 실패했는데 목록을 볼 수 없게 된다.
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function load() {
     setLoading(true);
@@ -1014,14 +1023,16 @@ function ListTab({ targetProfileId }: { targetProfileId: number }) {
     setSelectedIds((prev) => prev.filter((id) => items.some((i) => i.id === id)));
   }, [items]);
 
-  async function handleDelete(item: FamilyMedicationScheduleItem) {
-    if (!window.confirm(`"${item.drug_name}" 등록을 삭제할까요?`)) return;
-    try {
-      await familyMedicationApi.deleteForFamily(item.id);
-      load();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : "삭제에 실패했습니다.");
-    }
+  // (#331) 삭제 확인은 window.confirm(OS 대화상자) 대신 앱 디자인의 ConfirmModal로 받는다 —
+  // 개별/일괄 삭제가 확인 문구와 실행 내용만 다르므로, 실행할 동작을 run에 담아둔다.
+  function handleDelete(item: FamilyMedicationScheduleItem) {
+    setPendingDelete({
+      message: `"${item.drug_name}" 등록을 삭제하시겠습니까?`,
+      run: async () => {
+        await familyMedicationApi.deleteForFamily(item.id);
+        load();
+      },
+    });
   }
 
   function toggleSelect(id: number) {
@@ -1032,17 +1043,30 @@ function ListTab({ targetProfileId }: { targetProfileId: number }) {
     setSelectedIds((prev) => (prev.length === items.length ? [] : items.map((i) => i.id)));
   }
 
-  async function handleBulkDelete() {
+  function handleBulkDelete() {
     if (selectedIds.length === 0) return;
-    if (!window.confirm(`선택한 ${selectedIds.length}개의 복약 스케줄을 삭제하시겠습니까?`)) return;
+    setPendingDelete({
+      message: `선택한 ${selectedIds.length}개의 복약 스케줄을 삭제하시겠습니까?`,
+      run: async () => {
+        for (const id of selectedIds) {
+          await familyMedicationApi.deleteForFamily(id);
+        }
+        setSelectedIds([]);
+        load();
+      },
+    });
+  }
+
+  async function runPendingDelete() {
+    if (!pendingDelete || isDeleting) return;
+    setIsDeleting(true);
     try {
-      for (const id of selectedIds) {
-        await familyMedicationApi.deleteForFamily(id);
-      }
-      setSelectedIds([]);
-      load();
+      await pendingDelete.run();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "삭제에 실패했습니다.");
+      setDeleteError(err instanceof Error ? err.message : "삭제에 실패했습니다.");
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
     }
   }
 
@@ -1197,6 +1221,25 @@ function ListTab({ targetProfileId }: { targetProfileId: number }) {
             );
           })}
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmModal
+          message={pendingDelete.message}
+          isBusy={isDeleting}
+          onConfirm={runPendingDelete}
+          onCancel={() => {
+            if (!isDeleting) setPendingDelete(null);
+          }}
+        />
+      )}
+
+      {deleteError && (
+        <MedicationResultModal
+          message={deleteError}
+          tone="warning"
+          onClose={() => setDeleteError(null)}
+        />
       )}
     </div>
   );
