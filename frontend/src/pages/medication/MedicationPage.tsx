@@ -772,7 +772,11 @@ export default function MedicationPage() {
                 tone: "warning",
                 goToList: true,
               }
-            : { message: "복약 일정이 성공적으로 등록되었습니다!", tone: "success", goToList: true },
+            : {
+                message: "복약 일정이 성공적으로 등록되었습니다!",
+                tone: "success",
+                goToList: true,
+              },
         );
         handleCancelEditCandidate();
       } else {
@@ -830,7 +834,11 @@ export default function MedicationPage() {
                 tone: "warning",
                 goToList: true,
               }
-            : { message: "복약 일정이 성공적으로 등록되었습니다!", tone: "success", goToList: true },
+            : {
+                message: "복약 일정이 성공적으로 등록되었습니다!",
+                tone: "success",
+                goToList: true,
+              },
         );
         setQuickDrugName("");
         setHospitalName("");
