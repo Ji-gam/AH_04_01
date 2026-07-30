@@ -14,6 +14,7 @@ import type {
 import PageTitle from "../../components/common/PageTitle";
 import FamilySwitcher from "../../components/family/FamilySwitcher";
 import FamilyTrackerView from "../../components/family/FamilyTrackerView";
+import MedicationResultModal from "../../components/ui/MedicationResultModal";
 import OcrFullscreenOverlay from "../../components/ui/OcrFullscreenOverlay";
 import type { OcrJobStatus } from "../../components/ui/OcrProgressBar";
 import { useAuth } from "../../hooks/useAuth";
@@ -387,6 +388,13 @@ export default function MedicationPage() {
   const [isConfirmingJob, setIsConfirmingJob] = useState(false);
   const isConfirmingJobRef = useRef(false);
 
+  // (#329) 등록 결과 안내 — 가족 몫 등록(FamilyTrackerView)과 같은 MedicationResultModal을 쓴다.
+  // 이전에는 window.alert였는데, 같은 동작인데 화면마다 달라 보여 통일했다.
+  const [resultModal, setResultModal] = useState<{
+    message: string;
+    tone: "success" | "warning";
+  } | null>(null);
+
   // OCR 후보가 잘못 인식됐을 때 "다른 약이에요"로 텍스트 검색해 바로잡는 기능 — 새 매칭/
   // 할루시네이션 로직을 새로 만들지 않고, 수동등록 탭이 이미 쓰는 searchMedications/
   // createManualSchedule/quickRegister를 후보 카드 안에서 인라인으로 재사용한다.
@@ -663,7 +671,10 @@ export default function MedicationPage() {
       await fetchSchedules();
 
       if (failedCodes.length === 0) {
-        alert(`${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`);
+        setResultModal({
+          message: `${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`,
+          tone: "success",
+        });
         // currentJobId/candidates는 그대로 둔다 — 후보별 등록 여부는 등록약 목록(schedules)에서
         // 파생되므로(아래 isRegistered), 등록 목록에서 삭제하면 같은 후보를 재업로드 없이 다시
         // 선택해 등록할 수 있어야 한다. 방금 제출한 선택 상태만 비운다.
@@ -673,9 +684,10 @@ export default function MedicationPage() {
         const failedNames = failedCodes.map(
           (code) => candidates.find((c) => c.drug_code === code)?.drug_name ?? code,
         );
-        alert(
-          `${succeededCount}개 약품은 등록되었지만, 다음 약품은 실패했습니다: ${failedNames.join(", ")}`,
-        );
+        setResultModal({
+          message: `${succeededCount}개 약품은 등록되었지만, 다음 약품은 실패했습니다: ${failedNames.join(", ")}`,
+          tone: "warning",
+        });
         // 실패한 약만 선택 상태로 남겨 재시도할 수 있게 한다.
         setSelectedDrugCodes(failedCodes);
       }
@@ -739,10 +751,13 @@ export default function MedicationPage() {
         hospitalName.trim() || null,
       );
       if (res.status === "registered") {
-        alert(
+        setResultModal(
           res.auto_created
-            ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`
-            : "복약 일정이 성공적으로 등록되었습니다!",
+            ? {
+                message: `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`,
+                tone: "warning",
+              }
+            : { message: "복약 일정이 성공적으로 등록되었습니다!", tone: "success" },
         );
         handleCancelEditCandidate();
       } else {
@@ -793,10 +808,13 @@ export default function MedicationPage() {
       const timesArray = manualTimes;
       const res = await quickRegister(quickDrugName, timesArray, hospitalName.trim() || null);
       if (res.status === "registered") {
-        alert(
+        setResultModal(
           res.auto_created
-            ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`
-            : "복약 일정이 성공적으로 등록되었습니다!",
+            ? {
+                message: `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`,
+                tone: "warning",
+              }
+            : { message: "복약 일정이 성공적으로 등록되었습니다!", tone: "success" },
         );
         setQuickDrugName("");
         setHospitalName("");
@@ -820,7 +838,7 @@ export default function MedicationPage() {
     try {
       const timesArray = manualTimes;
       await createManualSchedule(selectedManualCode, timesArray, hospitalName.trim() || null);
-      alert("복약 일정이 성공적으로 등록되었습니다!");
+      setResultModal({ message: "복약 일정이 성공적으로 등록되었습니다!", tone: "success" });
       setQuickDrugName("");
       setHospitalName("");
       setManualCandidates([]);
@@ -2225,6 +2243,14 @@ export default function MedicationPage() {
           </div>
         )}
       </div>
+
+      {resultModal && (
+        <MedicationResultModal
+          message={resultModal.message}
+          tone={resultModal.tone}
+          onClose={() => setResultModal(null)}
+        />
+      )}
 
       {error && (
         <Modal onClose={clearError}>
