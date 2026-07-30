@@ -390,9 +390,12 @@ export default function MedicationPage() {
 
   // (#329) 등록 결과 안내 — 가족 몫 등록(FamilyTrackerView)과 같은 MedicationResultModal을 쓴다.
   // 이전에는 window.alert였는데, 같은 동작인데 화면마다 달라 보여 통일했다.
+  // goToList: 확인을 누르면 방금 등록한 약을 바로 볼 수 있게 등록 목록 탭으로 넘긴다. 일부만
+  // 등록된 경우는 실패한 약의 선택 상태를 남겨 재시도하게 하므로 등록 화면에 그대로 머문다.
   const [resultModal, setResultModal] = useState<{
     message: string;
     tone: "success" | "warning";
+    goToList: boolean;
   } | null>(null);
 
   // OCR 후보가 잘못 인식됐을 때 "다른 약이에요"로 텍스트 검색해 바로잡는 기능 — 새 매칭/
@@ -674,6 +677,7 @@ export default function MedicationPage() {
         setResultModal({
           message: `${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`,
           tone: "success",
+          goToList: true,
         });
         // currentJobId/candidates는 그대로 둔다 — 후보별 등록 여부는 등록약 목록(schedules)에서
         // 파생되므로(아래 isRegistered), 등록 목록에서 삭제하면 같은 후보를 재업로드 없이 다시
@@ -687,6 +691,7 @@ export default function MedicationPage() {
         setResultModal({
           message: `${succeededCount}개 약품은 등록되었지만, 다음 약품은 실패했습니다: ${failedNames.join(", ")}`,
           tone: "warning",
+          goToList: false,
         });
         // 실패한 약만 선택 상태로 남겨 재시도할 수 있게 한다.
         setSelectedDrugCodes(failedCodes);
@@ -756,8 +761,9 @@ export default function MedicationPage() {
             ? {
                 message: `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`,
                 tone: "warning",
+                goToList: true,
               }
-            : { message: "복약 일정이 성공적으로 등록되었습니다!", tone: "success" },
+            : { message: "복약 일정이 성공적으로 등록되었습니다!", tone: "success", goToList: true },
         );
         handleCancelEditCandidate();
       } else {
@@ -813,8 +819,9 @@ export default function MedicationPage() {
             ? {
                 message: `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`,
                 tone: "warning",
+                goToList: true,
               }
-            : { message: "복약 일정이 성공적으로 등록되었습니다!", tone: "success" },
+            : { message: "복약 일정이 성공적으로 등록되었습니다!", tone: "success", goToList: true },
         );
         setQuickDrugName("");
         setHospitalName("");
@@ -838,7 +845,11 @@ export default function MedicationPage() {
     try {
       const timesArray = manualTimes;
       await createManualSchedule(selectedManualCode, timesArray, hospitalName.trim() || null);
-      setResultModal({ message: "복약 일정이 성공적으로 등록되었습니다!", tone: "success" });
+      setResultModal({
+        message: "복약 일정이 성공적으로 등록되었습니다!",
+        tone: "success",
+        goToList: true,
+      });
       setQuickDrugName("");
       setHospitalName("");
       setManualCandidates([]);
@@ -2248,7 +2259,10 @@ export default function MedicationPage() {
         <MedicationResultModal
           message={resultModal.message}
           tone={resultModal.tone}
-          onClose={() => setResultModal(null)}
+          onClose={() => {
+            if (resultModal.goToList) setActiveTab("list");
+            setResultModal(null);
+          }}
         />
       )}
 

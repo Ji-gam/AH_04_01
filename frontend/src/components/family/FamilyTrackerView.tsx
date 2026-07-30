@@ -118,7 +118,13 @@ export default function FamilyTrackerView({
         ))}
       </div>
 
-      {tab === "register" && <RegisterTab targetProfileId={targetProfileId} />}
+      {/* 등록 탭만 언마운트하지 않고 숨긴다 — 등록 후 목록 탭으로 자동 이동하는데(onRegistered),
+        언마운트되면 OCR 인식 결과가 날아가 처방전 한 장에 여러 약이 있을 때 나머지 약을
+        등록하려면 사진을 다시 올려야 한다. 나머지 탭은 진입할 때마다 새로 조회해야 하므로
+        기존처럼 조건부 렌더를 유지한다. */}
+      <div style={{ display: tab === "register" ? undefined : "none" }}>
+        <RegisterTab targetProfileId={targetProfileId} onRegistered={() => setTab("list")} />
+      </div>
       {tab === "list" && <ListTab targetProfileId={targetProfileId} />}
       {tab === "interactions" && <InteractionsTab targetProfileId={targetProfileId} />}
       {tab === "food" && <FoodTab targetProfileId={targetProfileId} />}
@@ -126,7 +132,14 @@ export default function FamilyTrackerView({
   );
 }
 
-function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
+function RegisterTab({
+  targetProfileId,
+  /** 등록 결과 모달의 "확인"을 누른 뒤 호출 — 등록 목록 탭으로 넘긴다. */
+  onRegistered,
+}: {
+  targetProfileId: number;
+  onRegistered: () => void;
+}) {
   const [subTab, setSubTab] = useState<"search" | "photo">("photo");
 
   const [query, setQuery] = useState("");
@@ -960,7 +973,17 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
 
       {error && <p style={{ margin: 0, fontSize: 12, color: t.danger }}>{error}</p>}
 
-      {message && <MedicationResultModal message={message} onClose={() => setMessage(null)} />}
+      {/* message는 등록이 실제로 성공한 경우에만 세팅된다 — 확인을 누르면 방금 등록한 약을
+        바로 볼 수 있게 등록 목록 탭으로 넘긴다. */}
+      {message && (
+        <MedicationResultModal
+          message={message}
+          onClose={() => {
+            setMessage(null);
+            onRegistered();
+          }}
+        />
+      )}
     </div>
   );
 }
