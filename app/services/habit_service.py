@@ -79,7 +79,12 @@ DISEASE_HABITS: dict[Disease, HabitDef] = {
         key="cancer_rest", label="충분한 휴식 취하기", icon="😴", unit="회", target=1, is_disease_related=True
     ),
     Disease.OTHER: HabitDef(
-        key="other_condition_check", label="오늘 컨디션 체크하기", icon="📝", unit="회", target=1, is_disease_related=True
+        key="other_condition_check",
+        label="오늘 컨디션 체크하기",
+        icon="📝",
+        unit="회",
+        target=1,
+        is_disease_related=True,
     ),
 }
 
