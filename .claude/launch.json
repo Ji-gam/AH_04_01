@@ -13,18 +13,29 @@
     },
     {
       "name": "backend",
-      "runtimeExecutable": "env",
+      "runtimeExecutable": "uv",
       "runtimeArgs": [
-        "DB_HOST=localhost",
-        "uv",
         "run",
         "uvicorn",
         "app.main:app",
         "--reload",
         "--port",
-        "8010"
+        "8000"
       ],
-      "port": 8010
+      "port": 8000
+    },
+    {
+      "name": "ai-worker",
+      "runtimeExecutable": "uv",
+      "runtimeArgs": [
+        "run",
+        "uvicorn",
+        "ai_worker.main:app",
+        "--reload",
+        "--port",
+        "8001"
+      ],
+      "port": 8001
     }
   ]
 }
