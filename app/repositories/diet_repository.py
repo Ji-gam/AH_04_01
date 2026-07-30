@@ -5,6 +5,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.diet_kcal_reasons import DietKcalReason
 from app.models.diet_logs import DietLog
 from app.models.food_nutrition_cache import FoodNutritionCache
 
@@ -90,6 +91,34 @@ class DietRepository:
             .order_by(DietLog.log_date)
         )
         return [(row[0], row[1]) for row in result.all()]
+
+    async def get_kcal_reason(self, session: AsyncSession, profile_id: int, log_date: date) -> DietKcalReason | None:
+        result = await session.execute(
+            select(DietKcalReason).where(DietKcalReason.profile_id == profile_id, DietKcalReason.log_date == log_date)
+        )
+        return result.scalar_one_or_none()
+
+    async def save_kcal_reason(
+        self, session: AsyncSession, profile_id: int, log_date: date, reference_kcal: int, reason: str
+    ) -> DietKcalReason:
+        existing = await self.get_kcal_reason(session, profile_id, log_date)
+        if existing is not None:
+            existing.reference_kcal = reference_kcal
+            existing.reason = reason
+        else:
+            existing = DietKcalReason(
+                profile_id=profile_id, log_date=log_date, reference_kcal=reference_kcal, reason=reason
+            )
+            session.add(existing)
+        try:
+            await session.commit()
+        except IntegrityError:
+            # 동시에 같은 날 캐시를 만들려던 다른 요청이 먼저 커밋한 경우 - save_cached_food와
+            # 같은 패턴으로, 캐시일 뿐이니 조용히 넘어가도 된다(다음 조회부터 캐시 히트).
+            await session.rollback()
+        else:
+            await session.refresh(existing)
+        return existing
 
     async def list_profile_ids_with_logs_in_range(
         self, session: AsyncSession, start_date: date, end_date: date
