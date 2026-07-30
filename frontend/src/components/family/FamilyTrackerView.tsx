@@ -1,4 +1,3 @@
-import { Check, Pill } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -20,6 +19,7 @@ import type {
 import Modal from "../../pages/AlarmPage/components/Modal";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import { isUnverifiedDrug } from "../../utils/medication";
+import MedicationResultModal from "../ui/MedicationResultModal";
 import OcrFullscreenOverlay from "../ui/OcrFullscreenOverlay";
 import TimeInputField from "../ui/TimeInputField";
 
@@ -960,73 +960,7 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
 
       {error && <p style={{ margin: 0, fontSize: 12, color: t.danger }}>{error}</p>}
 
-      {message && (
-        <Modal onClose={() => setMessage(null)}>
-          <div
-            style={{
-              background: t.cardBg,
-              border: `1px solid ${t.border}`,
-              borderRadius: 16,
-              padding: 24,
-              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
-              textAlign: "center",
-            }}
-          >
-            <div style={{ position: "relative", width: 52, height: 52, margin: "0 auto 12px" }}>
-              <div
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: "50%",
-                  background: t.primarySoft,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Pill size={26} color={t.primary} />
-              </div>
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: -2,
-                  right: -2,
-                  width: 20,
-                  height: 20,
-                  borderRadius: "50%",
-                  background: t.primary,
-                  border: `2px solid ${t.cardBg}`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Check size={12} color="#fff" strokeWidth={3} />
-              </div>
-            </div>
-            <p style={{ margin: "0 0 18px", fontSize: 15, fontWeight: 700, color: t.text }}>
-              {message}
-            </p>
-            <button
-              type="button"
-              onClick={() => setMessage(null)}
-              style={{
-                width: "100%",
-                padding: "10px",
-                border: "none",
-                borderRadius: 10,
-                background: t.primary,
-                color: "#fff",
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              확인
-            </button>
-          </div>
-        </Modal>
-      )}
+      {message && <MedicationResultModal message={message} onClose={() => setMessage(null)} />}
     </div>
   );
 }
