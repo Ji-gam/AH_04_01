@@ -253,6 +253,8 @@ export interface ConsentStatusResult {
   ai_chat_consented_at: string | null;
   terms_of_service_consented_at: string | null;
   marketing_consented_at: string | null;
+  // (2026-07-30) 마케팅만 껐다 켤 수 있어서, 철회한 적 있으면 그 시각이 채워진다.
+  marketing_consent_revoked_at: string | null;
 }
 
 // PATCH /users/me/consent 요청 바디. true를 보내면 서버 시각으로 갱신되고, false/미전달은

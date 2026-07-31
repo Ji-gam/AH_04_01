@@ -12,6 +12,7 @@ import type {
   DurRecallInfo,
 } from "../../api/types";
 import PageTitle from "../../components/common/PageTitle";
+import SuccessModal from "../../components/common/SuccessModal";
 import FamilySwitcher from "../../components/family/FamilySwitcher";
 import FamilyTrackerView from "../../components/family/FamilyTrackerView";
 import OcrFullscreenOverlay from "../../components/ui/OcrFullscreenOverlay";
@@ -385,6 +386,9 @@ export default function MedicationPage() {
   // OCR 확정등록 버튼 중복 클릭 방지용 (state는 재렌더 전까지 반영이 늦어 클릭 사이 gap이
   // 생길 수 있어, 클릭 즉시 동기적으로 막아야 하는 이 용도로는 ref를 함께 쓴다).
   const [isConfirmingJob, setIsConfirmingJob] = useState(false);
+  // (2026-07-30) 가족 등록 화면(FamilyTrackerView)과 스타일 통일 - alert() 대신
+  // 핑크 톤 모달로 등록 완료를 안내한다.
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const isConfirmingJobRef = useRef(false);
 
   // OCR 후보가 잘못 인식됐을 때 "다른 약이에요"로 텍스트 검색해 바로잡는 기능 — 새 매칭/
@@ -663,7 +667,9 @@ export default function MedicationPage() {
       await fetchSchedules();
 
       if (failedCodes.length === 0) {
-        alert(`${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`);
+        setSuccessMessage(
+          `${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`,
+        );
         // currentJobId/candidates는 그대로 둔다 — 후보별 등록 여부는 등록약 목록(schedules)에서
         // 파생되므로(아래 isRegistered), 등록 목록에서 삭제하면 같은 후보를 재업로드 없이 다시
         // 선택해 등록할 수 있어야 한다. 방금 제출한 선택 상태만 비운다.
@@ -739,7 +745,7 @@ export default function MedicationPage() {
         hospitalName.trim() || null,
       );
       if (res.status === "registered") {
-        alert(
+        setSuccessMessage(
           res.auto_created
             ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`
             : "복약 일정이 성공적으로 등록되었습니다!",
@@ -793,7 +799,7 @@ export default function MedicationPage() {
       const timesArray = manualTimes;
       const res = await quickRegister(quickDrugName, timesArray, hospitalName.trim() || null);
       if (res.status === "registered") {
-        alert(
+        setSuccessMessage(
           res.auto_created
             ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`
             : "복약 일정이 성공적으로 등록되었습니다!",
@@ -820,7 +826,7 @@ export default function MedicationPage() {
     try {
       const timesArray = manualTimes;
       await createManualSchedule(selectedManualCode, timesArray, hospitalName.trim() || null);
-      alert("복약 일정이 성공적으로 등록되었습니다!");
+      setSuccessMessage("복약 일정이 성공적으로 등록되었습니다!");
       setQuickDrugName("");
       setHospitalName("");
       setManualCandidates([]);
@@ -2331,6 +2337,16 @@ export default function MedicationPage() {
             </div>
           </div>
         </Modal>
+      )}
+
+      {successMessage && (
+        <SuccessModal
+          message={successMessage}
+          onConfirm={() => {
+            setSuccessMessage(null);
+            setActiveTab("list");
+          }}
+        />
       )}
     </div>
   );

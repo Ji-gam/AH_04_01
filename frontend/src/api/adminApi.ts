@@ -11,6 +11,8 @@ export interface AdminUserResult {
   ai_chat_consented_at: string | null;
   terms_of_service_consented_at: string | null;
   marketing_consented_at: string | null;
+  // (2026-07-30) 마케팅만 철회 가능 - 관리자 화면에서 동의/철회 시각을 둘 다 볼 수 있게.
+  marketing_consent_revoked_at: string | null;
 }
 
 export interface AdminActionResult {

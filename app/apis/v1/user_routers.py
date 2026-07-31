@@ -7,7 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile, get_request_user
 from app.dtos.health_info import DiagnosisEntry, FamilyHistoryEntry, HealthInfoResponse, HealthInfoUpdateRequest
-from app.dtos.users import ConsentStatusResponse, ConsentUpdateRequest, UserInfoResponse, UserUpdateRequest
+from app.dtos.users import (
+    ConsentStatusResponse,
+    ConsentUpdateRequest,
+    MarketingConsentUpdateRequest,
+    UserInfoResponse,
+    UserUpdateRequest,
+)
 from app.models.disease_entries import DiagnosisEntry as DiagnosisEntryModel
 from app.models.disease_entries import FamilyHistoryEntry as FamilyHistoryEntryModel
 from app.models.profiles import Profile
@@ -191,6 +197,7 @@ async def get_consent_status(
         ai_chat_consented_at=user.ai_chat_consented_at,
         terms_of_service_consented_at=user.terms_of_service_consented_at,
         marketing_consented_at=user.marketing_consented_at,
+        marketing_consent_revoked_at=user.marketing_consent_revoked_at,
     )
     return Response(response.model_dump(), status_code=status.HTTP_200_OK)
 
@@ -218,5 +225,34 @@ async def update_consent(
         ai_chat_consented_at=updated_user.ai_chat_consented_at,
         terms_of_service_consented_at=updated_user.terms_of_service_consented_at,
         marketing_consented_at=updated_user.marketing_consented_at,
+        marketing_consent_revoked_at=updated_user.marketing_consent_revoked_at,
+    )
+    return Response(response.model_dump(), status_code=status.HTTP_200_OK)
+
+
+@user_router.patch(
+    "/me/consent/marketing",
+    response_model=ConsentStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="마케팅 동의 토글 (켜기/끄기)",
+    description=(
+        "마케팅 정보 수신 동의는 선택 항목이라 유일하게 껐다 켤 수 있다. "
+        "enabled=true면 동의(시각 갱신), false면 철회(철회 시각만 기록, 최초 동의 시각은 보존)."
+    ),
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
+)
+async def update_marketing_consent(
+    update_data: MarketingConsentUpdateRequest,
+    user: Annotated[User, Depends(get_request_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    user_manage_service: Annotated[UserManageService, Depends(UserManageService)],
+) -> Response:
+    updated_user = await user_manage_service.set_marketing_consent(session, user, update_data.enabled)
+    response = ConsentStatusResponse(
+        health_info_consented_at=updated_user.health_info_consented_at,
+        ai_chat_consented_at=updated_user.ai_chat_consented_at,
+        terms_of_service_consented_at=updated_user.terms_of_service_consented_at,
+        marketing_consented_at=updated_user.marketing_consented_at,
+        marketing_consent_revoked_at=updated_user.marketing_consent_revoked_at,
     )
     return Response(response.model_dump(), status_code=status.HTTP_200_OK)

@@ -1,4 +1,3 @@
-import { Check, Pill } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -17,6 +16,7 @@ import type {
   DurInteractionWarning,
   DurRecallInfo,
 } from "../../api/types";
+import SuccessModal from "../../components/common/SuccessModal";
 import Modal from "../../pages/AlarmPage/components/Modal";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import { isUnverifiedDrug } from "../../utils/medication";
@@ -118,15 +118,44 @@ export default function FamilyTrackerView({
         ))}
       </div>
 
-      {tab === "register" && <RegisterTab targetProfileId={targetProfileId} />}
+      {tab === "register" && (
+        <RegisterTab targetProfileId={targetProfileId} onGoToList={() => setTab("list")} />
+      )}
       {tab === "list" && <ListTab targetProfileId={targetProfileId} />}
       {tab === "interactions" && <InteractionsTab targetProfileId={targetProfileId} />}
-      {tab === "food" && <FoodTab targetProfileId={targetProfileId} />}
+      {tab === "food" && (
+        // (2026-07-30) 본인용(MedicationPage.tsx)의 음식궁합 탭은 카드+헤더+설명 문구로
+        // 감싸져 있는데, 가족용은 그 래퍼 없이 내용만 덜렁 나오고 있었다 - 스타일 통일.
+        <div
+          style={{
+            background: t.cardBg,
+            border: `1px solid ${t.border}`,
+            borderRadius: 16,
+            padding: 18,
+            boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+          }}
+        >
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: t.text, margin: "0 0 8px" }}>
+            복약 중 음식 주의사항
+          </h3>
+          <p style={{ fontSize: 13, color: t.textMuted, margin: "0 0 12px" }}>
+            현재 등록된 약 전체를 기준으로, 식약처 e약은요 정보에서 확인된 음식·음주 관련 주의사항을
+            보여줍니다.
+          </p>
+          <FoodTab targetProfileId={targetProfileId} />
+        </div>
+      )}
     </div>
   );
 }
 
-function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
+function RegisterTab({
+  targetProfileId,
+  onGoToList,
+}: {
+  targetProfileId: number;
+  onGoToList: () => void;
+}) {
   const [subTab, setSubTab] = useState<"search" | "photo">("photo");
 
   const [query, setQuery] = useState("");
@@ -961,71 +990,13 @@ function RegisterTab({ targetProfileId }: { targetProfileId: number }) {
       {error && <p style={{ margin: 0, fontSize: 12, color: t.danger }}>{error}</p>}
 
       {message && (
-        <Modal onClose={() => setMessage(null)}>
-          <div
-            style={{
-              background: t.cardBg,
-              border: `1px solid ${t.border}`,
-              borderRadius: 16,
-              padding: 24,
-              boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
-              textAlign: "center",
-            }}
-          >
-            <div style={{ position: "relative", width: 52, height: 52, margin: "0 auto 12px" }}>
-              <div
-                style={{
-                  width: 52,
-                  height: 52,
-                  borderRadius: "50%",
-                  background: t.primarySoft,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Pill size={26} color={t.primary} />
-              </div>
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: -2,
-                  right: -2,
-                  width: 20,
-                  height: 20,
-                  borderRadius: "50%",
-                  background: t.primary,
-                  border: `2px solid ${t.cardBg}`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Check size={12} color="#fff" strokeWidth={3} />
-              </div>
-            </div>
-            <p style={{ margin: "0 0 18px", fontSize: 15, fontWeight: 700, color: t.text }}>
-              {message}
-            </p>
-            <button
-              type="button"
-              onClick={() => setMessage(null)}
-              style={{
-                width: "100%",
-                padding: "10px",
-                border: "none",
-                borderRadius: 10,
-                background: t.primary,
-                color: "#fff",
-                fontWeight: 700,
-                fontSize: 13,
-                cursor: "pointer",
-              }}
-            >
-              확인
-            </button>
-          </div>
-        </Modal>
+        <SuccessModal
+          message={message}
+          onConfirm={() => {
+            setMessage(null);
+            onGoToList();
+          }}
+        />
       )}
     </div>
   );
@@ -1665,7 +1636,20 @@ function FoodTab({ targetProfileId }: { targetProfileId: number }) {
   if (loading) return <p style={{ color: t.textMuted, fontSize: 13 }}>불러오는 중...</p>;
   if (error) return <p style={{ color: t.danger, fontSize: 13 }}>{error}</p>;
   if (!result || result.checked_count === 0) {
-    return <p style={{ color: t.textMuted, fontSize: 13 }}>등록된 약이 없어요.</p>;
+    return (
+      <div
+        style={{
+          padding: "10px",
+          borderRadius: 10,
+          background: t.primarySoft,
+          border: `1px solid ${t.border}`,
+          fontSize: 14,
+          color: t.text,
+        }}
+      >
+        등록된 약이 없어요. 처방전/알약 분석 또는 수동 등록으로 약을 등록해보세요.
+      </div>
+    );
   }
   if (result.guide_cards.length === 0) {
     // 등록약은 있지만(checked_count > 0) 아직 확인된 음식 정보가 없는 경우 - "등록약이
