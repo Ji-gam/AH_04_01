@@ -364,12 +364,12 @@ class HabitService:
                 schema=SubtypeHabitSuggestionBatch,
             )
             result = cast(SubtypeHabitSuggestionBatch, raw_result)
-            sanitized = [
+            sanitized: list[dict[str, str | int]] = [
                 {
-                    "label": habit.label.strip()[:50] or "오늘 컨디션 체크하기",
-                    "icon": (habit.icon.strip() or "📝")[:10],
-                    "unit": (habit.unit.strip() or "회")[:20],
-                    "target": max(1, habit.target),
+                    "label": str(habit.label.strip()[:50] or "오늘 컨디션 체크하기"),
+                    "icon": str((habit.icon.strip() or "📝")[:10]),
+                    "unit": str((habit.unit.strip() or "회")[:20]),
+                    "target": int(max(1, habit.target)),
                 }
                 for habit in result.habits[:_SUBTYPE_HABITS_PER_DIAGNOSIS]
             ]
@@ -561,8 +561,7 @@ class HabitService:
             if len(parts) >= 2:
                 try:
                     subtype_id = int(parts[1])
-                    disease = subtype_id_to_disease.get(subtype_id)
-                    if disease:
+                    if disease := subtype_id_to_disease.get(subtype_id):
                         return self._generate_detailed_reason(disease, habit_label)
                 except (ValueError, IndexError):
                     pass
