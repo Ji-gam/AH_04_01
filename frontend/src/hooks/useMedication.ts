@@ -1,6 +1,10 @@
 import { useState } from "react";
 
 import { apiFetch, apiFetchRaw, getAccessToken, tryRefreshAccessToken } from "../api/client";
+import {
+  quickRegisterMedication,
+  registerMedicationByCode,
+} from "../api/medicationRegistrationApi";
 
 export interface MedicationSchedule {
   id: number;
@@ -127,10 +131,9 @@ export function useMedication() {
     setIsLoading(true);
     setError(null);
     try {
-      await apiFetch("/medications", {
-        method: "POST",
-        body: JSON.stringify({ drug_code: drugCode, times, hospital_name: hospitalName ?? null }),
-      });
+      // (2026-07-30) 요청을 만드는 부분만 가족용과 공용 모듈로 통일했다 - 상태 관리
+      // (로딩/에러/재조회)는 이 화면 성격에 맞게 여기서 그대로 담당한다.
+      await registerMedicationByCode(drugCode, times, hospitalName);
       await fetchSchedules();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "복약 일정을 등록하는데 실패했습니다.");
@@ -144,15 +147,7 @@ export function useMedication() {
     setIsLoading(true);
     setError(null);
     try {
-      const res = await apiFetch<{
-        status: string;
-        auto_created: boolean;
-        schedule: MedicationSchedule | null;
-        candidates: Array<{ drug_code: string; medication_name: string; form_type: string | null }>;
-      }>("/medications/quick-register", {
-        method: "POST",
-        body: JSON.stringify({ drug_name: drugName, times, hospital_name: hospitalName ?? null }),
-      });
+      const res = await quickRegisterMedication(drugName, times, hospitalName);
       if (res.status === "registered") {
         await fetchSchedules();
       }

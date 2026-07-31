@@ -43,12 +43,13 @@ class OpsStatsRepository:
         names = await DurDrugRepository().get_names_by_item_seqs(session, item_seqs)
         return [(names.get(r.item_seq, r.item_seq), r.cnt) for r in rows]
 
-    async def content_count_by_category(self, session: AsyncSession) -> dict[str, int]:
-        """조회수 추적 자체가 없어서 "인기"는 못 보여주고, 대신 카테고리별 생성된
-        콘텐츠 수만 보여준다."""
-        from app.models.content import HealthContent
+    async def news_count_by_source(self, session: AsyncSession) -> dict[str, int]:
+        """(T-LLM-6) 매체별 수집된 건강 뉴스 수. 소스를 늘려갈 때(7단계) 어느 매체가 실제로
+        기사를 주는지 보려고 둔다 - 조회수 추적이 없어서 인기순은 여전히 못 보여준다.
+        표시명(source_name)으로 묶는 이유: 관리자 화면에 그대로 보여줄 값이기 때문."""
+        from app.models.health_news import HealthNews
 
-        stmt = select(HealthContent.category, func.count()).group_by(HealthContent.category)
+        stmt = select(HealthNews.source_name, func.count()).group_by(HealthNews.source_name)
         result = await session.execute(stmt)
         return {str(row[0]): row[1] for row in result.all()}
 

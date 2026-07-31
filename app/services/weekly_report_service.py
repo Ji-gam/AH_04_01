@@ -36,8 +36,7 @@ _SYSTEM_PROMPT = (
 
 class WeeklyReportSummary(BaseModel):
     """AIWorkerGateway.call_structured()에는 자유텍스트 전용 메서드가 없어(스키마 필수),
-    서술형 문단 하나만 담는 최소 스키마로 받는다 - generate_health_content.py의
-    HealthContentCard와 같은 발상."""
+    서술형 문단 하나만 담는 최소 스키마로 받는다."""
 
     summary: str
 

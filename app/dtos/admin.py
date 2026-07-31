@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import datetime
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
@@ -18,6 +18,11 @@ class AdminUserResponse(BaseSerializerModel):
     ai_chat_consented_at: Annotated[datetime | None, Field(description="AI 챗봇 데이터 활용 동의 시각.")]
     terms_of_service_consented_at: Annotated[datetime | None, Field(description="이용약관 동의 시각.")]
     marketing_consented_at: Annotated[datetime | None, Field(description="마케팅 정보 수신 동의 시각.")]
+    # (2026-07-30) 마케팅만 철회 가능해서, 관리자 화면에서 "언제 동의했다가 언제
+    # 취소했는지"를 둘 다 볼 수 있게 추가.
+    marketing_consent_revoked_at: Annotated[
+        datetime | None, Field(None, description="마케팅 동의 철회 시각. 철회한 적 없으면 null.")
+    ]
 
 
 class SetAdminRequest(BaseModel):
@@ -71,25 +76,6 @@ class NoticeUpdateRequest(BaseModel):
     body: Annotated[str | None, Field(None, min_length=1, description="공지 본문.")]
 
 
-class AdminContentResponse(BaseSerializerModel):
-    id: Annotated[int, Field(description="콘텐츠 PK.")]
-    disease_code: Annotated[str, Field(description="질환 코드.")]
-    category: Annotated[str, Field(description="콘텐츠 카테고리.")]
-    content_date: Annotated[date, Field(description="콘텐츠 기준 날짜.")]
-    title: Annotated[str, Field(description="카드 제목.")]
-    summary: Annotated[str, Field(description="카드 요약.")]
-    body: Annotated[str, Field(description="카드 본문.")]
-
-
-class ContentUpdateRequest(BaseModel):
-    """부분 수정 - 보낸 필드만 갱신한다. 질환/카테고리/날짜는 유니크 제약 키라 여기서
-    안 바꾼다(바꾸고 싶으면 삭제 후 재생성)."""
-
-    title: Annotated[str | None, Field(None, min_length=1, max_length=200, description="카드 제목.")]
-    summary: Annotated[str | None, Field(None, min_length=1, description="카드 요약.")]
-    body: Annotated[str | None, Field(None, min_length=1, description="카드 본문.")]
-
-
 class ErrorLogResponse(BaseSerializerModel):
     id: Annotated[int, Field(description="오류로그 PK.")]
     created_at: Annotated[datetime, Field(description="발생 시각.")]
@@ -124,8 +110,9 @@ class OpsStatsResponse(BaseModel):
         list[TopDrugItem],
         Field(description="등록 건수 상위 약품(등록자 3명 미만인 약은 재식별 위험 방지를 위해 제외)."),
     ]
-    content_count_by_category: Annotated[
-        dict[str, int], Field(description="카테고리별 생성된 건강 콘텐츠 수(조회수 추적은 없어서 인기순 아님).")
+    news_count_by_source: Annotated[
+        dict[str, int],
+        Field(description="매체별 수집된 건강 뉴스 수(T-LLM-6). 조회수 추적은 없어서 인기순 아님."),
     ]
     chat_message_trend: Annotated[list[TrendPoint], Field(description="최근 7일 챗봇 메시지 수 추이.")]
     active_chat_sessions_7d: Annotated[int, Field(description="최근 7일 내 갱신된 챗봇 세션 수.")]

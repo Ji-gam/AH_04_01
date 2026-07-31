@@ -1,4 +1,5 @@
 import { apiFetch, apiFetchRaw, getAccessToken, tryRefreshAccessToken } from "./client";
+import { quickRegisterMedication, registerMedicationByCode } from "./medicationRegistrationApi";
 
 // 이 파일은 "가족관리 > 약 등록" 전용이다. 기존 useMedication.ts(본인 몫 등록)는 다른 조원이
 // 계속 다듬고 있어서(OCR 마스터 DB 매칭 개선 등) 병합 충돌을 피하려고 완전히 새 파일로
@@ -97,43 +98,22 @@ export const familyMedicationApi = {
   search: (query: string) =>
     apiFetch<MedicationSearchResult[]>(`/medications/search?query=${encodeURIComponent(query)}`),
 
-  // 가족 몫 등록(검색 기반) - 이미 있는 /medications(POST)가 target_profile_id를 지원해서
-  // 새 엔드포인트 없이 그대로 재사용한다.
+  // 가족 몫 등록(검색 기반) - 공용 모듈(medicationRegistrationApi.ts)의 함수를
+  // target_profile_id만 채워서 그대로 쓴다. 백엔드는 본인용과 완전히 같은 엔드포인트다.
   registerForFamily: (
     targetProfileId: number,
     drugCode: string,
     times: string[],
     hospitalName?: string | null,
-  ) =>
-    apiFetch<{ id: number; drug_name: string; times: string[] }>("/medications", {
-      method: "POST",
-      body: JSON.stringify({
-        drug_code: drugCode,
-        times,
-        hospital_name: hospitalName ?? null,
-        target_profile_id: targetProfileId,
-      }),
-    }),
+  ) => registerMedicationByCode(drugCode, times, hospitalName, targetProfileId),
 
-  // 가족 몫 빠른 등록(이름 그대로, 검색 생략) - 검색해도 원하는 약이 없을 때 쓰는 보조 수단.
-  // /medications/quick-register가 target_profile_id를 받아 보호자 권한 검증 후 그 프로필로
-  // 등록하도록 백엔드를 확장해서, 본인 몫(useMedication.ts의 quickRegister)과 동일한 엔드포인트를
-  // target_profile_id만 추가해 재사용한다.
+  // 가족 몫 빠른 등록(이름 그대로, 검색 생략) - 마찬가지로 공용 모듈 재사용.
   quickRegisterForFamily: (
     targetProfileId: number,
     drugName: string,
     times: string[],
     hospitalName?: string | null,
-  ) =>
-    apiFetch<FamilyQuickRegisterResult>("/medications/quick-register", {
-      method: "POST",
-      body: JSON.stringify({
-        drug_name: drugName,
-        times,
-        hospital_name: hospitalName ?? null,
-        target_profile_id: targetProfileId,
-      }),
-    }),
+  ) => quickRegisterMedication(drugName, times, hospitalName, targetProfileId),
 
   // 사진(처방전) 업로드 - FormData라 apiFetch(Content-Type: application/json 강제)를 못 쓰고
   // 순수 fetch로 처리한다(useMedication.ts의 uploadJob과 같은 이유의 같은 패턴).

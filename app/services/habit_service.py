@@ -547,12 +547,7 @@ class HabitService:
 
             habits_with_reasons.append(
                 HabitRecommendationItem(
-                    key=h.key,
-                    label=h.label,
-                    icon=h.icon,
-                    unit=h.unit,
-                    target=h.target,
-                    reason=reason
+                    key=h.key, label=h.label, icon=h.icon, unit=h.unit, target=h.target, reason=reason
                 )
             )
 

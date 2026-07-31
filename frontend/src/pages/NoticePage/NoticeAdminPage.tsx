@@ -7,7 +7,7 @@ import type { NoticeKind, NoticeResult } from "../../api/types";
 import PageTitle from "../../components/common/PageTitle";
 import { pinkTheme } from "../../theme/pinkTheme";
 
-/** 더보기 > 관리자 공지등록(2026-07-22 신설) - ContentGenerationPage.tsx와 같은 패턴의
+/** 더보기 > 관리자 공지등록(2026-07-22 신설) - 관리자 화면(AdminPage.tsx)과 같은 패턴의
  * 간단한 관리 도구다. 등록하면 그 즉시 kind에 맞는 알림설정(공지사항 알림/마케팅 알림)을
  * 켜둔 사용자 전체에게 푸시가 나간다 - "공지사항"(NoticePage.tsx) 목록에도 바로 반영된다. */
 export default function NoticeAdminPage() {
