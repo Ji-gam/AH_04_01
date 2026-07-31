@@ -570,8 +570,8 @@ class HabitService:
             if len(parts) >= 2:
                 try:
                     subtype_id = int(parts[1])
-                    if disease := subtype_id_to_disease.get(subtype_id):
-                        return self._generate_detailed_reason(disease, habit_label)
+                    if subtype_disease := subtype_id_to_disease.get(subtype_id):
+                        return self._generate_detailed_reason(subtype_disease, habit_label)
                 except (ValueError, IndexError):
                     pass
 
