@@ -11,7 +11,7 @@ from app.repositories.notice_repository import NoticeRepository
 from app.repositories.ops_stats_repository import OpsStatsRepository
 from app.repositories.user_repository import AdminActionRepository, UserRepository
 from app.services.health_news_service import CollectResult, HealthNewsService, SummaryResult
-from app.services.health_news_source import KORMEDI
+from app.services.health_news_source import ALL_SOURCES
 
 
 class AdminService:
@@ -147,20 +147,22 @@ class AdminService:
 
         수집과 카드요약을 나눠 부르는 이유는 `HealthNewsService` 주석 참고 - OpenAI가 흔들려도
         기사 수집은 남아야 한다. LLM 비용이 드는 행위이므로 감사로그에 남긴다."""
-        collected = await self._news_service.collect(session, KORMEDI)
+        collected = await self._news_service.collect_all(session)
         summarized = await self._news_service.generate_missing_card_summaries(session)
         await self._action_repo.log(
             session,
             actor_user_id=actor.id,
             action="collect_health_news",
-            target=f"health_news:{KORMEDI.code}",
+            target=f"health_news:{','.join(s.code for s in ALL_SOURCES)}",
             detail=(
                 f"{actor.email} collected {collected.created} new articles "
-                f"(fetched={collected.fetched}, excluded={collected.excluded}, skipped={collected.skipped}), "
+                f"(fetched={collected.fetched}, excluded={collected.excluded}, skipped={collected.skipped}, "
+                f"over_limit={collected.over_limit}, unreadable={collected.unreadable}), "
                 f"generated {summarized.generated} card summaries (failed={summarized.failed})"
                 # 실패 원인을 감사로그에도 남긴다 - 관리자 화면의 활동 로그만 보고도 원인을
                 # 알 수 있어야 한다(그 순간의 응답 문구는 화면을 새로 고치면 사라진다).
-                + (f" - {summarized.first_error}" if summarized.first_error else "")
+                + (f" - 수집: {collected.first_error}" if collected.first_error else "")
+                + (f" - 요약: {summarized.first_error}" if summarized.first_error else "")
             ),
         )
         await session.commit()
@@ -174,7 +176,7 @@ class AdminService:
             session,
             actor_user_id=actor.id,
             action="regenerate_card_summaries",
-            target=f"health_news:{KORMEDI.code}",
+            target=f"health_news:{','.join(s.code for s in ALL_SOURCES)}",
             detail=(
                 f"{actor.email} regenerated {summarized.generated} of {summarized.pending} card summaries "
                 f"(failed={summarized.failed})" + (f" - {summarized.first_error}" if summarized.first_error else "")

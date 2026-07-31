@@ -1,4 +1,4 @@
-"""T-LLM-6 수동 트리거: 코메디닷컴 RSS를 1회 수집하고, 요약이 빈 기사의 카드뉴스 요약을 만든다.
+"""T-LLM-6 수동 트리거: 등록된 모든 매체를 1회 수집하고, 요약이 빈 기사의 카드뉴스 요약을 만든다.
 
 두 단계로 나눠 실행한다 - 기사를 먼저 다 저장한 뒤 요약을 채우므로, OpenAI가 흔들려도
 기사 수집은 남는다. 요약을 못 만든 기사는 다음 실행에서 자동으로 다시 시도된다.
@@ -20,13 +20,12 @@ import asyncio
 
 from app.core.db.databases import AsyncSessionLocal
 from app.services.health_news_service import CollectResult, HealthNewsService, SummaryResult
-from app.services.health_news_source import KORMEDI
 
 
 async def collect_health_news(*, with_summary: bool = True) -> tuple[CollectResult, SummaryResult | None]:
     service = HealthNewsService()
     async with AsyncSessionLocal() as session:
-        collected = await service.collect(session, KORMEDI)
+        collected = await service.collect_all(session)
         if not with_summary:
             return collected, None
         summarized = await service.generate_missing_card_summaries(session)
@@ -67,11 +66,15 @@ async def _main() -> None:
 
     collected, summarized = await collect_health_news(with_summary=not args.skip_summary)
     print(
-        f"[수집] RSS {collected.fetched}건 중 "
+        f"[수집] 피드 {collected.fetched}건 중 "
         f"신규 {collected.created}건 저장, "
         f"{collected.skipped}건 이미 있어 건너뜀, "
-        f"{collected.excluded}건 건강정보 아니어서 제외"
+        f"{collected.excluded}건 건강정보 아니어서 제외, "
+        f"{collected.over_limit}건 매체당 상한으로 미룸, "
+        f"{collected.unreadable}건 본문 추출 실패"
     )
+    if collected.first_error:
+        print(f"[수집 실패 원인] {collected.first_error}")
     if summarized is None:
         print("[카드요약] --skip-summary 지정으로 건너뜀")
     else:

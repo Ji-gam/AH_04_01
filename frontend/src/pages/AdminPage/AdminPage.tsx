@@ -501,15 +501,24 @@ export default function AdminPage() {
       const result = await adminApi.collectNews();
       setContentMessage(
         `기사 ${result.created}건 새로 저장 (건강정보 아님 ${result.excluded}건 제외, ` +
-          `이미 있음 ${result.skipped}건) · 카드요약 ${result.summaries_generated}건 생성` +
+          `이미 있음 ${result.skipped}건, 매체당 상한으로 미룸 ${result.over_limit}건` +
+          // 본문 추출 실패는 0이 정상이라 0일 때는 아예 안 보여준다 - 늘 0인 숫자가 붙어
+          // 있으면 눈에 익어서, 정작 1이 됐을 때 알아채지 못한다.
+          (result.unreadable > 0 ? `, 본문 못 읽음 ${result.unreadable}건` : "") +
+          `) · 카드요약 ${result.summaries_generated}건 생성` +
           (result.summaries_failed > 0
             ? ` (${result.summaries_failed}건 실패 - 다음 수집에서 재시도돼요)`
             : ""),
       );
       // 실패 원인을 화면에 띄운다. 전에는 로그에만 남아서, EC2에 접속할 수 있는 사람 없이는
       // "몇 건 실패"의 이유를 알 수 없었다. 이 문구는 활동 로그에도 함께 남는다.
-      if (result.summaries_error) {
-        setContentError(`카드요약 실패 원인: ${result.summaries_error}`);
+      // 수집 실패(매체 하나가 통째로 죽음)와 요약 실패는 원인이 전혀 다르므로 따로 보여준다.
+      const reasons = [
+        result.collect_error && `수집 실패 원인: ${result.collect_error}`,
+        result.summaries_error && `카드요약 실패 원인: ${result.summaries_error}`,
+      ].filter(Boolean);
+      if (reasons.length > 0) {
+        setContentError(reasons.join(" / "));
       }
       await loadActions();
       await loadNews();
@@ -565,8 +574,9 @@ export default function AdminPage() {
     <div style={cardStyle}>
       <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>건강 뉴스 수집</p>
       <p style={{ margin: 0, fontSize: 12, color: pinkTheme.textMuted }}>
-        코메디닷컴 RSS에서 기사를 가져와 카드요약까지 만들어요. 여러 번 눌러도 안전해요(이미 있는
-        기사는 건너뛰어요). 공시·제약사 기사는 건강정보가 아니라 저장하지 않아요.
+        코메디닷컴 · 헬스경향 · 코리아헬스로그에서 기사를 가져와 카드요약까지 만들어요. 여러 번
+        눌러도 안전해요(이미 있는 기사는 건너뛰어요). 매체당 최신 5건까지만 가져와요 — 카드요약
+        비용이 기사 수만큼 들기 때문이에요. 공시·제약사 기사는 건강정보가 아니라 저장하지 않아요.
       </p>
       {contentError && (
         <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{contentError}</p>

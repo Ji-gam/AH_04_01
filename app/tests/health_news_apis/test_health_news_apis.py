@@ -10,6 +10,7 @@
 
 from datetime import datetime, timedelta
 
+import httpx
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, update
 from starlette import status
@@ -23,10 +24,20 @@ from app.services import health_news_card_summary as card_summary_module
 from app.services import health_news_service as health_news_service_module
 from app.services import health_news_source as health_news_source_module
 from app.services.ai_worker_gateway import AIWorkerUnavailableError
-from app.services.health_news_source import FetchResult, ParsedArticle
+from app.services.health_news_source import KORMEDI, FetchResult, ParsedArticle
 from app.tests.conftest import TestSessionLocal
 
 _BASE = "http://test"
+
+
+def _only_one_source(monkeypatch) -> None:  # noqa: ANN001
+    """수집 테스트를 매체 하나로 고정한다.
+
+    실제 `ALL_SOURCES`에는 매체가 여럿 있어서, 그대로 두면 가짜 `fetch`가 매체 수만큼 불려
+    기대값이 매체를 추가할 때마다 어긋난다. 여러 매체를 합산하는 동작은 아래
+    `test_collect_adds_up_every_source` / `test_collect_keeps_going_when_one_source_fails`가
+    따로 검증한다."""
+    monkeypatch.setattr(health_news_source_module, "ALL_SOURCES", (KORMEDI,))
 
 
 async def _signup_login_admin(client: AsyncClient, email: str = "newsadmin@example.com") -> str:
@@ -231,6 +242,7 @@ async def test_collect_saves_articles_and_reports_excluded_count(monkeypatch) ->
         return CardSummary.model_validate(_card_summary())
 
     monkeypatch.setattr(health_news_source_module, "fetch", _fake_fetch)
+    _only_one_source(monkeypatch)
     monkeypatch.setattr(health_news_service_module.health_news_source, "fetch", _fake_fetch)
     monkeypatch.setattr(card_summary_module, "generate_card_summary", _fake_summary)
     monkeypatch.setattr(health_news_service_module.health_news_card_summary, "generate_card_summary", _fake_summary)
@@ -272,6 +284,7 @@ async def test_collect_reports_why_card_summaries_failed(monkeypatch) -> None:
     async def _failing_summary(news, gateway=None):  # noqa: ANN001, ANN202
         raise AIWorkerUnavailableError("ai_worker 생성 실패(status=500): 내부 오류")
 
+    _only_one_source(monkeypatch)
     monkeypatch.setattr(health_news_service_module.health_news_source, "fetch", _fake_fetch)
     monkeypatch.setattr(health_news_service_module.health_news_card_summary, "generate_card_summary", _failing_summary)
 
@@ -315,6 +328,7 @@ async def test_collect_reports_no_error_when_summaries_succeed(monkeypatch) -> N
     async def _fake_summary(news, gateway=None):  # noqa: ANN001, ANN202
         return CardSummary.model_validate(_card_summary())
 
+    _only_one_source(monkeypatch)
     monkeypatch.setattr(health_news_service_module.health_news_source, "fetch", _fake_fetch)
     monkeypatch.setattr(health_news_service_module.health_news_card_summary, "generate_card_summary", _fake_summary)
 
@@ -324,6 +338,92 @@ async def test_collect_reports_no_error_when_summaries_succeed(monkeypatch) -> N
 
     assert response.json()["summaries_failed"] == 0
     assert response.json()["summaries_error"] is None
+
+
+def _article(source_code: str, source_name: str) -> ParsedArticle:
+    return ParsedArticle(
+        source=source_code,
+        source_name=source_name,
+        source_url=f"https://example.test/{source_code.lower()}/1/",
+        title=f"{source_name} 기사",
+        published_at=datetime(2026, 7, 31, 12, 0, 0),
+        body_text="본문입니다.",
+        image_url=None,
+        image_caption=None,
+        source_categories=[],
+    )
+
+
+async def test_collect_adds_up_every_source(monkeypatch) -> None:
+    """[뉴스 수집]은 등록된 매체를 모두 돌고 숫자를 합산한다. 매체마다 따로 누르게 하면
+    관리자가 하나를 잊는다."""
+    two_sources = (
+        health_news_source_module.KORMEDI,
+        health_news_source_module.KHEALTH,
+    )
+    monkeypatch.setattr(health_news_source_module, "ALL_SOURCES", two_sources)
+
+    async def _fake_fetch(source):  # noqa: ANN001, ANN202
+        return FetchResult(
+            articles=[_article(source.code, source.name)],
+            excluded=1,
+            over_limit=3,
+            unreadable=1,
+        )
+
+    async def _fake_summary(news, gateway=None):  # noqa: ANN001, ANN202
+        return CardSummary.model_validate(_card_summary())
+
+    monkeypatch.setattr(health_news_service_module.health_news_source, "fetch", _fake_fetch)
+    monkeypatch.setattr(health_news_service_module.health_news_card_summary, "generate_card_summary", _fake_summary)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=_BASE) as client:
+        token = await _signup_login_admin(client, email="newsmulti@example.com")
+        response = await client.post("/api/v1/admin/news/collect", headers={"Authorization": f"Bearer {token}"})
+
+    body = response.json()
+    assert body["created"] == 2  # 매체마다 1건
+    assert body["excluded"] == 2
+    assert body["over_limit"] == 6
+    assert body["unreadable"] == 2
+    # fetched = created + skipped + unreadable + over_limit + excluded 가 성립해야 한다 -
+    # 어긋나면 어딘가에서 기사를 조용히 버리고 있다는 뜻이다.
+    assert (
+        body["fetched"]
+        == body["created"] + body["skipped"] + body["unreadable"] + body["over_limit"] + body["excluded"]
+    )
+    assert body["collect_error"] is None
+
+
+async def test_collect_keeps_going_when_one_source_fails(monkeypatch) -> None:
+    """매체 하나의 피드가 죽어도 나머지는 수집해야 한다 - 한 곳 때문에 그날 수집분이 통째로
+    빈손이 되면 손해가 크다. 대신 실패 원인은 응답에 실어 관리자가 알 수 있게 한다."""
+    two_sources = (
+        health_news_source_module.KORMEDI,
+        health_news_source_module.KHEALTH,
+    )
+    monkeypatch.setattr(health_news_source_module, "ALL_SOURCES", two_sources)
+
+    async def _fake_fetch(source):  # noqa: ANN001, ANN202
+        if source.code == health_news_source_module.KORMEDI.code:
+            raise httpx.ConnectError("피드에 연결할 수 없습니다")
+        return FetchResult(articles=[_article(source.code, source.name)], excluded=0)
+
+    async def _fake_summary(news, gateway=None):  # noqa: ANN001, ANN202
+        return CardSummary.model_validate(_card_summary())
+
+    monkeypatch.setattr(health_news_service_module.health_news_source, "fetch", _fake_fetch)
+    monkeypatch.setattr(health_news_service_module.health_news_card_summary, "generate_card_summary", _fake_summary)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=_BASE) as client:
+        token = await _signup_login_admin(client, email="newspartial@example.com")
+        response = await client.post("/api/v1/admin/news/collect", headers={"Authorization": f"Bearer {token}"})
+
+    body = response.json()
+    assert body["created"] == 1  # 살아있는 매체의 기사는 저장됐다
+    assert body["collect_error"] is not None
+    assert health_news_source_module.KORMEDI.name in body["collect_error"]
+    assert "ConnectError" in body["collect_error"]
 
 
 async def test_regenerate_overwrites_existing_card_summaries(monkeypatch) -> None:
@@ -403,6 +503,7 @@ async def test_collect_twice_does_not_duplicate_articles(monkeypatch) -> None:
     async def _fake_summary(news, gateway=None):  # noqa: ANN001, ANN202
         return CardSummary.model_validate(_card_summary())
 
+    _only_one_source(monkeypatch)
     monkeypatch.setattr(health_news_service_module.health_news_source, "fetch", _fake_fetch)
     monkeypatch.setattr(health_news_service_module.health_news_card_summary, "generate_card_summary", _fake_summary)
 

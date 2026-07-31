@@ -30,12 +30,33 @@ DEFAULT_FEED_LIMIT = 30
 
 @dataclass
 class CollectResult:
-    """수집 1회의 결과. 관리자 화면이 이 숫자를 그대로 보여준다."""
+    """수집 1회의 결과. 관리자 화면이 이 숫자를 그대로 보여준다.
 
-    fetched: int  # RSS에서 파싱된 기사 수
+    `fetched = created + skipped + unreadable + over_limit + excluded` 가 항상 성립한다 -
+    숫자가 맞지 않으면 어딘가에서 기사를 조용히 버리고 있다는 뜻이다.
+    """
+
+    fetched: int  # 피드에서 파싱된 기사 수(여러 매체를 돌면 합계)
     excluded: int  # 건강정보가 아닌 카테고리라 버린 수
     created: int  # 새로 저장한 수
     skipped: int  # 이미 있어서 건너뛴 수
+    # 매체당 상한(MAX_ARTICLES_PER_SOURCE)을 넘어 이번에는 가져오지 않은 수. 버린 게 아니라
+    # 미룬 것이다 - 다음 수집에서 다시 후보가 된다.
+    over_limit: int = 0
+    # 본문을 뽑지 못해 버린 수. 0이 정상이고, 계속 늘면 상대 매체의 기사 페이지 구조가 바뀐 것이다.
+    unreadable: int = 0
+    # 매체 하나가 통째로 실패한 첫 원인 한 줄(피드가 죽었거나 형식이 깨진 경우).
+    # 실패해도 나머지 매체는 계속 수집하므로, 원인은 이 값으로만 드러난다.
+    first_error: str | None = None
+
+
+@dataclass
+class SaveOutcome:
+    """저장 단계만의 결과. 수집 전체 결과(`CollectResult`)와 섞지 않는다 - 저장 단계는
+    걸러낸 수나 상한을 모른다(이미 걸러진 목록만 받는다)."""
+
+    created: int
+    skipped: int
 
 
 # 관리자 화면·감사로그에 실을 오류 설명의 최대 길이. 전체 트레이스백은 서버 로그에만 남긴다.
@@ -72,18 +93,62 @@ class HealthNewsService:
         self._repo = repo or HealthNewsRepository()
 
     async def collect(self, session: AsyncSession, source: health_news_source.NewsSourceDef) -> CollectResult:
-        """매체 하나를 1회 수집한다. 관리자 [뉴스 수집] 버튼과 수동 트리거 스크립트가 같이 호출한다.
-        어떤 매체인지는 인자로 받는다 - 소스가 늘어도(7단계) 이 메서드는 그대로다."""
+        """매체 하나를 1회 수집한다. 어떤 매체인지는 인자로 받는다 - 이 메서드는 매체가
+        코메디인지 헬스경향인지 모른다."""
         fetched = await health_news_source.fetch(source)
         saved = await self._save_articles(session, fetched.articles)
         return CollectResult(
-            fetched=len(fetched.articles) + fetched.excluded,
+            fetched=len(fetched.articles) + fetched.excluded + fetched.over_limit + fetched.unreadable,
             excluded=fetched.excluded,
             created=saved.created,
             skipped=saved.skipped,
+            over_limit=fetched.over_limit,
+            unreadable=fetched.unreadable,
         )
 
-    async def _save_articles(self, session: AsyncSession, articles: list[ParsedArticle]) -> CollectResult:
+    async def collect_all(
+        self,
+        session: AsyncSession,
+        sources: tuple[health_news_source.NewsSourceDef, ...] | None = None,
+    ) -> CollectResult:
+        """모든 매체를 1회 수집해 결과를 합산한다. 관리자 [뉴스 수집] 버튼과 수동 트리거
+        스크립트가 호출한다.
+
+        **매체 하나가 실패해도 나머지는 계속 수집한다** - 한 매체의 피드가 죽었다고 그날
+        수집분이 통째로 빈손이 되면 손해가 크다. 실패 원인은 `first_error`로 올려보낸다
+        (카드요약 배치가 기사 단위로 실패를 다루는 것과 같은 방식).
+
+        `sources`의 기본값을 인자 자리에 두지 않고 여기서 읽는 이유: 기본 인자는 함수가 정의될
+        때 한 번 묶이므로, 테스트가 `ALL_SOURCES`를 바꿔치기해도 반영되지 않는다.
+        """
+        targets = sources if sources is not None else health_news_source.ALL_SOURCES
+        total = CollectResult(fetched=0, excluded=0, created=0, skipped=0)
+        for source in targets:
+            try:
+                one = await self.collect(session, source)
+            except Exception as e:
+                logger.exception("매체 수집 실패 (source=%s)", source.code)
+                if total.first_error is None:
+                    total.first_error = f"{source.name} - {_describe_error(e)}"
+                continue
+            total.fetched += one.fetched
+            total.excluded += one.excluded
+            total.created += one.created
+            total.skipped += one.skipped
+            total.over_limit += one.over_limit
+            total.unreadable += one.unreadable
+            logger.info(
+                "수집 완료 source=%s fetched=%d created=%d skipped=%d over_limit=%d unreadable=%d",
+                source.code,
+                one.fetched,
+                one.created,
+                one.skipped,
+                one.over_limit,
+                one.unreadable,
+            )
+        return total
+
+    async def _save_articles(self, session: AsyncSession, articles: list[ParsedArticle]) -> SaveOutcome:
         """이미 있는 기사(source + source_url)는 건너뛴다.
 
         DB 유니크 제약이 최종 방어선이지만, 조회로 먼저 걸러서 건너뛴 수를 세고 무의미한
@@ -108,9 +173,7 @@ class HealthNewsService:
                 source_categories=article.source_categories,
             )
             created += 1
-        # fetched/excluded는 호출자(collect)가 채운다 - 여기는 걸러진 뒤의 목록만 받으므로
-        # 원래 몇 건이었는지 모른다.
-        return CollectResult(fetched=len(articles), excluded=0, created=created, skipped=skipped)
+        return SaveOutcome(created=created, skipped=skipped)
 
     async def generate_missing_card_summaries(self, session: AsyncSession, limit: int | None = None) -> SummaryResult:
         """카드요약이 아직 없는 기사들의 요약을 만들어 채운다.
