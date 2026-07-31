@@ -17,9 +17,9 @@ from app.dtos.admin import (
 )
 from app.dtos.health_news_dto import (
     AdminHealthNewsResponse,
+    CardSummaryBatchResponse,
     CollectNewsResponse,
     HealthNewsUpdateRequest,
-    RegenerateCardSummariesResponse,
 )
 from app.models.users import User
 from app.services.admin_service import AdminService
@@ -117,28 +117,25 @@ async def delete_notice_admin(
     status_code=status.HTTP_200_OK,
     summary="건강 뉴스 수집 실행 (관리자 전용)",
     description=(
-        "T-LLM-6: 등록된 모든 매체(코메디닷컴·헬스경향·코리아헬스로그)를 1회 수집하고, "
-        "카드요약이 없는 기사의 요약을 생성한다. "
-        "주기 자동 수집(Celery worker/beat)이 붙기 전까지 이 버튼이 유일한 트리거다. "
-        "여러 번 눌러도 안전하다 - 이미 저장된 기사는 건너뛰고 이미 요약이 있으면 다시 만들지 않는다. "
+        "T-LLM-6: 등록된 모든 매체(코메디닷컴·헬스경향·코리아헬스로그)를 1회 수집한다. "
+        "주기 자동 수집(Celery worker/beat)이 붙기 전까지 이 버튼이 유일한 트리거다.\n\n"
+        "**카드요약은 여기서 만들지 않는다**(2026-07-31 변경). 요약은 기사 1건당 4~5초라 수집과 "
+        "한 요청에 묶으면 게이트웨이 타임아웃(504)을 맞는다 - 실제로 겪었다. 수집 자체는 3.3초로 "
+        "끝나고, 요약은 `POST /news/card-summaries/fill`을 `remaining`이 0이 될 때까지 여러 번 "
+        "불러 채운다. 아직 요약이 없는 기사 수는 `pending_summaries`로 돌려준다.\n\n"
+        "여러 번 눌러도 안전하다 - 이미 저장된 기사는 건너뛴다. "
         "매체당 최신 몇 건까지만 가져오며(카드요약 LLM 비용 상한), 상한을 넘어 미룬 수는 `over_limit`로 "
         "돌려준다. 공시·제약사 카테고리 기사는 건강정보가 아니라 저장하지 않으며 그 수는 `excluded`다. "
         "매체 하나가 실패해도 나머지는 계속 수집하고, 실패 원인은 `collect_error`에 담긴다. "
-        "LLM 호출 비용이 드는 행위라서 admin_actions에 감사로그로 남는다."
+        "admin_actions에 감사로그로 남는다."
     ),
-    responses={503: {"description": "ai_worker가 응답하지 않아 카드요약을 만들 수 없음(기사 수집은 완료됨)."}},
 )
 async def collect_health_news_admin(
     admin: Annotated[User, Depends(get_current_admin_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> CollectNewsResponse:
     service = AdminService()
-    try:
-        collected, summarized = await service.collect_health_news(session, admin)
-    except AIWorkerUnavailableError as e:
-        # 카드요약 배치는 기사 단위로 예외를 삼키므로 여기까지 오는 건 RSS 수집 자체가 아니라
-        # 게이트웨이 구성 문제일 때다. 기사 수집 결과는 이미 커밋돼 있다.
-        raise HTTPException(status_code=503, detail=f"카드요약 생성을 할 수 없습니다: {e}") from e
+    collected, pending_summaries = await service.collect_health_news(session, admin)
     return CollectNewsResponse(
         fetched=collected.fetched,
         excluded=collected.excluded,
@@ -147,42 +144,86 @@ async def collect_health_news_admin(
         over_limit=collected.over_limit,
         unreadable=collected.unreadable,
         collect_error=collected.first_error,
-        summaries_generated=summarized.generated,
-        summaries_failed=summarized.failed,
-        summaries_error=summarized.first_error,
+        pending_summaries=pending_summaries,
+    )
+
+
+@admin_router.post(
+    "/news/card-summaries/fill",
+    response_model=CardSummaryBatchResponse,
+    status_code=status.HTTP_200_OK,
+    summary="카드요약 없는 기사 채우기 (한 배치, 관리자 전용)",
+    description=(
+        "카드요약이 아직 없는 기사의 요약을 **한 배치만** 만든다. 한 번에 처리할 건수는 서버가 "
+        "정한다(`CARD_SUMMARY_BATCH_SIZE`) - 클라이언트가 크게 요청해서 타임아웃을 자초할 수 "
+        "없어야 한다.\n\n"
+        "전부 채우려면 응답의 `remaining`이 0이 될 때까지 반복 호출한다. **`generated`가 0인데 "
+        "`remaining`이 남아 있으면 멈춰야 한다** - 같은 기사가 계속 실패하는 상황이라 이어 불러도 "
+        "무한 반복된다. 그때는 `error`에 원인이 담겨 있다.\n\n"
+        "기사 한 건이 실패해도 나머지는 계속 처리하고, 실패한 기사는 요약이 빈 채로 남아 다음 "
+        "배치에서 자동으로 다시 시도된다. LLM 호출 비용이 드는 행위라서 배치마다 감사로그로 남는다."
+    ),
+    responses={503: {"description": "ai_worker가 응답하지 않아 카드요약을 만들 수 없음."}},
+)
+async def fill_card_summaries_admin(
+    admin: Annotated[User, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> CardSummaryBatchResponse:
+    service = AdminService()
+    try:
+        summarized = await service.fill_card_summaries(session, admin)
+    except AIWorkerUnavailableError as e:
+        # 기사 단위로 예외를 삼키므로 여기까지 오는 건 게이트웨이 구성 문제일 때다.
+        raise HTTPException(status_code=503, detail=f"카드요약 생성을 할 수 없습니다: {e}") from e
+    return CardSummaryBatchResponse(
+        attempted=summarized.pending,
+        generated=summarized.generated,
+        failed=summarized.failed,
+        remaining=summarized.remaining,
+        # fill은 "요약이 빈 기사"만 고르므로 진행 위치를 들고 다닐 필요가 없다.
+        next_offset=0,
+        error=summarized.first_error,
     )
 
 
 @admin_router.post(
     "/news/card-summaries/regenerate",
-    response_model=RegenerateCardSummariesResponse,
+    response_model=CardSummaryBatchResponse,
     status_code=status.HTTP_200_OK,
-    summary="카드요약 전체 다시 만들기 (관리자 전용)",
+    summary="카드요약 다시 만들기 (한 배치, 관리자 전용)",
     description=(
-        "저장된 **모든** 기사의 카드요약을 다시 만든다. 평소 수집 배치는 요약이 비어 있는 기사만 "
+        "저장된 기사의 카드요약을 다시 만든다. 평소 수집 배치는 요약이 비어 있는 기사만 "
         "고르기 때문에, 프롬프트나 글자 수 제한을 손질해도 이미 요약이 있는 기사는 옛 기준으로 "
         "남는다. 그때 쓰는 버튼이다.\n\n"
+        "**한 배치만 처리한다**(`fill`과 같은 이유 - 게이트웨이 타임아웃). 전체를 다시 만들려면 "
+        "응답의 `next_offset`을 다음 요청의 `offset`으로 넘기며 `remaining`이 0이 될 때까지 "
+        "반복한다. 요약이 이미 있는 기사도 대상이라 진행 위치가 데이터에 남지 않기 때문에 "
+        "`fill`과 달리 offset이 필요하다.\n\n"
         "기존 요약을 먼저 지우지 않는다 - 새로 만들기에 성공한 것만 덮어쓰므로, LLM이 실패해도 "
         "쓸 만했던 요약을 잃지 않는다.\n\n"
-        "기사 수만큼 LLM을 부르는 비싼 행위라서 admin_actions에 감사로그로 남는다."
+        "기사 수만큼 LLM을 부르는 비싼 행위라서 배치마다 감사로그로 남는다."
     ),
     responses={503: {"description": "ai_worker가 응답하지 않아 카드요약을 만들 수 없음."}},
 )
 async def regenerate_card_summaries_admin(
     admin: Annotated[User, Depends(get_current_admin_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
-) -> RegenerateCardSummariesResponse:
+    offset: Annotated[int, Query(ge=0, description="다시 만들기를 이어갈 위치. 첫 호출은 0.")] = 0,
+) -> CardSummaryBatchResponse:
     service = AdminService()
     try:
-        summarized = await service.regenerate_card_summaries(session, admin)
+        summarized = await service.regenerate_card_summaries(session, admin, offset=offset)
     except AIWorkerUnavailableError as e:
         # 기사 단위로 예외를 삼키므로 여기까지 오는 건 게이트웨이 구성 문제일 때다.
         raise HTTPException(status_code=503, detail=f"카드요약 생성을 할 수 없습니다: {e}") from e
-    return RegenerateCardSummariesResponse(
-        total=summarized.pending,
+    return CardSummaryBatchResponse(
+        attempted=summarized.pending,
         generated=summarized.generated,
         failed=summarized.failed,
-        summaries_error=summarized.first_error,
+        remaining=summarized.remaining,
+        # 실패한 기사도 지나간 것으로 센다 - 여기서 멈춰 서면 같은 기사를 영원히 다시 시도한다.
+        next_offset=offset + summarized.pending,
+        error=summarized.first_error,
     )
 
 

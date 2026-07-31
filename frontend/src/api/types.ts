@@ -281,19 +281,30 @@ export interface CollectNewsResult {
   unreadable: number;
   /** 매체 하나가 통째로 실패한 첫 원인 한 줄. 없으면 null. */
   collect_error: string | null;
-  summaries_generated: number;
-  summaries_failed: number;
-  /** 카드요약이 실패한 첫 원인 한 줄. 실패가 없으면 null. */
-  summaries_error: string | null;
+  /**
+   * 수집 뒤 카드요약이 아직 없는 기사 수. 수집 응답에는 요약 결과가 없다 - 요약은 기사 1건당
+   * 4~5초라 수집과 한 요청에 묶으면 504가 뜬다(2026-07-31 실제로 겪음). 요약은
+   * `fillCardSummaries`를 remaining이 0이 될 때까지 여러 번 불러 채운다.
+   */
+  pending_summaries: number;
 }
 
-export interface RegenerateCardSummariesResult {
-  /** 다시 만들기를 시도한 기사 수(저장된 전체). */
-  total: number;
+/** 카드요약 배치 1회의 결과. `fill`(빈 것만)과 `regenerate`(전체)가 같은 모양을 쓴다. */
+export interface CardSummaryBatchResult {
+  /** 이번 배치에서 요약을 시도한 기사 수. 한 배치 크기는 서버가 정한다. */
+  attempted: number;
   generated: number;
-  /** 실패한 수. 실패한 기사는 기존 요약이 그대로 남는다. */
+  /** 실패한 수. 실패한 기사는 기존 값이 그대로 남고 다음 배치에서 다시 시도된다. */
   failed: number;
-  summaries_error: string | null;
+  /**
+   * 이번 배치 뒤에 남은 기사 수. 0이 되면 멈춘다.
+   * generated가 0인데 남아 있으면 멈춰야 한다 - 같은 기사가 계속 실패하는 상황이다.
+   */
+  remaining: number;
+  /** 다음 배치를 요청할 위치. regenerate에서만 의미가 있다(fill은 항상 0). */
+  next_offset: number;
+  /** 실패한 첫 원인 한 줄. 실패가 없으면 null. */
+  error: string | null;
 }
 
 export interface HealthNewsUpdatePayload {

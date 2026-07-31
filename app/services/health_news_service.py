@@ -75,17 +75,34 @@ def _describe_error(exc: Exception) -> str:
     return message[:_ERROR_DETAIL_MAX_CHARS] + "…"
 
 
+# 카드요약을 한 번에 몇 건까지 만들지. **게이트웨이 타임아웃 때문에 있는 상한이다.**
+#
+# (2026-07-31) 수집 버튼이 504로 죽었다. 원인은 요청 하나가 수집과 LLM 호출을 다 하고 있었던 것:
+# 실측으로 수집은 3.3초인데 카드요약은 **기사 1건당 4~5초**라서, 기사 9건이면 합계 50초가 된다.
+# 요청이 지나는 길에 타임아웃이 두 겹인데(프론트를 올린 Vercel의 rewrite → EC2 nginx) nginx는
+# 기본 60초이고 Vercel 쪽이 그보다 짧아서 거기서 끊겼다. 서버는 끝까지 처리했지만 화면에는
+# 실패로 보였다.
+#
+# 그래서 시간을 늘리는 대신(nginx는 리더 소유 파일이고, 정작 먼저 끊는 Vercel은 우리가 못 올린다)
+# **일을 쪼갠다.** 5건 × 5초 ≈ 25초로 어떤 한계에도 넉넉히 들어가고, 남은 건수를 함께 돌려주므로
+# 관리자 화면이 0이 될 때까지 이어 부르며 진행률을 보여줄 수 있다. 기사가 몇 백 건이어도 안 터진다.
+CARD_SUMMARY_BATCH_SIZE = 5
+
+
 @dataclass
 class SummaryResult:
     """카드요약 생성 1회의 결과."""
 
-    pending: int  # 요약이 비어 있던 기사 수
+    pending: int  # 이번에 요약을 시도한 기사 수
     generated: int  # 새로 요약을 채운 수
     failed: int  # LLM 실패로 못 채운 수(다음 실행에서 재시도된다)
     # 첫 실패의 원인 한 줄. (2026-07-31) 실패 원인이 서버 로그에만 남아서, EC2에 SSH할 수 있는
     # 리더 없이는 "7건 실패"의 이유를 알 수 없었다. 실패를 삼키는 설계(아래 주석 참고)를
     # 유지하면서도 원인은 관리자가 볼 수 있어야 한다.
     first_error: str | None = None
+    # 이번 배치를 끝낸 뒤에도 요약이 없는 기사 수. 관리자 화면이 이 값으로 "이어 부를지 멈출지"를
+    # 정한다. 실패한 기사도 여기 남으므로, 진행이 없으면(generated=0) 멈춰야 무한 반복이 안 된다.
+    remaining: int = 0
 
 
 class HealthNewsService:
@@ -175,26 +192,52 @@ class HealthNewsService:
             created += 1
         return SaveOutcome(created=created, skipped=skipped)
 
-    async def generate_missing_card_summaries(self, session: AsyncSession, limit: int | None = None) -> SummaryResult:
-        """카드요약이 아직 없는 기사들의 요약을 만들어 채운다.
+    async def generate_missing_card_summaries(
+        self, session: AsyncSession, limit: int | None = CARD_SUMMARY_BATCH_SIZE
+    ) -> SummaryResult:
+        """카드요약이 아직 없는 기사들의 요약을 **한 배치만** 만들어 채운다.
+
+        기본값이 `None`(전체)이 아니라 `CARD_SUMMARY_BATCH_SIZE`인 게 중요하다 - 이 메서드를
+        HTTP 요청 안에서 부르는 쪽이 실수로 전체를 돌려 게이트웨이 타임아웃을 맞지 않게 하는
+        기본값이다(그 사고가 실제로 있었다, 위 상수 주석 참고). 전체를 채우려면 `remaining`이
+        0이 될 때까지 여러 번 부른다 - 관리자 화면이 그렇게 하며 진행률을 보여준다.
 
         기사 한 건이 실패해도 나머지는 계속 처리한다 - 한 건의 LLM 오류로 배치 전체가 멈추면
         그날 수집분이 통째로 요약 없는 상태가 된다. 실패한 기사는 `card_summary`가 그대로
         비어 있으므로 다음 실행에서 자동으로 다시 시도된다."""
         pending = await self._repo.list_missing_card_summary(session, limit=limit)
-        return await self._fill_card_summaries(session, pending)
+        result = await self._fill_card_summaries(session, pending)
+        result.remaining = await self._repo.count_missing_card_summary(session)
+        return result
 
-    async def regenerate_card_summaries(self, session: AsyncSession, limit: int | None = None) -> SummaryResult:
-        """**모든** 기사의 카드요약을 다시 만든다. 관리자 [카드요약 다시 만들기] 버튼.
+    async def count_missing_card_summaries(self, session: AsyncSession) -> int:
+        """요약이 아직 없는 기사 수. 수집 직후 "요약을 몇 건 만들어야 하는지" 보여주는 데 쓴다."""
+        return await self._repo.count_missing_card_summary(session)
+
+    async def regenerate_card_summaries(
+        self, session: AsyncSession, limit: int | None = CARD_SUMMARY_BATCH_SIZE, offset: int = 0
+    ) -> SummaryResult:
+        """기사의 카드요약을 다시 만든다(**한 배치만**). 관리자 [카드요약 다시 만들기] 버튼.
 
         프롬프트나 글자 수 제한을 손질하면 기존 기사에도 새 기준을 적용해야 하는데, 평소
         배치는 요약이 비어 있는 기사만 고르기 때문에(`list_missing_card_summary`) 이미 있는
         기사는 영원히 옛 기준으로 남는다.
 
         **기존 요약을 먼저 지우지 않는다.** 새로 만들기를 시도하고 성공한 것만 덮어쓴다 -
-        먼저 비우면 LLM이 중간에 실패했을 때 쓸 만했던 요약까지 잃는다."""
-        targets = await self._repo.list_all_for_card_summary(session, limit=limit)
-        return await self._fill_card_summaries(session, targets)
+        먼저 비우면 LLM이 중간에 실패했을 때 쓸 만했던 요약까지 잃는다.
+
+        여기는 요약이 이미 있는 기사도 대상이라 "어디까지 했는지"가 데이터에 남지 않는다.
+        그래서 진행 위치를 `offset`으로 호출하는 쪽이 들고 있고, `remaining`은 남은 기사 수다
+        (요약이 빈 기사 수가 아니다 - 그 값은 재생성 중에 계속 0이다)."""
+        targets = await self._repo.list_all_for_card_summary(session, limit=limit, offset=offset)
+        result = await self._fill_card_summaries(session, targets)
+        total = await self._repo.count_all(session)
+        result.remaining = max(0, total - (offset + len(targets)))
+        return result
+
+    async def count_articles(self, session: AsyncSession) -> int:
+        """저장된 기사 총수. [카드요약 다시 만들기]의 진행률 분모다."""
+        return await self._repo.count_all(session)
 
     async def _fill_card_summaries(self, session: AsyncSession, targets: list[HealthNews]) -> SummaryResult:
         """받은 기사들의 카드요약을 만들어 채운다. 신규 생성과 재생성이 공유한다.

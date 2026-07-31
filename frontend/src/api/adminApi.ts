@@ -3,7 +3,7 @@ import type {
   AdminHealthNewsResult,
   CollectNewsResult,
   HealthNewsUpdatePayload,
-  RegenerateCardSummariesResult,
+  CardSummaryBatchResult,
 } from "./types";
 
 export interface AdminUserResult {
@@ -89,7 +89,7 @@ export type {
   AdminHealthNewsResult,
   CollectNewsResult,
   HealthNewsUpdatePayload,
-  RegenerateCardSummariesResult,
+  CardSummaryBatchResult,
 } from "./types";
 
 export const adminApi = {
@@ -115,12 +115,18 @@ export const adminApi = {
   deleteNotice: (noticeId: number) =>
     apiFetchRaw(`/admin/notices/${noticeId}`, { method: "DELETE" }),
   // T-LLM-6: 주기 자동 수집(Celery)이 붙기 전까지 이 버튼이 유일한 수집 트리거다.
-  // 여러 번 눌러도 안전하다(이미 저장된 기사는 건너뛴다).
+  // 여러 번 눌러도 안전하다(이미 저장된 기사는 건너뛴다). 수집만 하고 끝난다(3~4초) -
+  // 카드요약은 fillCardSummaries가 따로 채운다. 한 요청에 묶으면 504가 뜬다.
   collectNews: () => apiFetch<CollectNewsResult>("/admin/news/collect", { method: "POST" }),
+  // 요약이 없는 기사를 한 배치만 채운다. 호출하는 쪽이 remaining이 0이 될 때까지 이어 부른다.
+  // generated가 0인데 remaining이 남으면 멈춰야 한다(같은 기사가 계속 실패하는 상황).
+  fillCardSummaries: () =>
+    apiFetch<CardSummaryBatchResult>("/admin/news/card-summaries/fill", { method: "POST" }),
   // 프롬프트나 글자 수 제한을 손질한 뒤 기존 기사에도 새 기준을 적용할 때 쓴다. 수집 배치는
   // 요약이 비어 있는 기사만 고르기 때문에 이 버튼이 없으면 옛 요약이 영원히 남는다.
-  regenerateCardSummaries: () =>
-    apiFetch<RegenerateCardSummariesResult>("/admin/news/card-summaries/regenerate", {
+  // 요약이 있는 기사도 대상이라 진행 위치가 데이터에 안 남는다 - offset을 넘겨가며 이어 부른다.
+  regenerateCardSummaries: (offset = 0) =>
+    apiFetch<CardSummaryBatchResult>(`/admin/news/card-summaries/regenerate?offset=${offset}`, {
       method: "POST",
     }),
   listNews: (limit = 100) => apiFetch<AdminHealthNewsResult[]>(`/admin/news?limit=${limit}`),
