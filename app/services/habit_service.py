@@ -547,7 +547,12 @@ class HabitService:
 
             habits_with_reasons.append(
                 HabitRecommendationItem(
-                    key=h.key, label=h.label, icon=h.icon, unit=h.unit, target=h.target, reason=reason
+                    key=h.key,
+                    label=h.label,
+                    icon=h.icon,
+                    unit=h.unit,
+                    target=h.target,
+                    reason=reason,
                 )
             )
 
@@ -562,8 +567,12 @@ class HabitService:
         )
 
     def _generate_habit_reason(
-        self, habit_key: str, user_diseases: set[Disease], subtype_id_to_disease: dict[int, Disease],
-        habit_label: str = "", habit_to_disease: dict[str, Disease] | None = None
+        self,
+        habit_key: str,
+        user_diseases: set[Disease],
+        subtype_id_to_disease: dict[int, Disease],
+        habit_label: str = "",
+        habit_to_disease: dict[str, Disease] | None = None,
     ) -> str | None:
         """습관 키와 사용자의 질병을 바탕으로 추천 이유 생성."""
         explanations = _HABIT_DISEASE_EXPLANATIONS.get(habit_key, {})
