@@ -18,6 +18,11 @@ class AdminUserResponse(BaseSerializerModel):
     ai_chat_consented_at: Annotated[datetime | None, Field(description="AI 챗봇 데이터 활용 동의 시각.")]
     terms_of_service_consented_at: Annotated[datetime | None, Field(description="이용약관 동의 시각.")]
     marketing_consented_at: Annotated[datetime | None, Field(description="마케팅 정보 수신 동의 시각.")]
+    # (2026-07-30) 마케팅만 철회 가능해서, 관리자 화면에서 "언제 동의했다가 언제
+    # 취소했는지"를 둘 다 볼 수 있게 추가.
+    marketing_consent_revoked_at: Annotated[
+        datetime | None, Field(None, description="마케팅 동의 철회 시각. 철회한 적 없으면 null.")
+    ]
 
 
 class SetAdminRequest(BaseModel):

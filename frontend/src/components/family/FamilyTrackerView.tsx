@@ -128,7 +128,28 @@ export default function FamilyTrackerView({
       </div>
       {tab === "list" && <ListTab targetProfileId={targetProfileId} />}
       {tab === "interactions" && <InteractionsTab targetProfileId={targetProfileId} />}
-      {tab === "food" && <FoodTab targetProfileId={targetProfileId} />}
+      {tab === "food" && (
+        // (2026-07-30) 본인용(MedicationPage.tsx)의 음식궁합 탭은 카드+헤더+설명 문구로
+        // 감싸져 있는데, 가족용은 그 래퍼 없이 내용만 덜렁 나오고 있었다 - 스타일 통일.
+        <div
+          style={{
+            background: t.cardBg,
+            border: `1px solid ${t.border}`,
+            borderRadius: 16,
+            padding: 18,
+            boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+          }}
+        >
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: t.text, margin: "0 0 8px" }}>
+            복약 중 음식 주의사항
+          </h3>
+          <p style={{ fontSize: 13, color: t.textMuted, margin: "0 0 12px" }}>
+            현재 등록된 약 전체를 기준으로, 식약처 e약은요 정보에서 확인된 음식·음주 관련 주의사항을
+            보여줍니다.
+          </p>
+          <FoodTab targetProfileId={targetProfileId} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1665,7 +1686,20 @@ function FoodTab({ targetProfileId }: { targetProfileId: number }) {
   if (loading) return <p style={{ color: t.textMuted, fontSize: 13 }}>불러오는 중...</p>;
   if (error) return <p style={{ color: t.danger, fontSize: 13 }}>{error}</p>;
   if (!result || result.checked_count === 0) {
-    return <p style={{ color: t.textMuted, fontSize: 13 }}>등록된 약이 없어요.</p>;
+    return (
+      <div
+        style={{
+          padding: "10px",
+          borderRadius: 10,
+          background: t.primarySoft,
+          border: `1px solid ${t.border}`,
+          fontSize: 14,
+          color: t.text,
+        }}
+      >
+        등록된 약이 없어요. 처방전/알약 분석 또는 수동 등록으로 약을 등록해보세요.
+      </div>
+    );
   }
   if (result.guide_cards.length === 0) {
     // 등록약은 있지만(checked_count > 0) 아직 확인된 음식 정보가 없는 경우 - "등록약이

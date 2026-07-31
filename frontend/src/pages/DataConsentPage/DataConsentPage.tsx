@@ -38,6 +38,7 @@ export default function DataConsentPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailItem, setDetailItem] = useState<ConsentItem | null>(null);
+  const [isTogglingMarketing, setIsTogglingMarketing] = useState(false);
 
   useEffect(() => {
     consentApi
@@ -48,6 +49,23 @@ export default function DataConsentPage() {
       )
       .finally(() => setLoading(false));
   }, []);
+
+  // (2026-07-30) 마케팅만 유일하게 껐다 켤 수 있다 - 동의 시각이 있고, 그 뒤로 철회한
+  // 적이 없으면 "현재 동의 중"으로 판단한다.
+  async function handleToggleMarketing() {
+    if (!status || isTogglingMarketing) return;
+    const currentlyEnabled =
+      !!status.marketing_consented_at && !status.marketing_consent_revoked_at;
+    setIsTogglingMarketing(true);
+    try {
+      const updated = await consentApi.updateMarketing(!currentlyEnabled);
+      setStatus(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "마케팅 동의 변경에 실패했습니다.");
+    } finally {
+      setIsTogglingMarketing(false);
+    }
+  }
 
   return (
     <div style={{ minHeight: "100%", background: t.pageBg, padding: "20px 12px" }}>
@@ -72,7 +90,8 @@ export default function DataConsentPage() {
           내 동의 현황
         </PageTitle>
         <p style={{ margin: "0 0 16px", fontSize: 12.5, color: t.textMuted }}>
-          회원가입 시 동의하신 내용이에요. 철회를 원하시면 회원탈퇴를 이용해주세요.
+          회원가입 시 동의하신 내용이에요. 필수 항목의 철회를 원하시면 회원탈퇴를 이용해주세요.
+          마케팅 동의는 아래에서 바로 껐다 켤 수 있어요.
         </p>
 
         {loading && <p style={{ fontSize: 13, color: t.textMuted }}>불러오는 중...</p>}
@@ -82,6 +101,9 @@ export default function DataConsentPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {CONSENT_ITEMS.map((item) => {
               const consentedAt = status[STATUS_KEY_MAP[item.key]];
+              const isMarketing = item.key === "marketing";
+              const marketingEnabled =
+                !!status.marketing_consented_at && !status.marketing_consent_revoked_at;
               return (
                 <div
                   key={item.key}
@@ -102,19 +124,53 @@ export default function DataConsentPage() {
                     <span style={{ fontWeight: 700, fontSize: 14 }}>
                       {item.title} {item.required ? "(필수)" : "(선택)"}
                     </span>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: "2px 10px",
-                        borderRadius: 999,
-                        background: consentedAt ? "#EAF7EF" : t.pageBg,
-                        color: consentedAt ? t.success : t.textMuted,
-                        border: `1px solid ${consentedAt ? t.success : t.border}`,
-                      }}
-                    >
-                      {consentedAt ? "동의함" : "미동의"}
-                    </span>
+                    {isMarketing ? (
+                      <button
+                        type="button"
+                        onClick={handleToggleMarketing}
+                        disabled={isTogglingMarketing}
+                        aria-label={marketingEnabled ? "마케팅 동의 끄기" : "마케팅 동의 켜기"}
+                        style={{
+                          position: "relative",
+                          width: 44,
+                          height: 24,
+                          borderRadius: 999,
+                          border: "none",
+                          background: marketingEnabled ? t.primary : t.border,
+                          cursor: isTogglingMarketing ? "not-allowed" : "pointer",
+                          opacity: isTogglingMarketing ? 0.6 : 1,
+                          padding: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            position: "absolute",
+                            top: 2,
+                            left: marketingEnabled ? 22 : 2,
+                            width: 20,
+                            height: 20,
+                            borderRadius: "50%",
+                            background: "#fff",
+                            transition: "left 0.15s ease",
+                            boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                          }}
+                        />
+                      </button>
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          padding: "2px 10px",
+                          borderRadius: 999,
+                          background: consentedAt ? "#EAF7EF" : t.pageBg,
+                          color: consentedAt ? t.success : t.textMuted,
+                          border: `1px solid ${consentedAt ? t.success : t.border}`,
+                        }}
+                      >
+                        {consentedAt ? "동의함" : "미동의"}
+                      </span>
+                    )}
                   </div>
                   <p style={{ margin: "6px 0 0", fontSize: 12.5, color: t.textMuted }}>
                     {item.summary}
@@ -122,6 +178,12 @@ export default function DataConsentPage() {
                   {consentedAt && (
                     <p style={{ margin: "6px 0 0", fontSize: 11, color: t.textMuted }}>
                       동의 시각: {new Date(consentedAt).toLocaleString("ko-KR")}
+                    </p>
+                  )}
+                  {isMarketing && status.marketing_consent_revoked_at && (
+                    <p style={{ margin: "2px 0 0", fontSize: 11, color: t.textMuted }}>
+                      철회 시각:{" "}
+                      {new Date(status.marketing_consent_revoked_at).toLocaleString("ko-KR")}
                     </p>
                   )}
                   <button

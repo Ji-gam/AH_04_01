@@ -38,6 +38,13 @@ class User(Base):
     ai_chat_consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     terms_of_service_consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     marketing_consented_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # (2026-07-30) 마케팅 동의는 필수 3종(이용약관/건강정보/AI챗봇)과 달리 선택 항목이라
+    # 유일하게 "다시 껐다 켰다" 할 수 있게 만들었다 - 그래서 "동의 시각"과 별개로 "철회
+    # 시각"을 따로 남긴다. null이면 철회한 적 없음(또는 마지막으로 다시 동의해서 초기화됨).
+    # 현재 동의 상태 판정: marketing_consented_at이 있고 marketing_consent_revoked_at이
+    # 없으면 "동의 중". 나머지 3종은 이 필드가 없다 - 법적 필수 동의라 철회 자체를 지원하지
+    # 않는다(철회하고 싶으면 회원탈퇴).
+    marketing_consent_revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

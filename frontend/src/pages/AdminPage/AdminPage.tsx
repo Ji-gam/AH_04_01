@@ -1123,29 +1123,51 @@ export default function AdminPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {users.map((u) => (
-                      <tr key={u.id}>
-                        <td style={tdStyle}>{u.email}</td>
-                        {(
-                          [
-                            u.terms_of_service_consented_at,
-                            u.health_info_consented_at,
-                            u.ai_chat_consented_at,
-                            u.marketing_consented_at,
-                          ] as const
-                        ).map((consentedAt, i) => (
-                          <td key={i} style={tdStyle}>
-                            {consentedAt ? (
+                    {users.map((u) => {
+                      const marketingRevoked = !!u.marketing_consent_revoked_at;
+                      return (
+                        <tr key={u.id}>
+                          <td style={tdStyle}>{u.email}</td>
+                          {(
+                            [
+                              u.terms_of_service_consented_at,
+                              u.health_info_consented_at,
+                              u.ai_chat_consented_at,
+                            ] as const
+                          ).map((consentedAt, i) => (
+                            <td key={i} style={tdStyle}>
+                              {consentedAt ? (
+                                <span style={{ color: pinkTheme.success }}>
+                                  ✓ {new Date(consentedAt).toLocaleDateString("ko-KR")}
+                                </span>
+                              ) : (
+                                <span style={{ color: pinkTheme.textMuted }}>-</span>
+                              )}
+                            </td>
+                          ))}
+                          {/* (2026-07-30) 마케팅만 철회 가능해서 다른 3개 컬럼과 다르게,
+                              동의일 + 철회일을 둘 다 보여준다 - "동의했다가 취소한 사람"과
+                              "애초에 동의 안 한 사람"을 구분해서 볼 수 있게. */}
+                          <td style={tdStyle}>
+                            {marketingRevoked ? (
+                              <span style={{ color: pinkTheme.danger }}>
+                                ✕ 취소됨 (
+                                {new Date(u.marketing_consent_revoked_at!).toLocaleDateString(
+                                  "ko-KR",
+                                )}
+                                )
+                              </span>
+                            ) : u.marketing_consented_at ? (
                               <span style={{ color: pinkTheme.success }}>
-                                ✓ {new Date(consentedAt).toLocaleDateString("ko-KR")}
+                                ✓ {new Date(u.marketing_consented_at).toLocaleDateString("ko-KR")}
                               </span>
                             ) : (
                               <span style={{ color: pinkTheme.textMuted }}>-</span>
                             )}
                           </td>
-                        ))}
-                      </tr>
-                    ))}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {users.length === 0 && (

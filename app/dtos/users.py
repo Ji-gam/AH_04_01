@@ -76,3 +76,14 @@ class ConsentStatusResponse(BaseSerializerModel):
     marketing_consented_at: Annotated[
         datetime | None, Field(description="마케팅 정보 수신 동의 시각(선택). 미동의 시 null.")
     ]
+    # (2026-07-30) 마케팅만 유일하게 철회 가능 - 철회한 적 있으면 그 시각, 없으면 null.
+    marketing_consent_revoked_at: Annotated[
+        datetime | None, Field(None, description="마케팅 동의 철회 시각. 철회한 적 없으면 null.")
+    ]
+
+
+class MarketingConsentUpdateRequest(BaseModel):
+    """(2026-07-30) 마케팅 동의는 선택 항목이라 유일하게 껐다 켤 수 있다 - 필수 3종은
+    이 요청으로 안 건드리고, 이 전용 엔드포인트로만 처리한다."""
+
+    enabled: Annotated[bool, Field(description="true면 동의(켜기), false면 철회(끄기).")]
