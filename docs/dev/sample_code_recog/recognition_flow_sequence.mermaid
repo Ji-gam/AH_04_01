@@ -1,0 +1,27 @@
+%%{init: {'sequence': {'actorMargin': 50, 'width': 130}}}%%
+sequenceDiagram
+    participant FE as React (DocUploadPage)
+    participant R as Router<br/>(recognition.py)
+    participant S as RecognitionService<br/>(공통모듈)
+    participant Repo as InteractionRuleRepository<br/>⚠ Tier 2 stub (RAG 완성 전)
+    participant Ret as Retriever<br/>⚠ RAG 완성 후 여기로 교체
+
+    FE->>R: POST /recognition/jobs/{id}/confirm
+    R->>S: generate_guide_cards(drug_name)
+
+    rect rgb(255, 245, 230)
+    Note over S,Repo: 지금 (Tier 2 stub 단계)
+    S->>Repo: find_all_for_drug(drug_name)
+    Repo-->>S: 규칙기반 하드코딩 결과
+    end
+
+    rect rgb(230, 245, 255)
+    Note over S,Ret: RAG 완성 후 (Service 내부만 교체)
+    S--)Ret: search(drug_name, context)
+    Ret--)S: 관련 문서 chunk
+    end
+
+    S-->>R: GuideCard[] (스키마 동일, 내부 구현만 다름)
+    R-->>FE: RecognitionConfirmResult
+
+    Note over R,FE: Router/Schema/프론트는 Tier 전환 전후로 코드 변경 없음

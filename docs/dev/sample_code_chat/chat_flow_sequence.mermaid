@@ -1,0 +1,30 @@
+%%{init: {'sequence': {'actorMargin': 50, 'width': 130}}}%%
+sequenceDiagram
+    participant FE as React (ChatPage)
+    participant R as Router<br/>(chat.py)
+    participant S as SafetyService<br/>(공통모듈)
+    participant U as UserHealthContextService<br/>(공통모듈)
+    participant Ret as Retriever<br/>(RAG, 서현 담당)
+    participant Repo as ChatRepository
+    participant LLM as LLM (LangChain)
+
+    FE->>R: POST /chat/sessions/{id}/messages
+    R->>S: check_emergency(message)
+    alt 응급 키워드 감지됨
+        S-->>R: is_emergency=True
+        R-->>FE: 고정 Fallback 메시지 (LLM 호출 안 함)
+    else 응급 아님
+        S-->>R: is_emergency=False
+        R->>U: get_context(user_id)
+        U-->>R: 질병/복약/목표 + 대화요약
+        R->>Ret: search(message, context)
+        Ret-->>R: 관련 문서 chunk
+        R->>LLM: stream(message, context, chunks)
+        loop 토큰 스트리밍
+            LLM-->>R: token
+            R-->>FE: token (fetch 청크)
+        end
+        R->>Repo: save_message(session_id, message, response)
+    end
+
+    Note over R: Router는 판단하지 않는다.<br/>Service들을 순서대로 호출만 한다.

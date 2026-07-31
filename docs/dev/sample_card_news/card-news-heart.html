@@ -1,0 +1,414 @@
+<meta charset="utf-8">
+<title>카드뉴스 스키마 테스트 — 심장질환</title>
+<style>
+  :root {
+    --shell-bg: #f4f0ef;
+    --shell-fg: #3a3234;
+    --shell-muted: #8a7d80;
+    --phone-frame: #1c1417;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --shell-bg: #17130f; --shell-fg: #ece4e0; --shell-muted: #a8989a; --phone-frame: #050304; }
+  }
+  :root[data-theme="dark"] { --shell-bg: #17130f; --shell-fg: #ece4e0; --shell-muted: #a8989a; --phone-frame: #050304; }
+  :root[data-theme="light"] { --shell-bg: #f4f0ef; --shell-fg: #3a3234; --shell-muted: #8a7d80; --phone-frame: #1c1417; }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--shell-bg);
+    color: var(--shell-fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    padding: 48px 20px 72px;
+  }
+
+  .intro { max-width: 480px; text-align: center; }
+  .intro .eyebrow {
+    font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #FF6F91; margin: 0 0 10px;
+  }
+  .intro h1 { font-size: 22px; font-weight: 800; margin: 0 0 10px; letter-spacing: -0.01em; text-wrap: balance; }
+  .intro p { font-size: 14px; line-height: 1.6; color: var(--shell-muted); margin: 0; }
+
+  .device {
+    width: 375px;
+    height: 780px;
+    background: var(--phone-frame);
+    border-radius: 46px;
+    padding: 12px;
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.45), 0 0 0 1px rgba(255,255,255,0.04) inset;
+    flex-shrink: 0;
+  }
+  .screen {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: #FFF5F8;
+    border-radius: 34px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .notch {
+    position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    width: 90px; height: 22px; background: var(--phone-frame); border-radius: 12px; z-index: 30;
+  }
+
+  .backdrop-page {
+    position: absolute; inset: 0; background: #FFF5F8;
+    padding: 56px 18px 0; color: #5A4A4E;
+  }
+  .backdrop-page .back { font-size: 13px; color: #B98A9A; margin-bottom: 14px; }
+  .backdrop-page h2 { font-size: 17px; font-weight: 800; line-height: 1.4; margin: 0 0 10px; }
+  .backdrop-page p { font-size: 12.5px; line-height: 1.75; color: #7a6a6e; margin: 0 0 8px; }
+  .backdrop-page .scrim { position: absolute; inset: 0; background: rgba(40, 20, 26, 0.38); }
+
+  .sheet {
+    position: absolute; inset: 0; z-index: 10;
+    display: flex; flex-direction: column;
+    background: #150F11;
+  }
+  .sheet-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 46px 16px 12px;
+    flex-shrink: 0;
+  }
+  .sheet-header .close-btn {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(255,255,255,0.14); color: #fff; border: none;
+    font-size: 15px; display: flex; align-items: center; justify-content: center;
+  }
+  .sheet-header .label {
+    font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.65);
+    letter-spacing: 0.02em;
+  }
+  .dots { display: flex; gap: 5px; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,0.28); transition: all .25s ease; }
+  .dot.active { background: #fff; width: 15px; border-radius: 3px; }
+
+  .deck {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    overflow-x: auto;
+    overflow-anchor: none;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 30px;
+    padding-inline: 30px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    cursor: grab;
+    touch-action: pan-x;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .deck::-webkit-scrollbar { display: none; }
+  .deck.dragging { cursor: grabbing; scroll-snap-type: none; }
+
+  .card {
+    flex: 0 0 291px;
+    height: auto;
+    aspect-ratio: 3 / 4;
+    scroll-snap-align: center;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    position: relative;
+    padding: 0 20px 24px;
+    color: #fff;
+    overflow: hidden;
+    border-radius: 28px;
+    box-shadow: 0 20px 40px -14px rgba(0,0,0,0.55);
+  }
+  .card::before {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background-image: var(--card-grad);
+  }
+  .card::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: 1;
+    background: linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.08) 45%, rgba(0,0,0,0) 62%);
+  }
+  .card > * { position: relative; z-index: 2; }
+
+  .card-bg-icon {
+    position: absolute; z-index: 1; pointer-events: none;
+    opacity: 0.16; color: #fff;
+  }
+  .card-bg-icon .icon { width: 100%; height: 100%; stroke-width: 0.6; }
+  .card.closing .card-bg-icon { color: #FF6F91; opacity: 0.1; }
+
+  .icon { width: 100%; height: 100%; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-chip {
+    width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: auto; margin-top: 22px;
+    background: rgba(255,255,255,0.16);
+    box-shadow: 0 1px 0 rgba(255,255,255,0.25) inset, 0 6px 14px rgba(0,0,0,0.18);
+    color: #fff;
+  }
+  .icon-chip .icon { width: 25px; height: 25px; }
+  .icon-chip.light { background: #FFE3EC; color: #FF4F79; box-shadow: none; }
+  .icon-sm { width: 16px; height: 16px; }
+  .card-tags { display: flex; gap: 6px; margin-bottom: 14px; }
+  .card-tag {
+    font-size: 10.5px; font-weight: 700; padding: 4px 10px; border-radius: 999px;
+    background: rgba(255,255,255,0.22); backdrop-filter: blur(6px);
+    letter-spacing: 0.01em;
+  }
+  .card-stat {
+    font-size: 42px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05;
+    font-variant-numeric: tabular-nums; margin: 0 0 4px; text-wrap: balance;
+  }
+  .card-substat { font-size: 14px; font-weight: 700; opacity: 0.85; margin: 0 0 12px; font-variant-numeric: tabular-nums; }
+  .card-text { font-size: 14.5px; line-height: 1.6; margin: 0; opacity: 0.96; max-width: 30ch; }
+
+  .card.cover { justify-content: center; text-align: left; }
+  .card.cover .icon-chip { margin-top: 0; margin-bottom: 18px; width: 48px; height: 48px; }
+  .card.cover h1 { font-size: 25px; font-weight: 800; line-height: 1.35; margin: 0 0 10px; text-wrap: balance; }
+  .card.cover .kicker { font-size: 12.5px; opacity: 0.85; margin: 0; }
+
+  .card.closing {
+    justify-content: center; align-items: flex-start; text-align: left;
+    background: #FFF5F8; color: #5A4A4E;
+  }
+  .card.closing::after { display: none; }
+  .card.closing .icon-chip { margin: 0 0 14px; width: 44px; height: 44px; }
+  .card.closing .disclaimer-box {
+    background: #FFE3EC; border-radius: 16px; padding: 14px 16px; margin-bottom: 18px; width: 100%;
+  }
+  .card.closing .disclaimer-box p { margin: 0; font-size: 12.5px; line-height: 1.6; color: #5A4A4E; font-weight: 600; }
+  .card.closing h3 { font-size: 12px; font-weight: 700; color: #B98A9A; margin: 0 0 8px; letter-spacing: 0.02em; }
+  .card.closing ul { list-style: none; margin: 0 0 22px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .card.closing li a { font-size: 12.5px; color: #FF4F79; text-decoration: none; font-weight: 600; }
+  .card.closing .redo-btn {
+    border: 1.5px solid #FFD6E4; color: #FF4F79; background: #fff; font-weight: 700;
+    font-size: 13px; padding: 10px 18px; border-radius: 999px; width: 100%; text-align: center;
+  }
+
+  .sheet-footer {
+    flex-shrink: 0; display: flex; gap: 10px; padding: 14px 16px calc(env(safe-area-inset-bottom) + 14px);
+    background: #150F11;
+  }
+  .footer-btn {
+    flex: 1; border: none; border-radius: 999px; padding: 13px; font-size: 13.5px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .footer-btn.tts { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.4); }
+  .footer-btn.share { background: #FF6F91; color: #fff; }
+
+  .swipe-hint {
+    position: absolute; bottom: 96px; left: 50%; transform: translateX(-50%);
+    z-index: 3; font-size: 11px; color: rgba(255,255,255,0.75); font-weight: 600;
+    display: flex; align-items: center; gap: 5px;
+    animation: nudge 1.6s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { .swipe-hint { animation: none; } }
+  @keyframes nudge {
+    0%, 100% { transform: translateX(-50%) translateX(0); opacity: 0.85; }
+    50% { transform: translateX(-50%) translateX(6px); opacity: 1; }
+  }
+
+  .legend {
+    max-width: 400px; font-size: 12px; line-height: 1.7; color: var(--shell-muted);
+    border-top: 1px solid rgba(128,120,120,0.2); padding-top: 16px; text-align: center;
+  }
+  .legend b { color: var(--shell-fg); }
+
+  @media (max-width: 420px) {
+    .device { width: 92vw; height: 78vh; }
+  }
+</style>
+
+<svg style="position: absolute; width: 0; height: 0; overflow: hidden;" aria-hidden="true">
+  <defs>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></symbol>
+    <symbol id="i-clipboard-list" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/></symbol>
+    <symbol id="i-shield-check" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-gauge" viewBox="0 0 24 24"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></symbol>
+    <symbol id="i-flask-conical" viewBox="0 0 24 24"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></symbol>
+    <symbol id="i-volume-2" viewBox="0 0 24 24"><path d="M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z"/><path d="M16 9a5 5 0 0 1 0 6"/><path d="M19.364 18.364a9 9 0 0 0 0-12.728"/></symbol>
+    <symbol id="i-share-2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  </defs>
+</svg>
+
+<div class="intro">
+  <p class="eyebrow">스키마 일반화 테스트 · 심장질환 · 다른 기사</p>
+  <h1>당뇨 말고 다른 질환/기사에도 같은 스키마가 통할까?</h1>
+  <p>당뇨 프로토타입과 완전히 다른 기사(2026년 7월, 이상지질혈증 치료지침 개정 관련 실제 보도 2건)를 같은 CardSummary 스키마·아이콘 51종 안에서만 채워봤습니다. <b>새 아이콘을 하나도 추가하지 않고</b> 나온 결과예요.</p>
+</div>
+
+<div class="device">
+  <div class="notch"></div>
+  <div class="screen">
+    <div class="backdrop-page">
+      <p class="back">← 뒤로가기</p>
+      <h2>심장병 예방, 검사 시작 시점부터 달라진다 — 2026 이상지질혈증 지침 개정</h2>
+      <p>미국심장학회(ACC)·미국심장협회(AHA)가 8년 만에 이상지질혈증 관리 지침을 새로 냈다. 검사와 예방 시작 시점을 앞당기고, 사람마다 다른 유전·대사 위험까지 반영해...</p>
+      <p>(본문이 이렇게 쭉 이어집니다 — 카드요약보기를 누르면 아래 카드뉴스가 열려요)</p>
+      <div class="scrim"></div>
+    </div>
+
+    <div class="sheet">
+      <div class="sheet-header">
+        <button class="close-btn" aria-label="닫기"><svg class="icon icon-sm"><use href="#i-x"/></svg></button>
+        <span class="label">카드요약 · 심장질환</span>
+        <div class="dots" id="dots"></div>
+      </div>
+
+      <div class="deck" id="deck">
+        <div class="card cover" style="--card-grad: linear-gradient(155deg, #FF6161 0%, #E23E3E 55%, #B92C2C 100%);">
+          <span class="card-bg-icon" aria-hidden="true" style="width:210px;height:210px;bottom:-46px;right:-40px;transform:rotate(-10deg);"><svg class="icon"><use href="#i-heart"/></svg></span>
+          <span class="icon-chip"><svg class="icon"><use href="#i-heart"/></svg></span>
+          <p class="kicker">심장질환 예방 · 4가지 포인트</p>
+          <h1>심장질환, 가이드라인부터 달라졌다</h1>
+          <p class="card-text">8년 만에 새로 나온 이상지질혈증 지침으로 보는 카드뉴스 →</p>
+        </div>
+
+        <div class="card" style="--card-grad: linear-gradient(160deg, #7C93C9 0%, #45608F 100%);">
+          <span class="card-bg-icon" aria-hidden="true" style="width:195px;height:195px;top:-28px;right:-36px;transform:rotate(12deg);"><svg class="icon"><use href="#i-clipboard-list"/></svg></span>
+          <span class="icon-chip"><svg class="icon"><use href="#i-clipboard-list"/></svg></span>
+          <div class="card-tags"><span class="card-tag">가이드라인</span></div>
+          <p class="card-stat">8년 만에</p>
+          <p class="card-substat">이상지질혈증 지침 개정</p>
+          <p class="card-text">검사·예방 시작 시점을 앞당기고, 사람마다 다른 위험까지 반영하기로 했어요.</p>
+        </div>
+
+        <div class="card" style="--card-grad: linear-gradient(160deg, #4ECDC4 0%, #1B9C94 100%);">
+          <span class="card-bg-icon" aria-hidden="true" style="width:200px;height:200px;bottom:-44px;right:-40px;transform:rotate(-14deg);"><svg class="icon"><use href="#i-shield-check"/></svg></span>
+          <span class="icon-chip"><svg class="icon"><use href="#i-shield-check"/></svg></span>
+          <div class="card-tags"><span class="card-tag">예방 가능성</span></div>
+          <p class="card-stat">80%+</p>
+          <p class="card-substat">심혈관질환 예방 가능</p>
+          <p class="card-text">심장병 대부분은 미리 관리하면 막을 수 있는 병이라는 게 학회의 결론이에요.</p>
+        </div>
+
+        <div class="card" style="--card-grad: linear-gradient(160deg, #FFB86B 0%, #E8873A 100%);">
+          <span class="card-bg-icon" aria-hidden="true" style="width:195px;height:195px;top:-26px;right:-34px;transform:rotate(9deg);"><svg class="icon"><use href="#i-gauge"/></svg></span>
+          <span class="icon-chip"><svg class="icon"><use href="#i-gauge"/></svg></span>
+          <div class="card-tags"><span class="card-tag">위험 예측</span></div>
+          <p class="card-stat">10 · 30년</p>
+          <p class="card-substat">뒤 위험까지 미리 예측</p>
+          <p class="card-text">지금이 아니라 10년, 30년 뒤 심근경색·뇌졸중 위험까지 내다봐요.</p>
+        </div>
+
+        <div class="card" style="--card-grad: linear-gradient(160deg, #B48CE0 0%, #7C4FC9 100%);">
+          <span class="card-bg-icon" aria-hidden="true" style="width:205px;height:205px;bottom:-42px;right:-38px;transform:rotate(-9deg);"><svg class="icon"><use href="#i-flask-conical"/></svg></span>
+          <span class="icon-chip"><svg class="icon"><use href="#i-flask-conical"/></svg></span>
+          <div class="card-tags"><span class="card-tag">보조제 연구</span></div>
+          <p class="card-stat">LDL −12%</p>
+          <p class="card-substat">중성지방 −14%</p>
+          <p class="card-text">캐나다 매니토바대 연구에서 28일간 꾸준히 섭취했더니 이만큼 낮아졌어요.</p>
+        </div>
+
+        <div class="card closing">
+          <span class="card-bg-icon" aria-hidden="true" style="width:200px;height:200px;bottom:-40px;right:-36px;transform:rotate(12deg);"><svg class="icon"><use href="#i-clipboard-list"/></svg></span>
+          <span class="icon-chip light"><svg class="icon"><use href="#i-clipboard-list"/></svg></span>
+          <div class="disclaimer-box">
+            <p>이 정보는 의학적 조언이 아니며, 정확한 진단은 의료진과 상담하세요.</p>
+          </div>
+          <h3>참고자료</h3>
+          <ul>
+            <li><a href="#">콜레스테롤 관리 공식 대전환 — 네이트뉴스</a></li>
+            <li><a href="#">이상지질혈증 치료지침 전체본 — 대한지질동맥경화학회</a></li>
+          </ul>
+          <button class="redo-btn" type="button" id="redoBtn">처음부터 다시보기</button>
+        </div>
+      </div>
+
+      <div class="swipe-hint" id="hint">← 좌우로 넘겨보세요 →</div>
+
+      <div class="sheet-footer">
+        <button class="footer-btn tts" type="button"><svg class="icon icon-sm"><use href="#i-volume-2"/></svg> 음성으로 듣기 (준비중)</button>
+        <button class="footer-btn share" type="button"><svg class="icon icon-sm"><use href="#i-share-2"/></svg> 공유하기</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="legend">
+  이번 카드 5장에 쓴 아이콘(<b>heart · clipboard-list · shield-check · gauge · flask-conical</b>)은
+  전부 지난번 확정한 51개 목록 안에서만 골랐습니다 — 당뇨 프로토타입과 겹치는 아이콘이 하나도 없는데도
+  목록을 벗어나지 않았어요. 색만 질환별로 새로 지정(가이드라인=슬레이트, 예방=틸, 위험예측=amber, 연구=보라)했고,
+  레이아웃·아이콘 배지·워터마크 처리 방식은 코드(템플릿) 그대로 재사용했습니다.
+</p>
+
+<script>
+  const deck = document.getElementById("deck");
+  const dotsWrap = document.getElementById("dots");
+  const cards = deck.children;
+  const hint = document.getElementById("hint");
+
+  for (let i = 0; i < cards.length; i++) {
+    const dot = document.createElement("div");
+    dot.className = "dot" + (i === 0 ? " active" : "");
+    dotsWrap.appendChild(dot);
+  }
+  const dots = dotsWrap.children;
+
+  function step() {
+    return cards.length > 1 ? cards[1].offsetLeft - cards[0].offsetLeft : deck.clientWidth;
+  }
+
+  function syncDots() {
+    const idx = Math.round(deck.scrollLeft / step());
+    for (let i = 0; i < dots.length; i++) {
+      dots[i].classList.toggle("active", i === idx);
+    }
+    if (idx > 0) hint.style.opacity = "0";
+  }
+  deck.addEventListener("scroll", syncDots);
+
+  let isDown = false;
+  let startX = 0;
+  let startScroll = 0;
+  let moved = false;
+
+  deck.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "mouse") return;
+    isDown = true;
+    moved = false;
+    startX = e.clientX;
+    startScroll = deck.scrollLeft;
+    deck.classList.add("dragging");
+    deck.setPointerCapture(e.pointerId);
+  });
+
+  deck.addEventListener("pointermove", (e) => {
+    if (!isDown) return;
+    const dx = e.clientX - startX;
+    if (Math.abs(dx) > 3) moved = true;
+    deck.scrollLeft = startScroll - dx;
+  });
+
+  function endDrag() {
+    if (!isDown) return;
+    isDown = false;
+    deck.classList.remove("dragging");
+    const s = step();
+    const idx = Math.max(0, Math.min(cards.length - 1, Math.round(deck.scrollLeft / s)));
+    deck.scrollTo({ left: idx * s, behavior: "smooth" });
+  }
+  deck.addEventListener("pointerup", endDrag);
+  deck.addEventListener("pointercancel", endDrag);
+  deck.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") endDrag(e); });
+
+  deck.addEventListener("click", (e) => {
+    if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; }
+  }, true);
+
+  document.getElementById("redoBtn").addEventListener("click", () => {
+    deck.scrollTo({ left: 0, behavior: "smooth" });
+    setTimeout(() => {
+      if (deck.scrollLeft !== 0) deck.scrollLeft = 0;
+    }, 400);
+  });
+
+  syncDots();
+</script>

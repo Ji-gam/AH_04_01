@@ -1,0 +1,88 @@
+/**
+ * React Router 설정.
+ * [변경] 홈이 시작화면 - 로그인 안 해도 접근 가능하다. 개인건강정보는 개인정보라 로그인이 꼭 필요하고,
+ * 복약 관리(/medication)도 비로그인 상태에서 복약정보를 등록할 수 있는 문제가 있어 로그인을 다시
+ * 요구하게 되돌렸다. 나머지 탭(트랙커/상담/정보/복약알림/스케줄/더보기)은 로그인 안 해도 기본적으로
+ * 볼 수 있게 열어둔다. /login 하나로 로그인/가입을 다 처리한다(SignupPage 별도 라우트 없음).
+ */
+import { createBrowserRouter } from "react-router-dom";
+
+import HomeEntry from "./components/common/HomeEntry";
+import Layout from "./components/common/Layout";
+import RequireAuth from "./components/common/RequireAuth";
+import AccountSettingsPage from "./pages/AccountSettingsPage/AccountSettingsPage";
+import AlarmPage from "./pages/AlarmPage/AlarmPage";
+import ChatPage from "./pages/ChatPage/ChatPage";
+import ConsentPage from "./pages/ConsentPage/ConsentPage";
+import DataConsentPage from "./pages/DataConsentPage/DataConsentPage";
+import DiaryEntriesPage from "./pages/DiaryEntriesPage/DiaryEntriesPage";
+import DocumentBoxPage from "./pages/documentBox/DocumentBoxPage";
+import DurScreeningPage from "./pages/dur/DurScreeningPage";
+import EmergencyGuidePage from "./pages/EmergencyGuidePage/EmergencyGuidePage";
+import FamilyPage from "./pages/FamilyPage/FamilyPage";
+import HabitSelectionPage from "./pages/HabitSelectionPage/HabitSelectionPage";
+import HealthInfoPage from "./pages/HealthInfoPage/HealthInfoPage";
+import InfoDetailPage from "./pages/InfoDetailPage/InfoDetailPage";
+import InfoPage from "./pages/InfoPage/InfoPage";
+import LifestyleInfoPage from "./pages/LifestyleInfoPage/LifestyleInfoPage";
+import LoginPage from "./pages/LoginPage/LoginPage";
+import MedicationPage from "./pages/medication/MedicationPage";
+import AdminPage from "./pages/AdminPage/AdminPage";
+import MorePage from "./pages/MorePage/MorePage";
+import NoticeAdminPage from "./pages/NoticePage/NoticeAdminPage";
+import NoticePage from "./pages/NoticePage/NoticePage";
+import NotificationSettingsPage from "./pages/NotificationSettingsPage/NotificationSettingsPage";
+import SchedulePage from "./pages/SchedulePage/SchedulePage";
+import TrackPage from "./pages/TrackPage/TrackPage";
+import WeeklyReportsPage from "./pages/WeeklyReportsPage/WeeklyReportsPage";
+
+export const router = createBrowserRouter([
+  { path: "/login", element: <LoginPage /> },
+  {
+    // 계정설정은 로그인은 필요하지만 5탭 네비게이션은 안 필요한 화면이라 Layout 밖에 둔다.
+    // (2026-07-28) 이름/전화번호/성별 변경일 뿐 건강정보/동의와 무관해서 통합 동의
+    // 체크는 건너뛴다 - 안 그러면 통합 동의 3종이 비어있는 기존 계정이 계정관리에
+    // 들어가려 할 때마다 계속 동의 화면으로 튕겨서 실제로는 못 들어가는 문제가 있었다.
+    element: <RequireAuth skipConsentCheck />,
+    children: [{ path: "/account-settings", element: <AccountSettingsPage /> }],
+  },
+  {
+    element: <Layout />,
+    children: [
+      // 홈 + 대부분의 탭은 로그인 안 해도 기본적으로 볼 수 있다.
+      // 비로그인 첫 진입(이번 세션에 온보딩 안 봄)이면 HomeEntry가 HomePage 대신 온보딩을 띄운다.
+      { path: "/", element: <HomeEntry /> },
+      { path: "/alarms", element: <AlarmPage /> },
+      { path: "/schedule", element: <SchedulePage /> },
+      { path: "/track", element: <TrackPage /> },
+      { path: "/chat", element: <ChatPage /> },
+      { path: "/info", element: <InfoPage /> },
+      { path: "/info/:id", element: <InfoDetailPage /> },
+      { path: "/more", element: <MorePage /> },
+      { path: "/admin", element: <AdminPage /> },
+      { path: "/notices", element: <NoticePage /> },
+      { path: "/notices/admin", element: <NoticeAdminPage /> },
+      { path: "/lifestyle-info", element: <LifestyleInfoPage /> },
+      { path: "/notification-settings", element: <NotificationSettingsPage /> },
+      { path: "/data-consent", element: <DataConsentPage /> },
+      { path: "/emergency-guide", element: <EmergencyGuidePage /> },
+      // DUR 스크리닝(T-MED-14)은 profile_id를 안 쓰는 공개 API라 로그인 불필요.
+      { path: "/dur-screening", element: <DurScreeningPage /> },
+      {
+        // 개인건강정보(민감정보)와 복약 관리(비로그인 상태로 복약정보 등록이 가능했던 문제)는
+        // 로그인이 꼭 필요하다. 가족관리도 가족 이메일 연결이라 로그인 필수.
+        element: <RequireAuth />,
+        children: [
+          { path: "/health-info", element: <HealthInfoPage /> },
+          { path: "/health-info/consent", element: <ConsentPage /> },
+          { path: "/medication", element: <MedicationPage /> },
+          { path: "/family", element: <FamilyPage /> },
+          { path: "/habit-selection", element: <HabitSelectionPage /> },
+          { path: "/weekly-reports", element: <WeeklyReportsPage /> },
+          { path: "/diary", element: <DiaryEntriesPage /> },
+          { path: "/document-box", element: <DocumentBoxPage /> },
+        ],
+      },
+    ],
+  },
+]);

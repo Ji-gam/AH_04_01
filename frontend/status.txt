@@ -1,0 +1,13 @@
+﻿On branch feature/family-med-edit-and-fixes
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   src/components/family/AnalogClockPicker.tsx
+	modified:   src/components/family/FamilyTimeSlotRow.tsx
+	modified:   src/components/family/FamilyTrackerView.tsx
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	status.txt
+
+no changes added to commit (use "git add" and/or "git commit -a")

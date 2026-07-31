@@ -2,27 +2,257 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import ORJSONResponse as Response
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.dependencies.security import get_request_user
-from app.dtos.users import UserInfoResponse, UserUpdateRequest
+from app.core.db.databases import get_db
+from app.dependencies.security import get_current_profile, get_request_user
+from app.dtos.health_info import DiagnosisEntry, FamilyHistoryEntry, HealthInfoResponse, HealthInfoUpdateRequest
+from app.dtos.users import (
+    ConsentStatusResponse,
+    ConsentUpdateRequest,
+    MarketingConsentUpdateRequest,
+    UserInfoResponse,
+    UserUpdateRequest,
+)
+from app.models.disease_entries import DiagnosisEntry as DiagnosisEntryModel
+from app.models.disease_entries import FamilyHistoryEntry as FamilyHistoryEntryModel
+from app.models.profiles import Profile
 from app.models.users import User
+from app.repositories.disease_entry_repository import DiagnosisEntryRepository, FamilyHistoryEntryRepository
+from app.services.age_calculator import resolve_display_age
+from app.services.health_info import HealthInfoService
 from app.services.users import UserManageService
 
 user_router = APIRouter(prefix="/users", tags=["users"])
 
 
-@user_router.get("/me", response_model=UserInfoResponse, status_code=status.HTTP_200_OK)
+def _to_user_info_response(user: User, profile: Profile) -> UserInfoResponse:
+    return UserInfoResponse(
+        id=user.id,
+        profile_id=profile.id,
+        name=profile.name,
+        email=user.email,
+        phone_number=profile.phone_number,
+        gender=profile.health_profile.gender if profile.health_profile else None,
+        created_at=user.created_at,
+        is_admin=user.is_admin,
+        health_info_consented_at=user.health_info_consented_at,
+        ai_chat_consented_at=user.ai_chat_consented_at,
+        terms_of_service_consented_at=user.terms_of_service_consented_at,
+        marketing_consented_at=user.marketing_consented_at,
+        has_password=user.hashed_password is not None,
+    )
+
+
+def _to_diagnosis_dto(row: DiagnosisEntryModel) -> DiagnosisEntry:
+    return DiagnosisEntry(
+        disease=row.disease,
+        disease_subtype=row.disease_subtype.name if row.disease_subtype else None,
+        diagnosed_years_ago=row.diagnosed_years_ago,
+        status=row.status,
+        on_medication=row.on_medication,
+        detail=row.detail,
+    )
+
+
+def _to_family_history_dto(row: FamilyHistoryEntryModel) -> FamilyHistoryEntry:
+    return FamilyHistoryEntry(
+        disease=row.disease,
+        disease_subtype=row.disease_subtype.name if row.disease_subtype else None,
+        relation=row.relation,
+        detail=row.detail,
+    )
+
+
+async def _to_health_info_response(
+    session: AsyncSession,
+    profile: Profile,
+    diagnosis_repo: DiagnosisEntryRepository,
+    family_repo: FamilyHistoryEntryRepository,
+) -> HealthInfoResponse:
+    diagnosis_rows = await diagnosis_repo.list_for_profile(session, profile.id)
+    family_rows = await family_repo.list_for_profile(session, profile.id)
+    # [PII/건강정보 분리] 전부 profile.health_profile 경유로 읽는다 - get_current_profile이
+    # ProfileRepository.get_profile()로 조회하면서 health_profile을 항상 eager load하므로
+    # (같은 파일 참고), 실무상 None이 아니지만 방어적으로 None 체크는 남겨둔다.
+    hp = profile.health_profile
+    return HealthInfoResponse(
+        age=resolve_display_age(hp.birth_date if hp else None),
+        birth_date=hp.birth_date if hp else None,
+        gender=hp.gender if hp else None,
+        is_pregnant=hp.is_pregnant if hp else None,
+        height_cm=float(hp.height_cm) if hp and hp.height_cm is not None else None,
+        weight_kg=float(hp.weight_kg) if hp and hp.weight_kg is not None else None,
+        diagnosis_history=[_to_diagnosis_dto(r) for r in diagnosis_rows],
+        family_history=[_to_family_history_dto(r) for r in family_rows],
+        special_notes=hp.special_notes if hp else None,
+        other_notes=hp.other_notes if hp else None,
+    )
+
+
+@user_router.get(
+    "/me",
+    response_model=UserInfoResponse,
+    status_code=status.HTTP_200_OK,
+    summary="내 정보 조회",
+    description="Authorization: Bearer 토큰의 user_id/profile_id로 User(계정)와 본인 Profile을 합쳐서 반환한다.",
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
+)
 async def user_me_info(
     user: Annotated[User, Depends(get_request_user)],
+    profile: Annotated[Profile, Depends(get_current_profile)],
 ) -> Response:
-    return Response(UserInfoResponse.model_validate(user).model_dump(), status_code=status.HTTP_200_OK)
+    return Response(_to_user_info_response(user, profile).model_dump(), status_code=status.HTTP_200_OK)
 
 
-@user_router.patch("/me", response_model=UserInfoResponse, status_code=status.HTTP_200_OK)
+@user_router.patch(
+    "/me",
+    response_model=UserInfoResponse,
+    status_code=status.HTTP_200_OK,
+    summary="내 정보 수정",
+    description=(
+        "전달한 필드(name/phone_number)만 부분 수정해서 Profile에 반영하고, "
+        "User와 합친 최신 정보를 반환한다. email은 로그인 식별자라 여기서 수정할 수 없다(가입 후 고정). "
+        "성별은 건강정보(민감정보)로 분류되어 /users/me/health-info에서만 수정 가능하다."
+    ),
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"},
+        status.HTTP_409_CONFLICT: {"description": "변경하려는 휴대폰 번호가 이미 사용 중"},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "휴대폰번호 형식이 유효하지 않음"},
+    },
+)
 async def update_user_me_info(
     update_data: UserUpdateRequest,
     user: Annotated[User, Depends(get_request_user)],
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
     user_manage_service: Annotated[UserManageService, Depends(UserManageService)],
 ) -> Response:
-    updated_user = await user_manage_service.update_user(user=user, data=update_data)
-    return Response(UserInfoResponse.model_validate(updated_user).model_dump(), status_code=status.HTTP_200_OK)
+    updated_user, updated_profile = await user_manage_service.update_user(session, user, profile, update_data)
+    return Response(_to_user_info_response(updated_user, updated_profile).model_dump(), status_code=status.HTTP_200_OK)
+
+
+@user_router.get(
+    "/me/health-info",
+    response_model=HealthInfoResponse,
+    status_code=status.HTTP_200_OK,
+    summary="개인건강정보 조회",
+    description=(
+        "나이/성별/키/체중/진단병력/가족력/특이사항/기타를 조회한다. "
+        "키·체중이 둘 다 있으면 bmi를 계산해서 같이 내려준다(하나라도 없으면 null)."
+    ),
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
+)
+async def get_health_info(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    diagnosis_repo: Annotated[DiagnosisEntryRepository, Depends(DiagnosisEntryRepository)],
+    family_repo: Annotated[FamilyHistoryEntryRepository, Depends(FamilyHistoryEntryRepository)],
+) -> Response:
+    response = await _to_health_info_response(session, profile, diagnosis_repo, family_repo)
+    return Response(response.model_dump(), status_code=status.HTTP_200_OK)
+
+
+@user_router.patch(
+    "/me/health-info",
+    response_model=HealthInfoResponse,
+    status_code=status.HTTP_200_OK,
+    summary="개인건강정보 수정",
+    description=(
+        "전달한 필드만 부분 수정한다. 전부 선택 입력이며 회원가입 흐름과 무관하게 언제든 호출할 수 있다. "
+        "가입 시 나이/성별을 안 받으므로, 여기서 처음 입력받는 경우가 일반적이다. "
+        "diagnosis_history/family_history에 빈 리스트를 보내면 전부 지워진다."
+    ),
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "키/체중 범위가 유효하지 않음"},
+    },
+)
+async def update_health_info(
+    update_data: HealthInfoUpdateRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    health_info_service: Annotated[HealthInfoService, Depends(HealthInfoService)],
+    diagnosis_repo: Annotated[DiagnosisEntryRepository, Depends(DiagnosisEntryRepository)],
+    family_repo: Annotated[FamilyHistoryEntryRepository, Depends(FamilyHistoryEntryRepository)],
+) -> Response:
+    updated_profile = await health_info_service.update_health_info(session, profile, update_data)
+    response = await _to_health_info_response(session, updated_profile, diagnosis_repo, family_repo)
+    return Response(response.model_dump(), status_code=status.HTTP_200_OK)
+
+
+@user_router.get(
+    "/me/consent",
+    response_model=ConsentStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="동의 현황 조회",
+    description="개인건강정보 동의 시각을 조회한다. 미동의 시 null.",
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
+)
+async def get_consent_status(
+    user: Annotated[User, Depends(get_request_user)],
+) -> Response:
+    response = ConsentStatusResponse(
+        health_info_consented_at=user.health_info_consented_at,
+        ai_chat_consented_at=user.ai_chat_consented_at,
+        terms_of_service_consented_at=user.terms_of_service_consented_at,
+        marketing_consented_at=user.marketing_consented_at,
+        marketing_consent_revoked_at=user.marketing_consent_revoked_at,
+    )
+    return Response(response.model_dump(), status_code=status.HTTP_200_OK)
+
+
+@user_router.patch(
+    "/me/consent",
+    response_model=ConsentStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="동의 기록",
+    description=(
+        "[개인정보보호법 제23조] 개인건강정보 동의를 서버에 시각과 함께 기록한다. "
+        "true로 보내면 그 시각으로 갱신되고, false/미전달이면 기존 상태를 유지한다."
+    ),
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
+)
+async def update_consent(
+    update_data: ConsentUpdateRequest,
+    user: Annotated[User, Depends(get_request_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    user_manage_service: Annotated[UserManageService, Depends(UserManageService)],
+) -> Response:
+    updated_user = await user_manage_service.update_consent(session, user, update_data)
+    response = ConsentStatusResponse(
+        health_info_consented_at=updated_user.health_info_consented_at,
+        ai_chat_consented_at=updated_user.ai_chat_consented_at,
+        terms_of_service_consented_at=updated_user.terms_of_service_consented_at,
+        marketing_consented_at=updated_user.marketing_consented_at,
+        marketing_consent_revoked_at=updated_user.marketing_consent_revoked_at,
+    )
+    return Response(response.model_dump(), status_code=status.HTTP_200_OK)
+
+
+@user_router.patch(
+    "/me/consent/marketing",
+    response_model=ConsentStatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="마케팅 동의 토글 (켜기/끄기)",
+    description=(
+        "마케팅 정보 수신 동의는 선택 항목이라 유일하게 껐다 켤 수 있다. "
+        "enabled=true면 동의(시각 갱신), false면 철회(철회 시각만 기록, 최초 동의 시각은 보존)."
+    ),
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
+)
+async def update_marketing_consent(
+    update_data: MarketingConsentUpdateRequest,
+    user: Annotated[User, Depends(get_request_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    user_manage_service: Annotated[UserManageService, Depends(UserManageService)],
+) -> Response:
+    updated_user = await user_manage_service.set_marketing_consent(session, user, update_data.enabled)
+    response = ConsentStatusResponse(
+        health_info_consented_at=updated_user.health_info_consented_at,
+        ai_chat_consented_at=updated_user.ai_chat_consented_at,
+        terms_of_service_consented_at=updated_user.terms_of_service_consented_at,
+        marketing_consented_at=updated_user.marketing_consented_at,
+        marketing_consent_revoked_at=updated_user.marketing_consent_revoked_at,
+    )
+    return Response(response.model_dump(), status_code=status.HTTP_200_OK)

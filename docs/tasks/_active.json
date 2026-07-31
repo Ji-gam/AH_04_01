@@ -1,0 +1,37 @@
+{
+  "T-MED-4-2": {
+    "owner": "agent-Antigravity",
+    "branch": "feat/T-MED-4-2-drug-db-sync",
+    "started": "2026-07-14"
+  },
+  "T-MED-14": {
+    "owner": "agent-Antigravity",
+    "branch": "feat/T-MED-14-dur-screening",
+    "started": "2026-07-14"
+  },
+  "T-MED-14-1": {
+    "owner": "agent-Antigravity",
+    "branch": "feat/T-MED-14-dur-screening",
+    "started": "2026-07-14"
+  },
+  "T-LLM-7-3": {
+    "owner": "agent-Genie",
+    "branch": "feat/T-LLM-7-3-pubmed-integration",
+    "started": "2026-07-16"
+  },
+  "T-LLM-2-dur-interaction-warning": {
+    "owner": "agent-Genie",
+    "branch": "feature/T-LLM-2-dur-interaction-warning",
+    "started": "2026-07-17"
+  },
+  "T-MED-16": {
+    "owner": "claude",
+    "branch": "feat/T-MED-16-item-seq-direct-ref",
+    "started": "2026-07-20"
+  },
+  "T-LLM-2-dur-interaction-mixture-index": {
+    "owner": "agent-Genie",
+    "branch": "feat/T-LLM-2-dur-interaction-mixture-index",
+    "started": "2026-07-28"
+  }
+}

@@ -4,12 +4,13 @@ from typing import TYPE_CHECKING, Any, Self
 from uuid import uuid4
 
 from app.core import config
-from app.models.users import User
 from app.core.jwt.exceptions import ExpiredTokenError, TokenBackendError, TokenBackendExpiredError, TokenError
 from app.core.jwt.state import token_backend
+from app.models.users import User
 
 if TYPE_CHECKING:
     from app.core.jwt.backends import TokenBackend
+    from app.models.profiles import Profile
 
 
 class Token:
@@ -81,6 +82,13 @@ class Token:
         token["user_id"] = user.id
         return token
 
+    @classmethod
+    def for_user_and_profile(cls, user: User, profile: "Profile") -> Self:
+        """토큰에 user_id뿐 아니라 profile_id도 담는다 — 도메인 라우터는 profile_id로 스코핑한다."""
+        token = cls.for_user(user)
+        token["profile_id"] = profile.id
+        return token
+
 
 class AccessToken(Token):
     token_type = "access"
@@ -89,7 +97,7 @@ class AccessToken(Token):
 
 class RefreshToken(Token):
     token_type = "refresh"
-    lifetime = timedelta(days=config.REFRESH_TOKEN_EXPIRE_MINUTES)
+    lifetime = timedelta(minutes=config.REFRESH_TOKEN_EXPIRE_MINUTES)
     no_copy_claims = ("type", "exp", "jti")
 
     @property

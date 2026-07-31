@@ -1,0 +1,1338 @@
+// AH_04_01 (ReMedi) ERD — dbdiagram.io (https://dbdiagram.io)에 그대로 붙여넣어 보면 됩니다.
+//
+// 문서 버전: v2.0 · 최종 수정: 2026-07-29
+// 생성 방식: SQLAlchemy 모델(app/models/*.py) 기준으로 추출 — 코드가 유일한 진실
+// 변경 이력:
+//   - v1.0~v1.3 (2026-07-07~08): 수기 작성 (users/profiles/chat/notification_schedules/health_contents)
+//   - v2.0 (2026-07-29): 전체 재작성. 현재 매핑된 65개 테이블(복약/생활기록/목표/가족연동/알림/운영로그/
+//     DUR·식약처 참조데이터) 전부 반영.
+//
+// 규칙 (docs/CODING_RULES.md 6번):
+//   DB를 CRUD하는 작업(모델 추가/변경, 마이그레이션 작성)을 할 때마다 이 파일도 같은 커밋/PR에서
+//   함께 갱신하고 위 버전을 올린다. 신규 도메인 테이블은 user_id가 아니라 profiles.id를 참조한다.
+
+
+// ==================== 계정 · 인증 ====================
+
+Table users {
+  id bigint [pk, increment]
+  email varchar(40) [not null, unique]
+  hashed_password varchar(128)
+  sns_provider varchar(20)
+  sns_id varchar(255)
+  is_active boolean [not null, default: true]
+  is_admin boolean [not null, default: false]
+  failed_login_attempts int [not null, default: 0]
+  locked_until datetime
+  last_login datetime
+  health_info_consented_at datetime
+  ai_chat_consented_at datetime
+  terms_of_service_consented_at datetime
+  marketing_consented_at datetime
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (sns_provider, sns_id) [unique]
+  }
+}
+
+Table profiles {
+  id bigint [pk, increment]
+  user_id bigint [not null, ref: > users.id]
+  name varchar(20) [not null]
+  gender varchar(6)
+  birth_date date
+  is_pregnant boolean
+  phone_number varchar(11)
+  relation varchar(10) [not null, default: 'SELF']
+  height_cm numeric(5, 2)
+  weight_kg numeric(5, 2)
+  special_notes text
+  other_notes text
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table issued_refresh_tokens {
+  id bigint [pk, increment]
+  user_id bigint [not null, ref: > users.id]
+  jti varchar(32) [not null, unique]
+  is_revoked boolean [not null, default: false]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table withdrawn_health_stats {
+  id bigint [pk, increment]
+  disease varchar(30) [not null]
+  is_family_history boolean [not null]
+  age_group varchar(10)
+  gender varchar(6)
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+
+// ==================== 가족 연동 ====================
+
+Table family_links {
+  id bigint [pk, increment]
+  guardian_profile_id bigint [not null, ref: > profiles.id]
+  member_profile_id bigint [not null, ref: > profiles.id]
+  relation_label varchar(20) [not null]
+  status varchar(10) [not null, default: 'PENDING']
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (guardian_profile_id, member_profile_id) [unique]
+  }
+}
+
+Table family_invite_codes {
+  id bigint [pk, increment]
+  guardian_profile_id bigint [not null, ref: > profiles.id]
+  code varchar(6) [not null, unique]
+  relation_label varchar(20) [not null]
+  expires_at datetime [not null]
+  used_at datetime
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+
+// ==================== 건강 프로필 · 문진 ====================
+
+Table diagnosis_entries {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  disease varchar(30) [not null]
+  disease_subtype_id bigint [ref: > disease_subtypes.id]
+  diagnosed_years_ago int
+  status varchar(20)
+  on_medication boolean
+  detail text
+}
+
+Table disease_subtypes {
+  id bigint [pk, increment]
+  category varchar(30) [not null]
+  name varchar(50) [not null]
+  is_custom boolean [not null, default: false]
+
+  indexes {
+    (category, name) [unique]
+  }
+}
+
+Table family_history_entries {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  disease varchar(30) [not null]
+  disease_subtype_id bigint [ref: > disease_subtypes.id]
+  relation varchar(15)
+  detail text
+}
+
+
+// ==================== 복약 ====================
+
+Table medication_schedules {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  item_seq varchar(20) [not null]
+  display_name varchar(150)
+  times json [not null]
+  source_job_id varchar(36)
+  hospital_name varchar(100)
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (item_seq)
+  }
+}
+
+Table medication_intake_logs {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  source_type varchar(30) [not null]
+  source_id bigint [not null]
+  scheduled_time varchar(5) [not null]
+  intake_date date [not null]
+  checked_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (profile_id, source_type, source_id, scheduled_time, intake_date) [unique]
+  }
+}
+
+Table medication_recognition_jobs {
+  id varchar(36) [pk]
+  profile_id bigint [not null, ref: > profiles.id]
+  status varchar(20) [not null, default: 'pending']
+  source_type varchar(20) [not null]
+  candidates json
+  extracted_fields json
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table medication_data_cache {
+  id bigint [pk, increment]
+  query_name varchar(150) [not null, unique]
+  fields json [not null]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+
+// ==================== 생활기록 · 목표 ====================
+
+Table diary_entries {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  entry_date date [not null]
+  content text [not null]
+  image_base64 longtext
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (profile_id, entry_date) [unique]
+  }
+}
+
+Table diet_logs {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  log_date date [not null]
+  food_name varchar(150) [not null]
+  serving_multiplier numeric(3, 1) [not null]
+  serving_grams numeric(7, 1) [not null]
+  calorie_kcal numeric(7, 1) [not null]
+  protein_g numeric(6, 1) [not null]
+  carb_g numeric(6, 1) [not null]
+  fat_g numeric(6, 1) [not null]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table exercise_logs {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  log_date date [not null]
+  exercise_name varchar(100) [not null]
+  duration_minutes numeric(6, 1) [not null]
+  distance_km numeric(6, 2)
+  count int
+  calorie_kcal numeric(7, 1) [not null]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table sleep_logs {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  log_date date [not null]
+  hours numeric(4, 1) [not null]
+  bed_time time
+  quality smallint [not null]
+  reason varchar(200)
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (profile_id, log_date) [unique]
+  }
+}
+
+Table habit_logs {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  log_date date [not null]
+  habit_key varchar(50) [not null]
+  progress int [not null, default: 0]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (profile_id, log_date, habit_key) [unique]
+  }
+}
+
+Table habit_selections {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  select_date date [not null]
+  habit_key varchar(50) [not null]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (profile_id, select_date, habit_key) [unique]
+  }
+}
+
+Table habit_subtype_suggestions {
+  id bigint [pk, increment]
+  disease_subtype_id bigint [not null, ref: > disease_subtypes.id]
+  slot int [not null]
+  label varchar(50) [not null]
+  icon varchar(10) [not null]
+  unit varchar(20) [not null]
+  target int [not null]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (disease_subtype_id, slot) [unique]
+  }
+}
+
+Table goals {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  title varchar(100) [not null]
+  start_value numeric(8, 2)
+  target_value numeric(8, 2)
+  current_value numeric(8, 2)
+  unit varchar(20)
+  start_date date [not null]
+  end_date date [not null]
+  is_achieved boolean [not null, default: false]
+  guide_content text
+  guide_generated_at datetime
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (profile_id)
+  }
+}
+
+Table goal_progress_logs {
+  id bigint [pk, increment]
+  goal_id bigint [not null, ref: > goals.id]
+  log_date date [not null]
+  value numeric(8, 2) [not null]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (goal_id, log_date) [unique]
+    (goal_id)
+  }
+}
+
+Table weekly_reports {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  week_start_date date [not null]
+  week_end_date date [not null]
+  content text [not null]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (profile_id, week_start_date) [unique]
+  }
+}
+
+
+// ==================== 챗봇 · 콘텐츠 ====================
+
+Table chat_sessions {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table chat_messages {
+  id bigint [pk, increment]
+  session_id bigint [not null, ref: > chat_sessions.id]
+  role varchar(10) [not null]
+  content text [not null]
+  sources json
+  disclaimer text
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table health_contents {
+  id int [pk, increment]
+  disease_code varchar(50) [not null]
+  category varchar(20) [not null]
+  content_date date [not null]
+  title varchar(200) [not null]
+  summary varchar(500) [not null]
+  body text [not null]
+  image_prompt varchar(500)
+  source_refs json
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (disease_code, category, content_date) [unique]
+  }
+}
+
+Table notices {
+  id bigint [pk, increment]
+  kind varchar(20) [not null]
+  title varchar(200) [not null]
+  body text [not null]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+
+// ==================== 알림 · 푸시 ====================
+
+Table notification_schedules {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  medication_name varchar(100) [not null]
+  frequency_type varchar(10) [not null, default: 'DAILY']
+  target_day_of_week varchar(10)
+  alarm_time time [not null]
+  is_active boolean [not null, default: true]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table notification_settings {
+  id bigint [pk, increment]
+  profile_id bigint [not null, unique, ref: > profiles.id]
+  push_enabled boolean [not null, default: true]
+  chatbot_reply_enabled boolean [not null, default: true]
+  notice_enabled boolean [not null, default: false]
+  marketing_enabled boolean [not null, default: false]
+  lifestyle_tip_enabled boolean [not null, default: true]
+  lifestyle_tip_window_enabled boolean [not null, default: false]
+  lifestyle_tip_start time [not null, default: '09:00:00']
+  lifestyle_tip_end time [not null, default: '21:00:00']
+  lifestyle_tip_min_interval_days int [not null, default: 0]
+  lifestyle_tip_last_sent_at datetime
+  quiet_mode_enabled boolean [not null, default: true]
+  quiet_start time [not null, default: '22:00:00']
+  quiet_end time [not null, default: '07:00:00']
+  adherence_feedback_day_of_week int [not null, default: 6]
+  sound_enabled boolean [not null, default: true]
+  vibration_enabled boolean [not null, default: true]
+  popup_enabled boolean [not null, default: true]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table notification_logs {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  title varchar(200) [not null]
+  body text [not null]
+  link_url varchar(255)
+  is_read boolean [not null, default: false]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (profile_id)
+  }
+}
+
+Table push_subscriptions {
+  id bigint [pk, increment]
+  profile_id bigint [not null, ref: > profiles.id]
+  platform varchar(10) [not null, default: 'WEB']
+  endpoint varchar(500) [unique]
+  p256dh_key varchar(200)
+  auth_key varchar(100)
+  device_token varchar(300)
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table push_send_logs {
+  id bigint [pk, increment]
+  source_type varchar(30) [not null]
+  source_id bigint [not null]
+  sent_date date [not null]
+  sent_time varchar(5) [not null]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+
+  indexes {
+    (source_type, source_id, sent_date, sent_time) [unique]
+  }
+}
+
+
+// ==================== 운영 · 로그 ====================
+
+Table admin_actions {
+  id bigint [pk, increment]
+  actor_user_id bigint [not null, ref: > users.id]
+  action varchar(50) [not null]
+  target varchar(100)
+  detail text
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table error_logs {
+  id bigint [pk, increment]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  method varchar(10) [not null]
+  path varchar(255) [not null]
+  exception_type varchar(100) [not null]
+  message varchar(200)
+  status_code int [not null]
+}
+
+
+// ==================== 외부 의약품/식품 참조데이터 (DUR·식약처 캐시) ====================
+
+Table drug_bundle_info {
+  id int [pk, increment]
+  trust_induty_code text
+  trust_item_name text
+  trust_mainingr text
+  trust_qnt_list text
+  trust_entp_name text
+  trust_manuf text
+  trust_item_permit_date text
+  trust_hira_mainingr_code text
+  trust_hira_prduct_code text
+  trust_atc_code text
+  trust_cancel_name text
+  cnsgn_item_seq varchar(20)
+  cnsgn_item_name text
+  cnsgn_entp_name text
+  cnsgn_manuf text
+  cnsgn_item_permit_date text
+  cnsgn_hira_prduct_code text
+  cnsgn_cancel_name text
+
+  indexes {
+    (cnsgn_item_seq)
+  }
+}
+
+Table drug_data_cache {
+  id bigint [pk, increment]
+  query_name varchar(150) [not null, unique]
+  profiles json [not null]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table drug_identification {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  chart text
+  drug_shape varchar(100)
+  color_class1 varchar(100)
+  color_class2 varchar(100)
+  mark_code_front varchar(255)
+  etc_otc_name varchar(100)
+  form_code_name varchar(100)
+  item_image varchar(500)
+  item_name text
+  entp_seq text
+  entp_name text
+  print_front text
+  print_back text
+  line_front text
+  line_back text
+  leng_long text
+  leng_short text
+  thick text
+  img_regist_ts text
+  class_no text
+  class_name text
+  item_permit_date text
+  mark_code_front_anal text
+  mark_code_back_anal text
+  mark_code_front_img text
+  mark_code_back_img text
+  item_eng_name text
+  change_date text
+  mark_code_back text
+  edi_code text
+  bizrno text
+  std_cd text
+
+  indexes {
+    (item_seq)
+  }
+}
+
+Table drug_max_dosage {
+  id int [pk, increment]
+  cpnt_cd varchar(20)
+  drug_cpnt_kor_nm text
+  drug_cpnt_eng_nm text
+  foml_cd text
+  foml_nm text
+  dosage_route_code text
+  day_max_dosg_qy_unit text
+  day_max_dosg_qy text
+
+  indexes {
+    (cpnt_cd)
+  }
+}
+
+Table drug_prdt_mcpn_detail {
+  id int [pk, increment]
+  entrps_prmisn_no text
+  entrps text
+  prduct text
+  mtral_sn text
+  mtral_code varchar(20)
+  mtral_nm text
+  qnt text
+  ingd_unit_cd text
+  item_seq varchar(20)
+  main_ingr_eng text
+  bizrno text
+  cpnt_ctnt_cont text
+  tamt_seq text
+
+  indexes {
+    (item_seq)
+    (mtral_code)
+  }
+}
+
+Table drug_prdt_prmsn_detail {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  atc_code varchar(50)
+  rare_drug_yn varchar(5)
+  narcotic_kind_code varchar(100)
+  item_name text
+  entp_name text
+  item_permit_date text
+  cnsgn_manuf text
+  etc_otc_code text
+  chart text
+  bar_code text
+  material_name text
+  ee_doc_id text
+  ud_doc_id text
+  nb_doc_id text
+  insert_file text
+  storage_method text
+  valid_term text
+  reexam_target text
+  reexam_date text
+  pack_unit text
+  edi_code text
+  permit_kind_name text
+  entp_no text
+  make_material_flag text
+  newdrug_class_name text
+  induty_type text
+  cancel_date text
+  cancel_name text
+  change_date text
+  gbn_name text
+  total_content text
+  ee_doc_data text
+  ud_doc_data text
+  nb_doc_data text
+  pn_doc_data text
+  main_item_ingr text
+  ingr_name text
+  item_eng_name text
+  entp_eng_name text
+  main_ingr_eng text
+  bizrno text
+
+  indexes {
+    (item_seq)
+  }
+}
+
+Table drug_prdt_prmsn_list {
+  id int [pk, increment]
+  item_seq varchar(20)
+  item_name text
+  item_eng_name text
+  entp_name text
+  entp_eng_name text
+  entp_seq text
+  entp_no text
+  item_permit_date text
+  induty text
+  prdlst_stdr_code text
+  spclty_pblc text
+  prduct_type text
+  prduct_prmisn_no text
+  item_ingr_name text
+  item_ingr_cnt text
+  big_prdt_img_url text
+  permit_kind_code text
+  cancel_date text
+  cancel_name text
+  edi_code text
+  bizrno text
+
+  indexes {
+    (item_seq)
+  }
+}
+
+Table drugs_data {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  item_name varchar(255) [not null]
+  entp_name varchar(255)
+  efcy_qesitm text
+  use_method_qesitm text
+  atpn_warn_qesitm text
+  atpn_qesitm text
+  intrc_qesitm text
+  se_qesitm text
+  deposit_method_qesitm text
+  item_image varchar(500)
+  open_de text
+  update_de text
+  bizrno text
+
+  indexes {
+    (item_name)
+    (item_seq)
+  }
+}
+
+Table dur_cpcty_atent {
+  id int [pk, increment]
+  ingr_code varchar(20) [not null]
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  dur_seq text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix_ingr text
+  ori_ingr text
+  class_name text
+  form_name text
+  max_qty text
+  notification_date text
+  del_yn text
+
+  indexes {
+    (ingr_code)
+  }
+}
+
+Table dur_efcy_dplct {
+  id int [pk, increment]
+  ingr_code varchar(20) [not null]
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  dur_seq text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix_ingr text
+  ori_ingr text
+  class_name text
+  effect_code text
+  notification_date text
+  del_yn text
+  sers_name text
+
+  indexes {
+    (ingr_code)
+  }
+}
+
+Table dur_mdctn_pd_atent {
+  id int [pk, increment]
+  ingr_code varchar(20) [not null]
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  dur_seq text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix_ingr text
+  ori_ingr text
+  class_name text
+  form_name text
+  max_dosage_term text
+  notification_date text
+  del_yn text
+
+  indexes {
+    (ingr_code)
+  }
+}
+
+Table dur_odsn_atent {
+  id int [pk, increment]
+  ingr_code varchar(20) [not null]
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  dur_seq text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix_ingr text
+  ori_ingr text
+  form_name text
+  notification_date text
+  del_yn text
+
+  indexes {
+    (ingr_code)
+  }
+}
+
+Table dur_prod_cpcty_atent {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  ingr_code varchar(20)
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix_ingr text
+  form_name text
+  item_name text
+  item_permit_date text
+  entp_name text
+  chart text
+  class_code text
+  class_name text
+  etc_otc_name text
+  main_ingr text
+  notification_date text
+  ingr_eng_name_full text
+  change_date text
+
+  indexes {
+    (ingr_code)
+    (item_seq)
+  }
+}
+
+Table dur_prod_efcy_dplct {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  item_name text
+  ingr_code varchar(20)
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  dur_seq text
+  effect_name text
+  type_name text
+  ingr_eng_name text
+  form_code_name text
+  mix text
+  mix_ingr text
+  item_permit_date text
+  chart text
+  entp_name text
+  form_code text
+  form_name text
+  etc_otc_code text
+  etc_otc_name text
+  class_code text
+  class_name text
+  main_ingr text
+  notification_date text
+  ingr_eng_name_full text
+  change_date text
+  bizrno text
+  sers_name text
+
+  indexes {
+    (ingr_code)
+    (item_seq)
+  }
+}
+
+Table dur_prod_master_list {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  item_name text [not null]
+  entp_name varchar(255)
+  item_permit_date text
+  etc_otc_code text
+  class_no text
+  chart text
+  bar_code text
+  material_name text
+  ee_doc_id text
+  ud_doc_id text
+  nb_doc_id text
+  insert_file text
+  storage_method text
+  valid_term text
+  reexam_target text
+  reexam_date text
+  pack_unit text
+  edi_code text
+  cancel_date text
+  cancel_name text
+  type_code text
+  type_name text
+  change_date text
+  bizrno text
+
+  indexes {
+    (item_name)
+    (item_seq)
+  }
+}
+
+Table dur_prod_mdctn_pd_atent {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  ingr_code varchar(20)
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix_ingr text
+  form_name text
+  item_name text
+  item_permit_date text
+  entp_name text
+  chart text
+  class_code text
+  class_name text
+  etc_otc_name text
+  main_ingr text
+  notification_date text
+  ingr_eng_name_full text
+  change_date text
+
+  indexes {
+    (ingr_code)
+    (item_seq)
+  }
+}
+
+Table dur_prod_odsn_atent {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  ingr_code varchar(20)
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix_ingr text
+  form_name text
+  item_name text
+  item_permit_date text
+  entp_name text
+  chart text
+  class_code text
+  class_name text
+  etc_otc_name text
+  main_ingr text
+  notification_date text
+  ingr_eng_name_full text
+  change_date text
+
+  indexes {
+    (ingr_code)
+    (item_seq)
+  }
+}
+
+Table dur_prod_pwnm_taboo {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  ingr_code varchar(20)
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix_ingr text
+  form_name text
+  item_name text
+  item_permit_date text
+  entp_name text
+  chart text
+  class_code text
+  class_name text
+  etc_otc_name text
+  main_ingr text
+  notification_date text
+  ingr_eng_name_full text
+  change_date text
+
+  indexes {
+    (ingr_code)
+    (item_seq)
+  }
+}
+
+Table dur_prod_seobang_partition {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  prohbt_content text
+  remark text
+  type_name text
+  item_name text
+  item_permit_date text
+  form_code_name text
+  entp_name text
+  chart text
+  class_code text
+  class_name text
+  etc_otc_name text
+  mix text
+  main_ingr text
+  change_date text
+  bizrno text
+
+  indexes {
+    (item_seq)
+  }
+}
+
+Table dur_prod_spcify_agrde_taboo {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  ingr_code varchar(20)
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix_ingr text
+  form_name text
+  item_name text
+  item_permit_date text
+  entp_name text
+  chart text
+  class_code text
+  class_name text
+  etc_otc_name text
+  main_ingr text
+  notification_date text
+  ingr_eng_name_full text
+  change_date text
+
+  indexes {
+    (ingr_code)
+    (item_seq)
+  }
+}
+
+Table dur_prod_usjnt_taboo {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  item_name text
+  mixture_item_seq varchar(20) [not null]
+  mixture_item_name text
+  ingr_code varchar(20)
+  ingr_kor_name varchar(255)
+  mixture_ingr_code varchar(20)
+  mixture_ingr_kor_name varchar(255)
+  prohbt_content text
+  remark text
+  dur_seq text
+  type_code text
+  type_name text
+  mix text
+  ingr_eng_name text
+  mix_ingr text
+  entp_name text
+  chart text
+  form_code text
+  etc_otc_code text
+  class_code text
+  form_name text
+  etc_otc_name text
+  class_name text
+  main_ingr text
+  mixture_dur_seq text
+  mixture_mix text
+  mixture_ingr_eng_name text
+  mixture_entp_name text
+  mixture_form_code text
+  mixture_etc_otc_code text
+  mixture_class_code text
+  mixture_form_name text
+  mixture_etc_otc_name text
+  mixture_class_name text
+  mixture_main_ingr text
+  notification_date text
+  item_permit_date text
+  mixture_item_permit_date text
+  mixture_chart text
+  change_date text
+  mixture_change_date text
+  bizrno text
+
+  indexes {
+    (ingr_code)
+    (item_seq)
+    (mixture_ingr_code)
+    (mixture_item_seq)
+  }
+}
+
+Table dur_pwnm_taboo {
+  id int [pk, increment]
+  ingr_code varchar(20) [not null]
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  dur_seq text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix_ingr text
+  ori_ingr text
+  class_name text
+  form_name text
+  grade text
+  notification_date text
+  del_yn text
+
+  indexes {
+    (ingr_code)
+  }
+}
+
+Table dur_spcify_agrde_taboo {
+  id int [pk, increment]
+  ingr_code varchar(20) [not null]
+  ingr_name varchar(255)
+  prohbt_content text
+  remark text
+  dur_seq text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix_ingr text
+  ori_ingr text
+  class_name text
+  form_name text
+  notification_date text
+  del_yn text
+  age_base text
+
+  indexes {
+    (ingr_code)
+  }
+}
+
+Table dur_usjnt_taboo {
+  id int [pk, increment]
+  ingr_code varchar(20) [not null]
+  ingr_kor_name varchar(255)
+  mixture_ingr_code varchar(20) [not null]
+  mixture_ingr_kor_name varchar(255)
+  prohbt_content text
+  remark text
+  type_name text
+  mix_type text
+  ingr_eng_name text
+  mix text
+  ori text
+  class text
+  mixture_mix_type text
+  mixture_ingr_eng_name text
+  mixture_mix text
+  mixture_ori text
+  mixture_class text
+  notification_date text
+  del_yn text
+
+  indexes {
+    (ingr_code)
+    (mixture_ingr_code)
+  }
+}
+
+Table food_drug_categories {
+  id int [pk, increment]
+  category varchar(200) [not null]
+  drug_class varchar(200) [not null]
+  food_interaction text
+  alcohol_interaction text
+  source_page varchar(50)
+}
+
+Table food_drug_food_items {
+  id int [pk, increment]
+  category_id int [not null, ref: > food_drug_categories.id]
+  food_name varchar(200) [not null]
+  detail text [not null]
+  polarity varchar(20) [not null, default: 'avoid']
+
+  indexes {
+    (category_id)
+  }
+}
+
+Table food_drug_ingredients {
+  id int [pk, increment]
+  category_id int [not null, ref: > food_drug_categories.id]
+  name_ko varchar(200)
+  name_en varchar(200)
+
+  indexes {
+    (category_id)
+    (name_en)
+    (name_ko)
+  }
+}
+
+Table food_drug_sources {
+  id int [pk, increment]
+  title varchar(200)
+  publisher varchar(200)
+  published varchar(50)
+  url varchar(500)
+  note text
+  not_covered text
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table food_nutrition_cache {
+  id bigint [pk, increment]
+  query_name varchar(150) [not null, unique]
+  results json [not null]
+  created_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+  updated_at datetime [not null, default: `CURRENT_TIMESTAMP`]
+}
+
+Table item_ingredient_map {
+  id int [pk, increment]
+  item_seq varchar(20) [not null]
+  ingr_code varchar(20) [not null]
+  ingr_name varchar(255)
+  qnt varchar(50)
+  ingd_unit_cd varchar(50)
+
+  indexes {
+    (ingr_code)
+    (item_seq)
+  }
+}
+
+Table medicine_recalls {
+  id int [pk, increment]
+  item_seq varchar(20)
+  prduct text
+  entrps varchar(255)
+  rtrvl_resn text
+  recall_command_date varchar(20)
+  enfrc_yn varchar(5)
+  rtrvl_cmmnd_dt text
+  bizrno text
+  std_cd text
+  mapped_item_seq text
+
+  indexes {
+    (item_seq)
+  }
+}
+
+
+// ==================== 논리 그룹 ====================
+
+TableGroup account_auth {
+  users
+  profiles
+  issued_refresh_tokens
+  withdrawn_health_stats
+}
+
+TableGroup family {
+  family_links
+  family_invite_codes
+}
+
+TableGroup health_profile {
+  diagnosis_entries
+  disease_subtypes
+  family_history_entries
+}
+
+TableGroup medication {
+  medication_schedules
+  medication_intake_logs
+  medication_recognition_jobs
+  medication_data_cache
+}
+
+TableGroup lifelog_goal {
+  diary_entries
+  diet_logs
+  exercise_logs
+  sleep_logs
+  habit_logs
+  habit_selections
+  habit_subtype_suggestions
+  goals
+  goal_progress_logs
+  weekly_reports
+}
+
+TableGroup chat_content {
+  chat_sessions
+  chat_messages
+  health_contents
+  notices
+}
+
+TableGroup notification {
+  notification_schedules
+  notification_settings
+  notification_logs
+  push_subscriptions
+  push_send_logs
+}
+
+TableGroup ops_log {
+  admin_actions
+  error_logs
+}
+
+TableGroup drug_reference {
+  drug_bundle_info
+  drug_data_cache
+  drug_identification
+  drug_max_dosage
+  drug_prdt_mcpn_detail
+  drug_prdt_prmsn_detail
+  drug_prdt_prmsn_list
+  drugs_data
+  dur_cpcty_atent
+  dur_efcy_dplct
+  dur_mdctn_pd_atent
+  dur_odsn_atent
+  dur_prod_cpcty_atent
+  dur_prod_efcy_dplct
+  dur_prod_master_list
+  dur_prod_mdctn_pd_atent
+  dur_prod_odsn_atent
+  dur_prod_pwnm_taboo
+  dur_prod_seobang_partition
+  dur_prod_spcify_agrde_taboo
+  dur_prod_usjnt_taboo
+  dur_pwnm_taboo
+  dur_spcify_agrde_taboo
+  dur_usjnt_taboo
+  food_drug_categories
+  food_drug_food_items
+  food_drug_ingredients
+  food_drug_sources
+  food_nutrition_cache
+  item_ingredient_map
+  medicine_recalls
+}
