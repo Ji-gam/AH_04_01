@@ -243,11 +243,29 @@ class HabitService:
         pool = pick_recommendations(await self.build_full_pool(session, profile), profile.id, today)
         valid_keys = {h.key for h in pool}
         selected_keys = await self._repository.list_selected_keys(session, profile.id, today)
+
+        # 각 습관별 추천 이유 생성
+        habits_with_reasons = []
+        for h in pool:
+            # 질병 관련 습관이면 이유 표시
+            reason = None
+            if h.is_disease_related:
+                # 현재는 간단한 텍스트로 구성 (나중에 AI로 개선 가능)
+                reason = "귀하의 건강 상태에 맞게 선정되었습니다"
+
+            habits_with_reasons.append(
+                HabitRecommendationItem(
+                    key=h.key,
+                    label=h.label,
+                    icon=h.icon,
+                    unit=h.unit,
+                    target=h.target,
+                    reason=reason
+                )
+            )
+
         return HabitRecommendationsResponse(
-            habits=[
-                HabitRecommendationItem(key=h.key, label=h.label, icon=h.icon, unit=h.unit, target=h.target)
-                for h in pool
-            ],
+            habits=habits_with_reasons,
             # 세부 진단명이 새로 캐시되는 등 풀이 바뀌면 예전 선택 키가 오늘 풀엔 없을 수 있다
             # (예: cerebro_stretch로 선택해뒀는데 이후 subtype_20 습관으로 대체된 경우). 그런
             # 유령 키를 그대로 내려주면 프론트가 "선택됨"으로 상태를 만들고, 저장 시 그 키를

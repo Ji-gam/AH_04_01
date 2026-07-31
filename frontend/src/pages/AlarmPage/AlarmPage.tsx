@@ -8,6 +8,7 @@ import type { NotificationScheduleResult } from "../../api/types";
 import PageTitle from "../../components/common/PageTitle";
 import FamilyNotificationView from "../../components/family/FamilyNotificationView";
 import FamilySwitcher from "../../components/family/FamilySwitcher";
+import ConfirmModal from "../../components/ui/ConfirmModal";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 import { disableFcmWeb, enableFcmWeb } from "../../utils/fcmWeb";
@@ -74,6 +75,12 @@ export default function AlarmPage() {
   const [medSchedules, setMedSchedules] = useState<MedicationSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // (#331) 삭제 확인 모달 — 실행할 동작을 run에 담아둔다(알림 삭제 / 약 등록 삭제 공용).
+  const [pendingDelete, setPendingDelete] = useState<{
+    message: string;
+    run: () => Promise<unknown>;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const [showAddForm, setShowAddForm] = useState(false);
   // 약품검색(더보기)에서 "복약알림 등록"으로 넘어온 약 이름 — 추가 폼을 자동으로 열고 미리 채운다.
@@ -304,22 +311,41 @@ export default function AlarmPage() {
       .finally(() => setIsSaving(false));
   };
 
+  // (#331) 삭제 확인은 window.confirm(OS 대화상자) 대신 앱 디자인의 ConfirmModal로 받는다 —
+  // 같은 표에 알림 삭제와 약 삭제 버튼이 나란히 있어 둘을 같은 방식으로 맞춘다.
   const handleDelete = (schedule: NotificationScheduleResult) => {
-    if (!window.confirm(`"${schedule.medication_name}" 알림을 삭제할까요?`)) return;
-    notificationApi
-      .remove(schedule.id)
-      .then(loadSchedules)
-      .catch((e: Error) => setError(`알림 삭제에 실패했습니다. (${e.message})`));
+    setPendingDelete({
+      message: `"${schedule.medication_name}" 알림을 삭제하시겠습니까?`,
+      run: () =>
+        notificationApi
+          .remove(schedule.id)
+          .then(loadSchedules)
+          .catch((e: Error) => setError(`알림 삭제에 실패했습니다. (${e.message})`)),
+    });
   };
 
   // 트랙커(복약 관리)에서 등록한 약은 원래 여기서 지울 방법이 없었다(토글/시간수정만 있고
   // 삭제가 아예 빠져있었음 - 본인이 직접 등록했든 가족이 등록해줬든 동일). 알림(row.alarm)에
   // 이미 있는 것과 같은 패턴으로 추가한다 - 약 등록 자체(모든 시각)를 지운다.
   const handleDeleteMed = (med: MedicationSchedule) => {
-    if (!window.confirm(`"${med.drug_name}" 등록을 삭제할까요?`)) return;
-    apiFetchRaw(`/medications/${med.id}`, { method: "DELETE" })
-      .then(loadSchedules)
-      .catch((e: Error) => setError(`약 삭제에 실패했습니다. (${e.message})`));
+    setPendingDelete({
+      message: `"${med.drug_name}" 등록을 삭제하시겠습니까?`,
+      run: () =>
+        apiFetchRaw(`/medications/${med.id}`, { method: "DELETE" })
+          .then(loadSchedules)
+          .catch((e: Error) => setError(`약 삭제에 실패했습니다. (${e.message})`)),
+    });
+  };
+
+  const runPendingDelete = async () => {
+    if (!pendingDelete || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      await pendingDelete.run();
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
+    }
   };
 
   const doseCounts = buildDoseCounts(schedules);
@@ -432,7 +458,7 @@ export default function AlarmPage() {
             marginBottom: 20,
           }}
         >
-          <PageTitle icon={Calendar}>복약스케쥴</PageTitle>
+          <PageTitle icon={Calendar}>복약스케줄</PageTitle>
           <div style={{ display: "flex", gap: 8 }}>
             <FamilySwitcher
               selectedProfileId={null}
@@ -532,6 +558,17 @@ export default function AlarmPage() {
               끄기
             </button>
           </div>
+        )}
+
+        {pendingDelete && (
+          <ConfirmModal
+            message={pendingDelete.message}
+            isBusy={isDeleting}
+            onConfirm={runPendingDelete}
+            onCancel={() => {
+              if (!isDeleting) setPendingDelete(null);
+            }}
+          />
         )}
 
         {showAddForm && (

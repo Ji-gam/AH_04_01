@@ -13,6 +13,7 @@ import Modal from "../../pages/AlarmPage/components/Modal";
 import ToggleSwitch from "../../pages/AlarmPage/components/ToggleSwitch";
 import { toDateString } from "../../pages/AlarmPage/dateUtils";
 import { pinkTheme as t } from "../../theme/pinkTheme";
+import ConfirmModal from "../ui/ConfirmModal";
 import TimeInputField from "../ui/TimeInputField";
 
 interface RegisteredRow {
@@ -35,6 +36,12 @@ export default function FamilyNotificationView({
   const [medSchedules, setMedSchedules] = useState<FamilyMedicationScheduleItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // (#331) 삭제 확인 모달 — 실행할 동작을 run에 담아둔다(알림 삭제 / 약 등록 삭제 공용).
+  const [pendingDelete, setPendingDelete] = useState<{
+    message: string;
+    run: () => Promise<void>;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const today = new Date();
   const [year, setYear] = useState(today.getFullYear());
@@ -109,23 +116,38 @@ export default function FamilyNotificationView({
     }
   }
 
-  async function handleDelete(schedule: NotificationScheduleResult) {
-    if (!window.confirm(`"${schedule.medication_name}" 알림을 삭제할까요?`)) return;
-    try {
-      await familyNotificationApi.remove(schedule.id);
-      await load();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : "삭제에 실패했습니다.");
-    }
+  // (#331) 삭제 확인은 window.confirm(OS 대화상자) 대신 앱 디자인의 ConfirmModal로 받는다 —
+  // 같은 표에 알림 삭제와 약 삭제 버튼이 나란히 있어 둘을 같은 방식으로 맞춘다.
+  function handleDelete(schedule: NotificationScheduleResult) {
+    setPendingDelete({
+      message: `"${schedule.medication_name}" 알림을 삭제하시겠습니까?`,
+      run: async () => {
+        await familyNotificationApi.remove(schedule.id);
+        await load();
+      },
+    });
   }
 
-  async function handleDeleteMed(med: FamilyMedicationScheduleItem) {
-    if (!window.confirm(`"${med.drug_name}" 등록을 삭제할까요?`)) return;
+  function handleDeleteMed(med: FamilyMedicationScheduleItem) {
+    setPendingDelete({
+      message: `"${med.drug_name}" 등록을 삭제하시겠습니까?`,
+      run: async () => {
+        await familyMedicationApi.deleteForFamily(med.id);
+        await load();
+      },
+    });
+  }
+
+  async function runPendingDelete() {
+    if (!pendingDelete || isDeleting) return;
+    setIsDeleting(true);
     try {
-      await familyMedicationApi.deleteForFamily(med.id);
-      await load();
+      await pendingDelete.run();
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "삭제에 실패했습니다.");
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
     }
   }
 
@@ -274,6 +296,17 @@ export default function FamilyNotificationView({
             {isSaving ? "등록 중..." : "등록"}
           </button>
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmModal
+          message={pendingDelete.message}
+          isBusy={isDeleting}
+          onConfirm={runPendingDelete}
+          onCancel={() => {
+            if (!isDeleting) setPendingDelete(null);
+          }}
+        />
       )}
 
       {editingAlarm && (
