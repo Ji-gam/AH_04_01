@@ -10,7 +10,6 @@ from app.core import config
 from app.core.config import Env
 from app.core.db.databases import AsyncSessionLocal
 from app.repositories.error_log_repository import ErrorLogRepository
-
 from app.scripts.seed_local_super_admin import seed_local_super_admin
 from app.services import medication_open_api_client
 from app.services.medication_service import refresh_food_drug_interaction_cache

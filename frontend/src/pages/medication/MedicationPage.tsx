@@ -2412,7 +2412,6 @@ export default function MedicationPage() {
           </div>
         </Modal>
       )}
-
     </div>
   );
 }
