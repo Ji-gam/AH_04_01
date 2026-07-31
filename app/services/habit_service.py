@@ -243,7 +243,11 @@ def _pick_with_multiple_diseases(
             result.extend(extra)
             selected_labels.update(h.label for h in extra)
     seen_labels: set[str] = set()
-    deduped_result = [h for h in result if not (h.label in seen_labels or seen_labels.add(h.label))]
+    deduped_result = []
+    for h in result:
+        if h.label not in seen_labels:
+            deduped_result.append(h)
+            seen_labels.add(h.label)
     if len(deduped_result) < MAX_RECOMMENDATIONS:
         unused_habits = [h for dh_list in habits_by_disease.values() for h in dh_list if h.label not in seen_labels]
         for h in unused_habits:
