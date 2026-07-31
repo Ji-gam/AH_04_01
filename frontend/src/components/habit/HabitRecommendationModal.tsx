@@ -122,9 +122,17 @@ export default function HabitRecommendationModal({
                     <strong style={{ display: "block", fontSize: 14, color: t.text }}>
                       {habit.label}
                     </strong>
-                    <span style={{ fontSize: 12, color: t.textMuted }}>
-                      목표 {habit.target}
-                      {habit.unit}
+                    <span style={{ fontSize: 12, color: t.textMuted, lineHeight: 1.4 }}>
+                      {habit.reason ? (
+                        <>
+                          <div>💡 {habit.reason}</div>
+                          <div>목표 {habit.target}
+                      {habit.unit}</div>
+                        </>
+                      ) : (
+                        <>목표 {habit.target}
+                      {habit.unit}</>
+                      )}
                     </span>
                   </span>
                 </button>

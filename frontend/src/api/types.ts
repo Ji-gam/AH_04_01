@@ -286,6 +286,7 @@ export interface HabitRecommendationItemResult {
   icon: string;
   unit: string;
   target: number;
+  reason?: string; // "왜 추천했는지" 설명 (예: "당뇨병 관리에 도움이 됩니다")
 }
 
 export interface HabitRecommendationsResult {

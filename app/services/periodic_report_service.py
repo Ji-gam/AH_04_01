@@ -133,5 +133,5 @@ class PeriodicReportService:
         if not lines:
             return
         await self._push_service.send_to_profile(
-            session, profile_id, title="🗓️ 이번 달 달성 리포트", body="\n".join(lines), link_url="/habit-selection"
+            session, profile_id, title="🗓️ 이번 달 달성 리포트", body="\n".join(lines), link_url="/weekly-reports"
         )
