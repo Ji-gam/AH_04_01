@@ -263,3 +263,12 @@ class CollectNewsResponse(BaseModel):
     skipped: int = Field(description="이미 있어서 건너뛴 수")
     summaries_generated: int = Field(description="카드요약을 새로 만든 수")
     summaries_failed: int = Field(description="카드요약 생성에 실패한 수(다음 수집에서 재시도된다)")
+    summaries_error: str | None = Field(
+        None,
+        description=(
+            "카드요약이 실패한 첫 원인 한 줄(예외 종류 + 메시지, 최대 300자). 실패가 없으면 null. "
+            "예외 종류만으로 원인이 갈린다 - AIWorkerUnavailableError면 ai_worker 호출 자체가 "
+            "실패한 것이고, ValidationError면 호출은 됐지만 LLM 출력이 스키마에 못 미친 것이다. "
+            "관리자 전용 응답이며 전체 트레이스백은 서버 로그에만 남는다."
+        ),
+    )
