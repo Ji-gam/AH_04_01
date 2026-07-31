@@ -12,6 +12,7 @@
 
 실행: uv run python -m app.scripts.collect_health_news
       uv run python -m app.scripts.collect_health_news --skip-summary   # 수집만
+      uv run python -m app.scripts.collect_health_news --regenerate-summaries  # 수집 없이 요약만 전체 재생성
 """
 
 import argparse
@@ -32,6 +33,14 @@ async def collect_health_news(*, with_summary: bool = True) -> tuple[CollectResu
     return collected, summarized
 
 
+async def regenerate_card_summaries() -> SummaryResult:
+    """수집 없이 **모든** 기사의 카드요약만 다시 만든다. 관리자 화면의
+    [카드요약 다시 만들기] 버튼과 같은 일을 한다 - 프롬프트나 글자 수 제한을 손질한 뒤
+    기존 기사에도 새 기준을 적용할 때 쓴다."""
+    async with AsyncSessionLocal() as session:
+        return await HealthNewsService().regenerate_card_summaries(session)
+
+
 async def _main() -> None:
     parser = argparse.ArgumentParser(description="건강 뉴스 수집 + 카드요약 생성")
     parser.add_argument(
@@ -39,7 +48,22 @@ async def _main() -> None:
         action="store_true",
         help="수집만 하고 카드요약은 만들지 않는다(LLM 비용 없이 수집만 확인할 때)",
     )
+    parser.add_argument(
+        "--regenerate-summaries",
+        action="store_true",
+        help="수집하지 않고, 저장된 모든 기사의 카드요약을 다시 만든다(프롬프트를 손질한 뒤에 쓴다)",
+    )
     args = parser.parse_args()
+
+    if args.regenerate_summaries:
+        regenerated = await regenerate_card_summaries()
+        print(
+            f"[카드요약 재생성] 기사 {regenerated.pending}건 중 "
+            f"{regenerated.generated}건 다시 생성, {regenerated.failed}건 실패(기존 요약 유지)"
+        )
+        if regenerated.first_error:
+            print(f"[실패 원인] {regenerated.first_error}")
+        return
 
     collected, summarized = await collect_health_news(with_summary=not args.skip_summary)
     print(

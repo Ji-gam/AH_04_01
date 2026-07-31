@@ -119,10 +119,30 @@ class HealthNewsService:
         그날 수집분이 통째로 요약 없는 상태가 된다. 실패한 기사는 `card_summary`가 그대로
         비어 있으므로 다음 실행에서 자동으로 다시 시도된다."""
         pending = await self._repo.list_missing_card_summary(session, limit=limit)
+        return await self._fill_card_summaries(session, pending)
+
+    async def regenerate_card_summaries(self, session: AsyncSession, limit: int | None = None) -> SummaryResult:
+        """**모든** 기사의 카드요약을 다시 만든다. 관리자 [카드요약 다시 만들기] 버튼.
+
+        프롬프트나 글자 수 제한을 손질하면 기존 기사에도 새 기준을 적용해야 하는데, 평소
+        배치는 요약이 비어 있는 기사만 고르기 때문에(`list_missing_card_summary`) 이미 있는
+        기사는 영원히 옛 기준으로 남는다.
+
+        **기존 요약을 먼저 지우지 않는다.** 새로 만들기를 시도하고 성공한 것만 덮어쓴다 -
+        먼저 비우면 LLM이 중간에 실패했을 때 쓸 만했던 요약까지 잃는다."""
+        targets = await self._repo.list_all_for_card_summary(session, limit=limit)
+        return await self._fill_card_summaries(session, targets)
+
+    async def _fill_card_summaries(self, session: AsyncSession, targets: list[HealthNews]) -> SummaryResult:
+        """받은 기사들의 카드요약을 만들어 채운다. 신규 생성과 재생성이 공유한다.
+
+        기사 한 건이 실패해도 나머지는 계속 처리한다 - 한 건의 LLM 오류로 배치 전체가 멈추면
+        그날 수집분이 통째로 요약 없는 상태가 된다. 실패한 기사는 기존 값이 그대로 남으므로
+        (신규라면 비어 있는 상태) 다음 실행에서 자동으로 다시 시도된다."""
         generated = 0
         failed = 0
         first_error: str | None = None
-        for news in pending:
+        for news in targets:
             try:
                 summary = await health_news_card_summary.generate_card_summary(news)
             except Exception as e:
@@ -136,7 +156,7 @@ class HealthNewsService:
                 continue
             await self._repo.set_card_summary(session, news, summary.model_dump())
             generated += 1
-        return SummaryResult(pending=len(pending), generated=generated, failed=failed, first_error=first_error)
+        return SummaryResult(pending=len(targets), generated=generated, failed=failed, first_error=first_error)
 
     # ── 조회 ──────────────────────────────────────────────────────────────────
 

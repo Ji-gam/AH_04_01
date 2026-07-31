@@ -1,5 +1,10 @@
 import { apiFetch, apiFetchRaw } from "./client";
-import type { AdminHealthNewsResult, CollectNewsResult, HealthNewsUpdatePayload } from "./types";
+import type {
+  AdminHealthNewsResult,
+  CollectNewsResult,
+  HealthNewsUpdatePayload,
+  RegenerateCardSummariesResult,
+} from "./types";
 
 export interface AdminUserResult {
   id: number;
@@ -80,7 +85,12 @@ export interface AdminNoticeUpdatePayload {
 
 // T-LLM-6 관리자 뉴스 관리. 타입은 frontend/src/api/types.ts에 두고 여기서 재수출한다 —
 // 사용자 화면(healthNewsApi)과 같은 백엔드 DTO를 보므로 한 곳에서 관리한다.
-export type { AdminHealthNewsResult, CollectNewsResult, HealthNewsUpdatePayload } from "./types";
+export type {
+  AdminHealthNewsResult,
+  CollectNewsResult,
+  HealthNewsUpdatePayload,
+  RegenerateCardSummariesResult,
+} from "./types";
 
 export const adminApi = {
   listUsers: (search?: string) =>
@@ -107,6 +117,12 @@ export const adminApi = {
   // T-LLM-6: 주기 자동 수집(Celery)이 붙기 전까지 이 버튼이 유일한 수집 트리거다.
   // 여러 번 눌러도 안전하다(이미 저장된 기사는 건너뛴다).
   collectNews: () => apiFetch<CollectNewsResult>("/admin/news/collect", { method: "POST" }),
+  // 프롬프트나 글자 수 제한을 손질한 뒤 기존 기사에도 새 기준을 적용할 때 쓴다. 수집 배치는
+  // 요약이 비어 있는 기사만 고르기 때문에 이 버튼이 없으면 옛 요약이 영원히 남는다.
+  regenerateCardSummaries: () =>
+    apiFetch<RegenerateCardSummariesResult>("/admin/news/card-summaries/regenerate", {
+      method: "POST",
+    }),
   listNews: (limit = 100) => apiFetch<AdminHealthNewsResult[]>(`/admin/news?limit=${limit}`),
   updateNews: (newsId: number, data: HealthNewsUpdatePayload) =>
     apiFetch<AdminHealthNewsResult>(`/admin/news/${newsId}`, {

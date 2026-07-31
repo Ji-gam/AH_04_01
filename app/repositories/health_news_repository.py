@@ -45,6 +45,15 @@ class HealthNewsRepository:
         result = await session.execute(query)
         return list(result.scalars().all())
 
+    async def list_all_for_card_summary(self, session: AsyncSession, limit: int | None = None) -> list[HealthNews]:
+        """요약이 이미 있든 없든 전체 기사. 관리자 [카드요약 다시 만들기]가 쓴다 - 프롬프트나
+        글자 수 제한을 손질한 뒤 기존 기사에도 새 기준을 적용하려면 전체를 다시 돌려야 한다."""
+        query = select(HealthNews).order_by(HealthNews.published_at.desc())
+        if limit is not None:
+            query = query.limit(limit)
+        result = await session.execute(query)
+        return list(result.scalars().all())
+
     async def set_card_summary(
         self, session: AsyncSession, news: HealthNews, card_summary: dict[str, Any]
     ) -> HealthNews:

@@ -47,6 +47,39 @@ def test_overlong_text_is_clipped_not_rejected() -> None:
     assert len(slide.text) == TEXT_MAX
 
 
+def test_overlong_text_is_cut_at_a_sentence_boundary() -> None:
+    """(2026-07-31) 설명문을 3~5줄로 늘린 뒤 실측했더니 24장 중 4장이 문장 중간에서 잘렸다
+    ("이는 치료 지연의 위험을 내포"). LLM이 목표 길이를 조금 넘겨 쓰는 건 프롬프트로 완전히
+    막을 수 없으므로, 잘리더라도 문장으로 끝나는 것을 구조로 보장한다."""
+    first = "가" * 70 + "."
+    overflow = "이는 뒤에 붙어서 잘려야 하는 문장입니다" * 3
+    slide = CardSlide.model_validate(_slide(text=first + " " + overflow))
+
+    assert slide.text == first
+    assert slide.text.endswith(".")
+
+
+def test_text_is_plainly_clipped_when_no_sentence_end_is_late_enough() -> None:
+    """첫 문장이 너무 앞에서 끝나면 그 자리에서 자르면 내용이 크게 사라진다 - 그럴 때는
+    기존처럼 그냥 자른다(한계의 절반 기준)."""
+    text = "짧다. " + "가" * (TEXT_MAX + 30)
+    slide = CardSlide.model_validate(_slide(text=text))
+
+    assert len(slide.text) <= TEXT_MAX
+    assert not slide.text.endswith("짧다.")
+
+
+def test_text_limit_allows_three_to_five_lines() -> None:
+    """카드 폭 315px / 폰트 14px에서 한 줄이 약 20자다. 3~5줄을 담으려면 60~110자가 필요한데,
+    예전 제한(60자)은 2줄에서 잘렸다. 누가 다시 낮추면 이 테스트가 잡는다."""
+    assert TEXT_MAX >= 100
+
+    five_lines = "가" * 100
+    slide = CardSlide.model_validate(_slide(text=five_lines))
+
+    assert slide.text == five_lines
+
+
 def test_overlong_tag_and_stat_are_clipped() -> None:
     slide = CardSlide.model_validate(_slide(tag="가" * (TAG_MAX + 5), stat="9" * (STAT_MAX + 5)))
 
