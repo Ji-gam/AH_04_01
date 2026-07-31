@@ -29,6 +29,56 @@ export default function HabitRecommendationModal({
   onSave,
   onClose,
 }: Props) {
+  // 로딩 화면
+  if (loading) {
+    return (
+      <Modal onClose={onClose}>
+        <div
+          style={{
+            background: t.cardBg,
+            border: `1px solid ${t.border}`,
+            borderRadius: 16,
+            padding: 40,
+            boxShadow: "0 2px 10px rgba(255, 111, 145, 0.1)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: 300,
+            gap: 20,
+          }}
+        >
+          {/* 스피너 애니메이션 */}
+          <div
+            style={{
+              width: 50,
+              height: 50,
+              border: `3px solid ${t.primarySoft}`,
+              borderTop: `3px solid ${t.primary}`,
+              borderRadius: "50%",
+              animation: "spin 1s linear infinite",
+            }}
+          />
+          {/* 텍스트 */}
+          <div style={{ textAlign: "center" }}>
+            <p style={{ margin: 0, fontSize: 16, fontWeight: 600, color: t.text }}>
+              습관을 분석 중입니다...
+            </p>
+            <p style={{ margin: "8px 0 0", fontSize: 13, color: t.textMuted }}>
+              당신의 건강 상태에 맞춘 습관을 추천하고 있습니다
+            </p>
+          </div>
+          {/* CSS 애니메이션 */}
+          <style>{`
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }
+          `}</style>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal onClose={onClose}>
       <div

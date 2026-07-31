@@ -55,7 +55,8 @@ class PeriodicReportService:
         """선택된(습관 선택) 항목 중 그 날짜 진행량이 목표치 이상이면 완료로 센다. 습관 키가
         나중에 바뀌어(예: 세부 진단명 재생성) 지금 카탈로그에 없으면 그 선택은 집계에서
         제외한다 - habit_service.get_recommendations의 "유령 키" 처리와 같은 이유다."""
-        target_by_key = {h.key: h.target for h in await self._habit_service.build_full_pool(session, profile)}
+        full_pool, _ = await self._habit_service.build_full_pool(session, profile)
+        target_by_key = {h.key: h.target for h in full_pool}
         selections = await self._habit_repo.list_selections_for_range(session, profile.id, start, end)
         selections = [s for s in selections if s.habit_key in target_by_key]
         if not selections:
