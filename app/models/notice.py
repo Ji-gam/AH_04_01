@@ -1,5 +1,5 @@
-import enum
 from datetime import datetime
+from enum import StrEnum
 
 from sqlalchemy import BigInteger, DateTime, Enum, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import Base
 
 
-class NoticeKind(str, enum.Enum):
+class NoticeKind(StrEnum):
     NOTICE = "NOTICE"
     MARKETING = "MARKETING"
 
