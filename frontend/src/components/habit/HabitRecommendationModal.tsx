@@ -126,12 +126,16 @@ export default function HabitRecommendationModal({
                       {habit.reason ? (
                         <>
                           <div>💡 {habit.reason}</div>
-                          <div>목표 {habit.target}
-                      {habit.unit}</div>
+                          <div>
+                            목표 {habit.target}
+                            {habit.unit}
+                          </div>
                         </>
                       ) : (
-                        <>목표 {habit.target}
-                      {habit.unit}</>
+                        <>
+                          목표 {habit.target}
+                          {habit.unit}
+                        </>
                       )}
                     </span>
                   </span>
