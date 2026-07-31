@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass
 from datetime import date
-from typing import cast
+from typing import TypedDict, cast
 
 from fastapi import HTTPException, status
 from pydantic import BaseModel
@@ -42,6 +42,15 @@ class HabitDef:
     # 진단병력에서 나온 맞춤 습관인지 - pick_recommendations()가 이 값으로 질병 관련 습관을
     # 우선 채운다(일반 라이프스타일 습관보다 먼저 보여줘야 한다는 요청, 2026-07-29).
     is_disease_related: bool = False
+
+
+class SanitizedHabit(TypedDict):
+    """AI로 생성된 습관의 정규화된 데이터."""
+
+    label: str
+    icon: str
+    unit: str
+    target: int
 
 
 # 등록 여부와 무관하게 누구에게나 뜨는 기본 세트(디자인 시안 반영, 8개). 진단명을 적게(또는
@@ -364,7 +373,7 @@ class HabitService:
                 schema=SubtypeHabitSuggestionBatch,
             )
             result = cast(SubtypeHabitSuggestionBatch, raw_result)
-            sanitized: list[dict[str, str | int]] = [
+            sanitized: list[SanitizedHabit] = [
                 {
                     "label": str(habit.label.strip()[:50] or "오늘 컨디션 체크하기"),
                     "icon": str((habit.icon.strip() or "📝")[:10]),
