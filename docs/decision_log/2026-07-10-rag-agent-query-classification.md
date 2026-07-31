@@ -67,7 +67,7 @@ Agentic RAG 아키텍처 사례를 조사한 결과, 이 문제에 정확히 대
 
 ```python
 class QueryClassification(BaseModel):
-    disease: str | None       # 언급된 질환의 표준 명칭 (관용구는 null)
+    disease: str | None  # 언급된 질환의 표준 명칭 (관용구는 null)
     is_information_request: bool  # 정보/확인을 원하는 질문인지
 ```
 

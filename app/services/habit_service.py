@@ -217,9 +217,7 @@ def _rotate(items: list[HabitDef], profile_id: int, today: date, count: int) -> 
     return [items[(start + i) % len(items)] for i in range(count)]
 
 
-def _pick_with_single_disease(
-    disease_habits: list[HabitDef], profile_id: int, today: date
-) -> list[HabitDef]:
+def _pick_with_single_disease(disease_habits: list[HabitDef], profile_id: int, today: date) -> list[HabitDef]:
     if len(disease_habits) >= MAX_RECOMMENDATIONS:
         return _rotate(disease_habits, profile_id, today, MAX_RECOMMENDATIONS)
     return disease_habits[:MAX_RECOMMENDATIONS]
@@ -301,7 +299,9 @@ class HabitService:
         self._gateway = gateway or AIWorkerGateway()
         self._push_service = push_service or PushService()
 
-    async def build_full_pool(self, session: AsyncSession, profile: Profile) -> tuple[list[HabitDef], dict[str, Disease]]:
+    async def build_full_pool(
+        self, session: AsyncSession, profile: Profile
+    ) -> tuple[list[HabitDef], dict[str, Disease]]:
         """가능한 전체 습관 후보 생성 로직.
 
         [설계]
@@ -484,7 +484,9 @@ class HabitService:
         if profile.diagnosis_entries:
             print(f"\n=== 진단 정보 (프로필 {profile.id}) ===")
             for entry in profile.diagnosis_entries:
-                print(f"- 질병: {entry.disease.value}, 세부: {entry.disease_subtype.name if entry.disease_subtype else 'None'}, 상세: {entry.detail}")
+                print(
+                    f"- 질병: {entry.disease.value}, 세부: {entry.disease_subtype.name if entry.disease_subtype else 'None'}, 상세: {entry.detail}"
+                )
             print(f"총 {len(profile.diagnosis_entries)}개 진단\n")
 
         full_pool, habit_to_disease = await self.build_full_pool(session, profile)
@@ -585,7 +587,14 @@ class HabitService:
         handler = handlers.get(disease)
         if handler:
             return handler(habit_label)
-        disease_names = {Disease.DIABETES: "당뇨병", Disease.HEART_DISEASE: "심장질환", Disease.CEREBROVASCULAR_DISEASE: "뇌혈관질환", Disease.LIVER_DISEASE: "간질환", Disease.CANCER: "암", Disease.OTHER: "질환"}
+        disease_names = {
+            Disease.DIABETES: "당뇨병",
+            Disease.HEART_DISEASE: "심장질환",
+            Disease.CEREBROVASCULAR_DISEASE: "뇌혈관질환",
+            Disease.LIVER_DISEASE: "간질환",
+            Disease.CANCER: "암",
+            Disease.OTHER: "질환",
+        }
         return f"{disease_names.get(disease, str(disease))} 관리에 도움이 됩니다"
 
     def _get_diabetes_reason(self, habit_label: str) -> str:

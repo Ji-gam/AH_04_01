@@ -43,15 +43,16 @@ class FoodItem(BaseModel):
     name: str
     detail: str
 
+
 class ExtractionResult(BaseModel):
     items: list[FoodItem]
 
+
 result = await gateway.call_structured(
     system_prompt=(
-        "아래 원문에 실제로 언급된 음식/음료만 찾아 나열하라. "
-        "원문에 없는 내용은 추가하지 마라(동의어는 하나로 묶어라)."
+        "아래 원문에 실제로 언급된 음식/음료만 찾아 나열하라. 원문에 없는 내용은 추가하지 마라(동의어는 하나로 묶어라)."
     ),
-    user_input=원문_텍스트,       # 이미 갖고 있는 텍스트
+    user_input=원문_텍스트,  # 이미 갖고 있는 텍스트
     schema=ExtractionResult,
 )
 ```
@@ -62,17 +63,18 @@ result = await gateway.call_structured(
 근거로 삼아 `call_structured()`(또는 자유 텍스트가 필요하면 스트리밍 LLM 호출)에 넘긴다.
 
 ```python
-chunks = await gateway.search("졸피뎀 임부 관련 주의사항")   # 1) 근거부터 찾는다
+chunks = await gateway.search("졸피뎀 임부 관련 주의사항")  # 1) 근거부터 찾는다
 context_text = "\n".join(c["content"] for c in chunks)
+
 
 class Answer(BaseModel):
     summary: str
     sources: list[str]
 
-result = await gateway.call_structured(                     # 2) 그 근거만 갖고 답하게 한다
+
+result = await gateway.call_structured(  # 2) 그 근거만 갖고 답하게 한다
     system_prompt=(
-        f"아래 근거 자료만 바탕으로 답하라. 근거에 없으면 '자료 없음'이라고 답하라.\n"
-        f"근거 자료:\n{context_text}"
+        f"아래 근거 자료만 바탕으로 답하라. 근거에 없으면 '자료 없음'이라고 답하라.\n근거 자료:\n{context_text}"
     ),
     user_input="졸피뎀을 임신 중에 먹어도 되나요?",
     schema=Answer,

@@ -153,19 +153,19 @@ class HealthNews(Base):
         # 같은 기사를 다시 수집해도 중복으로 쌓이지 않게 하는 유일한 열쇠.
         UniqueConstraint("source", "source_url", name="uq_health_news_source_url"),
     )
-    id:           Mapped[int]             # BigInteger, PK
-    source:       Mapped[str]             # String(50)  "KORMEDI" 등 출처 코드
-    source_name:  Mapped[str]             # String(100) 화면에 보일 출처명 "코메디닷컴"
-    source_url:   Mapped[str]             # String(500) 원문 링크
-    title:        Mapped[str]             # String(300)
-    published_at: Mapped[datetime]        # 기사 발행일 — 피드 정렬 기준 (index)
-    body_text:    Mapped[str]             # Text, 본문 평문(단락 구분 "\n\n")
-    image_url:    Mapped[str | None]      # String(500) 대표 이미지, 없을 수 있음
-    image_caption: Mapped[str | None]     # String(500) 사진 설명(<figcaption>)
-    disease_code: Mapped[str | None]      # String(50)  2단계에서 채움. 1단계는 NULL
-    source_categories: Mapped[list | None] # JSON, RSS <category> 목록 — 2단계 태깅 힌트
-    card_summary: Mapped[dict | None]     # JSON, 카드뉴스 슬라이드 배열
-    fetched_at:   Mapped[datetime]        # 수집 시각
+    id: Mapped[int]  # BigInteger, PK
+    source: Mapped[str]  # String(50)  "KORMEDI" 등 출처 코드
+    source_name: Mapped[str]  # String(100) 화면에 보일 출처명 "코메디닷컴"
+    source_url: Mapped[str]  # String(500) 원문 링크
+    title: Mapped[str]  # String(300)
+    published_at: Mapped[datetime]  # 기사 발행일 — 피드 정렬 기준 (index)
+    body_text: Mapped[str]  # Text, 본문 평문(단락 구분 "\n\n")
+    image_url: Mapped[str | None]  # String(500) 대표 이미지, 없을 수 있음
+    image_caption: Mapped[str | None]  # String(500) 사진 설명(<figcaption>)
+    disease_code: Mapped[str | None]  # String(50)  2단계에서 채움. 1단계는 NULL
+    source_categories: Mapped[list | None]  # JSON, RSS <category> 목록 — 2단계 태깅 힌트
+    card_summary: Mapped[dict | None]  # JSON, 카드뉴스 슬라이드 배열
+    fetched_at: Mapped[datetime]  # 수집 시각
 ```
 
 #### 구현 중 바꾼 설계 3건 (2026-07-30, 실제 피드를 파싱해보고 결정)
