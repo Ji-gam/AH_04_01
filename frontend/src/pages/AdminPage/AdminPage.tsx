@@ -11,6 +11,7 @@ import {
   type AdminOpsStatsResult,
   type AdminStatsResult,
   type AdminUserResult,
+  type CardSummaryBatchResult,
 } from "../../api/adminApi";
 import { noticeApi } from "../../api/noticeApi";
 import { useAuth } from "../../hooks/useAuth";
@@ -493,29 +494,79 @@ export default function AdminPage() {
   // T-LLM-6: [뉴스 수집] 트리거. 주기 자동 수집(Celery worker/beat)이 붙기 전까지 이 버튼이
   // 유일한 수집 경로다. 여러 번 눌러도 안전하다 - 이미 저장된 기사는 건너뛰고, 이미 요약이
   // 있으면 LLM을 다시 부르지 않는다.
+  /**
+   * 카드요약 배치를 남은 게 없어질 때까지 이어서 부른다.
+   *
+   * 왜 나눠 부르나: 요약은 기사 1건당 4~5초라 한 요청에서 다 하면 게이트웨이가 먼저 끊는다
+   * (2026-07-31 실제로 504를 맞았다 - 서버는 끝까지 처리했는데 화면만 실패로 보였다).
+   * 서버가 한 번에 몇 건만 처리하고 남은 수를 알려주므로, 여기서 0이 될 때까지 반복하면서
+   * 진행률을 보여준다. 기사가 몇 백 건이어도 안 터진다.
+   *
+   * `runBatch`는 offset을 받아 배치 하나를 처리한다(요약 채우기는 offset을 쓰지 않는다).
+   */
+  async function runCardSummaryBatches(
+    runBatch: (offset: number) => Promise<CardSummaryBatchResult>,
+    describe: (done: number, total: number) => string,
+  ) {
+    let offset = 0;
+    let generated = 0;
+    let failed = 0;
+    let firstError: string | null = null;
+    let stalledWith = 0;
+
+    for (;;) {
+      const batch = await runBatch(offset);
+      generated += batch.generated;
+      failed += batch.failed;
+      if (firstError === null) firstError = batch.error;
+      offset = batch.next_offset;
+
+      const done = generated + failed;
+      setContentMessage(describe(done, done + batch.remaining));
+
+      if (batch.remaining === 0) break;
+      // 남았는데 한 건도 못 만들었다 - 이어 불러도 같은 기사가 계속 실패한다(무한 반복 방지).
+      if (batch.generated === 0) {
+        stalledWith = batch.remaining;
+        break;
+      }
+    }
+    return { generated, failed, firstError, stalledWith };
+  }
+
   async function handleCollectNews() {
     setContentGenerating(true);
     setContentMessage(null);
     setContentError(null);
     try {
-      const result = await adminApi.collectNews();
-      setContentMessage(
-        `기사 ${result.created}건 새로 저장 (건강정보 아님 ${result.excluded}건 제외, ` +
-          `이미 있음 ${result.skipped}건, 매체당 상한으로 미룸 ${result.over_limit}건` +
-          // 본문 추출 실패는 0이 정상이라 0일 때는 아예 안 보여준다 - 늘 0인 숫자가 붙어
-          // 있으면 눈에 익어서, 정작 1이 됐을 때 알아채지 못한다.
-          (result.unreadable > 0 ? `, 본문 못 읽음 ${result.unreadable}건` : "") +
-          `) · 카드요약 ${result.summaries_generated}건 생성` +
-          (result.summaries_failed > 0
-            ? ` (${result.summaries_failed}건 실패 - 다음 수집에서 재시도돼요)`
-            : ""),
+      const collected = await adminApi.collectNews();
+      const collectedText =
+        `기사 ${collected.created}건 새로 저장 (건강정보 아님 ${collected.excluded}건 제외, ` +
+        `이미 있음 ${collected.skipped}건, 매체당 상한으로 미룸 ${collected.over_limit}건` +
+        // 본문 추출 실패는 0이 정상이라 0일 때는 아예 안 보여준다 - 늘 0인 숫자가 붙어
+        // 있으면 눈에 익어서, 정작 1이 됐을 때 알아채지 못한다.
+        (collected.unreadable > 0 ? `, 본문 못 읽음 ${collected.unreadable}건` : "") +
+        ")";
+      setContentMessage(`${collectedText} · 카드요약 만드는 중...`);
+      await loadNews();
+
+      const summaries = await runCardSummaryBatches(
+        () => adminApi.fillCardSummaries(),
+        (done, total) => `${collectedText} · 카드요약 ${done}/${total}건 만드는 중...`,
       );
+      setContentMessage(
+        `${collectedText} · 카드요약 ${summaries.generated}건 생성` +
+          (summaries.failed > 0 ? ` (${summaries.failed}건 실패 - 다음 수집에서 재시도돼요)` : ""),
+      );
+
       // 실패 원인을 화면에 띄운다. 전에는 로그에만 남아서, EC2에 접속할 수 있는 사람 없이는
       // "몇 건 실패"의 이유를 알 수 없었다. 이 문구는 활동 로그에도 함께 남는다.
       // 수집 실패(매체 하나가 통째로 죽음)와 요약 실패는 원인이 전혀 다르므로 따로 보여준다.
       const reasons = [
-        result.collect_error && `수집 실패 원인: ${result.collect_error}`,
-        result.summaries_error && `카드요약 실패 원인: ${result.summaries_error}`,
+        collected.collect_error && `수집 실패 원인: ${collected.collect_error}`,
+        summaries.stalledWith > 0 &&
+          `카드요약 ${summaries.stalledWith}건이 남았는데 진행이 없어 멈췄어요`,
+        summaries.firstError && `카드요약 실패 원인: ${summaries.firstError}`,
       ].filter(Boolean);
       if (reasons.length > 0) {
         setContentError(reasons.join(" / "));
@@ -536,13 +587,16 @@ export default function AdminPage() {
     setContentMessage(null);
     setContentError(null);
     try {
-      const result = await adminApi.regenerateCardSummaries();
+      const result = await runCardSummaryBatches(
+        (offset) => adminApi.regenerateCardSummaries(offset),
+        (done, total) => `카드요약 ${done}/${total}건 다시 만드는 중...`,
+      );
       setContentMessage(
-        `기사 ${result.total}건 중 카드요약 ${result.generated}건 다시 만들었어요` +
+        `카드요약 ${result.generated}건 다시 만들었어요` +
           (result.failed > 0 ? ` (${result.failed}건 실패 - 기존 요약이 그대로 남아요)` : ""),
       );
-      if (result.summaries_error) {
-        setContentError(`카드요약 실패 원인: ${result.summaries_error}`);
+      if (result.firstError) {
+        setContentError(`카드요약 실패 원인: ${result.firstError}`);
       }
       await loadActions();
       await loadNews();
@@ -577,6 +631,8 @@ export default function AdminPage() {
         코메디닷컴 · 헬스경향 · 코리아헬스로그에서 기사를 가져와 카드요약까지 만들어요. 여러 번
         눌러도 안전해요(이미 있는 기사는 건너뛰어요). 매체당 최신 5건까지만 가져와요 — 카드요약
         비용이 기사 수만큼 들기 때문이에요. 공시·제약사 기사는 건강정보가 아니라 저장하지 않아요.
+        <br />
+        카드요약은 몇 건씩 나눠 만들어요(진행률이 보여요). 다 끝날 때까지 이 화면을 열어두세요.
       </p>
       {contentError && (
         <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{contentError}</p>

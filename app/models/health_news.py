@@ -53,5 +53,15 @@ class HealthNews(Base):
     source_categories: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
     # 카드뉴스 슬라이드 배열({"slides": [...]}). 수집 배치에서 미리 채워 사용자 대기를 0으로 만든다.
     # 기사 1건 : 요약 1개(1:1)라서 별도 테이블로 빼지 않았다.
-    card_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    #
+    # `none_as_null=True`가 꼭 필요하다. 기본 `JSON`은 Python `None`을 SQL NULL이 아니라
+    # **JSON 문자열 `'null'`로 저장**하는데, 읽을 때는 다시 Python `None`으로 돌려준다.
+    # 그러면 파이썬 검사와 SQL 검사가 서로 다른 답을 낸다:
+    #   `news.card_summary is None`      → True  (화면: "요약 없음")
+    #   `card_summary IS NULL`           → False (배치: 대상이 아님)
+    # 그렇게 쓰인 행은 **영구히 갇힌다** - 화면엔 계속 요약 없음인데 어떤 배치도 채워주지 않는다.
+    # (2026-07-31 발견. `save()`가 이 컬럼을 안 넘겨서 운영 데이터는 무사했지만, 명시적으로
+    #  None을 쓰는 코드 한 줄이면 재현된다 - 실제로 테스트와 진단 스크립트에서 두 번 겪었다.)
+    # 컬럼 타입이 바뀌는 게 아니라 직렬화 방식만 정하는 설정이라 마이그레이션은 필요 없다.
+    card_summary: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True), nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

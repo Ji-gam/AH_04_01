@@ -305,25 +305,50 @@ class CollectNewsResponse(BaseModel):
             "한 매체가 실패해도 나머지 매체는 계속 수집하므로 이 값이 유일한 단서다. 없으면 null."
         ),
     )
-    summaries_generated: int = Field(description="카드요약을 새로 만든 수")
-    summaries_failed: int = Field(description="카드요약 생성에 실패한 수(다음 수집에서 재시도된다)")
-    summaries_error: str | None = Field(
-        None,
+    pending_summaries: int = Field(
+        0,
         description=(
-            "카드요약이 실패한 첫 원인 한 줄(예외 종류 + 메시지, 최대 300자). 실패가 없으면 null. "
-            "예외 종류만으로 원인이 갈린다 - AIWorkerUnavailableError면 ai_worker 호출 자체가 "
-            "실패한 것이고, ValidationError면 호출은 됐지만 LLM 출력이 스키마에 못 미친 것이다. "
-            "관리자 전용 응답이며 전체 트레이스백은 서버 로그에만 남는다."
+            "수집이 끝난 뒤 카드요약이 아직 없는 기사 수. **수집 응답에는 요약 결과가 없다** - "
+            "요약은 기사 1건당 4~5초라 수집과 한 요청에 묶으면 게이트웨이 타임아웃(504)을 맞는다"
+            "(2026-07-31 실제로 겪음). 요약은 `/news/card-summaries/fill`을 이 수가 0이 될 때까지 "
+            "여러 번 불러 채운다."
         ),
     )
 
 
-class RegenerateCardSummariesResponse(BaseModel):
-    """[카드요약 다시 만들기] 버튼 결과. 수집과 달리 기사를 새로 가져오지 않으므로 요약 숫자만 있다."""
+class CardSummaryBatchResponse(BaseModel):
+    """카드요약 배치 1회의 결과. `fill`(빈 것만 채우기)과 `regenerate`(전체 다시 만들기)가
+    같은 모양을 쓴다 - 호출하는 화면이 둘 다 "남은 수가 0이 될 때까지 이어 부르기"로 똑같이
+    다루기 때문이다.
 
-    total: int = Field(description="다시 만들기를 시도한 기사 수(저장된 전체)")
-    generated: int = Field(description="새 요약으로 덮어쓴 수")
-    failed: int = Field(description="실패한 수. 실패한 기사는 기존 요약이 그대로 남는다")
-    summaries_error: str | None = Field(
-        None, description="실패한 첫 원인 한 줄(CollectNewsResponse.summaries_error와 같은 형식). 실패가 없으면 null."
+    한 번에 몇 건을 처리하는지는 서버가 정한다(`CARD_SUMMARY_BATCH_SIZE`). 클라이언트가
+    크게 요청해서 타임아웃을 자초할 수 없어야 한다."""
+
+    attempted: int = Field(description="이번 배치에서 요약을 시도한 기사 수")
+    generated: int = Field(description="요약을 새로 만든(또는 덮어쓴) 수")
+    failed: int = Field(description="실패한 수. 실패한 기사는 기존 값이 그대로 남고 다음 배치에서 다시 시도된다")
+    remaining: int = Field(
+        0,
+        description=(
+            "이번 배치 뒤에 남은 기사 수. 0이 되면 멈춘다. "
+            "**진행이 없는데(generated=0) 남아 있으면 멈춰야 한다** - 같은 기사가 계속 실패하는 "
+            "상황이라 이어 불러도 무한히 반복된다."
+        ),
+    )
+    next_offset: int = Field(
+        0,
+        description=(
+            "다음 배치를 요청할 위치. `regenerate`에서만 의미가 있다 - 요약이 이미 있는 기사도 "
+            "대상이라 진행 위치가 데이터에 남지 않으므로 호출하는 쪽이 들고 있어야 한다. "
+            "`fill`은 요약이 빈 기사만 고르므로 언제나 0이다."
+        ),
+    )
+    error: str | None = Field(
+        None,
+        description=(
+            "실패한 첫 원인 한 줄(예외 종류 + 메시지, 최대 300자). 실패가 없으면 null. "
+            "예외 종류만으로 원인이 갈린다 - AIWorkerUnavailableError면 ai_worker 호출 자체가 "
+            "실패한 것이고, ValidationError면 호출은 됐지만 LLM 출력이 스키마에 못 미친 것이다. "
+            "관리자 전용 응답이며 전체 트레이스백은 서버 로그에만 남는다."
+        ),
     )
