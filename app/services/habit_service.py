@@ -217,30 +217,62 @@ def _rotate(items: list[HabitDef], profile_id: int, today: date, count: int) -> 
     return [items[(start + i) % len(items)] for i in range(count)]
 
 
+def _pick_with_single_disease(
+    disease_habits: list[HabitDef], profile_id: int, today: date
+) -> list[HabitDef]:
+    if len(disease_habits) >= MAX_RECOMMENDATIONS:
+        return _rotate(disease_habits, profile_id, today, MAX_RECOMMENDATIONS)
+    return disease_habits[:MAX_RECOMMENDATIONS]
+
+
+def _pick_with_multiple_diseases(
+    habits_by_disease: dict[Disease, list[HabitDef]], profile_id: int, today: date
+) -> list[HabitDef]:
+    result = []
+    selected_labels: set[str] = set()
+    for _disease, disease_habits_list in habits_by_disease.items():
+        selected = _rotate(disease_habits_list, profile_id, today, 1)
+        result.extend(selected)
+        selected_labels.update(h.label for h in selected)
+    remaining = MAX_RECOMMENDATIONS - len(result)
+    if remaining > 0:
+        all_disease_habits = [h for dh_list in habits_by_disease.values() for h in dh_list]
+        all_candidates = [h for h in all_disease_habits if h.label not in selected_labels]
+        if all_candidates:
+            extra = _rotate(all_candidates, profile_id, today, remaining)
+            result.extend(extra)
+            selected_labels.update(h.label for h in extra)
+    seen_labels: set[str] = set()
+    deduped_result = [h for h in result if not (h.label in seen_labels or seen_labels.add(h.label))]
+    if len(deduped_result) < MAX_RECOMMENDATIONS:
+        unused_habits = [h for dh_list in habits_by_disease.values() for h in dh_list if h.label not in seen_labels]
+        for h in unused_habits:
+            if len(deduped_result) >= MAX_RECOMMENDATIONS:
+                break
+            deduped_result.append(h)
+            seen_labels.add(h.label)
+    return deduped_result[:MAX_RECOMMENDATIONS]
+
+
 def pick_recommendations(
     pool: list[HabitDef], profile_id: int, today: date, habit_to_disease: dict[str, Disease] | None = None
 ) -> list[HabitDef]:
-    """진단병력 기반 맞춤 습관(is_disease_related)을 일반 라이프스타일 습관보다 항상 먼저
-    채운다("습관 리스트는 질병 관련부터 보여줘야 한다", 2026-07-29).
+    """진단병력 기반 맞춤 습관(is_disease_related)을 일반 라이프스타일 습관보다 항상 먼저 채운다.
 
-    질병이 여러 개일 경우 각 질병에서 최소 1개씩 선택하도록 개선됨(2026-07-31).
-    질병 관련 습관만으로 MAX_RECOMMENDATIONS를 못 채우면 남는 자리만 일반 습관으로(날짜별 로테이션) 메운다.
+    질병이 여러 개일 경우 각 질병에서 최소 1개씩 선택하도록 개선됨.
+    질병 관련 습관만으로 MAX_RECOMMENDATIONS를 못 채우면 남는 자리만 일반 습관으로 메운다.
     """
     disease_habits = [h for h in pool if h.is_disease_related]
     base_habits = [h for h in pool if not h.is_disease_related]
 
-    # habit_to_disease가 제공되지 않으면 기존 로직 사용
     if habit_to_disease is None or not disease_habits:
         if len(pool) <= MAX_RECOMMENDATIONS:
             return disease_habits + base_habits
-
         if len(disease_habits) >= MAX_RECOMMENDATIONS:
             return _rotate(disease_habits, profile_id, today, MAX_RECOMMENDATIONS)
-
         remaining = MAX_RECOMMENDATIONS - len(disease_habits)
         return disease_habits + _rotate(base_habits, profile_id, today, remaining)
 
-    # 질병별로 습관 분류
     habits_by_disease: dict[Disease, list[HabitDef]] = {}
     for h in disease_habits:
         if h.key in habit_to_disease:
@@ -249,69 +281,9 @@ def pick_recommendations(
                 habits_by_disease[disease] = []
             habits_by_disease[disease].append(h)
 
-    # 질병이 여러 개인 경우: 각 질병에서 최소 1개씩 선택
-    result = []
-    selected_labels: set[str] = set()  # 이미 선택된 습관 라벨(이름) 추적 - AI 생성 습관은 키가 다르므로 라벨로 중복 제거
     if len(habits_by_disease) > 1:
-        for disease, disease_habits_list in habits_by_disease.items():
-            selected = _rotate(disease_habits_list, profile_id, today, 1)
-            result.extend(selected)
-            for h in selected:
-                selected_labels.add(h.label)
-
-        # 남은 자리 채우기 - 중복된 습관 라벨은 제외
-        remaining = MAX_RECOMMENDATIONS - len(result)
-        if remaining > 0:
-            all_disease_habits = [h for dh_list in habits_by_disease.values() for h in dh_list]
-            # 이미 선택된 라벨을 제외한 후보들만 사용 (같은 이름의 습관 중복 방지)
-            all_candidates = [h for h in all_disease_habits if h.label not in selected_labels]
-            if all_candidates:
-                extra = _rotate(all_candidates, profile_id, today, remaining)
-                result.extend(extra)
-                for h in extra:
-                    selected_labels.add(h.label)
-    else:
-        # 질병이 1개인 경우: 기존 로직 - 질병이 있으면 기본 습관은 제외
-        if len(disease_habits) >= MAX_RECOMMENDATIONS:
-            return _rotate(disease_habits, profile_id, today, MAX_RECOMMENDATIONS)
-
-        # 질병 관련 습관만으로 pool을 채운다 (기본 습관 제외)
-        return disease_habits[:MAX_RECOMMENDATIONS]
-
-    # 라벨 기준 중복 제거하되, 최종 5개가 되도록 유지
-    seen_labels: set[str] = set()
-    deduped_result = []
-
-    # result에서 라벨 중복 제거
-    for h in result:
-        if h.label not in seen_labels:
-            deduped_result.append(h)
-            seen_labels.add(h.label)
-
-    # 중복 제거 후 5개보다 부족하면 추가 습관으로 채우기
-    if len(deduped_result) < MAX_RECOMMENDATIONS:
-        remaining_needed = MAX_RECOMMENDATIONS - len(deduped_result)
-
-        # 아직 선택되지 않은 습관들 중 라벨이 중복되지 않은 것들 가져오기
-        if len(habits_by_disease) > 1:
-            # result에 포함된 라벨들
-            result_labels = {h.label for h in result}
-
-            # 모든 질병의 습관들 중 아직 사용되지 않은 것들
-            unused_habits = []
-            for h in [h for dh_list in habits_by_disease.values() for h in dh_list]:
-                if h.label not in seen_labels:
-                    unused_habits.append(h)
-
-            # 미사용 습관들 중에서 추가로 선택 (라벨 중복 피함)
-            for h in unused_habits:
-                if len(deduped_result) >= MAX_RECOMMENDATIONS:
-                    break
-                if h.label not in seen_labels:
-                    deduped_result.append(h)
-                    seen_labels.add(h.label)
-
-    return deduped_result[:MAX_RECOMMENDATIONS]
+        return _pick_with_multiple_diseases(habits_by_disease, profile_id, today)
+    return _pick_with_single_disease(disease_habits, profile_id, today)
 
 
 class HabitService:
@@ -525,11 +497,6 @@ class HabitService:
 
         # 사용자의 진단 정보 수집
         user_diseases = {entry.disease for entry in (profile.diagnosis_entries or [])}
-        subtypes_by_id = {
-            entry.disease_subtype_id: entry.disease_subtype
-            for entry in (profile.diagnosis_entries or [])
-            if entry.disease_subtype_id
-        }
         subtype_id_to_disease = {
             entry.disease_subtype_id: entry.disease
             for entry in (profile.diagnosis_entries or [])
@@ -603,114 +570,111 @@ class HabitService:
 
     def _generate_detailed_reason(self, disease: Disease, habit_label: str) -> str:
         """습관 레이블과 질병을 기반으로 구체적인 추천 이유를 생성."""
-        disease_names = {
-            Disease.DIABETES: "당뇨병",
-            Disease.HEART_DISEASE: "심장질환",
-            Disease.CEREBROVASCULAR_DISEASE: "뇌혈관질환",
-            Disease.LIVER_DISEASE: "간질환",
-            Disease.CANCER: "암",
-            Disease.OTHER: "질환",
+        handlers = {
+            Disease.DIABETES: self._get_diabetes_reason,
+            Disease.LIVER_DISEASE: self._get_liver_disease_reason,
+            Disease.HEART_DISEASE: self._get_heart_disease_reason,
+            Disease.CEREBROVASCULAR_DISEASE: self._get_cerebrovascular_reason,
+            Disease.CANCER: self._get_cancer_reason,
+            Disease.OTHER: self._get_other_disease_reason,
         }
-        disease_name = disease_names.get(disease, str(disease))
+        handler = handlers.get(disease)
+        if handler:
+            return handler(habit_label)
+        disease_names = {Disease.DIABETES: "당뇨병", Disease.HEART_DISEASE: "심장질환", Disease.CEREBROVASCULAR_DISEASE: "뇌혈관질환", Disease.LIVER_DISEASE: "간질환", Disease.CANCER: "암", Disease.OTHER: "질환"}
+        return f"{disease_names.get(disease, str(disease))} 관리에 도움이 됩니다"
 
-        # 습관 레이블 키워드에 따른 구체적 설명
+    def _get_diabetes_reason(self, habit_label: str) -> str:
         label_lower = habit_label.lower()
+        if any(k in label_lower for k in ["명상", "스트레칭", "요가"]):
+            return "당뇨병 관리를 위해 스트레스 감소가 중요합니다"
+        elif any(k in label_lower for k in ["걷기", "산책", "운동", "조깅"]):
+            return "당뇨병 혈당 조절에 효과적한 유산소 운동입니다"
+        elif any(k in label_lower for k in ["식사", "먹기", "밥"]):
+            return "당뇨병 관리를 위해 규칙적인 식사 시간이 필수입니다"
+        elif any(k in label_lower for k in ["물", "음료", "마시기"]):
+            return "당뇨병 관리를 위해 수분 섭취가 중요합니다"
+        elif any(k in label_lower for k in ["과일", "야채", "신선"]):
+            return "당뇨병 관리를 위해 신선한 음식 섭취가 중요합니다"
+        elif any(k in label_lower for k in ["수면", "잠", "자기"]):
+            return "당뇨병 관리를 위해 충분한 수면이 필수입니다"
+        return "당뇨병 관리에 도움이 됩니다"
 
-        if disease == Disease.DIABETES:
-            if any(k in label_lower for k in ["명상", "스트레칭", "요가"]):
-                return "당뇨병 관리를 위해 스트레스 감소가 중요합니다"
-            elif any(k in label_lower for k in ["걷기", "산책", "운동", "조깅"]):
-                return "당뇨병 혈당 조절에 효과적한 유산소 운동입니다"
-            elif any(k in label_lower for k in ["식사", "먹기", "밥"]):
-                return "당뇨병 관리를 위해 규칙적인 식사 시간이 필수입니다"
-            elif any(k in label_lower for k in ["물", "음료", "마시기"]):
-                return "당뇨병 관리를 위해 수분 섭취가 중요합니다"
-            elif any(k in label_lower for k in ["과일", "야채", "신선"]):
-                return "당뇨병 관리를 위해 신선한 음식 섭취가 중요합니다"
-            elif any(k in label_lower for k in ["수면", "잠", "자기"]):
-                return "당뇨병 관리를 위해 충분한 수면이 필수입니다"
-            else:
-                return f"{disease_name} 관리에 도움이 됩니다"
+    def _get_liver_disease_reason(self, habit_label: str) -> str:
+        label_lower = habit_label.lower()
+        if any(k in label_lower for k in ["명상", "스트레칭", "요가"]):
+            return "간질환 관리를 위해 스트레스 감소가 중요합니다"
+        elif any(k in label_lower for k in ["걷기", "산책", "운동"]):
+            return "간질환 관리에 효과적한 가벼운 운동입니다"
+        elif any(k in label_lower for k in ["식사", "먹기", "밥"]):
+            return "간질환 관리를 위해 규칙적인 식사 시간이 필수입니다"
+        elif any(k in label_lower for k in ["물", "음료", "마시기"]):
+            return "간질환 관리를 위해 수분 섭취가 중요합니다"
+        elif any(k in label_lower for k in ["과일", "야채", "신선"]):
+            return "간 건강을 위해 신선한 음식 섭취가 도움이 됩니다"
+        elif any(k in label_lower for k in ["금주", "주류", "술"]):
+            return "간질환 관리의 필수 요소입니다"
+        elif any(k in label_lower for k in ["수면", "잠", "자기"]):
+            return "간질환 관리를 위해 충분한 수면이 필수입니다"
+        return "간질환 관리에 도움이 됩니다"
 
-        elif disease == Disease.LIVER_DISEASE:
-            if any(k in label_lower for k in ["명상", "스트레칭", "요가"]):
-                return "간질환 관리를 위해 스트레스 감소가 중요합니다"
-            elif any(k in label_lower for k in ["걷기", "산책", "운동"]):
-                return "간질환 관리에 효과적한 가벼운 운동입니다"
-            elif any(k in label_lower for k in ["식사", "먹기", "밥"]):
-                return "간질환 관리를 위해 규칙적인 식사 시간이 필수입니다"
-            elif any(k in label_lower for k in ["물", "음료", "마시기"]):
-                return "간질환 관리를 위해 수분 섭취가 중요합니다"
-            elif any(k in label_lower for k in ["과일", "야채", "신선"]):
-                return "간 건강을 위해 신선한 음식 섭취가 도움이 됩니다"
-            elif any(k in label_lower for k in ["금주", "주류", "술"]):
-                return "간질환 관리의 필수 요소입니다"
-            elif any(k in label_lower for k in ["수면", "잠", "자기"]):
-                return "간질환 관리를 위해 충분한 수면이 필수입니다"
-            else:
-                return f"{disease_name} 관리에 도움이 됩니다"
+    def _get_heart_disease_reason(self, habit_label: str) -> str:
+        label_lower = habit_label.lower()
+        if any(k in label_lower for k in ["명상", "스트레칭", "요가"]):
+            return "심장질환 관리를 위해 스트레스 감소가 중요합니다"
+        elif any(k in label_lower for k in ["걷기", "산책", "운동"]):
+            return "심장 건강 개선을 위한 가벼운 운동입니다"
+        elif any(k in label_lower for k in ["식사", "먹기", "밥"]):
+            return "심장질환 관리를 위해 규칙적인 식사가 중요합니다"
+        elif any(k in label_lower for k in ["염", "소금"]):
+            return "심장질환 관리의 핵심 요소입니다"
+        elif any(k in label_lower for k in ["수면", "잠", "자기"]):
+            return "심장 부하 감소를 위해 규칙적인 수면이 중요합니다"
+        return "심장질환 관리에 도움이 됩니다"
 
-        elif disease == Disease.HEART_DISEASE:
-            if any(k in label_lower for k in ["명상", "스트레칭", "요가"]):
-                return "심장질환 관리를 위해 스트레스 감소가 중요합니다"
-            elif any(k in label_lower for k in ["걷기", "산책", "운동"]):
-                return "심장 건강 개선을 위한 가벼운 운동입니다"
-            elif any(k in label_lower for k in ["식사", "먹기", "밥"]):
-                return "심장질환 관리를 위해 규칙적인 식사가 중요합니다"
-            elif any(k in label_lower for k in ["염", "소금"]):
-                return "심장질환 관리의 핵심 요소입니다"
-            elif any(k in label_lower for k in ["수면", "잠", "자기"]):
-                return "심장 부하 감소를 위해 규칙적인 수면이 중요합니다"
-            else:
-                return f"{disease_name} 관리에 도움이 됩니다"
+    def _get_cerebrovascular_reason(self, habit_label: str) -> str:
+        label_lower = habit_label.lower()
+        if any(k in label_lower for k in ["명상", "스트레칭", "요가"]):
+            return "뇌혈관 건강을 위해 스트레스 감소가 중요합니다"
+        elif any(k in label_lower for k in ["걷기", "산책", "운동"]):
+            return "뇌혈관 건강을 위한 혈류 개선 운동입니다"
+        elif any(k in label_lower for k in ["독서"]):
+            return "뇌 건강과 집중력 향상에 도움이 됩니다"
+        elif any(k in label_lower for k in ["수면", "잠", "자기"]):
+            return "뇌혈관 건강을 위해 충분한 수면이 중요합니다"
+        return "뇌혈관질환 관리에 도움이 됩니다"
 
-        elif disease == Disease.CEREBROVASCULAR_DISEASE:
-            if any(k in label_lower for k in ["명상", "스트레칭", "요가"]):
-                return "뇌혈관 건강을 위해 스트레스 감소가 중요합니다"
-            elif any(k in label_lower for k in ["걷기", "산책", "운동"]):
-                return "뇌혈관 건강을 위한 혈류 개선 운동입니다"
-            elif any(k in label_lower for k in ["독서"]):
-                return "뇌 건강과 집중력 향상에 도움이 됩니다"
-            elif any(k in label_lower for k in ["수면", "잠", "자기"]):
-                return "뇌혈관 건강을 위해 충분한 수면이 중요합니다"
-            else:
-                return f"{disease_name} 관리에 도움이 됩니다"
+    def _get_cancer_reason(self, habit_label: str) -> str:
+        label_lower = habit_label.lower()
+        if any(k in label_lower for k in ["휴식", "수면", "잠", "자기"]):
+            return "암 치료 중 회복과 면역력 강화에 중요합니다"
+        elif any(k in label_lower for k in ["명상", "스트레칭", "요가"]):
+            return "암 관리를 위해 스트레스 감소가 중요합니다"
+        elif any(k in label_lower for k in ["과일", "야채", "신선"]):
+            return "암 관리를 위해 영양가 있는 음식 섭취가 중요합니다"
+        return "암 관리에 도움이 됩니다"
 
-        elif disease == Disease.CANCER:
-            if any(k in label_lower for k in ["휴식", "수면", "잠", "자기"]):
-                return "암 치료 중 회복과 면역력 강화에 중요합니다"
-            elif any(k in label_lower for k in ["명상", "스트레칭", "요가"]):
-                return "암 관리를 위해 스트레스 감소가 중요합니다"
-            elif any(k in label_lower for k in ["과일", "야채", "신선"]):
-                return "암 관리를 위해 영양가 있는 음식 섭취가 중요합니다"
-            else:
-                return f"{disease_name} 관리에 도움이 됩니다"
-
-        elif disease == Disease.OTHER:
-            # 기타 질환 (골절, 염좌, 충수염, 장염 등)의 습관별 맞춤 설명
-            if any(k in label_lower for k in ["부목", "붕대", "고정", "압박"]):
-                return "부상 회복을 위해 고정과 안정화가 필수입니다"
-            elif any(k in label_lower for k in ["찜질", "온찜질", "냉찜질", "냉기", "차가운"]):
-                return "부상 부위 부종 감소와 통증 완화에 효과적입니다"
-            elif any(k in label_lower for k in ["통증", "체크", "모니터링", "확인"]):
-                return "증상과 통증을 정기적으로 체크하여 악화를 예방하세요"
-            elif any(k in label_lower for k in ["스트레칭", "운동", "재활", "근력"]):
-                return "회복 단계에 맞춘 재활 운동이 중요합니다"
-            elif any(k in label_lower for k in ["수면", "잠", "휴식", "자기"]):
-                return "회복을 위해 충분한 휴식이 필수입니다"
-            elif any(k in label_lower for k in ["영양", "과일", "야채", "단백질", "음식", "식단"]):
-                return "회복을 위해 충분한 영양 섭취가 중요합니다"
-            elif any(k in label_lower for k in ["소화", "장", "복부", "자극", "자극적"]):
-                return "소화 기능 회복을 위해 자극이 적은 음식을 섭취하세요"
-            elif any(k in label_lower for k in ["수분", "수액", "물", "마시"]):
-                return "수분과 전해질 보충이 회복에 필수적입니다"
-            elif any(k in label_lower for k in ["스트레스", "명상", "이완"]):
-                return "정신적 스트레스 감소로 회복 속도를 높이세요"
-            else:
-                return "건강 회복을 위한 생활습관입니다"
-
-        else:
-            return f"{disease_name} 관리에 도움이 됩니다"
+    def _get_other_disease_reason(self, habit_label: str) -> str:
+        label_lower = habit_label.lower()
+        if any(k in label_lower for k in ["부목", "붕대", "고정", "압박"]):
+            return "부상 회복을 위해 고정과 안정화가 필수입니다"
+        elif any(k in label_lower for k in ["찜질", "온찜질", "냉찜질", "냉기", "차가운"]):
+            return "부상 부위 부종 감소와 통증 완화에 효과적입니다"
+        elif any(k in label_lower for k in ["통증", "체크", "모니터링", "확인"]):
+            return "증상과 통증을 정기적으로 체크하여 악화를 예방하세요"
+        elif any(k in label_lower for k in ["스트레칭", "운동", "재활", "근력"]):
+            return "회복 단계에 맞춘 재활 운동이 중요합니다"
+        elif any(k in label_lower for k in ["수면", "잠", "휴식", "자기"]):
+            return "회복을 위해 충분한 휴식이 필수입니다"
+        elif any(k in label_lower for k in ["영양", "과일", "야채", "단백질", "음식", "식단"]):
+            return "회복을 위해 충분한 영양 섭취가 중요합니다"
+        elif any(k in label_lower for k in ["소화", "장", "복부", "자극", "자극적"]):
+            return "소화 기능 회복을 위해 자극이 적은 음식을 섭취하세요"
+        elif any(k in label_lower for k in ["수분", "수액", "물", "마시"]):
+            return "수분과 전해질 보충이 회복에 필수적입니다"
+        elif any(k in label_lower for k in ["스트레스", "명상", "이완"]):
+            return "정신적 스트레스 감소로 회복 속도를 높이세요"
+        return "건강 회복을 위한 생활습관입니다"
 
     async def select_habits(
         self, session: AsyncSession, profile: Profile, habit_keys: list[str]
