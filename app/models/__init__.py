@@ -1,6 +1,5 @@
 from app.models.admin_action import AdminAction
 from app.models.chat import ChatMessage, ChatSession
-from app.models.content import ContentCategory, HealthContent
 from app.models.diary_entries import DiaryEntry
 from app.models.diet_logs import DietLog
 from app.models.disease_entries import DiagnosisEntry, DiseaseSubtype, FamilyHistoryEntry
@@ -19,6 +18,7 @@ from app.models.food_drug_interaction import (
 from app.models.habit_logs import HabitLog
 from app.models.habit_selections import HabitSelection
 from app.models.habit_subtype_suggestions import HabitSubtypeSuggestion
+from app.models.health_news import HealthNews
 from app.models.health_profiles import HealthProfile
 from app.models.medication_intake import MedicationIntakeLog
 from app.models.medication_model import MedicationRecognitionJob, MedicationSchedule
@@ -33,8 +33,6 @@ __all__ = [
     "AdminAction",
     "ChatMessage",
     "ChatSession",
-    "ContentCategory",
-    "HealthContent",
     "DiaryEntry",
     "DietLog",
     "DiagnosisEntry",
@@ -52,6 +50,7 @@ __all__ = [
     "HabitLog",
     "HabitSelection",
     "HabitSubtypeSuggestion",
+    "HealthNews",
     "HealthProfile",
     "MedicationIntakeLog",
     "NotificationSchedule",

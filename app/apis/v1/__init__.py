@@ -3,7 +3,6 @@ from fastapi import APIRouter
 from app.apis.v1.admin_routers import admin_router
 from app.apis.v1.auth_routers import auth_router
 from app.apis.v1.chat_routers import chat_router
-from app.apis.v1.content_routers import content_router
 from app.apis.v1.diary_routers import diary_router
 from app.apis.v1.diet_routers import diet_router
 from app.apis.v1.disease_routers import disease_router
@@ -12,6 +11,7 @@ from app.apis.v1.exercise_routers import exercise_router
 from app.apis.v1.family_routers import family_router
 from app.apis.v1.goal_routers import goal_router
 from app.apis.v1.habit_routers import habit_router
+from app.apis.v1.health_news_routers import health_news_router
 from app.apis.v1.medication import medication_router
 from app.apis.v1.medication_intake_routers import intake_router
 from app.apis.v1.notice_routers import notice_router
@@ -28,7 +28,7 @@ v1_routers.include_router(auth_router)
 v1_routers.include_router(admin_router)
 v1_routers.include_router(user_router)
 v1_routers.include_router(chat_router)
-v1_routers.include_router(content_router)
+v1_routers.include_router(health_news_router)
 v1_routers.include_router(diary_router)
 v1_routers.include_router(medication_router)
 v1_routers.include_router(notification_router)

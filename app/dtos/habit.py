@@ -28,7 +28,10 @@ class HabitRecommendationItem(BaseModel):
     icon: Annotated[str, Field(description="습관 카드에 표시할 이모지", examples=["🥤"])]
     unit: Annotated[str, Field(description="진행량 단위", examples=["잔"])]
     target: Annotated[int, Field(description="오늘 목표량", examples=[5])]
-    reason: Annotated[str | None, Field(description="왜 이 습관을 추천했는지 설명", examples=["당뇨병 관리에 도움이 됩니다"], default=None)]
+    reason: Annotated[
+        str | None,
+        Field(description="왜 이 습관을 추천했는지 설명", examples=["당뇨병 관리에 도움이 됩니다"], default=None),
+    ]
 
 
 class HabitRecommendationsResponse(BaseModel):

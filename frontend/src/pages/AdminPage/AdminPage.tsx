@@ -5,14 +5,13 @@ import { useNavigate } from "react-router-dom";
 import {
   adminApi,
   type AdminActionResult,
-  type AdminContentResult,
   type AdminErrorLogResult,
+  type AdminHealthNewsResult,
   type AdminNoticeResult,
   type AdminOpsStatsResult,
   type AdminStatsResult,
   type AdminUserResult,
 } from "../../api/adminApi";
-import { contentApi } from "../../api/contentApi";
 import { noticeApi } from "../../api/noticeApi";
 import { useAuth } from "../../hooks/useAuth";
 import { pinkTheme } from "../../theme/pinkTheme";
@@ -22,7 +21,7 @@ Chart.register(...registerables);
 const DESKTOP_BREAKPOINT = 1024;
 
 /** (2026-07-28) 대시보드/동의현황 전체표/버그리포트/전체 활동로그처럼 "한눈에 훑어봐야
- * 하는" 화면은 PC에서만, 사용자 검색+승격/공지 발송/콘텐츠 생성처럼 "짧고 단발성인"
+ * 하는" 화면은 PC에서만, 사용자 검색+승격/공지 발송/뉴스 수집처럼 "짧고 단발성인"
  * 작업은 모바일에서도 가능하게 나눈다. 보안 목적이 아니라 순수 UX 편의라 창 너비만
  * 보고 가른다(실제 권한검증은 어차피 서버 get_current_admin_user가 함). */
 function useIsDesktop(): boolean {
@@ -97,7 +96,9 @@ type Tab = "dashboard" | "users" | "consent" | "notices" | "contents" | "log" | 
  * 늘어난다 - 최초 관리자 1명은 app/scripts/promote_admin.py로 서버에서 직접 지정한다.
  *
  * [2026-07-28] 예전에 더보기 메뉴에 따로 있던 "관리자 컨텐츠생성"/"관리자 공지등록"을
- * 이 화면 "공지·콘텐츠" 탭 안으로 흡수했다(더보기 메뉴에서 두 항목 제거). "질병별 명수"는
+ * 이 화면 "공지·콘텐츠" 탭 안으로 흡수했다(더보기 메뉴에서 두 항목 제거).
+ * [2026-07-30] T-LLM-6: "콘텐츠 생성"(LLM이 팁 지어내기) 자리를 "뉴스 수집"(RSS 수집)으로
+ * 교체했다. 자동 수집(Celery)이 붙기 전까지 이 탭의 버튼이 유일한 수집 트리거다. "질병별 명수"는
  * 조사해보니 k-익명성(소수 인원 카테고리의 재식별 위험) 문제로 이번엔 안 넣었다 - 필요하면
  * 소수 인원 그룹을 자동으로 묶어 숨기는 로직을 먼저 만들어야 한다. */
 export default function AdminPage() {
@@ -133,13 +134,12 @@ export default function AdminPage() {
   const [editNoticeTitle, setEditNoticeTitle] = useState("");
   const [editNoticeBody, setEditNoticeBody] = useState("");
 
-  const [contents, setContents] = useState<AdminContentResult[]>([]);
-  const [contentsLoading, setContentsLoading] = useState(false);
-  const [expandedContentId, setExpandedContentId] = useState<number | null>(null);
-  const [editingContentId, setEditingContentId] = useState<number | null>(null);
-  const [editContentTitle, setEditContentTitle] = useState("");
-  const [editContentSummary, setEditContentSummary] = useState("");
-  const [editContentBody, setEditContentBody] = useState("");
+  // T-LLM-6 수집된 건강 뉴스(기존 건강 콘텐츠 목록을 대체).
+  const [newsItems, setNewsItems] = useState<AdminHealthNewsResult[]>([]);
+  const [newsLoading, setNewsLoading] = useState(false);
+  const [expandedNewsId, setExpandedNewsId] = useState<number | null>(null);
+  const [editingNewsId, setEditingNewsId] = useState<number | null>(null);
+  const [editNewsTitle, setEditNewsTitle] = useState("");
 
   const [errorLogs, setErrorLogs] = useState<AdminErrorLogResult[]>([]);
   const [errorLogsLoading, setErrorLogsLoading] = useState(false);
@@ -272,47 +272,41 @@ export default function AdminPage() {
     }
   }
 
-  async function loadContents() {
-    setContentsLoading(true);
+  async function loadNews() {
+    setNewsLoading(true);
     try {
-      setContents(await adminApi.listContents());
+      setNewsItems(await adminApi.listNews());
     } catch {
-      // 목록도 부가 정보 - 실패해도 생성 폼은 그대로 쓸 수 있어야 한다.
+      // 목록도 부가 정보 - 실패해도 수집 버튼은 그대로 쓸 수 있어야 한다.
     } finally {
-      setContentsLoading(false);
+      setNewsLoading(false);
     }
   }
 
-  function startEditContent(c: AdminContentResult) {
-    setEditingContentId(c.id);
-    setEditContentTitle(c.title);
-    setEditContentSummary(c.summary);
-    setEditContentBody(c.body);
+  function startEditNews(n: AdminHealthNewsResult) {
+    setEditingNewsId(n.id);
+    setEditNewsTitle(n.title);
   }
 
-  async function handleSaveContent(id: number) {
+  async function handleSaveNews(id: number) {
     try {
-      await adminApi.updateContent(id, {
-        title: editContentTitle,
-        summary: editContentSummary,
-        body: editContentBody,
-      });
-      setEditingContentId(null);
-      await loadContents();
+      await adminApi.updateNews(id, { title: editNewsTitle });
+      setEditingNewsId(null);
+      await loadNews();
       await loadActions();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "콘텐츠 수정에 실패했습니다.");
+      window.alert(err instanceof Error ? err.message : "기사 수정에 실패했습니다.");
     }
   }
 
-  async function handleDeleteContent(id: number) {
-    if (!window.confirm("이 콘텐츠를 삭제할까요?")) return;
+  async function handleDeleteNews(id: number) {
+    if (!window.confirm("이 기사를 내릴까요? 건강정보 화면에서 바로 사라져요.")) return;
     try {
-      await adminApi.deleteContent(id);
-      await loadContents();
+      await adminApi.deleteNews(id);
+      await loadNews();
       await loadActions();
     } catch (err) {
-      window.alert(err instanceof Error ? err.message : "콘텐츠 삭제에 실패했습니다.");
+      window.alert(err instanceof Error ? err.message : "기사 삭제에 실패했습니다.");
     }
   }
 
@@ -324,13 +318,13 @@ export default function AdminPage() {
       loadErrorLogs();
       loadOpsStats();
       loadNotices();
-      loadContents();
+      loadNews();
     } else {
       // 모바일 탭바엔 "대시보드"가 없어서(기본값), 모바일로 들어오면 첫 탭(사용자 관리)으로
       // 맞춰준다. 공지/콘텐츠 목록도 모바일에서 이제 탭으로 보여주므로 같이 로드한다.
       setTab((prev) => (["users", "notices", "contents"].includes(prev) ? prev : "users"));
       loadNotices();
-      loadContents();
+      loadNews();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDesktop]);
@@ -496,21 +490,26 @@ export default function AdminPage() {
     }
   }
 
-  async function handleGenerateContent() {
+  // T-LLM-6: [뉴스 수집] 트리거. 주기 자동 수집(Celery worker/beat)이 붙기 전까지 이 버튼이
+  // 유일한 수집 경로다. 여러 번 눌러도 안전하다 - 이미 저장된 기사는 건너뛰고, 이미 요약이
+  // 있으면 LLM을 다시 부르지 않는다.
+  async function handleCollectNews() {
     setContentGenerating(true);
     setContentMessage(null);
     setContentError(null);
     try {
-      // (2026-07-28) 원본(ContentGenerationPage.tsx)처럼 인자 없이 호출해서 서버가
-      // 무작위로 질환/카테고리를 고르게 한다 - 질환명이 고정 목록이 아니라 계속
-      // 자라나는 열린 목록(disease_subtypes)이라 입력폼을 두면 오타 위험만 커진다.
-      // 특정 질환을 지정해서 만들고 싶으면 나중에 별도로 다시 논의하기로 함.
-      const result = await contentApi.generate();
-      setContentMessage(`"${result.title}" 콘텐츠를 생성했어요.`);
+      const result = await adminApi.collectNews();
+      setContentMessage(
+        `기사 ${result.created}건 새로 저장 (건강정보 아님 ${result.excluded}건 제외, ` +
+          `이미 있음 ${result.skipped}건) · 카드요약 ${result.summaries_generated}건 생성` +
+          (result.summaries_failed > 0
+            ? ` (${result.summaries_failed}건 실패 - 다음 수집에서 재시도돼요)`
+            : ""),
+      );
       await loadActions();
-      await loadContents();
+      await loadNews();
     } catch (err) {
-      setContentError(err instanceof Error ? err.message : "콘텐츠 생성에 실패했습니다.");
+      setContentError(err instanceof Error ? err.message : "뉴스 수집에 실패했습니다.");
     } finally {
       setContentGenerating(false);
     }
@@ -532,14 +531,13 @@ export default function AdminPage() {
     cursor: "pointer",
   });
 
-  // 콘텐츠 생성 폼 - 모바일 "빠른 작업"에서도 쓸 수 있게 별도 컴포넌트로 안 빼고 인라인 재사용.
-  // (2026-07-28) 원본과 동일하게 버튼 하나만 - 질환/카테고리는 서버가 무작위로 고른다.
-  const contentGenerateForm = (
+  // 뉴스 수집 폼 - 모바일 "빠른 작업"에서도 쓸 수 있게 별도 컴포넌트로 안 빼고 인라인 재사용.
+  const newsCollectForm = (
     <div style={cardStyle}>
-      <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>건강 콘텐츠 생성</p>
+      <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>건강 뉴스 수집</p>
       <p style={{ margin: 0, fontSize: 12, color: pinkTheme.textMuted }}>
-        실제 LLM으로 콘텐츠 카드 1건을 생성해 "정보" 탭에 반영해요. 질환/카테고리는 서버가 무작위로
-        골라요.
+        코메디닷컴 RSS에서 기사를 가져와 카드요약까지 만들어요. 여러 번 눌러도 안전해요(이미 있는
+        기사는 건너뛰어요). 공시·제약사 기사는 건강정보가 아니라 저장하지 않아요.
       </p>
       {contentError && (
         <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{contentError}</p>
@@ -549,11 +547,11 @@ export default function AdminPage() {
       )}
       <button
         type="button"
-        onClick={handleGenerateContent}
+        onClick={handleCollectNews}
         disabled={contentGenerating}
         style={buttonStyle}
       >
-        {contentGenerating ? "생성 중..." : "콘텐츠 생성하기"}
+        {contentGenerating ? "수집 중..." : "뉴스 수집하기"}
       </button>
     </div>
   );
@@ -657,7 +655,7 @@ export default function AdminPage() {
                 ["users", "사용자"],
                 ["consent", "동의 현황"],
                 ["notices", "공지 관리"],
-                ["contents", "콘텐츠 관리"],
+                ["contents", "뉴스 관리"],
                 ["bugs", "버그 리포트"],
                 ["log", "활동 로그"],
               ] as [Tab, string][]
@@ -677,7 +675,7 @@ export default function AdminPage() {
         {/* (2026-07-28) 모바일 전용 탭바 - 대시보드/동의현황/버그리포트/활동로그처럼
           "한눈에 훑어보는" 화면은 빼고, 짧고 단발성인 작업 3개만 탭으로 나눈다.
           예전엔 이 3개를 한 화면에 전부 세로로 쌓아뒀는데, 배포 계정이 17개로
-          늘면서 사용자 목록이 길어지면 아래 공지/콘텐츠 폼까지 스크롤이 너무
+          늘면서 사용자 목록이 길어지면 아래 공지/뉴스 폼까지 스크롤이 너무
           길어지는 문제가 있었다 - 탭으로 나눠서 한 번에 하나씩만 보이게 한다. */}
         {!isDesktop && (
           <div style={{ display: "flex", gap: 4 }}>
@@ -685,7 +683,7 @@ export default function AdminPage() {
               [
                 ["users", "사용자 관리"],
                 ["notices", "공지·마케팅"],
-                ["contents", "콘텐츠 생성"],
+                ["contents", "뉴스 수집"],
               ] as [Tab, string][]
             ).map(([key, label]) => (
               <button
@@ -1004,25 +1002,23 @@ export default function AdminPage() {
               </div>
               <div style={cardStyle}>
                 <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>
-                  카테고리별 생성된 콘텐츠 수
+                  매체별 수집된 뉴스 수
                 </p>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead>
                     <tr>
-                      <th style={thStyle}>카테고리</th>
+                      <th style={thStyle}>매체</th>
                       <th style={thStyle}>건수</th>
                     </tr>
                   </thead>
                   <tbody>
                     {opsStats &&
-                      Object.entries(opsStats.content_count_by_category).map(
-                        ([category, count]) => (
-                          <tr key={category}>
-                            <td style={tdStyle}>{category}</td>
-                            <td style={tdStyle}>{count}</td>
-                          </tr>
-                        ),
-                      )}
+                      Object.entries(opsStats.news_count_by_source).map(([source, count]) => (
+                        <tr key={source}>
+                          <td style={tdStyle}>{source}</td>
+                          <td style={tdStyle}>{count}</td>
+                        </tr>
+                      ))}
                   </tbody>
                 </table>
               </div>
@@ -1162,7 +1158,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* ── 공지 발송 + 콘텐츠 생성 (PC: 전용 탭, 모바일: 항상 표시) ── */}
+        {/* ── 공지 발송 + 뉴스 수집 (PC: 전용 탭, 모바일: 항상 표시) ── */}
         {/* ── 공지 관리 (PC: 전용 탭, 모바일: 발송 폼만) ── */}
         {tab === "notices" && (
           <div
@@ -1379,12 +1375,10 @@ export default function AdminPage() {
               gap: 16,
             }}
           >
-            {contentGenerateForm}
+            {newsCollectForm}
             <div style={cardStyle}>
-              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>
-                생성된 콘텐츠 목록
-              </p>
-              {contentsLoading ? (
+              <p style={{ margin: 0, fontWeight: 600, color: pinkTheme.text }}>수집된 건강 뉴스</p>
+              {newsLoading ? (
                 <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>
                   불러오는 중...
                 </p>
@@ -1398,10 +1392,10 @@ export default function AdminPage() {
                     overflowY: "auto",
                   }}
                 >
-                  {contents.map((c) =>
-                    editingContentId === c.id ? (
+                  {newsItems.map((n) =>
+                    editingNewsId === n.id ? (
                       <div
-                        key={c.id}
+                        key={n.id}
                         style={{
                           border: `1px solid ${pinkTheme.primary}`,
                           borderRadius: 10,
@@ -1412,36 +1406,22 @@ export default function AdminPage() {
                         }}
                       >
                         <input
-                          value={editContentTitle}
-                          onChange={(e) => setEditContentTitle(e.target.value)}
+                          value={editNewsTitle}
+                          onChange={(e) => setEditNewsTitle(e.target.value)}
                           placeholder="제목"
                           style={inputStyle}
-                        />
-                        <textarea
-                          value={editContentSummary}
-                          onChange={(e) => setEditContentSummary(e.target.value)}
-                          placeholder="요약"
-                          rows={2}
-                          style={{ ...inputStyle, resize: "vertical" }}
-                        />
-                        <textarea
-                          value={editContentBody}
-                          onChange={(e) => setEditContentBody(e.target.value)}
-                          placeholder="본문"
-                          rows={4}
-                          style={{ ...inputStyle, resize: "vertical" }}
                         />
                         <div style={{ display: "flex", gap: 6 }}>
                           <button
                             type="button"
-                            onClick={() => handleSaveContent(c.id)}
+                            onClick={() => handleSaveNews(n.id)}
                             style={{ ...buttonStyle, flex: 1 }}
                           >
                             저장
                           </button>
                           <button
                             type="button"
-                            onClick={() => setEditingContentId(null)}
+                            onClick={() => setEditingNewsId(null)}
                             style={{
                               ...buttonStyle,
                               flex: 1,
@@ -1455,7 +1435,7 @@ export default function AdminPage() {
                       </div>
                     ) : (
                       <div
-                        key={c.id}
+                        key={n.id}
                         style={{
                           border: `1px solid ${pinkTheme.border}`,
                           borderRadius: 10,
@@ -1475,9 +1455,7 @@ export default function AdminPage() {
                         >
                           <button
                             type="button"
-                            onClick={() =>
-                              setExpandedContentId(expandedContentId === c.id ? null : c.id)
-                            }
+                            onClick={() => setExpandedNewsId(expandedNewsId === n.id ? null : n.id)}
                             style={{
                               flex: 1,
                               minWidth: 0,
@@ -1493,19 +1471,15 @@ export default function AdminPage() {
                                 display: "inline-block",
                                 fontSize: 10.5,
                                 fontWeight: 700,
-                                color: pinkTheme.textMuted,
+                                color: n.has_card_summary ? pinkTheme.primary : pinkTheme.textMuted,
                                 border: `1px solid ${pinkTheme.border}`,
                                 borderRadius: 999,
                                 padding: "1px 7px",
                                 marginRight: 6,
-                                maxWidth: "100%",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
                                 verticalAlign: "bottom",
                               }}
                             >
-                              {c.category} · {c.disease_code}
+                              {n.source_name} · {n.has_card_summary ? "요약O" : "요약X"}
                             </span>
                             <span
                               style={{
@@ -1515,25 +1489,25 @@ export default function AdminPage() {
                                 wordBreak: "break-word",
                               }}
                             >
-                              {c.title}
+                              {n.title}
                             </span>
                             <span
                               style={{ fontSize: 11, color: pinkTheme.textMuted, marginLeft: 6 }}
                             >
-                              {expandedContentId === c.id ? "▲" : "▼"}
+                              {expandedNewsId === n.id ? "▲" : "▼"}
                             </span>
                           </button>
                           <div style={{ display: "flex", gap: 4, flex: "none" }}>
                             <button
                               type="button"
-                              onClick={() => startEditContent(c)}
+                              onClick={() => startEditNews(n)}
                               style={{ ...buttonStyle, padding: "4px 8px", fontSize: 11 }}
                             >
                               수정
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteContent(c.id)}
+                              onClick={() => handleDeleteNews(n.id)}
                               style={{
                                 ...buttonStyle,
                                 padding: "4px 8px",
@@ -1545,20 +1519,33 @@ export default function AdminPage() {
                             </button>
                           </div>
                         </div>
-                        {expandedContentId === c.id && (
+                        {expandedNewsId === n.id && (
                           <div style={{ fontSize: 12.5, color: pinkTheme.text }}>
                             <p style={{ margin: "0 0 6px", color: pinkTheme.textMuted }}>
-                              {c.summary}
+                              발행 {new Date(n.published_at).toLocaleString("ko-KR")}
                             </p>
-                            <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{c.body}</p>
+                            {/* RSS 카테고리를 그대로 보여준다 - 수집 필터 기준을 조정할 근거다. */}
+                            {n.source_categories && n.source_categories.length > 0 && (
+                              <p style={{ margin: "0 0 6px", color: pinkTheme.textMuted }}>
+                                카테고리: {n.source_categories.join(", ")}
+                              </p>
+                            )}
+                            <a
+                              href={n.source_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ color: pinkTheme.primary, fontSize: 12 }}
+                            >
+                              원문 보기
+                            </a>
                           </div>
                         )}
                       </div>
                     ),
                   )}
-                  {contents.length === 0 && (
+                  {newsItems.length === 0 && (
                     <p style={{ margin: 0, color: pinkTheme.textMuted, fontSize: 13 }}>
-                      생성된 콘텐츠가 없어요.
+                      아직 수집된 뉴스가 없어요. [뉴스 수집하기]를 눌러주세요.
                     </p>
                   )}
                 </div>

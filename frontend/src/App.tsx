@@ -14,8 +14,6 @@ import AccountSettingsPage from "./pages/AccountSettingsPage/AccountSettingsPage
 import AlarmPage from "./pages/AlarmPage/AlarmPage";
 import ChatPage from "./pages/ChatPage/ChatPage";
 import ConsentPage from "./pages/ConsentPage/ConsentPage";
-import ContentDetailPage from "./pages/ContentGenerationPage/ContentDetailPage";
-import ContentGenerationPage from "./pages/ContentGenerationPage/ContentGenerationPage";
 import DataConsentPage from "./pages/DataConsentPage/DataConsentPage";
 import DiaryEntriesPage from "./pages/DiaryEntriesPage/DiaryEntriesPage";
 import DocumentBoxPage from "./pages/documentBox/DocumentBoxPage";
@@ -67,8 +65,6 @@ export const router = createBrowserRouter([
       { path: "/lifestyle-info", element: <LifestyleInfoPage /> },
       { path: "/notification-settings", element: <NotificationSettingsPage /> },
       { path: "/data-consent", element: <DataConsentPage /> },
-      { path: "/content-generation", element: <ContentGenerationPage /> },
-      { path: "/content-generation/:id", element: <ContentDetailPage /> },
       { path: "/emergency-guide", element: <EmergencyGuidePage /> },
       // DUR 스크리닝(T-MED-14)은 profile_id를 안 쓰는 공개 API라 로그인 불필요.
       { path: "/dur-screening", element: <DurScreeningPage /> },

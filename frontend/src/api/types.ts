@@ -138,41 +138,150 @@ export interface ChatMessageResponse {
   created_at: string;
 }
 
-// 백엔드 app/dtos/content_dto.py와 1:1로 수동 동기화 (T-LLM-3).
-export type ContentCategory = "LIFESTYLE" | "FOOD" | "MEDICAL_NEWS";
+// ── T-LLM-6 건강 뉴스 (기존 T-LLM-3 콘텐츠를 대체) ─────────────────────────────
+// 백엔드 app/dtos/health_news_dto.py와 1:1로 수동 동기화.
 
-export interface HealthContentResult {
+/**
+ * 카드뉴스 아이콘 키. **원본은 백엔드 `app/dtos/health_news_dto.py`의 `IconKey`다**
+ * (LLM이 그 목록 안에서만 고르게 되어 있음). 여기 union은 그걸 미러링한 것이고,
+ * `CARD_NEWS_ICONS` 맵이 `Record<CardIconKey, ...>`라서 빠뜨리면 타입체크가 잡아준다.
+ * 값은 lucide 아이콘 파일명(kebab-case)과 같다.
+ */
+export type CardIconKey =
+  // 수면·시간
+  | "moon"
+  | "bed"
+  | "timer"
+  | "clock"
+  | "calendar-check"
+  // 운동·활동
+  | "dumbbell"
+  | "footprints"
+  | "activity"
+  | "heart-pulse"
+  | "trending-up"
+  // 신체·장기
+  | "heart"
+  | "brain"
+  | "bone"
+  | "eye"
+  | "stethoscope"
+  // 식이·음식
+  | "apple"
+  | "carrot"
+  | "salad"
+  | "egg"
+  | "fish"
+  | "wheat"
+  | "milk"
+  | "coffee"
+  | "droplet"
+  | "utensils"
+  // 금지·주의
+  | "ban"
+  | "cigarette-off"
+  | "wine"
+  | "triangle-alert"
+  | "shield-alert"
+  // 약·치료
+  | "pill"
+  | "syringe"
+  | "thermometer"
+  | "hospital"
+  // 검사·수치
+  | "flask-conical"
+  | "microscope"
+  | "test-tube"
+  | "gauge"
+  | "chart-line"
+  // 문서·기록
+  | "clipboard-list"
+  | "scroll-text"
+  | "book-open"
+  // 안전·확인
+  | "shield-check"
+  | "circle-check"
+  | "info"
+  // 심리·사람
+  | "smile"
+  | "frown"
+  | "cloud-rain"
+  | "users"
+  | "scale"
+  // 강조
+  | "sparkles"
+  | "lightbulb";
+
+export interface CardSlide {
+  icon_key: CardIconKey;
+  tag: string;
+  // 기사에 마땅한 숫자가 없는 카드는 null이 온다 - 억지로 숫자를 요구하면 LLM이 없는 숫자를
+  // 지어내기 때문에 의도적으로 허용한 상태다. 템플릿이 "글자 카드"로 그려야 한다.
+  stat: string | null;
+  substat: string | null;
+  text: string;
+}
+
+export interface CardSummary {
+  slides: CardSlide[];
+}
+
+export interface HealthNewsFeedItem {
   id: number;
-  disease_code: string;
-  category: ContentCategory;
-  content_date: string; // YYYY-MM-DD
   title: string;
-  summary: string;
-  body: string;
-  image_prompt: string | null;
-  // 원문 출처 URL 목록(상세화면 "참고자료" 섹션용). 실제 생성 파이프라인이 아직 채우지
-  // 않아 현재는 항상 null/빈 배열 — 있을 때만 섹션을 노출한다.
-  source_refs: string[] | null;
+  source_name: string;
+  source_url: string;
+  published_at: string; // ISO 8601
+  image_url: string | null;
+  // false면 아직 카드요약 생성 전 - [카드요약보기]를 비활성으로 둔다.
+  has_card_summary: boolean;
+}
+
+export interface HealthNewsFeedResult {
+  items: HealthNewsFeedItem[];
+}
+
+export interface HealthNewsDetailResult {
+  id: number;
+  title: string;
+  source_name: string;
+  source_url: string;
+  published_at: string;
+  // 평문. 단락은 빈 줄("\n\n")로 구분된다 - 백엔드가 수집 시점에 HTML을 걷어내므로
+  // 프론트에서 dangerouslySetInnerHTML을 쓸 필요가 없다(제3자 HTML 주입 방지).
+  body_text: string;
+  image_url: string | null;
+  image_caption: string | null;
+  card_summary: CardSummary | null;
   disclaimer: string;
 }
 
-export interface ContentsFeedResult {
-  // false면 비로그인/질환 미등록으로 전체 콘텐츠를 폴백한 결과 — "질환 등록" 안내 배너 노출 기준.
-  personalized: boolean;
-  items: HealthContentResult[];
+export interface AdminHealthNewsResult {
+  id: number;
+  source: string;
+  source_name: string;
+  source_url: string;
+  title: string;
+  published_at: string;
+  image_url: string | null;
+  source_categories: string[] | null;
+  disease_code: string | null;
+  has_card_summary: boolean;
+  fetched_at: string;
 }
 
-// 백엔드 GET /contents/{id}/related 응답과 1:1 수동 동기화 (T-LLM-3-1). 같은 disease_code,
-// 다른 category, 자기 자신 제외 최신순 최대 limit개.
-export interface RelatedContentResult {
-  items: HealthContentResult[];
+export interface CollectNewsResult {
+  fetched: number;
+  excluded: number;
+  created: number;
+  skipped: number;
+  summaries_generated: number;
+  summaries_failed: number;
 }
 
-// [QA 전용] POST /contents/generate 요청 바디. 전부 생략 가능 - 생략 시 서버가 무작위로 고른다.
-export interface GenerateContentPayload {
-  disease_code?: string;
-  category?: ContentCategory;
-  topic?: string;
+export interface HealthNewsUpdatePayload {
+  title?: string;
+  body_text?: string;
 }
 
 // 백엔드 app/dtos/health_info.py와 1:1로 수동 동기화. 더보기 > 개인건강정보.
