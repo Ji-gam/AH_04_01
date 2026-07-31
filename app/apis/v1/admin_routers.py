@@ -117,10 +117,13 @@ async def delete_notice_admin(
     status_code=status.HTTP_200_OK,
     summary="건강 뉴스 수집 실행 (관리자 전용)",
     description=(
-        "T-LLM-6: 코메디닷컴 RSS를 1회 수집하고, 카드요약이 없는 기사의 요약을 생성한다. "
+        "T-LLM-6: 등록된 모든 매체(코메디닷컴·헬스경향·코리아헬스로그)를 1회 수집하고, "
+        "카드요약이 없는 기사의 요약을 생성한다. "
         "주기 자동 수집(Celery worker/beat)이 붙기 전까지 이 버튼이 유일한 트리거다. "
         "여러 번 눌러도 안전하다 - 이미 저장된 기사는 건너뛰고 이미 요약이 있으면 다시 만들지 않는다. "
-        "공시·제약사 카테고리 기사는 건강정보가 아니라 저장하지 않으며, 그 수를 `excluded`로 돌려준다. "
+        "매체당 최신 몇 건까지만 가져오며(카드요약 LLM 비용 상한), 상한을 넘어 미룬 수는 `over_limit`로 "
+        "돌려준다. 공시·제약사 카테고리 기사는 건강정보가 아니라 저장하지 않으며 그 수는 `excluded`다. "
+        "매체 하나가 실패해도 나머지는 계속 수집하고, 실패 원인은 `collect_error`에 담긴다. "
         "LLM 호출 비용이 드는 행위라서 admin_actions에 감사로그로 남는다."
     ),
     responses={503: {"description": "ai_worker가 응답하지 않아 카드요약을 만들 수 없음(기사 수집은 완료됨)."}},
@@ -141,6 +144,9 @@ async def collect_health_news_admin(
         excluded=collected.excluded,
         created=collected.created,
         skipped=collected.skipped,
+        over_limit=collected.over_limit,
+        unreadable=collected.unreadable,
+        collect_error=collected.first_error,
         summaries_generated=summarized.generated,
         summaries_failed=summarized.failed,
         summaries_error=summarized.first_error,

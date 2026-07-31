@@ -280,10 +280,31 @@ class CollectNewsResponse(BaseModel):
     """[뉴스 수집] 버튼 결과. 걸러낸 수를 따로 보여주는 이유: 조용히 버리면 "10건 중 6건만
     저장됨"이 필터 때문인지 파싱 실패인지 관리자가 알 수 없다."""
 
-    fetched: int = Field(description="RSS에서 파싱된 기사 수")
+    fetched: int = Field(description="모든 매체의 피드에서 파싱된 기사 수(합계)")
     excluded: int = Field(description="건강정보가 아닌 카테고리라 저장하지 않은 수")
     created: int = Field(description="새로 저장한 수")
     skipped: int = Field(description="이미 있어서 건너뛴 수")
+    over_limit: int = Field(
+        0,
+        description=(
+            "매체당 상한을 넘어 이번에는 가져오지 않은 수. 버린 게 아니라 미룬 것이며 "
+            "다음 수집에서 다시 후보가 된다. 상한은 카드요약 LLM 비용 상한 역할을 한다."
+        ),
+    )
+    unreadable: int = Field(
+        0,
+        description=(
+            "기사 페이지에서 본문을 뽑지 못해 버린 수. 0이 정상이고, 계속 늘어나면 "
+            "상대 매체의 기사 페이지 구조가 바뀐 것이므로 파서를 봐야 한다."
+        ),
+    )
+    collect_error: str | None = Field(
+        None,
+        description=(
+            "매체 하나가 통째로 실패한 첫 원인 한 줄(피드가 죽었거나 형식이 깨진 경우). "
+            "한 매체가 실패해도 나머지 매체는 계속 수집하므로 이 값이 유일한 단서다. 없으면 null."
+        ),
+    )
     summaries_generated: int = Field(description="카드요약을 새로 만든 수")
     summaries_failed: int = Field(description="카드요약 생성에 실패한 수(다음 수집에서 재시도된다)")
     summaries_error: str | None = Field(

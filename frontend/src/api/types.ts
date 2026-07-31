@@ -275,6 +275,12 @@ export interface CollectNewsResult {
   excluded: number;
   created: number;
   skipped: number;
+  /** 매체당 상한을 넘어 이번에는 가져오지 않은 수. 버린 게 아니라 다음 수집으로 미룬 것. */
+  over_limit: number;
+  /** 기사 페이지에서 본문을 뽑지 못해 버린 수. 계속 늘면 상대 매체 구조가 바뀐 것. */
+  unreadable: number;
+  /** 매체 하나가 통째로 실패한 첫 원인 한 줄. 없으면 null. */
+  collect_error: string | null;
   summaries_generated: number;
   summaries_failed: number;
   /** 카드요약이 실패한 첫 원인 한 줄. 실패가 없으면 null. */
