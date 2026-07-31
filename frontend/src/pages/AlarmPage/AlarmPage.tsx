@@ -458,7 +458,7 @@ export default function AlarmPage() {
             marginBottom: 20,
           }}
         >
-          <PageTitle icon={Calendar}>복약스케쥴</PageTitle>
+          <PageTitle icon={Calendar}>복약스케줄</PageTitle>
           <div style={{ display: "flex", gap: 8 }}>
             <FamilySwitcher
               selectedProfileId={null}

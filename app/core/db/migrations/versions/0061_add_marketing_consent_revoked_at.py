@@ -1,6 +1,6 @@
 """add marketing_consent_revoked_at to users (마케팅 동의 껐다켰다 지원)
 
-Revision ID: 0058
+Revision ID: 0061
 Revises: 0057
 Create Date: 2026-07-30
 """
@@ -10,8 +10,8 @@ from typing import Sequence, Union
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0059"
-down_revision: Union[str, None] = "0058"
+revision: str = "0061"
+down_revision: Union[str, None] = "0060"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

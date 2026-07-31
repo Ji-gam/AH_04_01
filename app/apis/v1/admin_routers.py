@@ -1,24 +1,28 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_admin_user
 from app.dtos.admin import (
     AdminActionResponse,
-    AdminContentResponse,
     AdminNoticeResponse,
     AdminStatsResponse,
     AdminUserResponse,
-    ContentUpdateRequest,
     ErrorLogResponse,
     NoticeUpdateRequest,
     OpsStatsResponse,
     SetAdminRequest,
 )
+from app.dtos.health_news_dto import (
+    AdminHealthNewsResponse,
+    CollectNewsResponse,
+    HealthNewsUpdateRequest,
+)
 from app.models.users import User
 from app.services.admin_service import AdminService
+from app.services.ai_worker_gateway import AIWorkerUnavailableError
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -106,51 +110,121 @@ async def delete_notice_admin(
     await service.delete_notice(session, admin, notice_id)
 
 
-@admin_router.get(
-    "/contents",
-    response_model=list[AdminContentResponse],
+@admin_router.post(
+    "/news/collect",
+    response_model=CollectNewsResponse,
     status_code=status.HTTP_200_OK,
-    summary="건강 콘텐츠 목록 조회 (관리자 전용)",
+    summary="건강 뉴스 수집 실행 (관리자 전용)",
+    description=(
+        "T-LLM-6: 코메디닷컴 RSS를 1회 수집하고, 카드요약이 없는 기사의 요약을 생성한다. "
+        "주기 자동 수집(Celery worker/beat)이 붙기 전까지 이 버튼이 유일한 트리거다. "
+        "여러 번 눌러도 안전하다 - 이미 저장된 기사는 건너뛰고 이미 요약이 있으면 다시 만들지 않는다. "
+        "공시·제약사 카테고리 기사는 건강정보가 아니라 저장하지 않으며, 그 수를 `excluded`로 돌려준다. "
+        "LLM 호출 비용이 드는 행위라서 admin_actions에 감사로그로 남는다."
+    ),
+    responses={503: {"description": "ai_worker가 응답하지 않아 카드요약을 만들 수 없음(기사 수집은 완료됨)."}},
 )
-async def list_contents_admin(
+async def collect_health_news_admin(
     admin: Annotated[User, Depends(get_current_admin_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
-) -> list[AdminContentResponse]:
+) -> CollectNewsResponse:
     service = AdminService()
-    contents = await service.list_contents_admin(session)
-    return [AdminContentResponse.model_validate(c) for c in contents]
+    try:
+        collected, summarized = await service.collect_health_news(session, admin)
+    except AIWorkerUnavailableError as e:
+        # 카드요약 배치는 기사 단위로 예외를 삼키므로 여기까지 오는 건 RSS 수집 자체가 아니라
+        # 게이트웨이 구성 문제일 때다. 기사 수집 결과는 이미 커밋돼 있다.
+        raise HTTPException(status_code=503, detail=f"카드요약 생성을 할 수 없습니다: {e}") from e
+    return CollectNewsResponse(
+        fetched=collected.fetched,
+        excluded=collected.excluded,
+        created=collected.created,
+        skipped=collected.skipped,
+        summaries_generated=summarized.generated,
+        summaries_failed=summarized.failed,
+    )
+
+
+@admin_router.get(
+    "/news",
+    response_model=list[AdminHealthNewsResponse],
+    status_code=status.HTTP_200_OK,
+    summary="수집된 건강 뉴스 목록 조회 (관리자 전용)",
+    description="발행일 최신순. `source_categories`를 함께 보여줘서 수집 필터 기준을 조정할 근거로 쓴다.",
+)
+async def list_health_news_admin(
+    admin: Annotated[User, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> list[AdminHealthNewsResponse]:
+    service = AdminService()
+    rows = await service.list_health_news_admin(session, limit=limit)
+    return [
+        AdminHealthNewsResponse(
+            id=n.id,
+            source=n.source,
+            source_name=n.source_name,
+            source_url=n.source_url,
+            title=n.title,
+            published_at=n.published_at,
+            image_url=n.image_url,
+            source_categories=n.source_categories,
+            disease_code=n.disease_code,
+            has_card_summary=n.card_summary is not None,
+            fetched_at=n.fetched_at,
+        )
+        for n in rows
+    ]
 
 
 @admin_router.patch(
-    "/contents/{content_id}",
-    response_model=AdminContentResponse,
+    "/news/{news_id}",
+    response_model=AdminHealthNewsResponse,
     status_code=status.HTTP_200_OK,
-    summary="건강 콘텐츠 수정 (관리자 전용)",
-    description="보낸 필드만 갱신한다. 질환/카테고리/날짜는 유니크 제약 키라 여기서 안 바꾼다.",
+    summary="건강 뉴스 수정 (관리자 전용)",
+    description="보낸 필드만 갱신한다. source/source_url은 중복 판단 키라 여기서 안 바꾼다.",
+    responses={404: {"description": "해당 id의 기사가 없음"}},
 )
-async def update_content_admin(
-    content_id: int,
-    body: ContentUpdateRequest,
+async def update_health_news_admin(
+    news_id: int,
+    body: HealthNewsUpdateRequest,
     admin: Annotated[User, Depends(get_current_admin_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
-) -> AdminContentResponse:
+) -> AdminHealthNewsResponse:
     service = AdminService()
-    updated = await service.update_content(session, admin, content_id, body)
-    return AdminContentResponse.model_validate(updated)
+    n = await service.update_health_news(session, admin, news_id, body)
+    return AdminHealthNewsResponse(
+        id=n.id,
+        source=n.source,
+        source_name=n.source_name,
+        source_url=n.source_url,
+        title=n.title,
+        published_at=n.published_at,
+        image_url=n.image_url,
+        source_categories=n.source_categories,
+        disease_code=n.disease_code,
+        has_card_summary=n.card_summary is not None,
+        fetched_at=n.fetched_at,
+    )
 
 
 @admin_router.delete(
-    "/contents/{content_id}",
+    "/news/{news_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="건강 콘텐츠 삭제 (관리자 전용)",
+    summary="건강 뉴스 삭제 (관리자 전용)",
+    description=(
+        "AI 요약이 기사를 왜곡했거나 건강정보로 부적절한 기사를 내리는 경로. "
+        "'관리자 승인 후 노출' 게이트를 두지 않기로 했으므로 이게 유일한 교정 수단이다."
+    ),
+    responses={404: {"description": "해당 id의 기사가 없음"}},
 )
-async def delete_content_admin(
-    content_id: int,
+async def delete_health_news_admin(
+    news_id: int,
     admin: Annotated[User, Depends(get_current_admin_user)],
     session: Annotated[AsyncSession, Depends(get_db)],
 ) -> None:
     service = AdminService()
-    await service.delete_content(session, admin, content_id)
+    await service.delete_health_news(session, admin, news_id)
 
 
 @admin_router.get(

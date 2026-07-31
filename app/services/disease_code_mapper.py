@@ -29,7 +29,7 @@ _REVERSE_DISEASE_CODE_MAP: dict[str, Disease] = {v: Disease(k) for k, v in DISEA
 
 
 def disease_code_to_enum(disease_code: str) -> Disease | None:
-    """한글 disease_code(health_contents.disease_code)를 다시 Disease enum으로 되돌린다 -
+    """한글 disease_code(예: "당뇨")를 다시 Disease enum으로 되돌린다 -
     콘텐츠 알림(content_notification_service.py)이 "이 질환을 진단병력에 등록한 사람"을
     찾을 때 쓴다. 매핑 안 되는 값(구성 데이터 오류 등)은 None."""
     return _REVERSE_DISEASE_CODE_MAP.get(disease_code)

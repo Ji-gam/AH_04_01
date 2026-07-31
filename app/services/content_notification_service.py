@@ -17,7 +17,7 @@ class ContentNotificationService:
     """새 건강 콘텐츠(라이프스타일 팁 등)가 생성되면, 그 질환을 진단병력에 등록해둔
     프로필 중 lifestyle_tip_enabled를 켜둔 사람에게 알린다(F-NTFY-6).
 
-    오프라인 배치 생성(app/scripts/generate_health_content.py)은 여러 질환×카테고리를
+    오프라인 배치 생성은 여러 질환×카테고리를
     한 번에 대량 생성하는 사전 캐시 워밍 작업이라, 여기 연결하면 알림이 한꺼번에 쏟아진다 -
     그래서 관리자가 명시적으로 하나씩 트리거하는 온라인 단건 생성
     (ContentGenerationService.generate_and_save, "더보기 > 관리자 컨텐츠생성")에만

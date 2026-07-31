@@ -3,7 +3,7 @@ import { NavLink } from "react-router-dom";
 import { pinkTheme } from "../../theme/pinkTheme";
 
 const NAV_ITEMS = [
-  { to: "/alarms", icon: "📅", label: "복약스케쥴" },
+  { to: "/alarms", icon: "📅", label: "복약스케줄" },
   { to: "/medication", icon: "➕", label: "약등록" },
   { to: "/", icon: "🏠", label: "홈" },
   { to: "/family", icon: "👨‍👩‍👧", label: "가족관리" },
