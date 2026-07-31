@@ -38,6 +38,22 @@ class CollectResult:
     skipped: int  # 이미 있어서 건너뛴 수
 
 
+# 관리자 화면·감사로그에 실을 오류 설명의 최대 길이. 전체 트레이스백은 서버 로그에만 남긴다.
+_ERROR_DETAIL_MAX_CHARS = 300
+
+
+def _describe_error(exc: Exception) -> str:
+    """예외를 한 줄로 요약한다. **클래스명을 앞에 붙이는 게 핵심**이다 - 그것만으로 원인이 갈린다.
+
+    - `AIWorkerUnavailableError` → ai_worker 호출 자체가 실패(연결/타임아웃/상태코드)
+    - `ValidationError` → 호출은 됐지만 LLM 출력이 스키마(슬라이드 최소 개수 등)에 못 미침
+    """
+    message = f"{type(exc).__name__}: {exc}".replace("\n", " ")
+    if len(message) <= _ERROR_DETAIL_MAX_CHARS:
+        return message
+    return message[:_ERROR_DETAIL_MAX_CHARS] + "…"
+
+
 @dataclass
 class SummaryResult:
     """카드요약 생성 1회의 결과."""
@@ -45,6 +61,10 @@ class SummaryResult:
     pending: int  # 요약이 비어 있던 기사 수
     generated: int  # 새로 요약을 채운 수
     failed: int  # LLM 실패로 못 채운 수(다음 실행에서 재시도된다)
+    # 첫 실패의 원인 한 줄. (2026-07-31) 실패 원인이 서버 로그에만 남아서, EC2에 SSH할 수 있는
+    # 리더 없이는 "7건 실패"의 이유를 알 수 없었다. 실패를 삼키는 설계(아래 주석 참고)를
+    # 유지하면서도 원인은 관리자가 볼 수 있어야 한다.
+    first_error: str | None = None
 
 
 class HealthNewsService:
@@ -101,17 +121,22 @@ class HealthNewsService:
         pending = await self._repo.list_missing_card_summary(session, limit=limit)
         generated = 0
         failed = 0
+        first_error: str | None = None
         for news in pending:
             try:
                 summary = await health_news_card_summary.generate_card_summary(news)
-            except Exception:
+            except Exception as e:
                 # 실패 원인(LLM 응답 형식, OpenAI 장애, 스키마 하한 미달 등)을 남기고 다음 기사로.
                 logger.exception("카드요약 생성 실패 (news_id=%s)", news.id)
                 failed += 1
+                # 첫 실패만 들고 나간다. 전부 같은 이유로 실패하는 경우가 대부분이라 한 줄이면
+                # 원인 파악에 충분하고, 기사 수만큼 메시지를 쌓으면 응답이 지저분해진다.
+                if first_error is None:
+                    first_error = _describe_error(e)
                 continue
             await self._repo.set_card_summary(session, news, summary.model_dump())
             generated += 1
-        return SummaryResult(pending=len(pending), generated=generated, failed=failed)
+        return SummaryResult(pending=len(pending), generated=generated, failed=failed, first_error=first_error)
 
     # ── 조회 ──────────────────────────────────────────────────────────────────
 

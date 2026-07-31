@@ -158,6 +158,9 @@ class AdminService:
                 f"{actor.email} collected {collected.created} new articles "
                 f"(fetched={collected.fetched}, excluded={collected.excluded}, skipped={collected.skipped}), "
                 f"generated {summarized.generated} card summaries (failed={summarized.failed})"
+                # 실패 원인을 감사로그에도 남긴다 - 관리자 화면의 활동 로그만 보고도 원인을
+                # 알 수 있어야 한다(그 순간의 응답 문구는 화면을 새로 고치면 사라진다).
+                + (f" - {summarized.first_error}" if summarized.first_error else "")
             ),
         )
         await session.commit()

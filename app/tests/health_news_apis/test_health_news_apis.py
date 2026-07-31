@@ -22,6 +22,7 @@ from app.repositories.health_news_repository import HealthNewsRepository
 from app.services import health_news_card_summary as card_summary_module
 from app.services import health_news_service as health_news_service_module
 from app.services import health_news_source as health_news_source_module
+from app.services.ai_worker_gateway import AIWorkerUnavailableError
 from app.services.health_news_source import FetchResult, ParsedArticle
 from app.tests.conftest import TestSessionLocal
 
@@ -244,6 +245,85 @@ async def test_collect_saves_articles_and_reports_excluded_count(monkeypatch) ->
     assert body["excluded"] == 4
     assert body["fetched"] == 5  # 저장 대상 1건 + 걸러낸 4건
     assert body["summaries_generated"] == 1
+
+
+async def test_collect_reports_why_card_summaries_failed(monkeypatch) -> None:
+    """실패 **이유**를 응답에 담아야 한다.
+
+    (2026-07-31) 배포 환경에서 카드요약이 7건 전부 실패했는데, 응답에는 `summaries_failed=7`만
+    있고 이유가 없었다. 원인은 서버 로그에만 남아서 EC2에 접속할 수 있는 사람 없이는 알 수가
+    없었다. 예외 **클래스명**이 앞에 붙는 게 핵심이다 - 그것만으로 "호출 자체가 실패"와
+    "LLM 출력이 스키마에 못 미침"이 갈린다."""
+    article = ParsedArticle(
+        source="KORMEDI",
+        source_name="코메디닷컴",
+        source_url="https://kormedi.com/summary-fails/",
+        title="요약이 실패하는 기사",
+        published_at=datetime(2026, 7, 31, 10, 0, 0),
+        body_text="본문입니다.",
+        image_url=None,
+        image_caption=None,
+        source_categories=["건강"],
+    )
+
+    async def _fake_fetch(source):  # noqa: ANN001, ANN202
+        return FetchResult(articles=[article], excluded=0)
+
+    async def _failing_summary(news, gateway=None):  # noqa: ANN001, ANN202
+        raise AIWorkerUnavailableError("ai_worker 생성 실패(status=500): 내부 오류")
+
+    monkeypatch.setattr(health_news_service_module.health_news_source, "fetch", _fake_fetch)
+    monkeypatch.setattr(health_news_service_module.health_news_card_summary, "generate_card_summary", _failing_summary)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=_BASE) as client:
+        token = await _signup_login_admin(client, email="newsfail@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        response = await client.post("/api/v1/admin/news/collect", headers=headers)
+        actions = await client.get("/api/v1/admin/actions", headers=headers)
+
+    body = response.json()
+    # 요약이 실패해도 기사는 남는다(기존 설계) - 그래야 다음 실행에서 재시도된다.
+    assert body["created"] == 1
+    assert body["summaries_generated"] == 0
+    assert body["summaries_failed"] == 1
+    assert body["summaries_error"].startswith("AIWorkerUnavailableError:")
+    assert "status=500" in body["summaries_error"]
+
+    # 응답 문구는 화면을 새로 고치면 사라지므로 감사로그에도 남아야 한다.
+    if actions.status_code == status.HTTP_200_OK:
+        details = [a.get("detail") or "" for a in actions.json()]
+        assert any("AIWorkerUnavailableError" in d for d in details)
+
+
+async def test_collect_reports_no_error_when_summaries_succeed(monkeypatch) -> None:
+    """성공했을 때는 오류 칸이 비어 있어야 한다 - 늘 뭔가 떠 있으면 관리자가 무시하게 된다."""
+    article = ParsedArticle(
+        source="KORMEDI",
+        source_name="코메디닷컴",
+        source_url="https://kormedi.com/summary-ok/",
+        title="요약이 되는 기사",
+        published_at=datetime(2026, 7, 31, 11, 0, 0),
+        body_text="본문입니다.",
+        image_url=None,
+        image_caption=None,
+        source_categories=["건강"],
+    )
+
+    async def _fake_fetch(source):  # noqa: ANN001, ANN202
+        return FetchResult(articles=[article], excluded=0)
+
+    async def _fake_summary(news, gateway=None):  # noqa: ANN001, ANN202
+        return CardSummary.model_validate(_card_summary())
+
+    monkeypatch.setattr(health_news_service_module.health_news_source, "fetch", _fake_fetch)
+    monkeypatch.setattr(health_news_service_module.health_news_card_summary, "generate_card_summary", _fake_summary)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=_BASE) as client:
+        token = await _signup_login_admin(client, email="newsok@example.com")
+        response = await client.post("/api/v1/admin/news/collect", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.json()["summaries_failed"] == 0
+    assert response.json()["summaries_error"] is None
 
 
 async def test_collect_twice_does_not_duplicate_articles(monkeypatch) -> None:

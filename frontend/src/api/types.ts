@@ -277,6 +277,8 @@ export interface CollectNewsResult {
   skipped: number;
   summaries_generated: number;
   summaries_failed: number;
+  /** 카드요약이 실패한 첫 원인 한 줄. 실패가 없으면 null. */
+  summaries_error: string | null;
 }
 
 export interface HealthNewsUpdatePayload {

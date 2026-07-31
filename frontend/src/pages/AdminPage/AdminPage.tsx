@@ -506,6 +506,11 @@ export default function AdminPage() {
             ? ` (${result.summaries_failed}건 실패 - 다음 수집에서 재시도돼요)`
             : ""),
       );
+      // 실패 원인을 화면에 띄운다. 전에는 로그에만 남아서, EC2에 접속할 수 있는 사람 없이는
+      // "몇 건 실패"의 이유를 알 수 없었다. 이 문구는 활동 로그에도 함께 남는다.
+      if (result.summaries_error) {
+        setContentError(`카드요약 실패 원인: ${result.summaries_error}`);
+      }
       await loadActions();
       await loadNews();
     } catch (err) {

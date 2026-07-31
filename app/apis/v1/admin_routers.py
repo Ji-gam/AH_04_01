@@ -142,6 +142,7 @@ async def collect_health_news_admin(
         skipped=collected.skipped,
         summaries_generated=summarized.generated,
         summaries_failed=summarized.failed,
+        summaries_error=summarized.first_error,
     )
 
 

@@ -140,12 +140,16 @@ class OpsStatsRepository:
         return trend
 
     async def ai_worker_status(self) -> str:
-        """AI-worker 컨테이너가 살아있는지 가벼운 GET으로 확인. 전용 헬스체크 엔드포인트가
-        따로 없어서 루트 경로에 짧은 타임아웃으로 붙어보고, 응답이 오면(설령 404여도)
-        "살아있다"로 판단한다 - 완전히 연결이 안 되거나 타임아웃나면 "다운"으로 본다."""
+        """AI-worker의 헬스체크 엔드포인트(`/health`)를 찔러 상태를 확인한다.
+
+        (2026-07-31 수정) 예전에는 루트 경로에 GET해서 **응답이 오기만 하면(404여도) "정상"**
+        으로 봤다. ai_worker는 루트에 라우트가 없어 항상 404를 주므로, 사실상 "TCP가 열려
+        있다"만 확인하는 셈이었다. 그래서 카드요약이 전부 실패하는데도 대시보드가 "정상"이라
+        표시해 원인 파악을 오히려 방해했다. 이제 실제 헬스 응답(2xx)만 정상으로 본다.
+        """
         try:
             async with httpx.AsyncClient(timeout=2.0) as client:
-                await client.get(config.AI_WORKER_BASE_URL)
-            return "ok"
+                response = await client.get(f"{config.AI_WORKER_BASE_URL}/health")
+            return "ok" if response.is_success else "down"
         except Exception:
             return "down"
