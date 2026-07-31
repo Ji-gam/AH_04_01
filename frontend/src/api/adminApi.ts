@@ -1,4 +1,5 @@
 import { apiFetch, apiFetchRaw } from "./client";
+import type { AdminHealthNewsResult, CollectNewsResult, HealthNewsUpdatePayload } from "./types";
 
 export interface AdminUserResult {
   id: number;
@@ -51,7 +52,8 @@ export interface AdminOpsStatsResult {
   wau: number;
   adherence_rate: number | null;
   top_drugs: { name: string; count: number }[];
-  content_count_by_category: Record<string, number>;
+  // T-LLM-6: 매체별 수집된 건강 뉴스 수. 조회수 추적이 없어서 인기순은 여전히 못 보여준다.
+  news_count_by_source: Record<string, number>;
   chat_message_trend: { date: string; count: number }[];
   active_chat_sessions_7d: number;
   notification_count_trend: { date: string; count: number }[];
@@ -74,21 +76,9 @@ export interface AdminNoticeUpdatePayload {
   body?: string;
 }
 
-export interface AdminContentResult {
-  id: number;
-  disease_code: string;
-  category: string;
-  content_date: string;
-  title: string;
-  summary: string;
-  body: string;
-}
-
-export interface AdminContentUpdatePayload {
-  title?: string;
-  summary?: string;
-  body?: string;
-}
+// T-LLM-6 관리자 뉴스 관리. 타입은 frontend/src/api/types.ts에 두고 여기서 재수출한다 —
+// 사용자 화면(healthNewsApi)과 같은 백엔드 DTO를 보므로 한 곳에서 관리한다.
+export type { AdminHealthNewsResult, CollectNewsResult, HealthNewsUpdatePayload } from "./types";
 
 export const adminApi = {
   listUsers: (search?: string) =>
@@ -112,12 +102,14 @@ export const adminApi = {
     }),
   deleteNotice: (noticeId: number) =>
     apiFetchRaw(`/admin/notices/${noticeId}`, { method: "DELETE" }),
-  listContents: () => apiFetch<AdminContentResult[]>("/admin/contents"),
-  updateContent: (contentId: number, data: AdminContentUpdatePayload) =>
-    apiFetch<AdminContentResult>(`/admin/contents/${contentId}`, {
+  // T-LLM-6: 주기 자동 수집(Celery)이 붙기 전까지 이 버튼이 유일한 수집 트리거다.
+  // 여러 번 눌러도 안전하다(이미 저장된 기사는 건너뛴다).
+  collectNews: () => apiFetch<CollectNewsResult>("/admin/news/collect", { method: "POST" }),
+  listNews: (limit = 100) => apiFetch<AdminHealthNewsResult[]>(`/admin/news?limit=${limit}`),
+  updateNews: (newsId: number, data: HealthNewsUpdatePayload) =>
+    apiFetch<AdminHealthNewsResult>(`/admin/news/${newsId}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     }),
-  deleteContent: (contentId: number) =>
-    apiFetchRaw(`/admin/contents/${contentId}`, { method: "DELETE" }),
+  deleteNews: (newsId: number) => apiFetchRaw(`/admin/news/${newsId}`, { method: "DELETE" }),
 };
