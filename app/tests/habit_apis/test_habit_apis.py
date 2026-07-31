@@ -225,3 +225,48 @@ def test_pick_recommendations_rotates_without_consecutive_day_repeats():
 
     assert len(day1) == 5
     assert day1 != day2
+
+
+def test_pick_recommendations_prioritizes_disease_related_when_pool_within_limit():
+    """후보가 5개 이하라도, 질병 관련 습관이 일반 습관보다 앞에 와야 한다(요청: "습관 리스트는
+    질병 관련부터 보여줘야 한다")."""
+    base = [HabitDef(key="b1", label="일반1", icon="🙂", unit="회", target=1)]
+    disease = [HabitDef(key="d1", label="질병1", icon="💊", unit="회", target=1, is_disease_related=True)]
+    pool = base + disease  # 원본 순서는 일반이 먼저지만
+
+    result = pick_recommendations(pool, profile_id=1, today=date(2026, 7, 15))
+
+    assert [h.key for h in result] == ["d1", "b1"]
+
+
+def test_pick_recommendations_fills_all_disease_slots_before_base_when_over_limit():
+    """질병 관련 습관이 MAX_RECOMMENDATIONS(5)보다 적으면, 전부 포함시키고 남는 자리만
+    일반 습관으로(로테이션) 채운다."""
+    disease = [
+        HabitDef(key=f"d{i}", label=f"질병{i}", icon="💊", unit="회", target=1, is_disease_related=True)
+        for i in range(3)
+    ]
+    base = [HabitDef(key=f"b{i}", label=f"일반{i}", icon="🙂", unit="회", target=1) for i in range(10)]
+    pool = base + disease
+
+    result = pick_recommendations(pool, profile_id=1, today=date(2026, 7, 15))
+
+    assert len(result) == 5
+    assert {h.key for h in result[:3]} == {"d0", "d1", "d2"}
+    assert all(not h.is_disease_related for h in result[3:])
+
+
+def test_pick_recommendations_rotates_among_disease_only_when_more_than_limit():
+    """질병 관련 습관만으로도 5개를 넘으면, 일반 습관은 아예 안 보이고 질병 관련 습관끼리만
+    날짜별로 로테이션한다."""
+    disease = [
+        HabitDef(key=f"d{i}", label=f"질병{i}", icon="💊", unit="회", target=1, is_disease_related=True)
+        for i in range(7)
+    ]
+    base = [HabitDef(key="b0", label="일반0", icon="🙂", unit="회", target=1)]
+    pool = disease + base
+
+    result = pick_recommendations(pool, profile_id=1, today=date(2026, 7, 15))
+
+    assert len(result) == 5
+    assert all(h.is_disease_related for h in result)

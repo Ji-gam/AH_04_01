@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dtos.weekly_report_dto import WeeklyReportItemResult, WeeklyReportListResult
+from app.models.profiles import Profile
 from app.models.weekly_reports import WeeklyReport
 from app.repositories.diet_repository import DietRepository
 from app.repositories.exercise_repository import ExerciseRepository
@@ -25,10 +26,11 @@ from app.services.periodic_report_service import PeriodicReportService
 logger = logging.getLogger("app.weekly_report_service")
 
 _SYSTEM_PROMPT = (
-    "당신은 헬스케어 앱 ReMedi의 주간 리포트 작성자입니다. 사용자의 이번 주 습관 실천, "
-    "복약 순응도, 식단, 운동, 수면 기록 데이터를 바탕으로 따뜻하고 격려하는 톤의 한국어 리포트를 "
-    "3~5문장으로 작성하세요. 숫자를 자연스러운 문장 속에 녹여서 언급하고, 딱딱한 나열식 "
-    "표현은 피하세요. 의학적 조언이나 진단은 하지 마세요."
+    "당신은 헬스케어 앱 ReMedi의 주간 리포트 작성자입니다. 사용자의 키/몸무게(BMI)와 이번 주 "
+    "습관 실천, 복약 순응도, 식단, 운동, 수면 기록 데이터를 바탕으로 따뜻하고 격려하는 톤의 "
+    "한국어 리포트를 3~5문장으로 작성하세요. 키/몸무게가 주어지면 식단·운동 칼로리가 그 사람에게 "
+    "적절한 수준인지 자연스럽게 언급하세요. 숫자를 자연스러운 문장 속에 녹여서 언급하고, 딱딱한 "
+    "나열식 표현은 피하세요. 의학적 조언이나 진단은 하지 마세요."
 )
 
 
@@ -38,6 +40,20 @@ class WeeklyReportSummary(BaseModel):
     HealthContentCard와 같은 발상."""
 
     summary: str
+
+
+def _body_info_line(profile: Profile | None) -> str | None:
+    """키/몸무게가 둘 다 있으면 BMI를 계산해 리포트 한 줄로 만든다(2026-07-29,
+    "주간 리포트에 키/몸무게도 반영해달라"는 요청). 개인식별정보와 분리 저장된
+    profile.health_profile에서 읽는다(NFR-ARCH-001 리팩터링 이후 구조)."""
+    if profile is None:
+        return None
+    health = profile.health_profile
+    if health is None or health.height_cm is None or health.weight_kg is None:
+        return None
+    height_m = float(health.height_cm) / 100
+    bmi = round(float(health.weight_kg) / (height_m**2), 1)
+    return f"키 {health.height_cm}cm, 몸무게 {health.weight_kg}kg (BMI {bmi})"
 
 
 def _fallback_report(stats_lines: list[str]) -> str:
@@ -79,21 +95,21 @@ class WeeklyReportService:
         sleep_ids = await self._sleep_repo.list_profile_ids_with_logs_in_range(session, start, end)
         return set(habit_ids) | set(diet_ids) | set(exercise_ids) | set(sleep_ids)
 
-    async def generate_and_save(self, session: AsyncSession, profile_id: int) -> WeeklyReport:
-        week_end = date.today()
-        week_start = week_end - timedelta(days=6)
-
-        existing = await self._weekly_report_repo.get_by_profile_and_week(session, profile_id, week_start)
-        if existing is not None:
-            return existing
-
-        profile = await self._profile_repo.get_profile(session, profile_id)
+    async def _build_stats_lines(
+        self, session: AsyncSession, profile_id: int, profile: Profile | None, week_start: date, week_end: date
+    ) -> list[str]:
+        """generate_and_save()의 AI 입력/폴백 문구에 쓸 통계 문장들 - 항목별로 데이터가
+        있을 때만 한 줄씩 추가한다. 별도 메서드로 분리해 generate_and_save()의 분기 수를
+        낮게 유지한다(ruff C901)."""
         adherence = await self._adherence.compute(session, profile_id, week_start, week_end)
         diet_totals = await self._diet_repo.list_daily_totals(session, profile_id, week_start, week_end)
         exercise_totals = await self._exercise_repo.list_daily_totals(session, profile_id, week_start, week_end)
         sleep_logs = await self._sleep_repo.list_daily(session, profile_id, week_start, week_end)
 
         stats_lines: list[str] = []
+        body_info_line = _body_info_line(profile)
+        if body_info_line is not None:
+            stats_lines.append(body_info_line)
         if profile is not None:
             habit_rate = await self._periodic_report_service.compute_habit_rate(session, profile, week_start, week_end)
             if habit_rate.rate is not None:
@@ -115,6 +131,18 @@ class WeeklyReportService:
                 f"수면 기록 {len(sleep_logs)}일, 평균 수면시간 {round(avg_hours, 1)}시간, "
                 f"평균 수면의 질 {round(avg_quality, 1)}/5"
             )
+        return stats_lines
+
+    async def generate_and_save(self, session: AsyncSession, profile_id: int) -> WeeklyReport:
+        week_end = date.today()
+        week_start = week_end - timedelta(days=6)
+
+        existing = await self._weekly_report_repo.get_by_profile_and_week(session, profile_id, week_start)
+        if existing is not None:
+            return existing
+
+        profile = await self._profile_repo.get_profile(session, profile_id)
+        stats_lines = await self._build_stats_lines(session, profile_id, profile, week_start, week_end)
 
         if not stats_lines:
             content = (

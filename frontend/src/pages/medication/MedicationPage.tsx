@@ -12,9 +12,10 @@ import type {
   DurRecallInfo,
 } from "../../api/types";
 import PageTitle from "../../components/common/PageTitle";
-import SuccessModal from "../../components/common/SuccessModal";
 import FamilySwitcher from "../../components/family/FamilySwitcher";
 import FamilyTrackerView from "../../components/family/FamilyTrackerView";
+import ConfirmModal from "../../components/ui/ConfirmModal";
+import MedicationResultModal from "../../components/ui/MedicationResultModal";
 import OcrFullscreenOverlay from "../../components/ui/OcrFullscreenOverlay";
 import type { OcrJobStatus } from "../../components/ui/OcrProgressBar";
 import { useAuth } from "../../hooks/useAuth";
@@ -386,10 +387,17 @@ export default function MedicationPage() {
   // OCR 확정등록 버튼 중복 클릭 방지용 (state는 재렌더 전까지 반영이 늦어 클릭 사이 gap이
   // 생길 수 있어, 클릭 즉시 동기적으로 막아야 하는 이 용도로는 ref를 함께 쓴다).
   const [isConfirmingJob, setIsConfirmingJob] = useState(false);
-  // (2026-07-30) 가족 등록 화면(FamilyTrackerView)과 스타일 통일 - alert() 대신
-  // 핑크 톤 모달로 등록 완료를 안내한다.
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const isConfirmingJobRef = useRef(false);
+
+  // (#329) 등록 결과 안내 — 가족 몫 등록(FamilyTrackerView)과 같은 MedicationResultModal을 쓴다.
+  // 이전에는 window.alert였는데, 같은 동작인데 화면마다 달라 보여 통일했다.
+  // goToList: 확인을 누르면 방금 등록한 약을 바로 볼 수 있게 등록 목록 탭으로 넘긴다. 일부만
+  // 등록된 경우는 실패한 약의 선택 상태를 남겨 재시도하게 하므로 등록 화면에 그대로 머문다.
+  const [resultModal, setResultModal] = useState<{
+    message: string;
+    tone: "success" | "warning";
+    goToList: boolean;
+  } | null>(null);
 
   // OCR 후보가 잘못 인식됐을 때 "다른 약이에요"로 텍스트 검색해 바로잡는 기능 — 새 매칭/
   // 할루시네이션 로직을 새로 만들지 않고, 수동등록 탭이 이미 쓰는 searchMedications/
@@ -434,6 +442,14 @@ export default function MedicationPage() {
   // 11번 단계: 등록약 목록 복수 선택 삭제용 — 개별 삭제 버튼과 별개로, 여러 개를 한 번에
   // 지울 수 있도록 체크박스 선택 상태를 둔다.
   const [selectedScheduleIds, setSelectedScheduleIds] = useState<number[]>([]);
+
+  // (#331) 삭제 확인 — window.confirm(OS 대화상자) 대신 앱 디자인의 ConfirmModal을 쓴다.
+  // 개별/일괄 삭제가 확인 문구와 실행 내용만 다르므로, 실행할 동작을 run에 담아둔다.
+  const [pendingDelete, setPendingDelete] = useState<{
+    message: string;
+    run: () => Promise<void>;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // 약물 상호작용(12번) — DurScreeningPage.tsx 화면4와 동일하게 durApi.screenInteraction/
   // screenIngredient를 등록약 이름으로 호출해서 상호작용/리콜/공유성분 3종을 함께 보여준다
@@ -667,9 +683,11 @@ export default function MedicationPage() {
       await fetchSchedules();
 
       if (failedCodes.length === 0) {
-        setSuccessMessage(
-          `${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`,
-        );
+        setResultModal({
+          message: `${selectedDrugCodes.length}개 약품의 복약 스케줄 등록이 완료되었습니다!`,
+          tone: "success",
+          goToList: true,
+        });
         // currentJobId/candidates는 그대로 둔다 — 후보별 등록 여부는 등록약 목록(schedules)에서
         // 파생되므로(아래 isRegistered), 등록 목록에서 삭제하면 같은 후보를 재업로드 없이 다시
         // 선택해 등록할 수 있어야 한다. 방금 제출한 선택 상태만 비운다.
@@ -679,9 +697,11 @@ export default function MedicationPage() {
         const failedNames = failedCodes.map(
           (code) => candidates.find((c) => c.drug_code === code)?.drug_name ?? code,
         );
-        alert(
-          `${succeededCount}개 약품은 등록되었지만, 다음 약품은 실패했습니다: ${failedNames.join(", ")}`,
-        );
+        setResultModal({
+          message: `${succeededCount}개 약품은 등록되었지만, 다음 약품은 실패했습니다: ${failedNames.join(", ")}`,
+          tone: "warning",
+          goToList: false,
+        });
         // 실패한 약만 선택 상태로 남겨 재시도할 수 있게 한다.
         setSelectedDrugCodes(failedCodes);
       }
@@ -745,10 +765,18 @@ export default function MedicationPage() {
         hospitalName.trim() || null,
       );
       if (res.status === "registered") {
-        setSuccessMessage(
+        setResultModal(
           res.auto_created
-            ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`
-            : "복약 일정이 성공적으로 등록되었습니다!",
+            ? {
+                message: `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`,
+                tone: "warning",
+                goToList: true,
+              }
+            : {
+                message: "복약 일정이 성공적으로 등록되었습니다!",
+                tone: "success",
+                goToList: true,
+              },
         );
         handleCancelEditCandidate();
       } else {
@@ -799,10 +827,18 @@ export default function MedicationPage() {
       const timesArray = manualTimes;
       const res = await quickRegister(quickDrugName, timesArray, hospitalName.trim() || null);
       if (res.status === "registered") {
-        setSuccessMessage(
+        setResultModal(
           res.auto_created
-            ? `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`
-            : "복약 일정이 성공적으로 등록되었습니다!",
+            ? {
+                message: `"${res.schedule?.drug_name}"이(가) 마스터 DB에 없어 새로 등록하며 복약 일정을 저장했습니다. 이 약은 상호작용(병용금기) 검사가 제공되지 않습니다.`,
+                tone: "warning",
+                goToList: true,
+              }
+            : {
+                message: "복약 일정이 성공적으로 등록되었습니다!",
+                tone: "success",
+                goToList: true,
+              },
         );
         setQuickDrugName("");
         setHospitalName("");
@@ -826,7 +862,11 @@ export default function MedicationPage() {
     try {
       const timesArray = manualTimes;
       await createManualSchedule(selectedManualCode, timesArray, hospitalName.trim() || null);
-      setSuccessMessage("복약 일정이 성공적으로 등록되었습니다!");
+      setResultModal({
+        message: "복약 일정이 성공적으로 등록되었습니다!",
+        tone: "success",
+        goToList: true,
+      });
       setQuickDrugName("");
       setHospitalName("");
       setManualCandidates([]);
@@ -837,14 +877,12 @@ export default function MedicationPage() {
     }
   };
 
-  // 스케줄 삭제 핸들러 (잘못 등록된 항목 취소용)
-  const handleDeleteSchedule = async (scheduleId: number) => {
-    if (!window.confirm("이 복약 스케줄을 삭제하시겠습니까?")) return;
-    try {
-      await deleteSchedule(scheduleId);
-    } catch (err) {
-      console.error(err);
-    }
+  // 스케줄 삭제 핸들러 (잘못 등록된 항목 취소용) — 실제 삭제는 확인 모달에서 진행한다.
+  const handleDeleteSchedule = (scheduleId: number, drugName: string) => {
+    setPendingDelete({
+      message: `"${drugName}" 복약 스케줄을 삭제하시겠습니까?`,
+      run: () => deleteSchedule(scheduleId),
+    });
   };
 
   const toggleScheduleSelection = (scheduleId: number) => {
@@ -860,17 +898,31 @@ export default function MedicationPage() {
   };
 
   // 복수 선택 삭제 — deleteSchedule이 건마다 목록을 재조회하므로, 경합을 피하려고 순차 처리한다.
-  const handleBulkDeleteSchedules = async () => {
+  const handleBulkDeleteSchedules = () => {
     if (selectedScheduleIds.length === 0) return;
-    if (!window.confirm(`선택한 ${selectedScheduleIds.length}개의 복약 스케줄을 삭제하시겠습니까?`))
-      return;
+    setPendingDelete({
+      message: `선택한 ${selectedScheduleIds.length}개의 복약 스케줄을 삭제하시겠습니까?`,
+      run: async () => {
+        for (const scheduleId of selectedScheduleIds) {
+          await deleteSchedule(scheduleId);
+        }
+        setSelectedScheduleIds([]);
+      },
+    });
+  };
+
+  // 삭제 확인 모달의 "삭제"를 눌렀을 때 실제 삭제를 실행한다. 실패하면 useMedication의 error가
+  // 세팅되어 기존 오류 모달이 뜨므로, 여기서는 모달만 닫는다.
+  const runPendingDelete = async () => {
+    if (!pendingDelete || isDeleting) return;
+    setIsDeleting(true);
     try {
-      for (const scheduleId of selectedScheduleIds) {
-        await deleteSchedule(scheduleId);
-      }
-      setSelectedScheduleIds([]);
+      await pendingDelete.run();
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsDeleting(false);
+      setPendingDelete(null);
     }
   };
 
@@ -1908,7 +1960,7 @@ export default function MedicationPage() {
                         </div>
                       </label>
                       <button
-                        onClick={() => handleDeleteSchedule(s.id)}
+                        onClick={() => handleDeleteSchedule(s.id, s.drug_name)}
                         disabled={isLoading}
                         style={{
                           backgroundColor: pinkTheme.danger,
@@ -2232,6 +2284,28 @@ export default function MedicationPage() {
         )}
       </div>
 
+      {pendingDelete && (
+        <ConfirmModal
+          message={pendingDelete.message}
+          isBusy={isDeleting}
+          onConfirm={runPendingDelete}
+          onCancel={() => {
+            if (!isDeleting) setPendingDelete(null);
+          }}
+        />
+      )}
+
+      {resultModal && (
+        <MedicationResultModal
+          message={resultModal.message}
+          tone={resultModal.tone}
+          onClose={() => {
+            if (resultModal.goToList) setActiveTab("list");
+            setResultModal(null);
+          }}
+        />
+      )}
+
       {error && (
         <Modal onClose={clearError}>
           <div
@@ -2339,15 +2413,6 @@ export default function MedicationPage() {
         </Modal>
       )}
 
-      {successMessage && (
-        <SuccessModal
-          message={successMessage}
-          onConfirm={() => {
-            setSuccessMessage(null);
-            setActiveTab("list");
-          }}
-        />
-      )}
     </div>
   );
 }

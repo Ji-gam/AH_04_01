@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -10,9 +11,18 @@ from app.core.config import Env
 from app.core.db.databases import AsyncSessionLocal
 from app.repositories.error_log_repository import ErrorLogRepository
 from app.scripts.seed_health_content import seed_health_content
+from app.scripts.seed_local_super_admin import seed_local_super_admin
 from app.services import medication_open_api_client
 from app.services.medication_service import refresh_food_drug_interaction_cache
 from app.services.push_scheduler import start_push_scheduler
+
+# (2026-07-31) 지금까지 프로젝트 어디에도 logging.basicConfig가 없어서, INFO 레벨
+# 로그(로컬 시딩 안내 등)가 전부 조용히 씹히고 있었다 - 파이썬은 설정이 아예 없으면
+# WARNING 이상만 최소한으로 찍는 "최후 방어" 핸들러만 동작한다. 앱 전체에 딱 한 번,
+# 여기서 기본 설정을 잡아 INFO 레벨 로그도 도커 로그(`docker compose logs fastapi`)에
+# 정상적으로 보이게 한다. uvicorn 자체 로거(uvicorn.access 등)는 이미 따로 설정되어
+# 있어 영향받지 않는다.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 OPENAPI_TAGS = [
     {
@@ -37,9 +47,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     dev/prod는 실제 생성 파이프라인이 채운 MySQL을 그대로 조회하므로 건너뛴다.
     음식-약물 참조 테이블은 모든 환경에서 동일한 정적 데이터라(2026-07-16 SQLite에서 MySQL로
     이전) `seed_food_drug_interaction`으로 미리 시딩된 MySQL 테이블을 앱 기동 시 1회 읽어
-    프로세스 메모리에 캐싱한다 — 상세: `app/repositories/food_drug_interaction_repository.py`."""
+    프로세스 메모리에 캐싱한다 — 상세: `app/repositories/food_drug_interaction_repository.py`.
+
+    같은 조건(`ENV=local`)에서 슈퍼관리자 계정도 자동 시딩한다 - 관련 환경변수
+    (`LOCAL_SUPER_ADMIN_EMAIL`/`_PASSWORD`)가 없으면 아무 일도 안 하므로, 이 값을 안
+    채운 팀원에게는 아무 영향이 없다 - 상세: `app/scripts/seed_local_super_admin.py`."""
     if config.ENV == Env.LOCAL:
         await seed_health_content()
+        await seed_local_super_admin()
 
     async with AsyncSessionLocal() as session:
         await refresh_food_drug_interaction_cache(session)

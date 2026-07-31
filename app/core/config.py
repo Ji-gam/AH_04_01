@@ -72,6 +72,14 @@ class Config(BaseSettings):
     # 발송만 건너뛰고(웹푸시는 그대로 동작) 조용히 넘어간다.
     FIREBASE_CREDENTIALS_PATH: str | None = None
 
+    # (2026-07-30) 로컬 전용 슈퍼관리자 자동 시딩(app/scripts/seed_local_super_admin.py) -
+    # ENV=local이고 이 둘이 모두 채워져 있을 때만 서버 기동 시 자동으로 계정을 만들고
+    # 관리자로 지정한다. 하드코딩된 기본값을 절대 두지 않는다 - 값이 없으면 그냥
+    # 아무 일도 안 일어난다(fail-safe). dev/prod .env엔 이 값을 아예 넣지 않는 것으로
+    # 안전을 확보한다(ENV 게이팅과 별개의 2중 안전장치).
+    LOCAL_SUPER_ADMIN_EMAIL: str | None = None
+    LOCAL_SUPER_ADMIN_PASSWORD: str | None = None
+
     # [개인정보보호법 제23조 - 민감정보(건강정보) 안전성 확보조치] 자유서술형 건강정보
     # 텍스트(개인건강정보 특이사항/기타, 진단병력/가족력 상세)를 DB에 암호화해서 저장하기
     # 위한 키. app/scripts/generate_field_encryption_key.py로 1회 생성 후 .env에 넣는다.

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { dietApi } from "../../api/dietApi";
+import { healthInfoApi } from "../../api/healthInfoApi";
 import type { DietRecentResult, DietTodayResult, FoodSearchResultItem } from "../../api/types";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 
@@ -33,9 +35,13 @@ function formatDay(isoDate: string): string {
  * 배율을 고르고 기록하면, 상단 오늘 총 섭취 요약(칼로리 바 + 단백질/탄수/지방)과 하단 최근 7일
  * 미니 리스트가 즉시 갱신된다. 사진인식은 이번 범위에서 제외(텍스트 검색만). */
 export default function DietLogContent() {
+  const navigate = useNavigate();
   const [today, setToday] = useState<DietTodayResult | null>(null);
   const [recent, setRecent] = useState<DietRecentResult | null>(null);
   const [loadingInitial, setLoadingInitial] = useState(true);
+  // 식단 기록은 칼로리 목표치 계산에 키/몸무게가 필요해서 필수로 요구한다 - 둘 중 하나라도
+  // 없으면 기록 UI 자체를 안 보여주고 개인건강정보 입력을 유도한다.
+  const [missingBodyInfo, setMissingBodyInfo] = useState(false);
 
   const [query, setQuery] = useState("");
   const [searchResults, setSearchResults] = useState<FoodSearchResultItem[]>([]);
@@ -48,10 +54,11 @@ export default function DietLogContent() {
   const [loggingFoodName, setLoggingFoodName] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([dietApi.getToday(), dietApi.getRecent()])
-      .then(([todayResult, recentResult]) => {
+    Promise.all([dietApi.getToday(), dietApi.getRecent(), healthInfoApi.get()])
+      .then(([todayResult, recentResult, healthInfo]) => {
         setToday(todayResult);
         setRecent(recentResult);
+        setMissingBodyInfo(healthInfo.height_cm === null || healthInfo.weight_kg === null);
       })
       .finally(() => setLoadingInitial(false));
   }, []);
@@ -125,7 +132,37 @@ export default function DietLogContent() {
 
       {loadingInitial && <p style={{ color: t.textMuted, fontSize: 13 }}>불러오는 중...</p>}
 
-      {!loadingInitial && (
+      {!loadingInitial && missingBodyInfo && (
+        <div style={{ textAlign: "center", padding: "24px 8px" }}>
+          <p style={{ fontSize: 32, margin: "0 0 10px" }}>📏</p>
+          <p style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 700, color: t.text }}>
+            키/몸무게를 먼저 입력해주세요
+          </p>
+          <p style={{ margin: "0 0 18px", fontSize: 12.5, color: t.textMuted, lineHeight: 1.6 }}>
+            섭취 칼로리 목표치를 정확히 계산하려면
+            <br />
+            키와 몸무게가 필요해요.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate("/health-info")}
+            style={{
+              padding: "10px 20px",
+              border: "none",
+              borderRadius: 10,
+              background: t.primary,
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            개인건강정보 입력하러 가기
+          </button>
+        </div>
+      )}
+
+      {!loadingInitial && !missingBodyInfo && (
         <>
           {/* 오늘 총 섭취 요약 */}
           <div style={{ marginBottom: 16 }}>
@@ -160,6 +197,11 @@ export default function DietLogContent() {
               <span>탄수화물 {Math.round(today?.total_carb_g ?? 0)}g</span>
               <span>지방 {Math.round(today?.total_fat_g ?? 0)}g</span>
             </div>
+            {today?.reference_kcal_reason && (
+              <p style={{ margin: "8px 0 0", fontSize: 11.5, color: t.textMuted, lineHeight: 1.5 }}>
+                ✨ {today.reference_kcal_reason}
+              </p>
+            )}
           </div>
 
           {/* 음식 검색 */}
