@@ -131,7 +131,11 @@ export default function InfoDetailPage() {
 
   return (
     <>
-      <div ref={scrollRef} className="flex h-full flex-col overflow-y-auto">
+      {/* 다른 화면들과 폭을 맞춘다 - `maxWidth: 480, margin: 0 auto` 관례(ChatPage.tsx:95). */}
+      <div
+        ref={scrollRef}
+        className="mx-auto flex h-full w-full max-w-[480px] flex-col overflow-y-auto"
+      >
         <div className="relative">
           <Link
             to="/info"

@@ -173,112 +173,118 @@ export function CardNewsModal({ news, onClose }: Props) {
         }
       `}</style>
 
-      <div className="flex items-center justify-between px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-1">
-        <p className="text-sm font-semibold text-white/90">카드 요약</p>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="닫기"
-          className="flex h-9 w-9 items-center justify-center rounded-full border-none bg-white/15 text-white"
-        >
-          <X size={18} />
-        </button>
-      </div>
-
-      <div
-        ref={deckRef}
-        className="cardnews-deck flex flex-1 select-none items-center overflow-x-auto"
-      >
-        {/* 표지 — 기사 제목. LLM이 만들지 않는다. */}
-        <article
-          data-card
-          className="cardnews-card relative flex aspect-[3/4] flex-col justify-end overflow-hidden rounded-[28px] px-5 pb-6 text-white shadow-[0_20px_40px_-14px_rgba(0,0,0,0.55)]"
-          style={{ background: cardGradient(0) }}
-        >
-          <span className="absolute inset-0 rounded-[inherit] bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-          <div className="relative">
-            <p className="mb-2 text-xs font-bold opacity-90">{news.source_name}</p>
-            <h2 className="text-2xl font-extrabold leading-snug text-balance">{news.title}</h2>
-            <p className="mt-3 text-xs opacity-85">넘겨서 요약 보기 →</p>
-          </div>
-        </article>
-
-        {slides.map((slide, index) => {
-          const Icon = cardNewsIcon(slide.icon_key);
-          // stat이 없는 카드는 설명 문장을 큰 글씨로 올려 카드 중앙이 비지 않게 한다.
-          const isTextOnly = !slide.stat;
-          return (
-            <article
-              key={`${slide.icon_key}-${index}`}
-              data-card
-              className="cardnews-card relative flex aspect-[3/4] flex-col justify-end overflow-hidden rounded-[28px] px-5 pb-6 text-white shadow-[0_20px_40px_-14px_rgba(0,0,0,0.55)]"
-              style={{ background: cardGradient(index + 1) }}
-            >
-              {/* 배경 워터마크 — 같은 아이콘을 크게 옅게. 이미지 파일이 없어도 배경이 비지 않는다. */}
-              <Icon
-                aria-hidden
-                strokeWidth={0.6}
-                className="pointer-events-none absolute -right-6 top-10 h-52 w-52 opacity-[0.16]"
-              />
-              {/* 워터마크 위, 본문 아래에 깔리는 그늘 — 글자 가독성용. */}
-              <span className="absolute inset-0 z-[1] rounded-[inherit] bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-
-              <div className="relative z-[2] mb-auto mt-5 flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-white/[0.16] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_6px_14px_rgba(0,0,0,0.18)]">
-                <Icon aria-hidden size={26} strokeWidth={1.9} />
-              </div>
-
-              <div className="relative z-[2]">
-                <p className="mb-1.5 text-xs font-bold uppercase tracking-wide opacity-90">
-                  {slide.tag}
-                </p>
-                {isTextOnly ? (
-                  <p className="text-xl font-extrabold leading-snug text-balance">{slide.text}</p>
-                ) : (
-                  <>
-                    <p className="text-[32px] font-extrabold leading-none">{slide.stat}</p>
-                    {slide.substat && (
-                      <p className="mt-1.5 text-sm font-semibold opacity-90">{slide.substat}</p>
-                    )}
-                    <p className="mt-2.5 text-sm leading-snug opacity-95">{slide.text}</p>
-                  </>
-                )}
-              </div>
-            </article>
-          );
-        })}
-
-        {/* 마지막 카드 — 면책 + AI 요약 표기 + 원문. 코드가 직접 그린다(LLM에 맡기지 않는다). */}
-        <article
-          data-card
-          className="cardnews-card relative flex aspect-[3/4] flex-col justify-center gap-4 overflow-hidden rounded-[28px] bg-white px-6 py-6 text-center shadow-[0_20px_40px_-14px_rgba(0,0,0,0.55)]"
-        >
-          <p className="text-sm font-bold text-foreground">
-            이 요약은 AI가 기사를 정리한 것입니다.
-            <br />
-            정확한 내용은 원문을 확인해주세요.
-          </p>
-          <a
-            href={news.source_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-sm font-semibold text-primary underline underline-offset-2"
-          >
-            {news.source_name} 원문 보기
-          </a>
-          <p className="text-xs leading-relaxed text-muted-foreground">{news.disclaimer}</p>
+      {/* 어두운 배경은 화면 전체를 덮되(모달의 상례), **내용은 다른 화면들과 같은 폭으로**
+          좁힌다 - 이 레포는 `maxWidth: 480, margin: 0 auto`가 관례다(ChatPage.tsx:95 주석,
+          17개 화면이 같은 값). 데스크톱에서 카드가 화면 폭만큼 커지지 않게 하는 것이 목적이고,
+          덱 폭이 곧 카드 폭이라(--cardnews-card-w) ResizeObserver가 알아서 다시 잰다. */}
+      <div className="mx-auto flex w-full max-w-[480px] flex-1 flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-1">
+          <p className="text-sm font-semibold text-white/90">카드 요약</p>
           <button
             type="button"
-            onClick={restart}
-            className="mx-auto rounded-full border border-border bg-secondary px-4 py-2 text-xs font-semibold text-secondary-foreground"
+            onClick={onClose}
+            aria-label="닫기"
+            className="flex h-9 w-9 items-center justify-center rounded-full border-none bg-white/15 text-white"
           >
-            처음부터 다시보기
+            <X size={18} />
           </button>
-        </article>
-      </div>
+        </div>
 
-      <p className="px-6 pb-[calc(env(safe-area-inset-bottom)+14px)] pt-2 text-center text-xs text-white/70">
-        좌우로 넘겨 보세요
-      </p>
+        <div
+          ref={deckRef}
+          className="cardnews-deck flex flex-1 select-none items-center overflow-x-auto"
+        >
+          {/* 표지 — 기사 제목. LLM이 만들지 않는다. */}
+          <article
+            data-card
+            className="cardnews-card relative flex aspect-[3/4] flex-col justify-end overflow-hidden rounded-[28px] px-5 pb-6 text-white shadow-[0_20px_40px_-14px_rgba(0,0,0,0.55)]"
+            style={{ background: cardGradient(0) }}
+          >
+            <span className="absolute inset-0 rounded-[inherit] bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+            <div className="relative">
+              <p className="mb-2 text-xs font-bold opacity-90">{news.source_name}</p>
+              <h2 className="text-2xl font-extrabold leading-snug text-balance">{news.title}</h2>
+              <p className="mt-3 text-xs opacity-85">넘겨서 요약 보기 →</p>
+            </div>
+          </article>
+
+          {slides.map((slide, index) => {
+            const Icon = cardNewsIcon(slide.icon_key);
+            // stat이 없는 카드는 설명 문장을 큰 글씨로 올려 카드 중앙이 비지 않게 한다.
+            const isTextOnly = !slide.stat;
+            return (
+              <article
+                key={`${slide.icon_key}-${index}`}
+                data-card
+                className="cardnews-card relative flex aspect-[3/4] flex-col justify-end overflow-hidden rounded-[28px] px-5 pb-6 text-white shadow-[0_20px_40px_-14px_rgba(0,0,0,0.55)]"
+                style={{ background: cardGradient(index + 1) }}
+              >
+                {/* 배경 워터마크 — 같은 아이콘을 크게 옅게. 이미지 파일이 없어도 배경이 비지 않는다. */}
+                <Icon
+                  aria-hidden
+                  strokeWidth={0.6}
+                  className="pointer-events-none absolute -right-6 top-10 h-52 w-52 opacity-[0.16]"
+                />
+                {/* 워터마크 위, 본문 아래에 깔리는 그늘 — 글자 가독성용. */}
+                <span className="absolute inset-0 z-[1] rounded-[inherit] bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+
+                <div className="relative z-[2] mb-auto mt-5 flex h-[52px] w-[52px] shrink-0 items-center justify-center rounded-full bg-white/[0.16] shadow-[inset_0_1px_0_rgba(255,255,255,0.25),0_6px_14px_rgba(0,0,0,0.18)]">
+                  <Icon aria-hidden size={26} strokeWidth={1.9} />
+                </div>
+
+                <div className="relative z-[2]">
+                  <p className="mb-1.5 text-xs font-bold uppercase tracking-wide opacity-90">
+                    {slide.tag}
+                  </p>
+                  {isTextOnly ? (
+                    <p className="text-xl font-extrabold leading-snug text-balance">{slide.text}</p>
+                  ) : (
+                    <>
+                      <p className="text-[32px] font-extrabold leading-none">{slide.stat}</p>
+                      {slide.substat && (
+                        <p className="mt-1.5 text-sm font-semibold opacity-90">{slide.substat}</p>
+                      )}
+                      <p className="mt-2.5 text-sm leading-snug opacity-95">{slide.text}</p>
+                    </>
+                  )}
+                </div>
+              </article>
+            );
+          })}
+
+          {/* 마지막 카드 — 면책 + AI 요약 표기 + 원문. 코드가 직접 그린다(LLM에 맡기지 않는다). */}
+          <article
+            data-card
+            className="cardnews-card relative flex aspect-[3/4] flex-col justify-center gap-4 overflow-hidden rounded-[28px] bg-white px-6 py-6 text-center shadow-[0_20px_40px_-14px_rgba(0,0,0,0.55)]"
+          >
+            <p className="text-sm font-bold text-foreground">
+              이 요약은 AI가 기사를 정리한 것입니다.
+              <br />
+              정확한 내용은 원문을 확인해주세요.
+            </p>
+            <a
+              href={news.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm font-semibold text-primary underline underline-offset-2"
+            >
+              {news.source_name} 원문 보기
+            </a>
+            <p className="text-xs leading-relaxed text-muted-foreground">{news.disclaimer}</p>
+            <button
+              type="button"
+              onClick={restart}
+              className="mx-auto rounded-full border border-border bg-secondary px-4 py-2 text-xs font-semibold text-secondary-foreground"
+            >
+              처음부터 다시보기
+            </button>
+          </article>
+        </div>
+
+        <p className="px-6 pb-[calc(env(safe-area-inset-bottom)+14px)] pt-2 text-center text-xs text-white/70">
+          좌우로 넘겨 보세요
+        </p>
+      </div>
     </div>
   );
 }
