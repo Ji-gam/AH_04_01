@@ -11,7 +11,6 @@ from app.core.config import Env
 from app.core.db.databases import AsyncSessionLocal
 from app.repositories.error_log_repository import ErrorLogRepository
 
-from app.scripts.seed_health_content import seed_health_content
 from app.scripts.seed_local_super_admin import seed_local_super_admin
 from app.services import medication_open_api_client
 from app.services.medication_service import refresh_food_drug_interaction_cache
@@ -51,7 +50,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     (`LOCAL_SUPER_ADMIN_EMAIL`/`_PASSWORD`)가 없으면 아무 일도 안 하므로, 이 값을 안
     채운 팀원에게는 아무 영향이 없다 - 상세: `app/scripts/seed_local_super_admin.py`."""
     if config.ENV == Env.LOCAL:
-        await seed_health_content()
         await seed_local_super_admin()
 
     async with AsyncSessionLocal() as session:
