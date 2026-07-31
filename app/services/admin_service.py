@@ -166,6 +166,23 @@ class AdminService:
         await session.commit()
         return collected, summarized
 
+    async def regenerate_card_summaries(self, session: AsyncSession, actor: User) -> SummaryResult:
+        """[카드요약 다시 만들기] 버튼. 프롬프트나 글자 수 제한을 손질한 뒤 기존 기사에도
+        새 기준을 적용할 때 쓴다. 기사 수만큼 LLM을 부르는 비싼 행위라 감사로그에 남긴다."""
+        summarized = await self._news_service.regenerate_card_summaries(session)
+        await self._action_repo.log(
+            session,
+            actor_user_id=actor.id,
+            action="regenerate_card_summaries",
+            target=f"health_news:{KORMEDI.code}",
+            detail=(
+                f"{actor.email} regenerated {summarized.generated} of {summarized.pending} card summaries "
+                f"(failed={summarized.failed})" + (f" - {summarized.first_error}" if summarized.first_error else "")
+            ),
+        )
+        await session.commit()
+        return summarized
+
     async def list_health_news_admin(self, session: AsyncSession, limit: int = 100):  # noqa: ANN201
         return await self._news_repo.list_feed(session, limit=limit)
 

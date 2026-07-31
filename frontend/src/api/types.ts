@@ -281,6 +281,15 @@ export interface CollectNewsResult {
   summaries_error: string | null;
 }
 
+export interface RegenerateCardSummariesResult {
+  /** 다시 만들기를 시도한 기사 수(저장된 전체). */
+  total: number;
+  generated: number;
+  /** 실패한 수. 실패한 기사는 기존 요약이 그대로 남는다. */
+  failed: number;
+  summaries_error: string | null;
+}
+
 export interface HealthNewsUpdatePayload {
   title?: string;
   body_text?: string;

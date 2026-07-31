@@ -19,6 +19,7 @@ from app.dtos.health_news_dto import (
     AdminHealthNewsResponse,
     CollectNewsResponse,
     HealthNewsUpdateRequest,
+    RegenerateCardSummariesResponse,
 )
 from app.models.users import User
 from app.services.admin_service import AdminService
@@ -142,6 +143,39 @@ async def collect_health_news_admin(
         skipped=collected.skipped,
         summaries_generated=summarized.generated,
         summaries_failed=summarized.failed,
+        summaries_error=summarized.first_error,
+    )
+
+
+@admin_router.post(
+    "/news/card-summaries/regenerate",
+    response_model=RegenerateCardSummariesResponse,
+    status_code=status.HTTP_200_OK,
+    summary="카드요약 전체 다시 만들기 (관리자 전용)",
+    description=(
+        "저장된 **모든** 기사의 카드요약을 다시 만든다. 평소 수집 배치는 요약이 비어 있는 기사만 "
+        "고르기 때문에, 프롬프트나 글자 수 제한을 손질해도 이미 요약이 있는 기사는 옛 기준으로 "
+        "남는다. 그때 쓰는 버튼이다.\n\n"
+        "기존 요약을 먼저 지우지 않는다 - 새로 만들기에 성공한 것만 덮어쓰므로, LLM이 실패해도 "
+        "쓸 만했던 요약을 잃지 않는다.\n\n"
+        "기사 수만큼 LLM을 부르는 비싼 행위라서 admin_actions에 감사로그로 남는다."
+    ),
+    responses={503: {"description": "ai_worker가 응답하지 않아 카드요약을 만들 수 없음."}},
+)
+async def regenerate_card_summaries_admin(
+    admin: Annotated[User, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> RegenerateCardSummariesResponse:
+    service = AdminService()
+    try:
+        summarized = await service.regenerate_card_summaries(session, admin)
+    except AIWorkerUnavailableError as e:
+        # 기사 단위로 예외를 삼키므로 여기까지 오는 건 게이트웨이 구성 문제일 때다.
+        raise HTTPException(status_code=503, detail=f"카드요약 생성을 할 수 없습니다: {e}") from e
+    return RegenerateCardSummariesResponse(
+        total=summarized.pending,
+        generated=summarized.generated,
+        failed=summarized.failed,
         summaries_error=summarized.first_error,
     )
 

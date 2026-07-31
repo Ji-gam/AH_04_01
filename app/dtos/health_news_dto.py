@@ -24,7 +24,10 @@ from pydantic import BaseModel, Field, field_validator
 TAG_MAX = 8
 STAT_MAX = 12
 SUBSTAT_MAX = 18
-TEXT_MAX = 60
+# (2026-07-31) 60 → 110으로 올렸다. 카드 폭 315px / 폰트 14px에서 한 줄이 약 20자라 60자면
+# 2줄밖에 안 나왔는데, 실측해보니 카드에 292px(약 15줄)가 비어 있었다. 사용자가 기사 원문을
+# 끝까지 읽지 않는다는 전제에서 카드가 내용을 담아야 하므로 3~5줄(60~110자)을 목표로 한다.
+TEXT_MAX = 110
 # 프로토타입은 본문 카드 4장이었다. 표지/면책은 템플릿이 따로 붙이므로 여기 개수에 안 들어간다.
 SLIDES_MIN = 3
 SLIDES_MAX = 5
@@ -114,6 +117,25 @@ def _clip(value: object, limit: int) -> object:
     return value
 
 
+def _clip_at_sentence(value: object, limit: int) -> object:
+    """`_clip`과 같지만 **문장이 끝나는 자리에서** 자른다.
+
+    (2026-07-31) 설명문을 3~5줄로 늘린 뒤 실측했더니 24장 중 4장이 문장 중간에서 잘렸다
+    ("이는 치료 지연의 위험을 내포", "큰 도움이 되지 않는"). LLM이 목표 길이를 조금씩 넘겨
+    쓰는 건 프롬프트로 완전히 막을 수 없으니, 잘리더라도 문장으로 끝나게 구조로 보장한다.
+
+    문장 끝을 너무 앞에서 찾으면(예: 첫 문장이 20자) 내용이 크게 잘리므로, 한계의 절반보다
+    뒤에 있을 때만 그 자리를 쓴다. 그 외에는 기존처럼 그냥 자른다.
+    """
+    if not isinstance(value, str) or len(value) <= limit:
+        return value
+    head = value[:limit]
+    end = max(head.rfind("."), head.rfind("!"), head.rfind("?"))
+    if end >= limit // 2:
+        return head[: end + 1]
+    return head.rstrip()
+
+
 def _blank_to_none(value: object) -> object:
     """빈 문자열/공백만 있는 값을 None으로 바꾼다. LLM은 "값이 없음"을 None이 아니라 ""로
     답하는 경우가 있어서(실측: 31장 중 3장), 그대로 두면 화면에 빈칸이 그려진다."""
@@ -170,7 +192,8 @@ class CardSlide(BaseModel):
     @field_validator("text", mode="before")
     @classmethod
     def clip_text(cls, value: object) -> object:
-        return _clip(value, TEXT_MAX)
+        # 설명문만 문장 단위로 자른다. tag/stat/substat은 문장이 아니라 짧은 라벨이라 해당 없음.
+        return _clip_at_sentence(value, TEXT_MAX)
 
 
 class CardSummary(BaseModel):
@@ -271,4 +294,15 @@ class CollectNewsResponse(BaseModel):
             "실패한 것이고, ValidationError면 호출은 됐지만 LLM 출력이 스키마에 못 미친 것이다. "
             "관리자 전용 응답이며 전체 트레이스백은 서버 로그에만 남는다."
         ),
+    )
+
+
+class RegenerateCardSummariesResponse(BaseModel):
+    """[카드요약 다시 만들기] 버튼 결과. 수집과 달리 기사를 새로 가져오지 않으므로 요약 숫자만 있다."""
+
+    total: int = Field(description="다시 만들기를 시도한 기사 수(저장된 전체)")
+    generated: int = Field(description="새 요약으로 덮어쓴 수")
+    failed: int = Field(description="실패한 수. 실패한 기사는 기존 요약이 그대로 남는다")
+    summaries_error: str | None = Field(
+        None, description="실패한 첫 원인 한 줄(CollectNewsResponse.summaries_error와 같은 형식). 실패가 없으면 null."
     )

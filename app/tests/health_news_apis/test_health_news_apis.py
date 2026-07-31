@@ -326,6 +326,63 @@ async def test_collect_reports_no_error_when_summaries_succeed(monkeypatch) -> N
     assert response.json()["summaries_error"] is None
 
 
+async def test_regenerate_overwrites_existing_card_summaries(monkeypatch) -> None:
+    """[카드요약 다시 만들기]. 수집 배치는 요약이 **비어 있는** 기사만 고르기 때문에, 프롬프트나
+    글자 수 제한을 손질하면 이미 요약이 있는 기사는 옛 기준으로 남는다. 이 버튼이 그걸 푼다."""
+    news_id = await _seed_news(source_url="https://kormedi.com/regen/")
+
+    async def _new_summary(news, gateway=None):  # noqa: ANN001, ANN202
+        return CardSummary.model_validate(_card_summary(tag="새기준"))
+
+    monkeypatch.setattr(health_news_service_module.health_news_card_summary, "generate_card_summary", _new_summary)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=_BASE) as client:
+        token = await _signup_login_admin(client, email="newsregen@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        response = await client.post("/api/v1/admin/news/card-summaries/regenerate", headers=headers)
+        detail = await client.get(f"/api/v1/news/{news_id}")
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["total"] == 1
+    assert body["generated"] == 1
+    assert body["failed"] == 0
+    assert body["summaries_error"] is None
+    # 이미 있던 요약이 새 것으로 덮여야 한다(기존 배치는 이걸 건너뛴다).
+    assert detail.json()["card_summary"]["slides"][0]["tag"] == "새기준"
+
+
+async def test_regenerate_keeps_the_old_summary_when_generation_fails(monkeypatch) -> None:
+    """**먼저 비우지 않는다.** 새로 만들기에 성공한 것만 덮어쓰므로, LLM이 실패해도 쓸 만했던
+    요약을 잃지 않는다. 먼저 비우는 구현이었다면 이 테스트가 실패한다."""
+    news_id = await _seed_news(source_url="https://kormedi.com/regen-fail/")
+
+    async def _failing_summary(news, gateway=None):  # noqa: ANN001, ANN202
+        raise AIWorkerUnavailableError("ai_worker 생성 실패(status=500): 내부 오류")
+
+    monkeypatch.setattr(health_news_service_module.health_news_card_summary, "generate_card_summary", _failing_summary)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=_BASE) as client:
+        token = await _signup_login_admin(client, email="newsregenfail@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        response = await client.post("/api/v1/admin/news/card-summaries/regenerate", headers=headers)
+        detail = await client.get(f"/api/v1/news/{news_id}")
+
+    body = response.json()
+    assert body["generated"] == 0
+    assert body["failed"] == 1
+    assert body["summaries_error"].startswith("AIWorkerUnavailableError:")
+    # 기존 요약이 살아 있어야 한다.
+    assert detail.json()["card_summary"]["slides"][0]["tag"] == "수면"
+
+
+async def test_regenerate_requires_admin() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=_BASE) as client:
+        response = await client.post("/api/v1/admin/news/card-summaries/regenerate")
+
+    assert response.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN)
+
+
 async def test_collect_twice_does_not_duplicate_articles(monkeypatch) -> None:
     """같은 RSS를 여러 번 눌러도 안전해야 한다(멱등)."""
     article = ParsedArticle(

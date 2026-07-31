@@ -520,6 +520,30 @@ export default function AdminPage() {
     }
   }
 
+  // 카드요약 문구 기준(프롬프트·글자 수 제한)을 바꿨을 때 기존 기사에도 적용하는 버튼.
+  // 수집 배치는 요약이 비어 있는 기사만 고르기 때문에 이게 없으면 옛 요약이 영원히 남는다.
+  async function handleRegenerateCardSummaries() {
+    setContentGenerating(true);
+    setContentMessage(null);
+    setContentError(null);
+    try {
+      const result = await adminApi.regenerateCardSummaries();
+      setContentMessage(
+        `기사 ${result.total}건 중 카드요약 ${result.generated}건 다시 만들었어요` +
+          (result.failed > 0 ? ` (${result.failed}건 실패 - 기존 요약이 그대로 남아요)` : ""),
+      );
+      if (result.summaries_error) {
+        setContentError(`카드요약 실패 원인: ${result.summaries_error}`);
+      }
+      await loadActions();
+      await loadNews();
+    } catch (err) {
+      setContentError(err instanceof Error ? err.message : "카드요약 다시 만들기에 실패했습니다.");
+    } finally {
+      setContentGenerating(false);
+    }
+  }
+
   function handleTrendDaysChange(days: number) {
     setTrendDays(days);
     loadStats(days);
@@ -557,6 +581,21 @@ export default function AdminPage() {
         style={buttonStyle}
       >
         {contentGenerating ? "수집 중..." : "뉴스 수집하기"}
+      </button>
+
+      {/* 수집 배치는 요약이 비어 있는 기사만 고른다 - 프롬프트나 글자 수 제한을 손질하면
+          이미 요약이 있는 기사는 옛 기준으로 남으므로 그때 이 버튼을 쓴다. */}
+      <p style={{ margin: "4px 0 0", fontSize: 12, color: pinkTheme.textMuted }}>
+        카드요약 문구 기준이 바뀌었을 때만 아래를 눌러주세요. 저장된 기사 전부에 LLM을 다시 부르므로
+        시간과 비용이 듭니다. 실패한 기사는 기존 요약이 그대로 남아요.
+      </p>
+      <button
+        type="button"
+        onClick={handleRegenerateCardSummaries}
+        disabled={contentGenerating}
+        style={{ ...buttonStyle, background: pinkTheme.cardBg, color: pinkTheme.text }}
+      >
+        {contentGenerating ? "다시 만드는 중..." : "카드요약 다시 만들기"}
       </button>
     </div>
   );
