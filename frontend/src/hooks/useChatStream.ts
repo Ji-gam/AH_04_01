@@ -11,6 +11,11 @@ export interface ChatMessage {
   content: string;
   disclaimer?: string;
   sources?: ChatSourceRef[];
+  // T-LLM-2-langfuse-user-feedback: 어시스턴트 메시지에만 채워진다("done" 청크 또는
+  // 이력 조회 응답에서). 피드백 API가 이 값으로 대상을 지정한다 - Langfuse trace_id는
+  // 서버 내부 식별자라 여기 노출되지 않는다(설계 결정 1).
+  messageId?: number;
+  feedback?: "up" | "down";
 }
 
 interface Options {
@@ -51,6 +56,7 @@ export function useChatStream(options: Options = {}) {
           content: m.content,
           sources: m.sources ?? undefined,
           disclaimer: m.disclaimer ?? undefined,
+          messageId: m.id,
         })),
       );
     } catch (err) {
@@ -119,7 +125,11 @@ export function useChatStream(options: Options = {}) {
           setMessages((prev) => {
             const next = [...prev];
             const last = next[next.length - 1];
-            next[next.length - 1] = { ...last, disclaimer: chunk.disclaimer };
+            next[next.length - 1] = {
+              ...last,
+              disclaimer: chunk.disclaimer,
+              messageId: chunk.message_id,
+            };
             return next;
           });
         }
@@ -139,6 +149,31 @@ export function useChatStream(options: Options = {}) {
     }
   }
 
+  // T-LLM-2-langfuse-user-feedback: 👍/👎 - 낙관적으로 먼저 반영하고, 전송 실패 시에만
+  // 되돌린다(사용자가 누른 즉시 피드백을 보여주는 게 중요하고, 실패는 드물기 때문).
+  async function sendFeedback(index: number, value: "up" | "down") {
+    const target = messages[index];
+    if (!target?.messageId) return;
+    const previousFeedback = target.feedback;
+
+    setMessages((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], feedback: value };
+      return next;
+    });
+
+    try {
+      await chatApi.submitFeedback(target.messageId, value);
+    } catch (err) {
+      console.error("피드백 전송 실패:", err);
+      setMessages((prev) => {
+        const next = [...prev];
+        next[index] = { ...next[index], feedback: previousFeedback };
+        return next;
+      });
+    }
+  }
+
   return {
     messages,
     sendMessage,
@@ -148,5 +183,6 @@ export function useChatStream(options: Options = {}) {
     selectSession,
     startNewChat,
     loadSessions,
+    sendFeedback,
   };
 }

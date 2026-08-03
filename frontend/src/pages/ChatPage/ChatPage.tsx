@@ -31,6 +31,7 @@ export default function ChatPage() {
     currentSessionId,
     selectSession,
     startNewChat,
+    sendFeedback,
   } = useChatStream({ skipRestoreOnMount: hasAutoMessageRef.current });
   const [input, setInput] = useState("");
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -246,6 +247,43 @@ export default function ChatPage() {
                     >
                       ⚠ {m.disclaimer}
                     </span>
+                  )}
+                  {/* T-LLM-2-langfuse-user-feedback: messageId가 있는(=DB에 저장된)
+                      어시스턴트 답변에만 노출한다 - 응급 fallback 메시지는 저장되지 않아
+                      messageId가 없으므로 자연히 제외된다. */}
+                  {!isUser && m.messageId && (
+                    <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+                      <button
+                        onClick={() => void sendFeedback(i, "up")}
+                        aria-label="답변이 도움이 됐어요"
+                        style={{
+                          border: `1px solid ${pinkTheme.border}`,
+                          borderRadius: 8,
+                          background:
+                            m.feedback === "up" ? pinkTheme.primarySoft : pinkTheme.cardBg,
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          padding: "2px 8px",
+                        }}
+                      >
+                        👍
+                      </button>
+                      <button
+                        onClick={() => void sendFeedback(i, "down")}
+                        aria-label="답변이 도움이 안 됐어요"
+                        style={{
+                          border: `1px solid ${pinkTheme.border}`,
+                          borderRadius: 8,
+                          background:
+                            m.feedback === "down" ? pinkTheme.primarySoft : pinkTheme.cardBg,
+                          cursor: "pointer",
+                          fontSize: "13px",
+                          padding: "2px 8px",
+                        }}
+                      >
+                        👎
+                      </button>
+                    </div>
                   )}
                 </div>
               );
