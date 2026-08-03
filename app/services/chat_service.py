@@ -182,6 +182,7 @@ class ChatService:
 
         full_response = ""
         sources: list[dict] = []
+        trace_id: str | None = None
         has_sources = bool(injected_context)  # 개인 DUR 경고가 있으면 이미 의료 관련 확정
         try:
             async for chunk in self._retriever.stream_chat(message, context, history_payload, injected_context):
@@ -192,6 +193,11 @@ class ChatService:
                     sources = chunk["sources"]
                     has_sources = has_sources or bool(sources)
                     yield chunk
+                elif chunk["type"] == "trace":
+                    # T-LLM-2-langfuse-user-feedback(설계 결정 1): trace_id는 Langfuse
+                    # 관측 인프라의 내부 식별자라 프론트로 relay하지 않는다 - 여기서만
+                    # 보관했다가 어시스턴트 메시지 저장 시 함께 저장한다.
+                    trace_id = chunk["trace_id"]
                 elif chunk["type"] == "error":
                     logger.error(
                         "채팅 스트림 도중 오류(ai_worker 보고), 받은 만큼만 저장 (%d자, 내용 미기록)",
@@ -218,13 +224,14 @@ class ChatService:
         disclaimer = safety_service.DISCLAIMER_TEXT if is_medical else ""
 
         await self._repository.save_message(session, session_id, MessageRole.USER, message)
-        await self._repository.save_message(
+        assistant_message = await self._repository.save_message(
             session,
             session_id,
             MessageRole.ASSISTANT,
             full_response,
             sources=sources or None,
             disclaimer=disclaimer or None,
+            trace_id=trace_id,
         )
 
         # 저장까지 끝난 뒤(= 이 턴이 완전히 끝난 뒤) 보낸다 - "done" 청크 이후에는 코드를
@@ -246,7 +253,9 @@ class ChatService:
         except Exception:
             logger.exception("챗봇 답변 알림 발송 실패 (profile_id=%s)", profile_id)
 
-        yield {"type": "done", "content": "", "disclaimer": disclaimer}
+        # T-LLM-2-langfuse-user-feedback: 프론트가 이 답변에 👍/👎를 붙이려면 message_id가
+        # 필요하다 - trace_id와 달리 이건 프론트가 직접 다루는 공개 식별자다(설계 결정 1).
+        yield {"type": "done", "content": "", "disclaimer": disclaimer, "message_id": assistant_message.id}
 
     @staticmethod
     def _append_interrupted_notice(full_response: str) -> str:

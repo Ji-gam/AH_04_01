@@ -23,6 +23,7 @@ class ChatSourceRef(BaseModel):
 
 
 class ChatMessageResponse(BaseModel):
+    id: int = Field(description="메시지 ID. 어시스턴트 답변에 피드백(👍/👎)을 붙일 때 이 값을 쓴다.", examples=[1])
     role: str = Field(description="발화자 (user 또는 assistant)", examples=["user"])
     content: str = Field(description="발화 내용", examples=["두통약 뭐가 좋아요?"])
     sources: list[ChatSourceRef] | None = Field(

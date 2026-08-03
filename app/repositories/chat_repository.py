@@ -33,8 +33,16 @@ class ChatRepository:
         content: str,
         sources: list[dict] | None = None,
         disclaimer: str | None = None,
+        trace_id: str | None = None,
     ) -> ChatMessage:
-        message = ChatMessage(session_id=session_id, role=role, content=content, sources=sources, disclaimer=disclaimer)
+        message = ChatMessage(
+            session_id=session_id,
+            role=role,
+            content=content,
+            sources=sources,
+            disclaimer=disclaimer,
+            trace_id=trace_id,
+        )
         session.add(message)
         # ChatSession.updated_at은 onupdate=func.now()로 선언돼 있지만, 이 세션 행 자체를
         # 건드리는 곳이 없어 지금까지 한 번도 갱신된 적이 없었다(항상 created_at과 같음).

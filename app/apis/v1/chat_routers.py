@@ -101,6 +101,7 @@ async def list_chat_messages(
     # 기대하는 소문자 "user"/"assistant"로 API 경계에서 변환한다(DB/모델은 그대로 둠).
     return [
         ChatMessageResponse(
+            id=m.id,
             role=m.role.value.lower(),
             content=m.content,
             sources=m.sources,
