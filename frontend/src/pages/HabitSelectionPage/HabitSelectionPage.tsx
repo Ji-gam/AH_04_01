@@ -1,5 +1,7 @@
+import { ListChecks } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
+import PageTitle from "../../components/common/PageTitle";
 import HabitSelectionContent from "../../components/habit/HabitSelectionContent";
 import { pinkTheme as t } from "../../theme/pinkTheme";
 
@@ -25,6 +27,10 @@ export default function HabitSelectionPage() {
         >
           ← 뒤로가기
         </button>
+
+        <PageTitle icon={ListChecks} style={{ marginBottom: 20 }}>
+          습관 선택
+        </PageTitle>
 
         <HabitSelectionContent />
       </div>

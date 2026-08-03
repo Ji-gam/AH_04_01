@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,10 +8,14 @@ from app.models.profiles import Disease, Profile
 from app.repositories.habit_repository import HabitRepository
 from app.services.ai_worker_gateway import AIWorkerGateway, AIWorkerUnavailableError
 from app.services.habit_service import (
+    BASE_HABITS,
     DISEASE_HABITS,
+    MAX_RECOMMENDATIONS,
+    HabitDef,
     HabitService,
     SubtypeHabitSuggestion,
     SubtypeHabitSuggestionBatch,
+    pick_recommendations,
 )
 
 
@@ -25,6 +30,11 @@ class FakeDiagnosisEntry:
     disease: Disease
     disease_subtype_id: int | None = None
     disease_subtype: FakeDiseaseSubtype | None = None
+    id: int = 1
+    detail: str | None = None
+    diagnosed_years_ago: int | None = None
+    status: Any | None = None
+    on_medication: bool | None = None
 
 
 @dataclass
@@ -111,7 +121,7 @@ async def test_subtype_with_disease_subtype_uses_llm_generated_habits():
     )
     service = _build_service(gateway)
 
-    pool = await service.build_full_pool(cast(AsyncSession, None), cast(Profile, profile))
+    pool, _ = await service.build_full_pool(cast(AsyncSession, None), cast(Profile, profile))
 
     generated_keys = [h.key for h in pool if h.key.startswith("subtype_101_")]
     assert len(generated_keys) == 5
@@ -145,7 +155,7 @@ async def test_subtype_habit_falls_back_to_disease_category_on_gateway_failure()
     gateway = FakeGateway(error=AIWorkerUnavailableError("ai_worker 연결 실패"))
     service = _build_service(gateway)
 
-    pool = await service.build_full_pool(cast(AsyncSession, None), cast(Profile, profile))
+    pool, _ = await service.build_full_pool(cast(AsyncSession, None), cast(Profile, profile))
 
     keys = [h.key for h in pool]
     assert DISEASE_HABITS[Disease.HEART_DISEASE].key in keys
@@ -161,7 +171,7 @@ async def test_subtype_habits_sanitize_bad_llm_output():
     gateway = FakeGateway(result=_habits_batch(("가" * 200, "", "", 0)))
     service = _build_service(gateway)
 
-    pool = await service.build_full_pool(cast(AsyncSession, None), cast(Profile, profile))
+    pool, _ = await service.build_full_pool(cast(AsyncSession, None), cast(Profile, profile))
 
     generated = next(h for h in pool if h.key == "subtype_404_0")
     assert len(generated.label) <= 50
@@ -180,7 +190,7 @@ async def test_subtype_habits_capped_at_five_even_if_llm_returns_more():
     )
     service = _build_service(gateway)
 
-    pool = await service.build_full_pool(cast(AsyncSession, None), cast(Profile, profile))
+    pool, _ = await service.build_full_pool(cast(AsyncSession, None), cast(Profile, profile))
 
     generated_keys = [h.key for h in pool if h.key.startswith("subtype_505_")]
     assert len(generated_keys) == 5
@@ -198,8 +208,102 @@ async def test_different_subtypes_under_same_disease_both_kept():
     gateway = FakeGateway(result=_habits_batch(("습관", "🙂", "회", 1)))
     service = _build_service(gateway)
 
-    pool = await service.build_full_pool(cast(AsyncSession, None), cast(Profile, profile))
+    pool, _ = await service.build_full_pool(cast(AsyncSession, None), cast(Profile, profile))
 
     keys = [h.key for h in pool]
     assert any(k.startswith("subtype_601_") for k in keys)
     assert any(k.startswith("subtype_602_") for k in keys)
+
+
+async def test_no_diagnosis_returns_base_habits_only():
+    """진단이 하나도 없으면 build_full_pool은 BASE_HABITS만 그대로 반환해야 한다
+    (질병 등록 시 기본 습관을 배제하는 분기와 대칭되는 반대쪽 분기)."""
+    profile = FakeProfile(id=7, diagnosis_entries=[])
+    gateway = FakeGateway(error=AssertionError("진단이 없으면 AI 게이트웨이를 호출하면 안 된다"))
+    service = _build_service(gateway)
+
+    pool, habit_to_disease = await service.build_full_pool(cast(AsyncSession, None), cast(Profile, profile))
+
+    assert pool == list(BASE_HABITS)
+    assert habit_to_disease == {}
+    assert gateway.call_count == 0
+
+
+def _habit(key: str, label: str) -> HabitDef:
+    return HabitDef(key=key, label=label, icon="🙂", unit="회", target=1, is_disease_related=True)
+
+
+def test_pick_recommendations_multi_disease_dedupes_by_label():
+    """서로 다른 질병에서 나온 습관이라도 라벨(이름)이 같으면 최종 추천에는 한 번만 남아야
+    한다 - "같은 습관, 다른 질병"으로 중복 추천되던 문제의 회귀 테스트."""
+    pool = [
+        _habit("diabetes_walk", "산책 20분"),
+        _habit("heart_walk", "산책 20분"),  # 당뇨 습관과 라벨이 동일 -> 중복 제거 대상
+        _habit("heart_low_salt", "저염식 식사하기"),
+    ]
+    habit_to_disease = {
+        "diabetes_walk": Disease.DIABETES,
+        "heart_walk": Disease.HEART_DISEASE,
+        "heart_low_salt": Disease.HEART_DISEASE,
+    }
+
+    result = pick_recommendations(pool, profile_id=1, today=date(2026, 1, 1), habit_to_disease=habit_to_disease)
+
+    labels = [h.label for h in result]
+    assert labels.count("산책 20분") == 1
+
+
+def test_pick_recommendations_multi_disease_picks_at_least_one_per_disease():
+    """질병이 여러 개면 각 질병에서 최소 1개씩은 추천에 포함돼야 한다."""
+    pool = [
+        _habit("diabetes_walk", "혈당 체크하기"),
+        _habit("heart_low_salt", "저염식 식사하기"),
+        _habit("cancer_rest", "충분한 휴식 취하기"),
+    ]
+    habit_to_disease = {
+        "diabetes_walk": Disease.DIABETES,
+        "heart_low_salt": Disease.HEART_DISEASE,
+        "cancer_rest": Disease.CANCER,
+    }
+
+    result = pick_recommendations(pool, profile_id=1, today=date(2026, 1, 1), habit_to_disease=habit_to_disease)
+
+    keys = {h.key for h in result}
+    assert {"diabetes_walk", "heart_low_salt", "cancer_rest"} <= keys
+
+
+def test_pick_recommendations_caps_at_max_recommendations():
+    """다중 질병이라도 최종 추천 개수는 MAX_RECOMMENDATIONS(5)를 넘지 않아야 한다."""
+    pool = [_habit(f"d{i}_habit{j}", f"습관{i}-{j}") for i in range(3) for j in range(4)]
+    habit_to_disease = {
+        f"d{i}_habit{j}": [Disease.DIABETES, Disease.HEART_DISEASE, Disease.CANCER][i]
+        for i in range(3)
+        for j in range(4)
+    }
+
+    result = pick_recommendations(pool, profile_id=1, today=date(2026, 1, 1), habit_to_disease=habit_to_disease)
+
+    assert len(result) <= MAX_RECOMMENDATIONS
+
+
+def test_generate_detailed_reason_differs_by_disease_for_same_habit_label():
+    """같은 습관 라벨이라도 질병이 다르면 서로 다른 추천 이유 문구가 나와야 한다
+    (질병×키워드별 세분화 로직의 핵심 동작)."""
+    service = _build_service(FakeGateway())
+
+    diabetes_reason = service._generate_detailed_reason(Disease.DIABETES, "산책 20분")
+    liver_reason = service._generate_detailed_reason(Disease.LIVER_DISEASE, "산책 20분")
+
+    assert diabetes_reason != liver_reason
+    assert "당뇨" in diabetes_reason
+    assert "간" in liver_reason
+
+
+def test_generate_detailed_reason_has_fallback_for_unmatched_keyword():
+    """습관 라벨이 질병별 키워드 사전에 없는 임의 문자열이어도 빈 문자열이 아닌 폴백 문구를
+    반환해야 한다."""
+    service = _build_service(FakeGateway())
+
+    reason = service._generate_detailed_reason(Disease.OTHER, "전혀 매칭되지 않는 임의의 습관 이름")
+
+    assert reason != ""
