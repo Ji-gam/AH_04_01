@@ -247,7 +247,7 @@ pytest ai_worker/tests/... -q -k "score or trace"
 - [x] 프론트 👍/👎 동작, 낙관적 업데이트 + 롤백
 - [x] Langfuse UI에서 `user_feedback` score 실측 확인 (Langfuse Public API로 실제 trace_id에 score가 붙는 것까지 확인)
 - [x] **낮은 점수 trace 기반 개선 1건 실행 + before/after 기록** ← 5점 조건 (8절 "실제 사례" 참고)
-- [ ] Langfuse 키 없는 환경에서 무회귀 확인
+- [x] Langfuse 키 없는 환경에서 무회귀 확인 (`ai_worker/tests/test_observability.py`의 `create_score`/`get_current_trace_id` no-op 테스트 + 피드백 라우터 테스트가 trace_id=None 경로를 실제 DB로 왕복 검증)
 - [ ] ruff / mypy / tsc / eslint / prettier 통과
 - [ ] `[구현완료, merge 요청]` 코멘트
 
