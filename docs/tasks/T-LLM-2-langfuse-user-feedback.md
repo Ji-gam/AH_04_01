@@ -248,8 +248,8 @@ pytest ai_worker/tests/... -q -k "score or trace"
 - [x] Langfuse UI에서 `user_feedback` score 실측 확인 (Langfuse Public API로 실제 trace_id에 score가 붙는 것까지 확인)
 - [x] **낮은 점수 trace 기반 개선 1건 실행 + before/after 기록** ← 5점 조건 (8절 "실제 사례" 참고)
 - [x] Langfuse 키 없는 환경에서 무회귀 확인 (`ai_worker/tests/test_observability.py`의 `create_score`/`get_current_trace_id` no-op 테스트 + 피드백 라우터 테스트가 trace_id=None 경로를 실제 DB로 왕복 검증)
-- [ ] ruff / mypy / tsc / eslint / prettier 통과
-- [ ] `[구현완료, merge 요청]` 코멘트
+- [x] ruff / mypy / tsc / eslint / prettier 통과 (+ vitest / build 까지 확인)
+- [x] `[구현완료, merge 요청]` 코멘트 ([PR #343](https://github.com/Ji-gam/AH_04_01/pull/343))
 
 ---
 
@@ -300,7 +300,8 @@ pytest ai_worker/tests/... -q -k "score or trace"
 - **부작용 확인**: 프롬프트에 문장을 추가만 했을 뿐 기존 지시(본인 정보 개인화 조건)는
   그대로 유지했고, 별도로 실행한 `ai_worker/tests/test_chat_agent.py`(7건, 시스템
   프롬프트에 "질문자 본인 정보" 문구가 포함되는지 등을 검증) 전부 통과해 기존 개인화
-  로직에 회귀가 없음을 확인했다. 별도 골든셋은 이 프로젝트에 아직 없어(스코프 밖) 이
-  15개 대표 질문 재실행으로 회귀 여부를 갈음했다 — 나머지 14개 질문의 답변도 이 변경
-  전후로 비교했을 때 내용상 차이가 없었다(문제가 된 임산부 대상 인용문이 아예 나타나지
-  않는 질문들이었기 때문).
+  로직에 회귀가 없음을 확인했다. 골든셋(`ai_worker/tests/fixtures/embedding_golden_set.json`)은
+  검색 품질(recall@3) 측정용이고, 이번 변경은 생성 프롬프트라 검색 경로에 영향이
+  없어 재측정 대상이 아니다 — 대신 15개 대표 질문 재실행으로 회귀 여부를 갈음했다.
+  나머지 14개 질문의 답변도 이 변경 전후로 비교했을 때 내용상 차이가 없었다(문제가 된
+  임산부 대상 인용문이 아예 나타나지 않는 질문들이었기 때문).
