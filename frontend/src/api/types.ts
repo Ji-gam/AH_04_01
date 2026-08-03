@@ -433,6 +433,19 @@ export interface HabitRecommendationsResult {
   selected_keys: string[];
 }
 
+// 백엔드 app/dtos/feedback.py와 1:1로 수동 동기화. 습관/식단 이유 👍/👎 피드백.
+export type ReasonFeedbackValue = "UP" | "DOWN";
+
+export interface ReasonFeedbackRequest {
+  value: ReasonFeedbackValue;
+  comment?: string;
+}
+
+export interface ReasonFeedbackResult {
+  value: ReasonFeedbackValue;
+  updated_at: string;
+}
+
 // 백엔드 app/dtos/diet_dto.py와 1:1로 수동 동기화 (F-DIET-1/2). 마이다이어리 > 식단 기록.
 export interface FoodSearchResultItem {
   food_name: string;

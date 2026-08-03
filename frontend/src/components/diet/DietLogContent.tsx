@@ -5,6 +5,7 @@ import { dietApi } from "../../api/dietApi";
 import { healthInfoApi } from "../../api/healthInfoApi";
 import type { DietRecentResult, DietTodayResult, FoodSearchResultItem } from "../../api/types";
 import { pinkTheme as t } from "../../theme/pinkTheme";
+import ReasonFeedback from "../common/ReasonFeedback";
 
 const SERVING_MULTIPLIERS = [0.5, 1, 1.5, 2];
 // 백엔드 DietLogCreateRequest.serving_multiplier의 상한(Field(gt=0, le=5))과 맞춘다.
@@ -198,9 +199,14 @@ export default function DietLogContent() {
               <span>지방 {Math.round(today?.total_fat_g ?? 0)}g</span>
             </div>
             {today?.reference_kcal_reason && (
-              <p style={{ margin: "8px 0 0", fontSize: 11.5, color: t.textMuted, lineHeight: 1.5 }}>
-                ✨ {today.reference_kcal_reason}
-              </p>
+              <>
+                <p
+                  style={{ margin: "8px 0 0", fontSize: 11.5, color: t.textMuted, lineHeight: 1.5 }}
+                >
+                  ✨ {today.reference_kcal_reason}
+                </p>
+                <ReasonFeedback onSubmit={(value) => dietApi.submitKcalReasonFeedback(value)} />
+              </>
             )}
           </div>
 

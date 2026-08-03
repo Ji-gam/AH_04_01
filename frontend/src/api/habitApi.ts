@@ -1,5 +1,10 @@
 import { apiFetch } from "./client";
-import type { HabitRecommendationsResult, HabitsTodayResult } from "./types";
+import type {
+  HabitRecommendationsResult,
+  HabitsTodayResult,
+  ReasonFeedbackResult,
+  ReasonFeedbackValue,
+} from "./types";
 
 export const habitApi = {
   getToday: () => apiFetch<HabitsTodayResult>("/habits/today"),
@@ -10,5 +15,10 @@ export const habitApi = {
     apiFetch<HabitsTodayResult>("/habits/selections", {
       method: "POST",
       body: JSON.stringify({ habit_keys: habitKeys }),
+    }),
+  submitReasonFeedback: (habitKey: string, value: ReasonFeedbackValue) =>
+    apiFetch<ReasonFeedbackResult>(`/habits/${habitKey}/reason-feedback`, {
+      method: "POST",
+      body: JSON.stringify({ value }),
     }),
 };

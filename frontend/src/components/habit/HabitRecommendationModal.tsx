@@ -1,6 +1,8 @@
+import { habitApi } from "../../api/habitApi";
 import type { HabitRecommendationItemResult } from "../../api/types";
 import Modal from "../../pages/AlarmPage/components/Modal";
 import { pinkTheme as t } from "../../theme/pinkTheme";
+import ReasonFeedback from "../common/ReasonFeedback";
 
 interface Props {
   habits: HabitRecommendationItemResult[] | null;
@@ -127,69 +129,78 @@ export default function HabitRecommendationModal({
               const checked = selectedKeys.has(habit.key);
               const disabled = !checked && selectedKeys.size >= maxSelections;
               return (
-                <button
-                  key={habit.key}
-                  type="button"
-                  onClick={() => onToggle(habit.key)}
-                  disabled={disabled}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: "14px 16px",
-                    borderRadius: 16,
-                    border: `1.5px solid ${checked ? t.primary : t.border}`,
-                    background: checked ? t.primarySoft : t.cardBg,
-                    textAlign: "left",
-                    cursor: disabled ? "not-allowed" : "pointer",
-                    opacity: disabled ? 0.5 : 1,
-                    boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
-                  }}
-                >
-                  <span
+                <div key={habit.key}>
+                  <button
+                    type="button"
+                    onClick={() => onToggle(habit.key)}
+                    disabled={disabled}
                     style={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: 6,
-                      flexShrink: 0,
-                      border: checked ? "none" : `2px solid ${t.border}`,
-                      background: checked ? t.primary : "#fff",
-                      color: "#fff",
-                      fontSize: 13,
-                      lineHeight: 1,
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
+                      gap: 12,
+                      padding: "14px 16px",
+                      borderRadius: 16,
+                      border: `1.5px solid ${checked ? t.primary : t.border}`,
+                      background: checked ? t.primarySoft : t.cardBg,
+                      textAlign: "left",
+                      cursor: disabled ? "not-allowed" : "pointer",
+                      opacity: disabled ? 0.5 : 1,
+                      boxShadow: "0 2px 8px rgba(255, 111, 145, 0.08)",
+                      width: "100%",
                     }}
-                    aria-hidden
                   >
-                    {checked ? "✓" : ""}
-                  </span>
-                  <span style={{ fontSize: 18 }} aria-hidden>
-                    {habit.icon}
-                  </span>
-                  <span style={{ flex: 1 }}>
-                    <strong style={{ display: "block", fontSize: 14, color: t.text }}>
-                      {habit.label}
-                    </strong>
-                    <span style={{ fontSize: 12, color: t.textMuted, lineHeight: 1.4 }}>
-                      {habit.reason ? (
-                        <>
-                          <div>💡 {habit.reason}</div>
-                          <div>
+                    <span
+                      style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: 6,
+                        flexShrink: 0,
+                        border: checked ? "none" : `2px solid ${t.border}`,
+                        background: checked ? t.primary : "#fff",
+                        color: "#fff",
+                        fontSize: 13,
+                        lineHeight: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                      aria-hidden
+                    >
+                      {checked ? "✓" : ""}
+                    </span>
+                    <span style={{ fontSize: 18 }} aria-hidden>
+                      {habit.icon}
+                    </span>
+                    <span style={{ flex: 1 }}>
+                      <strong style={{ display: "block", fontSize: 14, color: t.text }}>
+                        {habit.label}
+                      </strong>
+                      <span style={{ fontSize: 12, color: t.textMuted, lineHeight: 1.4 }}>
+                        {habit.reason ? (
+                          <>
+                            <div>💡 {habit.reason}</div>
+                            <div>
+                              목표 {habit.target}
+                              {habit.unit}
+                            </div>
+                          </>
+                        ) : (
+                          <>
                             목표 {habit.target}
                             {habit.unit}
-                          </div>
-                        </>
-                      ) : (
-                        <>
-                          목표 {habit.target}
-                          {habit.unit}
-                        </>
-                      )}
+                          </>
+                        )}
+                      </span>
                     </span>
-                  </span>
-                </button>
+                  </button>
+                  {habit.reason && (
+                    <div style={{ padding: "0 16px" }}>
+                      <ReasonFeedback
+                        onSubmit={(value) => habitApi.submitReasonFeedback(habit.key, value)}
+                      />
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

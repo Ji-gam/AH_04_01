@@ -258,6 +258,62 @@ def test_pick_recommendations_fills_all_disease_slots_before_base_when_over_limi
     assert all(not h.is_disease_related for h in result[3:])
 
 
+async def test_habit_reason_feedback_accepts_and_returns_value(monkeypatch):
+    """오늘의 추천 목록에 있는 habit_key로 피드백을 남기면 그대로 저장/반환돼야 한다."""
+    monkeypatch.setattr(habit_service, "MAX_RECOMMENDATIONS", 20)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "habit_feedback_up@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.patch(
+            "/api/v1/users/me/health-info",
+            json={"diagnosis_history": [{"disease": "DIABETES", "detail": None}]},
+            headers=headers,
+        )
+
+        response = await client.post(
+            "/api/v1/habits/diabetes_walk/reason-feedback", json={"value": "UP"}, headers=headers
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["value"] == "UP"
+
+
+async def test_habit_reason_feedback_re_vote_overwrites_previous_value(monkeypatch):
+    """같은 habit_key로 다시 평가하면 이전 값이 갱신돼야 한다(새 레코드가 쌓이는 게 아니라)."""
+    monkeypatch.setattr(habit_service, "MAX_RECOMMENDATIONS", 20)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "habit_feedback_revote@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.patch(
+            "/api/v1/users/me/health-info",
+            json={"diagnosis_history": [{"disease": "DIABETES", "detail": None}]},
+            headers=headers,
+        )
+
+        await client.post("/api/v1/habits/diabetes_walk/reason-feedback", json={"value": "UP"}, headers=headers)
+        response = await client.post(
+            "/api/v1/habits/diabetes_walk/reason-feedback",
+            json={"value": "DOWN", "comment": "이유가 와닿지 않아요"},
+            headers=headers,
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["value"] == "DOWN"
+
+
+async def test_habit_reason_feedback_rejects_habit_key_not_in_todays_recommendations():
+    """오늘의 추천 목록에 없는 habit_key로 피드백을 남기려 하면 404여야 한다."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "habit_feedback_invalid@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = await client.post(
+            "/api/v1/habits/diabetes_walk/reason-feedback", json={"value": "UP"}, headers=headers
+        )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
 def test_pick_recommendations_rotates_among_disease_only_when_more_than_limit():
     """질병 관련 습관만으로도 5개를 넘으면, 일반 습관은 아예 안 보이고 질병 관련 습관끼리만
     날짜별로 로테이션한다."""
