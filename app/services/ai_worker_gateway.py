@@ -109,6 +109,18 @@ class AIWorkerGateway:
         except (KeyError, ValueError) as e:
             raise AIWorkerProcessingError(f"생성 응답 형식 이상: {e}") from e
 
+    async def submit_score(self, trace_id: str, name: str, value: float, comment: str | None = None) -> None:
+        """Langfuse trace에 점수를 기록한다. 호출부(사용자 피드백 API)가 DB 저장·200 응답을
+        이미 확정한 뒤 fire-and-forget으로 부르므로, 다른 메서드와 달리 실패해도 예외를 밖으로
+        던지지 않고 로그만 남긴다(설계 결정 4 — 관측 실패가 사용자 요청을 막으면 안 된다)."""
+        payload = {"trace_id": trace_id, "name": name, "value": value, "comment": comment}
+        try:
+            async with httpx.AsyncClient(timeout=self._generate_timeout) as client:
+                response = await client.post(f"{self._base_url}/observability/score", json=payload)
+                response.raise_for_status()
+        except httpx.HTTPError:
+            logger.exception("Langfuse 점수 전송 실패(trace_id=%s) — 무시하고 계속 진행.", trace_id)
+
     def enqueue(self, task_name: str, payload: dict) -> str:
         """Celery(+Redis)로 비동기 작업을 등록하고 즉시 리턴한다. 결과는 태스크가 직접
         DB에 저장하며, 별도 상태조회/폴링 API는 두지 않는다."""
