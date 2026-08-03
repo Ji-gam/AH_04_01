@@ -513,6 +513,15 @@ export interface ExerciseSearchResult {
   results: ExerciseSearchResultItem[];
 }
 
+export interface ExerciseMetEstimateRequest {
+  exercise_name: string;
+}
+
+export interface ExerciseMetEstimateResult {
+  exercise_name: string;
+  met_value: number;
+}
+
 export interface ExerciseLogCreateRequest {
   exercise_name: string;
   input_mode: ExerciseInputMode;
