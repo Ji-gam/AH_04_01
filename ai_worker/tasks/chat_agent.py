@@ -126,6 +126,14 @@ async def stream_chat_answer(
         rag_chunks, sources = _search_all(message)
         yield {"type": "sources", "sources": [s.model_dump() for s in sources]}
 
+        # T-LLM-2-langfuse-user-feedback: 사용자가 나중에 👍/👎를 누르면 이 trace에 점수를
+        # 붙여야 하는데, trace_id를 아는 곳은 ai_worker뿐이다(observe_span 블록 밖에서
+        # 부르면 None). app이 이 청크를 chat_messages.trace_id로 저장해두고, 프론트로는
+        # relay하지 않는다(chat_service._generate 참고) — 프론트는 message_id만 안다.
+        trace_id = observability.get_current_trace_id()
+        if trace_id:
+            yield {"type": "trace", "trace_id": trace_id}
+
         reference_text = "\n".join(injected_context + [c.content for c in rag_chunks]) or "없음"
         system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(reference_text=reference_text, context=context)
 
