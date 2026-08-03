@@ -84,7 +84,10 @@ export default function InfoPage() {
   }, []);
 
   return (
-    <div className="flex h-full flex-col">
+    // 다른 화면들과 폭을 맞춘다 - 이 레포는 `maxWidth: 480, margin: 0 auto`가 관례다
+    // (ChatPage.tsx:95 주석, 17개 화면이 같은 값을 쓴다). 이 화면들만 Tailwind라서
+    // 인라인 스타일 대신 같은 값의 유틸리티 클래스로 쓴다.
+    <div className="mx-auto flex h-full w-full max-w-[480px] flex-col">
       <div className="px-4 pt-[calc(env(safe-area-inset-top)+12px)] pb-2">
         <button
           type="button"

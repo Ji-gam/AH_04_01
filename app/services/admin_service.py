@@ -11,7 +11,7 @@ from app.repositories.notice_repository import NoticeRepository
 from app.repositories.ops_stats_repository import OpsStatsRepository
 from app.repositories.user_repository import AdminActionRepository, UserRepository
 from app.services.health_news_service import CollectResult, HealthNewsService, SummaryResult
-from app.services.health_news_source import KORMEDI
+from app.services.health_news_source import ALL_SOURCES
 
 
 class AdminService:
@@ -142,26 +142,74 @@ class AdminService:
         await session.commit()
 
     # ── 건강 뉴스 관리 (T-LLM-6: 수집 트리거 / 목록 / 수정 / 삭제) ──
-    async def collect_health_news(self, session: AsyncSession, actor: User) -> tuple[CollectResult, SummaryResult]:
+    async def collect_health_news(self, session: AsyncSession, actor: User) -> tuple[CollectResult, int]:
         """[뉴스 수집] 버튼. 주기 자동 수집(Celery)이 붙기 전까지 이게 유일한 트리거다.
 
-        수집과 카드요약을 나눠 부르는 이유는 `HealthNewsService` 주석 참고 - OpenAI가 흔들려도
-        기사 수집은 남아야 한다. LLM 비용이 드는 행위이므로 감사로그에 남긴다."""
-        collected = await self._news_service.collect(session, KORMEDI)
-        summarized = await self._news_service.generate_missing_card_summaries(session)
+        **카드요약은 여기서 만들지 않는다**(2026-07-31 변경). 예전에는 수집과 요약을 한 요청에서
+        다 해서 504로 죽었다 - 실측으로 수집은 3.3초인데 요약은 기사 1건당 4~5초라, 기사가 열 건만
+        넘어도 게이트웨이 한계를 넘는다(`HealthNewsService.CARD_SUMMARY_BATCH_SIZE` 주석 참고).
+        요약은 `fill_card_summaries`를 여러 번 불러 채운다.
+
+        돌려주는 두 번째 값은 요약이 아직 없는 기사 수다 - 관리자 화면이 "요약을 몇 건 만들어야
+        하는지" 바로 보여주고, 이어서 채울 준비를 한다."""
+        collected = await self._news_service.collect_all(session)
+        pending_summaries = await self._news_service.count_missing_card_summaries(session)
         await self._action_repo.log(
             session,
             actor_user_id=actor.id,
             action="collect_health_news",
-            target=f"health_news:{KORMEDI.code}",
+            target=f"health_news:{','.join(s.code for s in ALL_SOURCES)}",
             detail=(
                 f"{actor.email} collected {collected.created} new articles "
-                f"(fetched={collected.fetched}, excluded={collected.excluded}, skipped={collected.skipped}), "
-                f"generated {summarized.generated} card summaries (failed={summarized.failed})"
+                f"(fetched={collected.fetched}, excluded={collected.excluded}, skipped={collected.skipped}, "
+                f"over_limit={collected.over_limit}, unreadable={collected.unreadable}), "
+                f"pending_summaries={pending_summaries}"
+                # 실패 원인을 감사로그에도 남긴다 - 관리자 화면의 활동 로그만 보고도 원인을
+                # 알 수 있어야 한다(그 순간의 응답 문구는 화면을 새로 고치면 사라진다).
+                + (f" - 수집: {collected.first_error}" if collected.first_error else "")
             ),
         )
         await session.commit()
-        return collected, summarized
+        return collected, pending_summaries
+
+    async def fill_card_summaries(self, session: AsyncSession, actor: User) -> SummaryResult:
+        """요약이 없는 기사의 카드요약을 **한 배치만** 만든다. 관리자 화면이 `remaining`이 0이
+        될 때까지 이어 부르며 진행률을 보여준다(배치로 나누는 이유는 위 `collect_health_news`
+        주석 참고). LLM 비용이 드는 행위이므로 배치마다 감사로그에 남긴다."""
+        summarized = await self._news_service.generate_missing_card_summaries(session)
+        await self._action_repo.log(
+            session,
+            actor_user_id=actor.id,
+            action="fill_card_summaries",
+            target=f"health_news:{','.join(s.code for s in ALL_SOURCES)}",
+            detail=(
+                f"{actor.email} generated {summarized.generated} of {summarized.pending} card summaries "
+                f"(failed={summarized.failed}, remaining={summarized.remaining})"
+                + (f" - {summarized.first_error}" if summarized.first_error else "")
+            ),
+        )
+        await session.commit()
+        return summarized
+
+    async def regenerate_card_summaries(self, session: AsyncSession, actor: User, offset: int = 0) -> SummaryResult:
+        """[카드요약 다시 만들기] 버튼. 프롬프트나 글자 수 제한을 손질한 뒤 기존 기사에도
+        새 기준을 적용할 때 쓴다. **한 배치만** 처리하고 남은 수를 돌려준다 - 여기는 요약이 있는
+        기사도 대상이라 진행 위치가 데이터에 남지 않으므로 화면이 `offset`을 들고 이어 부른다.
+        기사 수만큼 LLM을 부르는 비싼 행위라 배치마다 감사로그에 남긴다."""
+        summarized = await self._news_service.regenerate_card_summaries(session, offset=offset)
+        await self._action_repo.log(
+            session,
+            actor_user_id=actor.id,
+            action="regenerate_card_summaries",
+            target=f"health_news:{','.join(s.code for s in ALL_SOURCES)}",
+            detail=(
+                f"{actor.email} regenerated {summarized.generated} of {summarized.pending} card summaries "
+                f"(offset={offset}, failed={summarized.failed}, remaining={summarized.remaining})"
+                + (f" - {summarized.first_error}" if summarized.first_error else "")
+            ),
+        )
+        await session.commit()
+        return summarized
 
     async def list_health_news_admin(self, session: AsyncSession, limit: int = 100):  # noqa: ANN201
         return await self._news_repo.list_feed(session, limit=limit)

@@ -30,21 +30,79 @@ DEFAULT_FEED_LIMIT = 30
 
 @dataclass
 class CollectResult:
-    """수집 1회의 결과. 관리자 화면이 이 숫자를 그대로 보여준다."""
+    """수집 1회의 결과. 관리자 화면이 이 숫자를 그대로 보여준다.
 
-    fetched: int  # RSS에서 파싱된 기사 수
+    `fetched = created + skipped + unreadable + over_limit + excluded` 가 항상 성립한다 -
+    숫자가 맞지 않으면 어딘가에서 기사를 조용히 버리고 있다는 뜻이다.
+    """
+
+    fetched: int  # 피드에서 파싱된 기사 수(여러 매체를 돌면 합계)
     excluded: int  # 건강정보가 아닌 카테고리라 버린 수
     created: int  # 새로 저장한 수
     skipped: int  # 이미 있어서 건너뛴 수
+    # 매체당 상한(MAX_ARTICLES_PER_SOURCE)을 넘어 이번에는 가져오지 않은 수. 버린 게 아니라
+    # 미룬 것이다 - 다음 수집에서 다시 후보가 된다.
+    over_limit: int = 0
+    # 본문을 뽑지 못해 버린 수. 0이 정상이고, 계속 늘면 상대 매체의 기사 페이지 구조가 바뀐 것이다.
+    unreadable: int = 0
+    # 매체 하나가 통째로 실패한 첫 원인 한 줄(피드가 죽었거나 형식이 깨진 경우).
+    # 실패해도 나머지 매체는 계속 수집하므로, 원인은 이 값으로만 드러난다.
+    first_error: str | None = None
+
+
+@dataclass
+class SaveOutcome:
+    """저장 단계만의 결과. 수집 전체 결과(`CollectResult`)와 섞지 않는다 - 저장 단계는
+    걸러낸 수나 상한을 모른다(이미 걸러진 목록만 받는다)."""
+
+    created: int
+    skipped: int
+
+
+# 관리자 화면·감사로그에 실을 오류 설명의 최대 길이. 전체 트레이스백은 서버 로그에만 남긴다.
+_ERROR_DETAIL_MAX_CHARS = 300
+
+
+def _describe_error(exc: Exception) -> str:
+    """예외를 한 줄로 요약한다. **클래스명을 앞에 붙이는 게 핵심**이다 - 그것만으로 원인이 갈린다.
+
+    - `AIWorkerUnavailableError` → ai_worker 호출 자체가 실패(연결/타임아웃/상태코드)
+    - `ValidationError` → 호출은 됐지만 LLM 출력이 스키마(슬라이드 최소 개수 등)에 못 미침
+    """
+    message = f"{type(exc).__name__}: {exc}".replace("\n", " ")
+    if len(message) <= _ERROR_DETAIL_MAX_CHARS:
+        return message
+    return message[:_ERROR_DETAIL_MAX_CHARS] + "…"
+
+
+# 카드요약을 한 번에 몇 건까지 만들지. **게이트웨이 타임아웃 때문에 있는 상한이다.**
+#
+# (2026-07-31) 수집 버튼이 504로 죽었다. 원인은 요청 하나가 수집과 LLM 호출을 다 하고 있었던 것:
+# 실측으로 수집은 3.3초인데 카드요약은 **기사 1건당 4~5초**라서, 기사 9건이면 합계 50초가 된다.
+# 요청이 지나는 길에 타임아웃이 두 겹인데(프론트를 올린 Vercel의 rewrite → EC2 nginx) nginx는
+# 기본 60초이고 Vercel 쪽이 그보다 짧아서 거기서 끊겼다. 서버는 끝까지 처리했지만 화면에는
+# 실패로 보였다.
+#
+# 그래서 시간을 늘리는 대신(nginx는 리더 소유 파일이고, 정작 먼저 끊는 Vercel은 우리가 못 올린다)
+# **일을 쪼갠다.** 5건 × 5초 ≈ 25초로 어떤 한계에도 넉넉히 들어가고, 남은 건수를 함께 돌려주므로
+# 관리자 화면이 0이 될 때까지 이어 부르며 진행률을 보여줄 수 있다. 기사가 몇 백 건이어도 안 터진다.
+CARD_SUMMARY_BATCH_SIZE = 5
 
 
 @dataclass
 class SummaryResult:
     """카드요약 생성 1회의 결과."""
 
-    pending: int  # 요약이 비어 있던 기사 수
+    pending: int  # 이번에 요약을 시도한 기사 수
     generated: int  # 새로 요약을 채운 수
     failed: int  # LLM 실패로 못 채운 수(다음 실행에서 재시도된다)
+    # 첫 실패의 원인 한 줄. (2026-07-31) 실패 원인이 서버 로그에만 남아서, EC2에 SSH할 수 있는
+    # 리더 없이는 "7건 실패"의 이유를 알 수 없었다. 실패를 삼키는 설계(아래 주석 참고)를
+    # 유지하면서도 원인은 관리자가 볼 수 있어야 한다.
+    first_error: str | None = None
+    # 이번 배치를 끝낸 뒤에도 요약이 없는 기사 수. 관리자 화면이 이 값으로 "이어 부를지 멈출지"를
+    # 정한다. 실패한 기사도 여기 남으므로, 진행이 없으면(generated=0) 멈춰야 무한 반복이 안 된다.
+    remaining: int = 0
 
 
 class HealthNewsService:
@@ -52,18 +110,62 @@ class HealthNewsService:
         self._repo = repo or HealthNewsRepository()
 
     async def collect(self, session: AsyncSession, source: health_news_source.NewsSourceDef) -> CollectResult:
-        """매체 하나를 1회 수집한다. 관리자 [뉴스 수집] 버튼과 수동 트리거 스크립트가 같이 호출한다.
-        어떤 매체인지는 인자로 받는다 - 소스가 늘어도(7단계) 이 메서드는 그대로다."""
+        """매체 하나를 1회 수집한다. 어떤 매체인지는 인자로 받는다 - 이 메서드는 매체가
+        코메디인지 헬스경향인지 모른다."""
         fetched = await health_news_source.fetch(source)
         saved = await self._save_articles(session, fetched.articles)
         return CollectResult(
-            fetched=len(fetched.articles) + fetched.excluded,
+            fetched=len(fetched.articles) + fetched.excluded + fetched.over_limit + fetched.unreadable,
             excluded=fetched.excluded,
             created=saved.created,
             skipped=saved.skipped,
+            over_limit=fetched.over_limit,
+            unreadable=fetched.unreadable,
         )
 
-    async def _save_articles(self, session: AsyncSession, articles: list[ParsedArticle]) -> CollectResult:
+    async def collect_all(
+        self,
+        session: AsyncSession,
+        sources: tuple[health_news_source.NewsSourceDef, ...] | None = None,
+    ) -> CollectResult:
+        """모든 매체를 1회 수집해 결과를 합산한다. 관리자 [뉴스 수집] 버튼과 수동 트리거
+        스크립트가 호출한다.
+
+        **매체 하나가 실패해도 나머지는 계속 수집한다** - 한 매체의 피드가 죽었다고 그날
+        수집분이 통째로 빈손이 되면 손해가 크다. 실패 원인은 `first_error`로 올려보낸다
+        (카드요약 배치가 기사 단위로 실패를 다루는 것과 같은 방식).
+
+        `sources`의 기본값을 인자 자리에 두지 않고 여기서 읽는 이유: 기본 인자는 함수가 정의될
+        때 한 번 묶이므로, 테스트가 `ALL_SOURCES`를 바꿔치기해도 반영되지 않는다.
+        """
+        targets = sources if sources is not None else health_news_source.ALL_SOURCES
+        total = CollectResult(fetched=0, excluded=0, created=0, skipped=0)
+        for source in targets:
+            try:
+                one = await self.collect(session, source)
+            except Exception as e:
+                logger.exception("매체 수집 실패 (source=%s)", source.code)
+                if total.first_error is None:
+                    total.first_error = f"{source.name} - {_describe_error(e)}"
+                continue
+            total.fetched += one.fetched
+            total.excluded += one.excluded
+            total.created += one.created
+            total.skipped += one.skipped
+            total.over_limit += one.over_limit
+            total.unreadable += one.unreadable
+            logger.info(
+                "수집 완료 source=%s fetched=%d created=%d skipped=%d over_limit=%d unreadable=%d",
+                source.code,
+                one.fetched,
+                one.created,
+                one.skipped,
+                one.over_limit,
+                one.unreadable,
+            )
+        return total
+
+    async def _save_articles(self, session: AsyncSession, articles: list[ParsedArticle]) -> SaveOutcome:
         """이미 있는 기사(source + source_url)는 건너뛴다.
 
         DB 유니크 제약이 최종 방어선이지만, 조회로 먼저 걸러서 건너뛴 수를 세고 무의미한
@@ -88,30 +190,79 @@ class HealthNewsService:
                 source_categories=article.source_categories,
             )
             created += 1
-        # fetched/excluded는 호출자(collect)가 채운다 - 여기는 걸러진 뒤의 목록만 받으므로
-        # 원래 몇 건이었는지 모른다.
-        return CollectResult(fetched=len(articles), excluded=0, created=created, skipped=skipped)
+        return SaveOutcome(created=created, skipped=skipped)
 
-    async def generate_missing_card_summaries(self, session: AsyncSession, limit: int | None = None) -> SummaryResult:
-        """카드요약이 아직 없는 기사들의 요약을 만들어 채운다.
+    async def generate_missing_card_summaries(
+        self, session: AsyncSession, limit: int | None = CARD_SUMMARY_BATCH_SIZE
+    ) -> SummaryResult:
+        """카드요약이 아직 없는 기사들의 요약을 **한 배치만** 만들어 채운다.
+
+        기본값이 `None`(전체)이 아니라 `CARD_SUMMARY_BATCH_SIZE`인 게 중요하다 - 이 메서드를
+        HTTP 요청 안에서 부르는 쪽이 실수로 전체를 돌려 게이트웨이 타임아웃을 맞지 않게 하는
+        기본값이다(그 사고가 실제로 있었다, 위 상수 주석 참고). 전체를 채우려면 `remaining`이
+        0이 될 때까지 여러 번 부른다 - 관리자 화면이 그렇게 하며 진행률을 보여준다.
 
         기사 한 건이 실패해도 나머지는 계속 처리한다 - 한 건의 LLM 오류로 배치 전체가 멈추면
         그날 수집분이 통째로 요약 없는 상태가 된다. 실패한 기사는 `card_summary`가 그대로
         비어 있으므로 다음 실행에서 자동으로 다시 시도된다."""
         pending = await self._repo.list_missing_card_summary(session, limit=limit)
+        result = await self._fill_card_summaries(session, pending)
+        result.remaining = await self._repo.count_missing_card_summary(session)
+        return result
+
+    async def count_missing_card_summaries(self, session: AsyncSession) -> int:
+        """요약이 아직 없는 기사 수. 수집 직후 "요약을 몇 건 만들어야 하는지" 보여주는 데 쓴다."""
+        return await self._repo.count_missing_card_summary(session)
+
+    async def regenerate_card_summaries(
+        self, session: AsyncSession, limit: int | None = CARD_SUMMARY_BATCH_SIZE, offset: int = 0
+    ) -> SummaryResult:
+        """기사의 카드요약을 다시 만든다(**한 배치만**). 관리자 [카드요약 다시 만들기] 버튼.
+
+        프롬프트나 글자 수 제한을 손질하면 기존 기사에도 새 기준을 적용해야 하는데, 평소
+        배치는 요약이 비어 있는 기사만 고르기 때문에(`list_missing_card_summary`) 이미 있는
+        기사는 영원히 옛 기준으로 남는다.
+
+        **기존 요약을 먼저 지우지 않는다.** 새로 만들기를 시도하고 성공한 것만 덮어쓴다 -
+        먼저 비우면 LLM이 중간에 실패했을 때 쓸 만했던 요약까지 잃는다.
+
+        여기는 요약이 이미 있는 기사도 대상이라 "어디까지 했는지"가 데이터에 남지 않는다.
+        그래서 진행 위치를 `offset`으로 호출하는 쪽이 들고 있고, `remaining`은 남은 기사 수다
+        (요약이 빈 기사 수가 아니다 - 그 값은 재생성 중에 계속 0이다)."""
+        targets = await self._repo.list_all_for_card_summary(session, limit=limit, offset=offset)
+        result = await self._fill_card_summaries(session, targets)
+        total = await self._repo.count_all(session)
+        result.remaining = max(0, total - (offset + len(targets)))
+        return result
+
+    async def count_articles(self, session: AsyncSession) -> int:
+        """저장된 기사 총수. [카드요약 다시 만들기]의 진행률 분모다."""
+        return await self._repo.count_all(session)
+
+    async def _fill_card_summaries(self, session: AsyncSession, targets: list[HealthNews]) -> SummaryResult:
+        """받은 기사들의 카드요약을 만들어 채운다. 신규 생성과 재생성이 공유한다.
+
+        기사 한 건이 실패해도 나머지는 계속 처리한다 - 한 건의 LLM 오류로 배치 전체가 멈추면
+        그날 수집분이 통째로 요약 없는 상태가 된다. 실패한 기사는 기존 값이 그대로 남으므로
+        (신규라면 비어 있는 상태) 다음 실행에서 자동으로 다시 시도된다."""
         generated = 0
         failed = 0
-        for news in pending:
+        first_error: str | None = None
+        for news in targets:
             try:
                 summary = await health_news_card_summary.generate_card_summary(news)
-            except Exception:
+            except Exception as e:
                 # 실패 원인(LLM 응답 형식, OpenAI 장애, 스키마 하한 미달 등)을 남기고 다음 기사로.
                 logger.exception("카드요약 생성 실패 (news_id=%s)", news.id)
                 failed += 1
+                # 첫 실패만 들고 나간다. 전부 같은 이유로 실패하는 경우가 대부분이라 한 줄이면
+                # 원인 파악에 충분하고, 기사 수만큼 메시지를 쌓으면 응답이 지저분해진다.
+                if first_error is None:
+                    first_error = _describe_error(e)
                 continue
             await self._repo.set_card_summary(session, news, summary.model_dump())
             generated += 1
-        return SummaryResult(pending=len(pending), generated=generated, failed=failed)
+        return SummaryResult(pending=len(targets), generated=generated, failed=failed, first_error=first_error)
 
     # ── 조회 ──────────────────────────────────────────────────────────────────
 

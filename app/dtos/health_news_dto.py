@@ -24,7 +24,10 @@ from pydantic import BaseModel, Field, field_validator
 TAG_MAX = 8
 STAT_MAX = 12
 SUBSTAT_MAX = 18
-TEXT_MAX = 60
+# (2026-07-31) 60 → 110으로 올렸다. 카드 폭 315px / 폰트 14px에서 한 줄이 약 20자라 60자면
+# 2줄밖에 안 나왔는데, 실측해보니 카드에 292px(약 15줄)가 비어 있었다. 사용자가 기사 원문을
+# 끝까지 읽지 않는다는 전제에서 카드가 내용을 담아야 하므로 3~5줄(60~110자)을 목표로 한다.
+TEXT_MAX = 110
 # 프로토타입은 본문 카드 4장이었다. 표지/면책은 템플릿이 따로 붙이므로 여기 개수에 안 들어간다.
 SLIDES_MIN = 3
 SLIDES_MAX = 5
@@ -114,6 +117,25 @@ def _clip(value: object, limit: int) -> object:
     return value
 
 
+def _clip_at_sentence(value: object, limit: int) -> object:
+    """`_clip`과 같지만 **문장이 끝나는 자리에서** 자른다.
+
+    (2026-07-31) 설명문을 3~5줄로 늘린 뒤 실측했더니 24장 중 4장이 문장 중간에서 잘렸다
+    ("이는 치료 지연의 위험을 내포", "큰 도움이 되지 않는"). LLM이 목표 길이를 조금씩 넘겨
+    쓰는 건 프롬프트로 완전히 막을 수 없으니, 잘리더라도 문장으로 끝나게 구조로 보장한다.
+
+    문장 끝을 너무 앞에서 찾으면(예: 첫 문장이 20자) 내용이 크게 잘리므로, 한계의 절반보다
+    뒤에 있을 때만 그 자리를 쓴다. 그 외에는 기존처럼 그냥 자른다.
+    """
+    if not isinstance(value, str) or len(value) <= limit:
+        return value
+    head = value[:limit]
+    end = max(head.rfind("."), head.rfind("!"), head.rfind("?"))
+    if end >= limit // 2:
+        return head[: end + 1]
+    return head.rstrip()
+
+
 def _blank_to_none(value: object) -> object:
     """빈 문자열/공백만 있는 값을 None으로 바꾼다. LLM은 "값이 없음"을 None이 아니라 ""로
     답하는 경우가 있어서(실측: 31장 중 3장), 그대로 두면 화면에 빈칸이 그려진다."""
@@ -170,7 +192,8 @@ class CardSlide(BaseModel):
     @field_validator("text", mode="before")
     @classmethod
     def clip_text(cls, value: object) -> object:
-        return _clip(value, TEXT_MAX)
+        # 설명문만 문장 단위로 자른다. tag/stat/substat은 문장이 아니라 짧은 라벨이라 해당 없음.
+        return _clip_at_sentence(value, TEXT_MAX)
 
 
 class CardSummary(BaseModel):
@@ -257,9 +280,75 @@ class CollectNewsResponse(BaseModel):
     """[뉴스 수집] 버튼 결과. 걸러낸 수를 따로 보여주는 이유: 조용히 버리면 "10건 중 6건만
     저장됨"이 필터 때문인지 파싱 실패인지 관리자가 알 수 없다."""
 
-    fetched: int = Field(description="RSS에서 파싱된 기사 수")
+    fetched: int = Field(description="모든 매체의 피드에서 파싱된 기사 수(합계)")
     excluded: int = Field(description="건강정보가 아닌 카테고리라 저장하지 않은 수")
     created: int = Field(description="새로 저장한 수")
     skipped: int = Field(description="이미 있어서 건너뛴 수")
-    summaries_generated: int = Field(description="카드요약을 새로 만든 수")
-    summaries_failed: int = Field(description="카드요약 생성에 실패한 수(다음 수집에서 재시도된다)")
+    over_limit: int = Field(
+        0,
+        description=(
+            "매체당 상한을 넘어 이번에는 가져오지 않은 수. 버린 게 아니라 미룬 것이며 "
+            "다음 수집에서 다시 후보가 된다. 상한은 카드요약 LLM 비용 상한 역할을 한다."
+        ),
+    )
+    unreadable: int = Field(
+        0,
+        description=(
+            "기사 페이지에서 본문을 뽑지 못해 버린 수. 0이 정상이고, 계속 늘어나면 "
+            "상대 매체의 기사 페이지 구조가 바뀐 것이므로 파서를 봐야 한다."
+        ),
+    )
+    collect_error: str | None = Field(
+        None,
+        description=(
+            "매체 하나가 통째로 실패한 첫 원인 한 줄(피드가 죽었거나 형식이 깨진 경우). "
+            "한 매체가 실패해도 나머지 매체는 계속 수집하므로 이 값이 유일한 단서다. 없으면 null."
+        ),
+    )
+    pending_summaries: int = Field(
+        0,
+        description=(
+            "수집이 끝난 뒤 카드요약이 아직 없는 기사 수. **수집 응답에는 요약 결과가 없다** - "
+            "요약은 기사 1건당 4~5초라 수집과 한 요청에 묶으면 게이트웨이 타임아웃(504)을 맞는다"
+            "(2026-07-31 실제로 겪음). 요약은 `/news/card-summaries/fill`을 이 수가 0이 될 때까지 "
+            "여러 번 불러 채운다."
+        ),
+    )
+
+
+class CardSummaryBatchResponse(BaseModel):
+    """카드요약 배치 1회의 결과. `fill`(빈 것만 채우기)과 `regenerate`(전체 다시 만들기)가
+    같은 모양을 쓴다 - 호출하는 화면이 둘 다 "남은 수가 0이 될 때까지 이어 부르기"로 똑같이
+    다루기 때문이다.
+
+    한 번에 몇 건을 처리하는지는 서버가 정한다(`CARD_SUMMARY_BATCH_SIZE`). 클라이언트가
+    크게 요청해서 타임아웃을 자초할 수 없어야 한다."""
+
+    attempted: int = Field(description="이번 배치에서 요약을 시도한 기사 수")
+    generated: int = Field(description="요약을 새로 만든(또는 덮어쓴) 수")
+    failed: int = Field(description="실패한 수. 실패한 기사는 기존 값이 그대로 남고 다음 배치에서 다시 시도된다")
+    remaining: int = Field(
+        0,
+        description=(
+            "이번 배치 뒤에 남은 기사 수. 0이 되면 멈춘다. "
+            "**진행이 없는데(generated=0) 남아 있으면 멈춰야 한다** - 같은 기사가 계속 실패하는 "
+            "상황이라 이어 불러도 무한히 반복된다."
+        ),
+    )
+    next_offset: int = Field(
+        0,
+        description=(
+            "다음 배치를 요청할 위치. `regenerate`에서만 의미가 있다 - 요약이 이미 있는 기사도 "
+            "대상이라 진행 위치가 데이터에 남지 않으므로 호출하는 쪽이 들고 있어야 한다. "
+            "`fill`은 요약이 빈 기사만 고르므로 언제나 0이다."
+        ),
+    )
+    error: str | None = Field(
+        None,
+        description=(
+            "실패한 첫 원인 한 줄(예외 종류 + 메시지, 최대 300자). 실패가 없으면 null. "
+            "예외 종류만으로 원인이 갈린다 - AIWorkerUnavailableError면 ai_worker 호출 자체가 "
+            "실패한 것이고, ValidationError면 호출은 됐지만 LLM 출력이 스키마에 못 미친 것이다. "
+            "관리자 전용 응답이며 전체 트레이스백은 서버 로그에만 남는다."
+        ),
+    )
