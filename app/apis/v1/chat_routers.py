@@ -1,20 +1,27 @@
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
 from app.dtos.chat import (
+    ChatFeedbackRequest,
     ChatMessageRequest,
     ChatMessageResponse,
     ChatSessionCreateResponse,
     ChatSessionResponse,
 )
+from app.models.chat import FeedbackValue
 from app.models.profiles import Profile
 from app.repositories.chat_repository import ChatRepository
+from app.services.chat_feedback_service import (
+    ChatFeedbackService,
+    FeedbackTargetInvalidError,
+    FeedbackTargetNotFoundError,
+)
 from app.services.chat_service import ChatService
 
 chat_router = APIRouter(prefix="/chat", tags=["Chat"])
@@ -110,3 +117,35 @@ async def list_chat_messages(
         )
         for m in messages
     ]
+
+
+@chat_router.post(
+    "/messages/{message_id}/feedback",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="챗봇 답변 피드백(👍/👎)",
+    description=(
+        "T-LLM-2-langfuse-user-feedback: 어시스턴트 답변에 대한 사용자 평가를 저장한다. "
+        "같은 메시지에 다시 제출하면 값이 갱신된다(upsert). 저장이 성공하면 항상 204를 "
+        "반환하고, Langfuse 점수 전송(설정된 경우)은 실패해도 이 응답에 영향을 주지 않는다."
+    ),
+    responses={
+        400: {"description": "어시스턴트 메시지가 아니다(사용자 자신의 질문)."},
+        404: {"description": "메시지가 존재하지 않거나 다른 프로필 소유의 메시지다."},
+    },
+)
+async def submit_chat_feedback(
+    message_id: int,
+    body: ChatFeedbackRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> Response:
+    value = FeedbackValue.UP if body.value == "up" else FeedbackValue.DOWN
+    try:
+        await ChatFeedbackService().submit_feedback(session, profile.id, message_id, value, body.comment)
+    except FeedbackTargetNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="메시지를 찾을 수 없습니다.") from e
+    except FeedbackTargetInvalidError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="어시스턴트 메시지에만 피드백을 남길 수 있습니다."
+        ) from e
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

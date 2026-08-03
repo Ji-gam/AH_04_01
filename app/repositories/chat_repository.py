@@ -1,7 +1,7 @@
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.chat import ChatMessage, ChatSession, MessageRole
+from app.models.chat import ChatMessage, ChatMessageFeedback, ChatSession, FeedbackValue, MessageRole
 from app.models.profiles import Profile
 
 
@@ -58,6 +58,34 @@ class ChatRepository:
             select(ChatMessage).where(ChatMessage.session_id == session_id).order_by(ChatMessage.id.desc()).limit(limit)
         )
         return list(reversed(result.scalars().all()))
+
+    async def get_message_with_session(
+        self, session: AsyncSession, message_id: int
+    ) -> tuple[ChatMessage, ChatSession] | None:
+        """피드백 API의 소유권 검증용 - 메시지가 어느 프로필의 세션에 속하는지 한 번에 조회한다."""
+        result = await session.execute(
+            select(ChatMessage, ChatSession)
+            .join(ChatSession, ChatMessage.session_id == ChatSession.id)
+            .where(ChatMessage.id == message_id)
+        )
+        row = result.first()
+        return (row.ChatMessage, row.ChatSession) if row else None
+
+    async def upsert_feedback(
+        self, session: AsyncSession, message_id: int, value: FeedbackValue, comment: str | None
+    ) -> ChatMessageFeedback:
+        """message_id는 UNIQUE라 답변당 피드백 1건 - 이미 있으면 값만 갱신한다(재평가)."""
+        result = await session.execute(select(ChatMessageFeedback).where(ChatMessageFeedback.message_id == message_id))
+        feedback = result.scalar_one_or_none()
+        if feedback is None:
+            feedback = ChatMessageFeedback(message_id=message_id, value=value, comment=comment)
+            session.add(feedback)
+        else:
+            feedback.value = value
+            feedback.comment = comment
+        await session.commit()
+        await session.refresh(feedback)
+        return feedback
 
     async def list_all_sessions(
         self, session: AsyncSession, limit: int = 50, offset: int = 0
