@@ -7,6 +7,8 @@ from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
 from app.dtos.exercise_dto import (
     ExerciseLogCreateRequest,
+    ExerciseMetEstimateRequest,
+    ExerciseMetEstimateResult,
     ExerciseRecentResult,
     ExerciseSearchResult,
     ExerciseTodayResult,
@@ -15,6 +17,24 @@ from app.models.profiles import Profile
 from app.services.exercise_service import ExerciseService
 
 exercise_router = APIRouter(prefix="/exercise", tags=["exercise"])
+
+
+@exercise_router.get(
+    "/catalog",
+    response_model=ExerciseSearchResult,
+    status_code=status.HTTP_200_OK,
+    summary="운동 종류 전체 목록 조회 (드롭다운용)",
+    description=(
+        "더보기 > 마이다이어리 > 운동 기록 화면의 드롭다운용. 웨이트/근력운동처럼 세부 종목별 "
+        "입력은 지원하지 않는 고정된 23개 운동 목록을 그대로 반환한다."
+    ),
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
+)
+async def get_exercise_catalog(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+) -> ExerciseSearchResult:
+    service = ExerciseService()
+    return await service.list_catalog()
 
 
 @exercise_router.get(
@@ -34,6 +54,26 @@ async def search_exercise(
 ) -> ExerciseSearchResult:
     service = ExerciseService()
     return await service.search_exercise(query)
+
+
+@exercise_router.post(
+    "/estimate-met",
+    response_model=ExerciseMetEstimateResult,
+    status_code=status.HTTP_200_OK,
+    summary="목록에 없는 운동의 MET 값을 AI로 추정",
+    description=(
+        "드롭다운의 '기타(직접 입력)' 선택 후 자유 입력한 운동명을 AI로 인식해 MET(대사당량) "
+        "값을 추정한다. 이후 이 값을 그대로 POST /exercise/logs의 input_mode=duration으로 기록한다. "
+        "AI 호출이 실패해도 항상 폴백 값으로 200을 반환한다."
+    ),
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"}},
+)
+async def estimate_exercise_met(
+    body: ExerciseMetEstimateRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+) -> ExerciseMetEstimateResult:
+    service = ExerciseService()
+    return await service.estimate_met(body.exercise_name)
 
 
 @exercise_router.post(

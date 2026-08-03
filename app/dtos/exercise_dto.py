@@ -22,6 +22,19 @@ class ExerciseSearchResult(BaseModel):
     results: Annotated[list[ExerciseSearchResultItem], Field(description="검색어와 부분 일치하는 운동 목록")]
 
 
+class ExerciseMetEstimateRequest(BaseModel):
+    exercise_name: Annotated[
+        str, Field(min_length=1, max_length=50, description="목록에 없는 운동의 자유 입력 이름", examples=["클라이밍"])
+    ]
+
+
+class ExerciseMetEstimateResult(BaseModel):
+    exercise_name: Annotated[str, Field(description="입력한 운동명 그대로(기록 시 재사용)")]
+    met_value: Annotated[
+        float, Field(description="AI가 추정한 MET(대사당량) 값. 실패 시 일반 유산소 운동 평균치로 폴백")
+    ]
+
+
 class ExerciseLogCreateRequest(BaseModel):
     """검색 결과 카드를 그대로 다시 보내서 서버가 재검색 없이 소모 칼로리를 계산한다.
     input_mode에 따라 아래 필드 중 필요한 것만 채워서 보낸다:
