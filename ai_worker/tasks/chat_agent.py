@@ -52,11 +52,29 @@ _SYSTEM_PROMPT_TEMPLATE = (
 )
 
 
-def _build_llm() -> ChatOpenAI:
+def _build_llm(*, grounded: bool) -> ChatOpenAI:
+    """참고 문서가 있는 답변만 temperature를 고정한다.
+
+    `grounded`는 이 턴에 RAG 출처나 `injected_context`(app/이 계산한 개인 DUR 경고)가
+    있었는지다. 있으면 답변이 의학 정보를 전달하므로 결정성을 우선해
+    `settings.OPENAI_TEMPERATURE`(기본 0.0)를 적용하고, 없으면(일반 대화) 표현 변주가
+    자연스러운 편이라 temperature를 강제하지 않는다.
+
+    이 구분은 config의 `OPENAI_TEMPERATURE` 주석("분류·구조화 추출·논문 답변은 결정적이어야
+    하므로 기본 0")이 원래 의도한 것인데, T-LLM-7-3-2에서 DUR/논문 답변이 이 통합 경로로
+    합쳐질 때 누락됐다 — 이 모듈만 해당 설정을 쓰지 않는 유일한 LLM 호출부였다.
+    실측으로 확인된 증상(`scripts/measure_response_consistency`, 2026-08-04): "당뇨에 좋은
+    운동이 있을까요?"를 5회 반복하면 운동 처방 수량이 6종(주 150분 / 주 3회 / 30분 / 12주 /
+    주 2회 / 5일)으로 갈리고, 5회 모두에 등장한 수량이 하나도 없었다.
+    """
     if settings.OPENAI_API_KEY is None:
         raise GenerationUnavailableError("OPENAI_API_KEY가 설정되지 않았습니다.")
-    # temperature를 강제하지 않는다 — 분류/논문답변(결정성 우선)과 달리, 일반 대화
-    # 답변은 자연스러운 표현 변주가 있는 편이 낫다(기존 app/의 llm_stub.py도 고정하지 않았음).
+    if grounded:
+        return ChatOpenAI(
+            model=settings.OPENAI_MODEL,
+            api_key=SecretStr(settings.OPENAI_API_KEY),
+            temperature=settings.OPENAI_TEMPERATURE,
+        )
     return ChatOpenAI(model=settings.OPENAI_MODEL, api_key=SecretStr(settings.OPENAI_API_KEY))
 
 
@@ -141,7 +159,7 @@ async def stream_chat_answer(
         reference_text = "\n".join(injected_context + [c.content for c in rag_chunks]) or "없음"
         system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(reference_text=reference_text, context=context)
 
-        llm = _build_llm()
+        llm = _build_llm(grounded=bool(rag_chunks or injected_context))
         messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": message}]
 
         # 관측(Langfuse)이 설정돼 있으면 콜백으로 프롬프트/응답/토큰/지연을 trace로 남긴다.
