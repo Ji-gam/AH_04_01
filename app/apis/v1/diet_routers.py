@@ -6,7 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
-from app.dtos.diet_dto import DietLogCreateRequest, DietRecentResult, DietTodayResult, FoodSearchResult
+from app.dtos.diet_dto import (
+    AIFoodSearchRequest,
+    DietLogCreateRequest,
+    DietRecentResult,
+    DietTodayResult,
+    FoodSearchResult,
+)
 from app.dtos.feedback import ReasonFeedbackRequest, ReasonFeedbackResponse
 from app.models.profiles import Profile
 from app.repositories.diet_repository import DietRepository
@@ -37,6 +43,30 @@ async def search_food(
 ) -> FoodSearchResult:
     service = DietService()
     return await service.search_food(session, query)
+
+
+@diet_router.post(
+    "/ai-food",
+    response_model=FoodSearchResult,
+    status_code=status.HTTP_200_OK,
+    summary="검색으로 못 찾은 음식을 AI가 추정",
+    description=(
+        "식약처 DB 검색 결과에 사용자가 찾는 음식이 없을 때(예: '김'을 치면 김밥·김치 요리만 "
+        "나옴) 화면의 'AI로 찾기' 버튼이 호출한다. AI가 100g당 영양성분과 1회 제공량을 추정해 "
+        "1건으로 돌려주고, 그 검색어의 캐시 맨 앞에 넣어 다음 검색부터 함께 보이게 한다."
+    ),
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"description": "AI 호출 실패 또는 비상식적인 추정값"},
+    },
+)
+async def find_food_by_ai(
+    body: AIFoodSearchRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> FoodSearchResult:
+    service = DietService()
+    return await service.find_food_by_ai(session, body.food_name)
 
 
 @diet_router.post(

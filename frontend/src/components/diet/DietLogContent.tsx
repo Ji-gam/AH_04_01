@@ -57,6 +57,9 @@ export default function DietLogContent() {
   const [customMode, setCustomMode] = useState(false);
   const [customText, setCustomText] = useState("");
   const [logging, setLogging] = useState(false);
+  // 식약처 DB에 없거나(검색 0건) 결과에 원하는 게 없을 때("김"을 치면 김밥·김치 요리만 나옴)
+  // AI에게 직접 물어보는 버튼용 상태.
+  const [aiSearching, setAiSearching] = useState(false);
 
   useEffect(() => {
     Promise.all([dietApi.getToday(), dietApi.getRecent(), healthInfoApi.get()])
@@ -99,6 +102,35 @@ export default function DietLogContent() {
     } finally {
       setHasSearched(true);
       setSearchLoading(false);
+    }
+  }
+
+  async function handleAISearch() {
+    const name = query.trim();
+    if (!name) return;
+    setAiSearching(true);
+    setSearchError(null);
+    try {
+      const result = await dietApi.findFoodByAI(name);
+      const aiItem = result.results[0];
+      if (!aiItem) {
+        setSearchError("AI가 이 음식을 찾지 못했어요.");
+        return;
+      }
+      // AI가 찾아준 항목을 목록 맨 앞에 넣고 바로 선택해준다 - 사용자가 한 번 더 고를
+      // 필요 없이 인분만 정해 기록할 수 있게.
+      setSearchResults((prev) => [
+        aiItem,
+        ...prev.filter((it) => it.food_name !== aiItem.food_name),
+      ]);
+      setSelectedIndex(0);
+      setMultiplier(1);
+      setCustomMode(false);
+      setCustomText("");
+    } catch (err) {
+      setSearchError(err instanceof Error ? err.message : "AI 검색 중 오류가 발생했습니다.");
+    } finally {
+      setAiSearching(false);
     }
   }
 
@@ -267,9 +299,36 @@ export default function DietLogContent() {
           {searchLoading && <p style={{ color: t.textMuted, fontSize: 13 }}>검색 중...</p>}
           {searchError && <p style={{ color: t.danger, fontSize: 13 }}>{searchError}</p>}
           {!searchLoading && !searchError && hasSearched && searchResults.length === 0 && (
-            <p style={{ color: t.textMuted, fontSize: 13, marginBottom: 16 }}>
-              검색 결과가 없어요. 다른 이름으로 검색해보세요(예: 흰쌀밥, 김치찌개).
+            <p style={{ color: t.textMuted, fontSize: 13, marginBottom: 10 }}>
+              검색 결과가 없어요. 아래 버튼을 누르면 AI가 영양성분을 추정해드려요.
             </p>
+          )}
+
+          {/* 검색을 한 뒤에는 항상 노출한다 - 결과가 0건일 때뿐 아니라, 결과는 많은데 원하는
+              음식이 없을 때도("김" → 김밥·김치 요리만 20건) 직접 AI에게 물어볼 수 있어야 한다. */}
+          {hasSearched && !searchLoading && (
+            <button
+              type="button"
+              onClick={handleAISearch}
+              disabled={aiSearching || !query.trim()}
+              style={{
+                width: "100%",
+                padding: "9px 0",
+                marginBottom: 16,
+                borderRadius: 10,
+                border: `1.5px dashed ${t.primary}`,
+                background: "transparent",
+                color: t.primary,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: aiSearching || !query.trim() ? "default" : "pointer",
+                opacity: aiSearching ? 0.6 : 1,
+              }}
+            >
+              {aiSearching
+                ? "AI가 영양성분을 찾는 중..."
+                : `✨ 찾는 음식이 없나요? "${query.trim()}" AI로 찾기`}
+            </button>
           )}
 
           {searchResults.length > 0 && (
