@@ -55,6 +55,16 @@ def test_sort_and_trim_removes_duplicate_names():
     assert len(result) == 1
 
 
+def test_sort_and_trim_ignores_spaces_when_ranking():
+    """사용자가 "평양 냉면"이라 띄어 써도 DB의 "평양냉면"이 정확일치로 맨 앞에 와야 한다
+    (API가 공백을 그대로 매칭해서 공백 제거 재시도로 받아온 결과를 정렬하는 경우)."""
+    items = [_raw("맛있는 평양냉면"), _raw("평양냉면(냉동)"), _raw("평양냉면")]
+
+    names = [i.food_name for i in client.sort_and_trim(items, "평양 냉면")]
+
+    assert names[0] == "평양냉면"
+
+
 def test_sort_and_trim_caps_result_count():
     items = [_raw(f"김밥{i}") for i in range(100)]
 
