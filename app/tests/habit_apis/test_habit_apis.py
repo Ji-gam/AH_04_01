@@ -35,9 +35,11 @@ async def test_get_recommendations_returns_base_set_for_profile_without_diagnosi
 
 
 async def test_get_recommendations_adds_disease_specific_habit(monkeypatch):
-    """당뇨를 등록한 프로필의 전체 후보군(기본 8개 + 당뇨 맞춤 1개, 총 9개)에 당뇨 습관이 실제로
-    포함돼야 한다. 오늘의 회전 로직(MAX_RECOMMENDATIONS)은 별도로 테스트하므로, 여기서는 회전에
-    가려지지 않게 상한을 넉넉히 늘려 전체 후보군이 그대로 내려오게 한다."""
+    """당뇨를 등록한 프로필은 질병 맞춤 습관(diabetes_walk)만 후보군에 들어가야 하고, 기본
+    습관(BASE_HABIT_KEYS)은 섞이지 않아야 한다 - "질병 등록 시 기본 습관은 배제하고 AI/질병
+    맞춤 습관만 보여준다"는 build_full_pool 재설계 이후의 의도된 동작. 오늘의 회전 로직
+    (MAX_RECOMMENDATIONS)은 별도로 테스트하므로, 여기서는 회전에 가려지지 않게 상한을 넉넉히
+    늘려 전체 후보군이 그대로 내려오게 한다."""
     monkeypatch.setattr(habit_service, "MAX_RECOMMENDATIONS", 20)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         token = await _signup_and_login(client, "habit_reco_diabetes@example.com")
@@ -52,8 +54,8 @@ async def test_get_recommendations_adds_disease_specific_habit(monkeypatch):
 
     assert response.status_code == status.HTTP_200_OK
     keys = [h["key"] for h in response.json()["habits"]]
-    assert len(keys) == len(BASE_HABIT_KEYS) + 1
     assert "diabetes_walk" in keys
+    assert not (set(keys) & BASE_HABIT_KEYS)
 
 
 async def test_get_recommendations_drops_selected_key_no_longer_in_pool(monkeypatch):
@@ -254,6 +256,62 @@ def test_pick_recommendations_fills_all_disease_slots_before_base_when_over_limi
     assert len(result) == 5
     assert {h.key for h in result[:3]} == {"d0", "d1", "d2"}
     assert all(not h.is_disease_related for h in result[3:])
+
+
+async def test_habit_reason_feedback_accepts_and_returns_value(monkeypatch):
+    """오늘의 추천 목록에 있는 habit_key로 피드백을 남기면 그대로 저장/반환돼야 한다."""
+    monkeypatch.setattr(habit_service, "MAX_RECOMMENDATIONS", 20)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "habit_feedback_up@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.patch(
+            "/api/v1/users/me/health-info",
+            json={"diagnosis_history": [{"disease": "DIABETES", "detail": None}]},
+            headers=headers,
+        )
+
+        response = await client.post(
+            "/api/v1/habits/diabetes_walk/reason-feedback", json={"value": "UP"}, headers=headers
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["value"] == "UP"
+
+
+async def test_habit_reason_feedback_re_vote_overwrites_previous_value(monkeypatch):
+    """같은 habit_key로 다시 평가하면 이전 값이 갱신돼야 한다(새 레코드가 쌓이는 게 아니라)."""
+    monkeypatch.setattr(habit_service, "MAX_RECOMMENDATIONS", 20)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "habit_feedback_revote@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.patch(
+            "/api/v1/users/me/health-info",
+            json={"diagnosis_history": [{"disease": "DIABETES", "detail": None}]},
+            headers=headers,
+        )
+
+        await client.post("/api/v1/habits/diabetes_walk/reason-feedback", json={"value": "UP"}, headers=headers)
+        response = await client.post(
+            "/api/v1/habits/diabetes_walk/reason-feedback",
+            json={"value": "DOWN", "comment": "이유가 와닿지 않아요"},
+            headers=headers,
+        )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["value"] == "DOWN"
+
+
+async def test_habit_reason_feedback_rejects_habit_key_not_in_todays_recommendations():
+    """오늘의 추천 목록에 없는 habit_key로 피드백을 남기려 하면 404여야 한다."""
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        token = await _signup_and_login(client, "habit_feedback_invalid@example.com")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        response = await client.post(
+            "/api/v1/habits/diabetes_walk/reason-feedback", json={"value": "UP"}, headers=headers
+        )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
 def test_pick_recommendations_rotates_among_disease_only_when_more_than_limit():

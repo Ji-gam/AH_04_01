@@ -1,13 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
+from app.dtos.feedback import ReasonFeedbackRequest, ReasonFeedbackResponse
 from app.dtos.habit import HabitRecommendationsResponse, HabitSelectionRequest, HabitsTodayResponse
 from app.models.profiles import Profile
 from app.services.habit_service import HabitService
+from app.services.reason_feedback_service import ReasonFeedbackService
 
 habit_router = APIRouter(prefix="/habits", tags=["habits"])
 
@@ -96,3 +98,37 @@ async def check_habit(
 ) -> HabitsTodayResponse:
     service = HabitService()
     return await service.check_habit(session, profile, habit_key)
+
+
+@habit_router.post(
+    "/{habit_key}/reason-feedback",
+    response_model=ReasonFeedbackResponse,
+    status_code=status.HTTP_200_OK,
+    summary="습관 추천 이유가 도움이 됐는지 평가(👍/👎)",
+    description=(
+        "GET /habits/recommendations 응답의 각 habit.reason에 대한 평가를 남긴다. 같은 habit_key로 "
+        "다시 호출하면 이전 평가를 덮어쓴다(재평가)."
+    ),
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"},
+        status.HTTP_404_NOT_FOUND: {"description": "오늘의 추천 목록에 없는 habit_key"},
+    },
+)
+async def submit_habit_reason_feedback(
+    habit_key: str,
+    body: ReasonFeedbackRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> ReasonFeedbackResponse:
+    habit_service = HabitService()
+    recommendations = await habit_service.get_recommendations(session, profile)
+    if habit_key not in {h.key for h in recommendations.habits}:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"오늘의 추천 목록에 없는 습관입니다: {habit_key}"
+        )
+
+    feedback_service = ReasonFeedbackService()
+    feedback = await feedback_service.submit_habit_reason_feedback(
+        session, profile.id, habit_key, body.value, body.comment
+    )
+    return ReasonFeedbackResponse(value=feedback.value, updated_at=feedback.updated_at)

@@ -5,6 +5,7 @@ import { dietApi } from "../../api/dietApi";
 import { healthInfoApi } from "../../api/healthInfoApi";
 import type { DietRecentResult, DietTodayResult, FoodSearchResultItem } from "../../api/types";
 import { pinkTheme as t } from "../../theme/pinkTheme";
+import ReasonFeedback from "../common/ReasonFeedback";
 
 const SERVING_MULTIPLIERS = [0.5, 1, 1.5, 2];
 // 백엔드 DietLogCreateRequest.serving_multiplier의 상한(Field(gt=0, le=5))과 맞춘다.
@@ -48,10 +49,14 @@ export default function DietLogContent() {
   const [hasSearched, setHasSearched] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [multipliers, setMultipliers] = useState<Record<string, number>>({});
-  const [customMode, setCustomMode] = useState<Record<string, boolean>>({});
-  const [customText, setCustomText] = useState<Record<string, string>>({});
-  const [loggingFoodName, setLoggingFoodName] = useState<string | null>(null);
+  // 검색 결과 중 지금 "선택된" 음식 하나만 골라서 인분을 정하고 기록한다(2026-08-03 피드백:
+  // 결과마다 인분 선택+기록 버튼이 다 붙어있으면 여러 개일 때 보기 힘들다 - 목록에서 하나 고르고
+  // 그 아래에서만 인분/기록을 다루는 흐름으로 변경).
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [multiplier, setMultiplier] = useState(1);
+  const [customMode, setCustomMode] = useState(false);
+  const [customText, setCustomText] = useState("");
+  const [logging, setLogging] = useState(false);
 
   useEffect(() => {
     Promise.all([dietApi.getToday(), dietApi.getRecent(), healthInfoApi.get()])
@@ -72,11 +77,19 @@ export default function DietLogContent() {
     }
   }
 
+  function resetSelection() {
+    setSelectedIndex(null);
+    setMultiplier(1);
+    setCustomMode(false);
+    setCustomText("");
+  }
+
   async function handleSearch(e: React.FormEvent) {
     e.preventDefault();
     if (!query.trim()) return;
     setSearchLoading(true);
     setSearchError(null);
+    resetSelection();
     try {
       const result = await dietApi.searchFood(query.trim());
       setSearchResults(result.results);
@@ -89,9 +102,17 @@ export default function DietLogContent() {
     }
   }
 
-  async function handleLog(item: FoodSearchResultItem) {
-    const multiplier = multipliers[item.food_name] ?? 1;
-    setLoggingFoodName(item.food_name);
+  function handleSelect(index: number) {
+    setSelectedIndex(index);
+    setMultiplier(1);
+    setCustomMode(false);
+    setCustomText("");
+  }
+
+  async function handleLog() {
+    if (selectedIndex === null) return;
+    const item = searchResults[selectedIndex];
+    setLogging(true);
     try {
       const todayResult = await dietApi.logFood({
         food_name: item.food_name,
@@ -103,10 +124,11 @@ export default function DietLogContent() {
         fat_g_per_100g: item.fat_g_per_100g,
       });
       await refreshAfterMutation(todayResult);
+      resetSelection();
     } catch (err) {
       setSearchError(err instanceof Error ? err.message : "기록 중 오류가 발생했습니다.");
     } finally {
-      setLoggingFoodName(null);
+      setLogging(false);
     }
   }
 
@@ -198,9 +220,14 @@ export default function DietLogContent() {
               <span>지방 {Math.round(today?.total_fat_g ?? 0)}g</span>
             </div>
             {today?.reference_kcal_reason && (
-              <p style={{ margin: "8px 0 0", fontSize: 11.5, color: t.textMuted, lineHeight: 1.5 }}>
-                ✨ {today.reference_kcal_reason}
-              </p>
+              <>
+                <p
+                  style={{ margin: "8px 0 0", fontSize: 11.5, color: t.textMuted, lineHeight: 1.5 }}
+                >
+                  ✨ {today.reference_kcal_reason}
+                </p>
+                <ReasonFeedback onSubmit={(value) => dietApi.submitKcalReasonFeedback(value)} />
+              </>
             )}
           </div>
 
@@ -246,129 +273,166 @@ export default function DietLogContent() {
           )}
 
           {searchResults.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-              {searchResults.map((item, index) => {
-                const multiplier = multipliers[item.food_name] ?? 1;
-                const servingGrams = item.serving_size_g * multiplier;
-                const kcal = (item.calorie_kcal_per_100g * servingGrams) / 100;
-                const isOther = customMode[item.food_name] ?? false;
-                const customValue = parseCustomMultiplier(customText[item.food_name] ?? "");
-                const customInvalid = isOther && customValue === null;
-                return (
-                  <div
-                    key={`${item.food_name}-${index}`}
-                    style={{
-                      border: `1px solid ${t.border}`,
-                      borderRadius: 12,
-                      padding: 12,
-                      background: t.pageBg,
-                    }}
-                  >
-                    <div
-                      style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}
+            <div style={{ marginBottom: 16 }}>
+              {/* 결과 목록 - 하나만 골라서 아래에서 인분/기록을 다룬다 */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  marginBottom: selectedIndex !== null ? 10 : 0,
+                }}
+              >
+                {searchResults.map((item, index) => {
+                  const selected = selectedIndex === index;
+                  const previewKcal = (item.calorie_kcal_per_100g * item.serving_size_g) / 100;
+                  return (
+                    <button
+                      key={`${item.food_name}-${index}`}
+                      type="button"
+                      onClick={() => handleSelect(index)}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        width: "100%",
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: `1.5px solid ${selected ? t.primary : t.border}`,
+                        background: selected ? t.primarySoft : t.pageBg,
+                        textAlign: "left",
+                        cursor: "pointer",
+                      }}
                     >
-                      <strong style={{ fontSize: 14, color: t.text }}>{item.food_name}</strong>
+                      <strong style={{ fontSize: 13, color: t.text }}>{item.food_name}</strong>
                       <span style={{ fontSize: 12, color: t.textMuted }}>
-                        {Math.round(servingGrams)}g · {Math.round(kcal)}kcal
+                        1인분 {Math.round(item.serving_size_g)}g · {Math.round(previewKcal)}kcal
                       </span>
-                    </div>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                      {SERVING_MULTIPLIERS.map((m) => (
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedIndex !== null &&
+                (() => {
+                  const item = searchResults[selectedIndex];
+                  const servingGrams = item.serving_size_g * multiplier;
+                  const kcal = (item.calorie_kcal_per_100g * servingGrams) / 100;
+                  const customValue = parseCustomMultiplier(customText);
+                  const customInvalid = customMode && customValue === null;
+                  return (
+                    <div
+                      style={{
+                        border: `1.5px solid ${t.primary}`,
+                        borderRadius: 12,
+                        padding: 12,
+                        background: t.pageBg,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          marginBottom: 8,
+                        }}
+                      >
+                        <strong style={{ fontSize: 14, color: t.text }}>{item.food_name}</strong>
+                        <span style={{ fontSize: 12, color: t.textMuted }}>
+                          {Math.round(servingGrams)}g · {Math.round(kcal)}kcal
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                        {SERVING_MULTIPLIERS.map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => {
+                              setMultiplier(m);
+                              setCustomMode(false);
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: "6px 0",
+                              borderRadius: 10,
+                              border: `1.5px solid ${!customMode && m === multiplier ? t.primary : t.border}`,
+                              background: !customMode && m === multiplier ? t.primarySoft : "#fff",
+                              color: t.text,
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {m}인분
+                          </button>
+                        ))}
                         <button
-                          key={m}
                           type="button"
-                          onClick={() => {
-                            setMultipliers((prev) => ({ ...prev, [item.food_name]: m }));
-                            setCustomMode((prev) => ({ ...prev, [item.food_name]: false }));
-                          }}
+                          onClick={() => setCustomMode(true)}
                           style={{
                             flex: 1,
                             padding: "6px 0",
                             borderRadius: 10,
-                            border: `1.5px solid ${!isOther && m === multiplier ? t.primary : t.border}`,
-                            background: !isOther && m === multiplier ? t.primarySoft : "#fff",
+                            border: `1.5px solid ${customMode ? t.primary : t.border}`,
+                            background: customMode ? t.primarySoft : "#fff",
                             color: t.text,
                             fontSize: 12,
                             fontWeight: 600,
                             cursor: "pointer",
                           }}
                         >
-                          {m}인분
+                          기타
                         </button>
-                      ))}
+                      </div>
+                      {customMode && (
+                        <input
+                          type="number"
+                          min={0.1}
+                          max={MAX_CUSTOM_MULTIPLIER}
+                          step={0.1}
+                          value={customText}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setCustomText(raw);
+                            const parsed = parseCustomMultiplier(raw);
+                            if (parsed !== null) {
+                              setMultiplier(parsed);
+                            }
+                          }}
+                          placeholder={`인분 수 직접 입력 (0.1~${MAX_CUSTOM_MULTIPLIER})`}
+                          style={{
+                            width: "100%",
+                            boxSizing: "border-box",
+                            padding: "8px 10px",
+                            marginBottom: 8,
+                            border: `1.5px solid ${customInvalid ? t.danger : t.border}`,
+                            borderRadius: 10,
+                            fontSize: 13,
+                            outline: "none",
+                          }}
+                        />
+                      )}
                       <button
                         type="button"
-                        onClick={() =>
-                          setCustomMode((prev) => ({ ...prev, [item.food_name]: true }))
-                        }
-                        style={{
-                          flex: 1,
-                          padding: "6px 0",
-                          borderRadius: 10,
-                          border: `1.5px solid ${isOther ? t.primary : t.border}`,
-                          background: isOther ? t.primarySoft : "#fff",
-                          color: t.text,
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        기타
-                      </button>
-                    </div>
-                    {isOther && (
-                      <input
-                        type="number"
-                        min={0.1}
-                        max={MAX_CUSTOM_MULTIPLIER}
-                        step={0.1}
-                        value={customText[item.food_name] ?? ""}
-                        onChange={(e) => {
-                          const raw = e.target.value;
-                          setCustomText((prev) => ({ ...prev, [item.food_name]: raw }));
-                          const parsed = parseCustomMultiplier(raw);
-                          if (parsed !== null) {
-                            setMultipliers((prev) => ({ ...prev, [item.food_name]: parsed }));
-                          }
-                        }}
-                        placeholder={`인분 수 직접 입력 (0.1~${MAX_CUSTOM_MULTIPLIER})`}
+                        onClick={handleLog}
+                        disabled={logging || customInvalid}
                         style={{
                           width: "100%",
-                          boxSizing: "border-box",
-                          padding: "8px 10px",
-                          marginBottom: 8,
-                          border: `1.5px solid ${customInvalid ? t.danger : t.border}`,
+                          padding: "8px 0",
                           borderRadius: 10,
+                          border: "none",
+                          background: t.primary,
+                          color: "#fff",
                           fontSize: 13,
-                          outline: "none",
+                          fontWeight: 700,
+                          cursor: logging || customInvalid ? "default" : "pointer",
+                          opacity: customInvalid ? 0.5 : 1,
                         }}
-                      />
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => handleLog(item)}
-                      disabled={loggingFoodName === item.food_name || customInvalid}
-                      style={{
-                        width: "100%",
-                        padding: "8px 0",
-                        borderRadius: 10,
-                        border: "none",
-                        background: t.primary,
-                        color: "#fff",
-                        fontSize: 13,
-                        fontWeight: 700,
-                        cursor:
-                          loggingFoodName === item.food_name || customInvalid
-                            ? "default"
-                            : "pointer",
-                        opacity: customInvalid ? 0.5 : 1,
-                      }}
-                    >
-                      {loggingFoodName === item.food_name ? "기록하는 중..." : "기록하기"}
-                    </button>
-                  </div>
-                );
-              })}
+                      >
+                        {logging ? "기록하는 중..." : "기록하기"}
+                      </button>
+                    </div>
+                  );
+                })()}
             </div>
           )}
 

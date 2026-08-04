@@ -4,6 +4,8 @@ import type {
   DietRecentResult,
   DietTodayResult,
   FoodSearchResult,
+  ReasonFeedbackResult,
+  ReasonFeedbackValue,
 } from "./types";
 
 export const dietApi = {
@@ -18,4 +20,9 @@ export const dietApi = {
   deleteLog: (logId: number) =>
     apiFetch<DietTodayResult>(`/diet/logs/${logId}`, { method: "DELETE" }),
   getRecent: () => apiFetch<DietRecentResult>("/diet/recent"),
+  submitKcalReasonFeedback: (value: ReasonFeedbackValue) =>
+    apiFetch<ReasonFeedbackResult>("/diet/kcal-reason-feedback", {
+      method: "POST",
+      body: JSON.stringify({ value }),
+    }),
 };

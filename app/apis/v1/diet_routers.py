@@ -1,13 +1,17 @@
+from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
 from app.dependencies.security import get_current_profile
 from app.dtos.diet_dto import DietLogCreateRequest, DietRecentResult, DietTodayResult, FoodSearchResult
+from app.dtos.feedback import ReasonFeedbackRequest, ReasonFeedbackResponse
 from app.models.profiles import Profile
+from app.repositories.diet_repository import DietRepository
 from app.services.diet_service import DietService
+from app.services.reason_feedback_service import ReasonFeedbackService
 
 diet_router = APIRouter(prefix="/diet", tags=["diet"])
 
@@ -99,3 +103,36 @@ async def get_recent(
 ) -> DietRecentResult:
     service = DietService()
     return await service.get_recent(session, profile)
+
+
+@diet_router.post(
+    "/kcal-reason-feedback",
+    response_model=ReasonFeedbackResponse,
+    status_code=status.HTTP_200_OK,
+    summary="오늘의 기준 칼로리 이유가 도움이 됐는지 평가(👍/👎)",
+    description=(
+        "GET /diet/today 응답의 reference_kcal_reason에 대한 평가를 남긴다. 같은 날 다시 "
+        "호출하면 이전 평가를 덮어쓴다(재평가)."
+    ),
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "토큰이 없거나 유효하지 않음"},
+        status.HTTP_404_NOT_FOUND: {"description": "오늘의 기준 칼로리 이유가 아직 생성되지 않음"},
+    },
+)
+async def submit_diet_kcal_reason_feedback(
+    body: ReasonFeedbackRequest,
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    session: Annotated[AsyncSession, Depends(get_db)],
+) -> ReasonFeedbackResponse:
+    today = date.today()
+    diet_repository = DietRepository()
+    if await diet_repository.get_kcal_reason(session, profile.id, today) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="오늘의 기준 칼로리 이유가 아직 생성되지 않았습니다."
+        )
+
+    feedback_service = ReasonFeedbackService()
+    feedback = await feedback_service.submit_diet_kcal_reason_feedback(
+        session, profile.id, today.isoformat(), body.value, body.comment
+    )
+    return ReasonFeedbackResponse(value=feedback.value, updated_at=feedback.updated_at)
