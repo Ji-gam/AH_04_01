@@ -16,6 +16,11 @@ export const dietApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  findFoodByAI: (foodName: string) =>
+    apiFetch<FoodSearchResult>("/diet/ai-food", {
+      method: "POST",
+      body: JSON.stringify({ food_name: foodName }),
+    }),
   getToday: () => apiFetch<DietTodayResult>("/diet/today"),
   deleteLog: (logId: number) =>
     apiFetch<DietTodayResult>(`/diet/logs/${logId}`, { method: "DELETE" }),
