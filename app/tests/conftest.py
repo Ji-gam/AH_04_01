@@ -104,3 +104,15 @@ def _reset_food_guide_card_cache():
     medication_service._food_guide_card_cache.clear()
     yield
     medication_service._food_guide_card_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """[T-AUTH-6, 2026-08-03 복원] signup/login/초대코드 사용에 건 속도제한(slowapi)이
+    테스트마다 초기화되지 않으면, 뒤에 도는 테스트들이 앞선 테스트들의 호출 횟수를 이어받아
+    429로 막혀버린다 - 매 테스트 시작 전/후로 카운터를 리셋해서 테스트끼리 서로 영향 안 주게 한다."""
+    from app.core.rate_limit import limiter
+
+    limiter.reset()
+    yield
+    limiter.reset()

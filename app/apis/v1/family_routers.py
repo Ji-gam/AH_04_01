@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
+from app.core.rate_limit import limiter
 from app.dependencies.security import get_current_profile
 from app.dtos.family import (
     FamilyInviteCodeCreateRequest,
@@ -86,7 +87,10 @@ async def list_family_members(
     "/link/{link_id}",
     status_code=204,
     summary="가족 연결/요청 해제",
-    description="요청을 보낸 사람(보호자)만 연결(또는 대기중인 요청)을 해제할 수 있다.",
+    description=(
+        "수락된 연결은 보호자·피보호자 양쪽 모두 해제할 수 있다. 대기중인 요청은 "
+        "보낸 사람(보호자)만 취소할 수 있다 - 받는 쪽은 accept/reject 엔드포인트를 쓴다."
+    ),
 )
 async def delete_family_link(
     link_id: int,
@@ -123,7 +127,9 @@ async def create_family_invite_code(
     summary="가족 초대코드 사용 (즉시 연결)",
     description="전달받은 초대코드를 입력해 즉시 연결한다. 승인 대기 없이 바로 ACCEPTED 상태가 된다.",
 )
+@limiter.limit("5/minute")  # [T-AUTH-6] 6자리 코드 무차별 대입 방지 - IP당 분당 5회
 async def redeem_family_invite_code(
+    request: Request,
     body: FamilyInviteCodeRedeemRequest,
     profile: Annotated[Profile, Depends(get_current_profile)],
     session: Annotated[AsyncSession, Depends(get_db)],

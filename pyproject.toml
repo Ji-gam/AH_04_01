@@ -12,6 +12,7 @@ dependencies = [
     "python-dateutil>=2.9.0.post0",
     "python-dotenv>=1.2.1",
     "redis>=7.1.0",
+    "slowapi>=0.1.10",
     "tomlkit>=0.14.0",
 ]
 
