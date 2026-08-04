@@ -17,6 +17,13 @@ class FoodSearchResult(BaseModel):
     results: Annotated[list[FoodSearchResultItem], Field(description="검색어와 부분 일치하는 식품 목록")]
 
 
+class AIFoodSearchRequest(BaseModel):
+    food_name: Annotated[
+        str,
+        Field(min_length=1, max_length=50, description="검색으로 못 찾아 AI에게 물어볼 음식 이름", examples=["김"]),
+    ]
+
+
 class DietLogCreateRequest(BaseModel):
     """검색 결과 카드를 그대로 다시 보내서 서버가 재검색 없이 배율만 곱해 기록한다."""
 

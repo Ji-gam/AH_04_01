@@ -31,7 +31,12 @@ logger = logging.getLogger("app.food_nutrition_open_api_client")
 FOOD_NUTRITION_URL = "https://apis.data.go.kr/1471000/FoodNtrCpntDbInfo02/getFoodNtrCpntDbInq02"
 
 _TIMEOUT = 10.0
-_DEFAULT_NUM_OF_ROWS = 20
+# API는 식품명에 검색어가 "포함"되기만 하면 다 매칭한다 - 예를 들어 "김"은 12,900건이 넘게
+# 잡힌다(김밥/김치/미역국_김...). 그런데 응답 순서는 관련성과 무관해서, 앞에서 20건만 잘라
+# 쓰면 정작 사용자가 찾는 기본 식품("김", "오이김치")이 파묻혀 안 보였다(2026-08-03 시연 중
+# 발견). 그래서 후보를 넉넉히 받아 _sort_by_relevance()로 정렬한 뒤 상위 _MAX_RESULTS만 쓴다.
+_CANDIDATE_NUM_OF_ROWS = 100
+_MAX_RESULTS = 30
 
 _SEED_PATH = Path(__file__).resolve().parent.parent / "database" / "food_nutrition_seed.json"
 
@@ -117,7 +122,42 @@ def _parse_food_item(raw: dict) -> RawFoodItem | None:
     )
 
 
-async def _fetch_live(query: str) -> list[RawFoodItem]:
+def sort_and_trim(items: list[RawFoodItem], query: str) -> list[RawFoodItem]:
+    """관련성 순으로 정렬하고, 같은 이름 중복을 제거한 뒤 상위 _MAX_RESULTS만 남긴다.
+
+    API는 관련성과 무관한 순서로 주기 때문에(예: "김" → 김밥_돈가스가 앞, 기본 식품은 뒤),
+    받은 그대로 자르면 사용자가 찾는 게 안 보인다. 정확히 일치 → 검색어로 시작 → 나머지
+    순으로 두고, 같은 순위 안에서는 이름이 짧은 것(가공·복합 요리보다 기본 식품일 확률이
+    높다)을 먼저 보여준다. 또 "오이김치"처럼 제조사만 다르고 이름이 같은 항목이 여러 건
+    오는 경우가 많아, 화면에 똑같은 줄이 반복되지 않도록 이름 기준으로 하나만 남긴다."""
+    normalized_query = query.strip()
+
+    def relevance_key(item: RawFoodItem) -> tuple[int, int, str]:
+        name = item.food_name.strip()
+        if name == normalized_query:
+            rank = 0
+        elif name.startswith(normalized_query):
+            rank = 1
+        else:
+            rank = 2
+        return (rank, len(name), name)
+
+    seen_names: set[str] = set()
+    trimmed: list[RawFoodItem] = []
+    for item in sorted(items, key=relevance_key):
+        name = item.food_name.strip()
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+        trimmed.append(item)
+        if len(trimmed) >= _MAX_RESULTS:
+            break
+    return trimmed
+
+
+async def fetch_live(query: str) -> list[RawFoodItem]:
+    """라이브 API 호출. 키가 없으면 빈 리스트를, 호출/파싱이 실패하면 예외를 그대로 올린다
+    (호출부가 "라이브가 죽었는지"를 알아야 AI 폴백으로 넘길지 판단할 수 있다)."""
     api_key = config.FOOD_NUTRITION_API_KEY or config.PUBLIC_DATA_API_KEY
     if not api_key:
         return []
@@ -125,7 +165,7 @@ async def _fetch_live(query: str) -> list[RawFoodItem]:
     params: dict = {
         "serviceKey": api_key,
         "type": "json",
-        "numOfRows": _DEFAULT_NUM_OF_ROWS,
+        "numOfRows": _CANDIDATE_NUM_OF_ROWS,
         "pageNo": 1,
         "FOOD_NM_KR": query,
     }
@@ -145,7 +185,7 @@ async def _fetch_live(query: str) -> list[RawFoodItem]:
     return [parsed for raw in items if (parsed := _parse_food_item(raw)) is not None]
 
 
-def _search_seed(query: str) -> list[RawFoodItem]:
+def search_seed(query: str) -> list[RawFoodItem]:
     with _SEED_PATH.open(encoding="utf-8") as f:
         data = json.load(f)
     query_lower = query.strip().lower()
@@ -164,14 +204,16 @@ def _search_seed(query: str) -> list[RawFoodItem]:
 
 
 async def search_food(query: str) -> list[RawFoodItem]:
-    """식품명으로 영양성분을 검색한다. 라이브 API가 설정돼 있어도 호출/파싱이 실패하면
-    (타임아웃, 5xx, 예상과 다른 응답 필드 등) 예외를 삼키고 시드 폴백으로 넘어간다 - API 승인이
-    안 났거나 필드 매핑이 안 맞는 상태에서도 화면이 죽지 않게 하는 게 이 함수의 핵심 책임이다."""
+    """라이브 API → (실패/무결과 시) 로컬 시드 순으로 검색한다. 결과는 관련성 정렬·중복
+    제거까지 끝난 상태로 돌려준다.
+
+    AI 폴백까지 포함한 전체 흐름은 `diet_service.DietService.search_food()`가 담당한다 -
+    AI 게이트웨이가 필요해서 이 모듈(순수 HTTP/시드 담당)에는 두지 않았다."""
     try:
-        live_results = await _fetch_live(query)
+        live_results = await fetch_live(query)
         if live_results:
-            return live_results
+            return sort_and_trim(live_results, query)
     except Exception:
         logger.warning("식품영양성분DB API 호출 실패, 로컬 시드로 폴백합니다 (query=%s)", query, exc_info=True)
 
-    return _search_seed(query)
+    return sort_and_trim(search_seed(query), query)
