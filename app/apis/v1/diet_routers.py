@@ -1,8 +1,7 @@
 from datetime import date
-from typing import Annotated, cast
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import CursorResult, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
@@ -15,27 +14,12 @@ from app.dtos.diet_dto import (
     FoodSearchResult,
 )
 from app.dtos.feedback import ReasonFeedbackRequest, ReasonFeedbackResponse
-from app.models.food_nutrition_cache import FoodNutritionCache
 from app.models.profiles import Profile
 from app.repositories.diet_repository import DietRepository
 from app.services.diet_service import DietService
 from app.services.reason_feedback_service import ReasonFeedbackService
 
 diet_router = APIRouter(prefix="/diet", tags=["diet"])
-
-
-# TEMP(2026-08-04): FOOD_NUTRITION_API_KEY가 운영에 없던 동안(진단 테스트 포함) 캐시에
-# 박힌 특정 검색어만 콕 집어 지우기 위한 임시 엔드포인트. 전체 DELETE는 "AI로 찾기"로
-# 사용자가 일부러 만든 항목까지 지워버리므로 쓰지 않는다. 확인 끝나면 제거할 것.
-@diet_router.post("/_debug/clear-food-cache", include_in_schema=False)
-async def debug_clear_food_cache(
-    query_names: list[str],
-    profile: Annotated[Profile, Depends(get_current_profile)],
-    session: Annotated[AsyncSession, Depends(get_db)],
-) -> dict:
-    result = await session.execute(delete(FoodNutritionCache).where(FoodNutritionCache.query_name.in_(query_names)))
-    await session.commit()
-    return {"deleted": cast(CursorResult, result).rowcount}
 
 
 @diet_router.get(
