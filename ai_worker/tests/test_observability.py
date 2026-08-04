@@ -157,6 +157,65 @@ def test_observe_span_yields_span_and_closes_it_when_configured(monkeypatch):
     assert events[3] == ("exit", None)
 
 
+def test_get_current_trace_id_returns_none_when_client_is_not_configured(monkeypatch):
+    monkeypatch.setattr(observability, "get_langfuse_client", lambda: None)
+
+    assert observability.get_current_trace_id() is None
+
+
+def test_get_current_trace_id_returns_value_from_client(monkeypatch):
+    class FakeClient:
+        def get_current_trace_id(self):
+            return "trace-123"
+
+    monkeypatch.setattr(observability, "get_langfuse_client", lambda: FakeClient())
+
+    assert observability.get_current_trace_id() == "trace-123"
+
+
+def test_create_score_is_noop_when_client_is_not_configured(monkeypatch):
+    """T-LLM-2-langfuse-user-feedback: Langfuse 미설정(로컬/CI)이어도 예외 없이 조용히
+    반환되어야 한다 - 호출부(피드백 API)가 이 결과를 기다리지 않기 때문."""
+    monkeypatch.setattr(observability, "get_langfuse_client", lambda: None)
+
+    observability.create_score("trace-1", "user_feedback", 1.0)
+
+
+def test_create_score_calls_client_and_flushes(monkeypatch):
+    """ai_worker는 장수 프로세스라 배치 전송이 지연될 수 있어, 매 호출마다 명시적으로
+    flush한다(실측: Langfuse UI/API 조회로 지연 없이 반영되는 것 확인, 2026-08-03)."""
+    calls: list[tuple] = []
+
+    class FakeClient:
+        def create_score(self, **kwargs):
+            calls.append(("create_score", kwargs))
+
+        def flush(self):
+            calls.append(("flush",))
+
+    monkeypatch.setattr(observability, "get_langfuse_client", lambda: FakeClient())
+
+    observability.create_score("trace-1", "user_feedback", 1.0, comment="good")
+
+    assert calls[0] == (
+        "create_score",
+        {"name": "user_feedback", "value": 1.0, "trace_id": "trace-1", "data_type": "NUMERIC", "comment": "good"},
+    )
+    assert calls[1] == ("flush",)
+
+
+def test_create_score_swallows_exception_from_client(monkeypatch):
+    """관측 실패가 호출부(피드백 API)의 200 응답을 막으면 절대 안 된다(설계 결정 4)."""
+
+    class FakeClient:
+        def create_score(self, **kwargs):
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr(observability, "get_langfuse_client", lambda: FakeClient())
+
+    observability.create_score("trace-1", "user_feedback", 1.0)
+
+
 def test_observe_span_propagates_caller_exception_without_yielding_twice(monkeypatch):
     class FakeSpanContextManager:
         def __enter__(self):

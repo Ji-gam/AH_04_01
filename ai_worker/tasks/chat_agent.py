@@ -40,6 +40,10 @@ _SYSTEM_PROMPT_TEMPLATE = (
     "대상 전반에 대한 일반적인 질문(예: '이 약 노인이 먹어도 되나요?')이면, 질문자 본인 "
     "정보와는 무관하게 질문이 실제로 묻는 대상 기준으로만 답하세요 — 질문자 본인의 나이나 "
     "임신 여부를 질문 속 대상과 혼동하지 마세요.\n"
+    "참고 문서 중 임산부·노인·소아 등 특정 대상에게만 해당하는 경고(예: 임부금기, "
+    "특정연령금기 문서)가 있다면, 그 경고가 어떤 대상에 한정되는지 먼저 밝히고 질문자가 "
+    "실제로 묻는 대상에 적용되는 내용인지 구분해서 설명하세요 — 대상이 다르면 그 경고를 "
+    "구분 없이 일반화해서 전달하지 마세요.\n"
     "이 시스템은 답변 하단 UI 영역에 면책 조항을 별도로 노출하므로, 답변 본문에 "
     "'의사와 상담하세요' 같은 자가 경고/면책 문구는 적지 마세요.\n"
     "참고 문서가 있다면 그 안의 구체적 내용을 우선 활용하고, 없다면 일반적인 지식으로 답하세요.\n"
@@ -125,6 +129,14 @@ async def stream_chat_answer(
     with observability.observe_span("chat_turn", as_type="span", message=message) as root_span:
         rag_chunks, sources = _search_all(message)
         yield {"type": "sources", "sources": [s.model_dump() for s in sources]}
+
+        # T-LLM-2-langfuse-user-feedback: 사용자가 나중에 👍/👎를 누르면 이 trace에 점수를
+        # 붙여야 하는데, trace_id를 아는 곳은 ai_worker뿐이다(observe_span 블록 밖에서
+        # 부르면 None). app이 이 청크를 chat_messages.trace_id로 저장해두고, 프론트로는
+        # relay하지 않는다(chat_service._generate 참고) — 프론트는 message_id만 안다.
+        trace_id = observability.get_current_trace_id()
+        if trace_id:
+            yield {"type": "trace", "trace_id": trace_id}
 
         reference_text = "\n".join(injected_context + [c.content for c in rag_chunks]) or "없음"
         system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(reference_text=reference_text, context=context)

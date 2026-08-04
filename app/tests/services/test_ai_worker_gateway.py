@@ -167,6 +167,34 @@ async def test_call_structured_raises_processing_error_on_malformed_response(mon
         await gateway.call_structured("system", "user", FakeCardSchema)
 
 
+async def test_submit_score_never_raises_when_ai_worker_returns_error(monkeypatch):
+    """T-LLM-2-langfuse-user-feedback(설계 결정 4): 점수 전송은 fire-and-forget이라
+    ai_worker가 에러를 반환해도 호출부(피드백 API)의 200 응답에 영향을 주면 안 된다."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="langfuse down")
+
+    gateway = _gateway_with_handler(monkeypatch, handler)
+
+    await gateway.submit_score(trace_id="trace-1", name="user_feedback", value=1.0)
+
+
+async def test_submit_score_posts_expected_payload(monkeypatch):
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["json"] = json.loads(request.content)
+        captured["path"] = request.url.path
+        return httpx.Response(204)
+
+    gateway = _gateway_with_handler(monkeypatch, handler)
+
+    await gateway.submit_score(trace_id="trace-1", name="user_feedback", value=0.0, comment="부정확함")
+
+    assert captured["path"] == "/observability/score"
+    assert captured["json"] == {"trace_id": "trace-1", "name": "user_feedback", "value": 0.0, "comment": "부정확함"}
+
+
 async def test_enqueue_registers_celery_task_and_returns_id(monkeypatch):
     from app.core.celery_app import celery_app
 

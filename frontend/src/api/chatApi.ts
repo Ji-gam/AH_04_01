@@ -44,4 +44,13 @@ export const chatApi = {
     });
     yield* readChunks(res);
   },
+
+  // T-LLM-2-langfuse-user-feedback: 204 No Content라 apiFetch(res.json())를 쓰면
+  // 파싱 에러가 나서 raw fetch를 쓴다. 같은 메시지에 다시 보내면 서버가 값을 갱신한다(upsert).
+  submitFeedback: async (messageId: number, value: "up" | "down", comment?: string) => {
+    await apiFetchRaw(`/chat/messages/${messageId}/feedback`, {
+      method: "POST",
+      body: JSON.stringify({ value, comment }),
+    });
+  },
 };
