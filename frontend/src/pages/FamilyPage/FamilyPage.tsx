@@ -176,9 +176,10 @@ export default function FamilyPage() {
   // [연결 해제 확인 모달] window.confirm(브라우저 기본 팝업) 대신 화면 안 모달로 확인받는다 -
   // 어느 목록(내가 관리하는 가족/응답 대기중인 요청/나를 관리하는 가족)에서 눌렀든 이 모달
   // 하나로 통일해서 처리한다.
-  const [pendingUnlink, setPendingUnlink] = useState<{ linkId: number; viewpoint: "guardian" | "member" } | null>(
-    null,
-  );
+  const [pendingUnlink, setPendingUnlink] = useState<{
+    linkId: number;
+    viewpoint: "guardian" | "member";
+  } | null>(null);
   const [isUnlinking, setIsUnlinking] = useState(false);
 
   // [QR 탭 전용] 발급된 코드를 QR 이미지(data URL)로 렌더링, 그리고 카메라로 QR 스캔.
@@ -452,7 +453,11 @@ export default function FamilyPage() {
                 이메일을 몰라도 돼요(카카오로 가입한 가족분께 추천). 코드를 발급해서 카톡/문자로
                 전달하면, 상대방이 입력하는 즉시 연결돼요(30분 안에 사용, 1회용).
               </p>
-              <RelationSelect value={issueRelationLabel} onChange={setIssueRelationLabel} idPrefix="issue-code" />
+              <RelationSelect
+                value={issueRelationLabel}
+                onChange={setIssueRelationLabel}
+                idPrefix="issue-code"
+              />
               {issueError && (
                 <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{issueError}</p>
               )}
@@ -542,7 +547,11 @@ export default function FamilyPage() {
                   onSubmit={handleIssueCode}
                   style={{ display: "flex", flexDirection: "column", gap: 10 }}
                 >
-                  <RelationSelect value={issueRelationLabel} onChange={setIssueRelationLabel} idPrefix="issue-qr" />
+                  <RelationSelect
+                    value={issueRelationLabel}
+                    onChange={setIssueRelationLabel}
+                    idPrefix="issue-qr"
+                  />
                   {issueError && (
                     <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{issueError}</p>
                   )}
