@@ -130,13 +130,16 @@ def sort_and_trim(items: list[RawFoodItem], query: str) -> list[RawFoodItem]:
     순으로 두고, 같은 순위 안에서는 이름이 짧은 것(가공·복합 요리보다 기본 식품일 확률이
     높다)을 먼저 보여준다. 또 "오이김치"처럼 제조사만 다르고 이름이 같은 항목이 여러 건
     오는 경우가 많아, 화면에 똑같은 줄이 반복되지 않도록 이름 기준으로 하나만 남긴다."""
-    normalized_query = query.strip()
+    # 공백을 무시하고 비교한다 - 사용자가 "평양 냉면"이라고 띄어 써도 DB의 "평양냉면"을
+    # 정확히 일치한 것으로 봐야 맨 앞에 온다(fetch_live의 공백 제거 재시도와 짝을 이룬다).
+    collapsed_query = query.strip().replace(" ", "")
 
     def relevance_key(item: RawFoodItem) -> tuple[int, int, str]:
         name = item.food_name.strip()
-        if name == normalized_query:
+        collapsed_name = name.replace(" ", "")
+        if collapsed_name == collapsed_query:
             rank = 0
-        elif name.startswith(normalized_query):
+        elif collapsed_name.startswith(collapsed_query):
             rank = 1
         else:
             rank = 2
@@ -155,13 +158,7 @@ def sort_and_trim(items: list[RawFoodItem], query: str) -> list[RawFoodItem]:
     return trimmed
 
 
-async def fetch_live(query: str) -> list[RawFoodItem]:
-    """라이브 API 호출. 키가 없으면 빈 리스트를, 호출/파싱이 실패하면 예외를 그대로 올린다
-    (호출부가 "라이브가 죽었는지"를 알아야 AI 폴백으로 넘길지 판단할 수 있다)."""
-    api_key = config.FOOD_NUTRITION_API_KEY or config.PUBLIC_DATA_API_KEY
-    if not api_key:
-        return []
-
+async def _request(api_key: str, query: str) -> list[RawFoodItem]:
     params: dict = {
         "serviceKey": api_key,
         "type": "json",
@@ -183,6 +180,27 @@ async def fetch_live(query: str) -> list[RawFoodItem]:
     body = envelope.get("body", {})
     items = _normalize_items(body.get("items"))
     return [parsed for raw in items if (parsed := _parse_food_item(raw)) is not None]
+
+
+async def fetch_live(query: str) -> list[RawFoodItem]:
+    """라이브 API 호출. 키가 없으면 빈 리스트를, 호출/파싱이 실패하면 예외를 그대로 올린다
+    (호출부가 "라이브가 죽었는지"를 알아야 AI 폴백으로 넘길지 판단할 수 있다).
+
+    API는 띄어쓰기까지 그대로 매칭해서 "평양 냉면"은 0건인데 "평양냉면"은 44건이 나온다
+    (2026-08-04 확인). 사용자가 띄어 썼다는 이유로 실제 DB 데이터를 못 보고 AI 추정으로
+    넘어가면 손해라, 공백을 없앤 검색어로 한 번 더 시도한다."""
+    api_key = config.FOOD_NUTRITION_API_KEY or config.PUBLIC_DATA_API_KEY
+    if not api_key:
+        return []
+
+    items = await _request(api_key, query)
+    if items:
+        return items
+
+    collapsed = query.replace(" ", "")
+    if collapsed and collapsed != query:
+        return await _request(api_key, collapsed)
+    return []
 
 
 def search_seed(query: str) -> list[RawFoodItem]:
