@@ -4,11 +4,15 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import ORJSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.apis.v1 import v1_routers
 from app.core import config
 from app.core.config import Env
 from app.core.db.databases import AsyncSessionLocal
+from app.core.rate_limit import limiter
 from app.repositories.error_log_repository import ErrorLogRepository
 from app.scripts.seed_local_super_admin import seed_local_super_admin
 from app.services import medication_open_api_client
@@ -80,6 +84,14 @@ app = FastAPI(
 )
 
 app.include_router(v1_routers)
+
+# [T-AUTH-6, 2026-08-03 복원] signup/login/초대코드 사용에 걸어둔 @limiter.limit이
+# 실제로 동작하려면 app에 등록해야 한다. RateLimitExceeded는 아래 범용 Exception
+# 핸들러보다 항상 먼저 매칭되므로(Starlette가 더 구체적인 타입을 우선함) 등록 순서와
+# 무관하게 429로 정상 응답된다.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+app.add_middleware(SlowAPIMiddleware)
 
 
 async def _log_unhandled_exception(request: Request, exc: Exception) -> ORJSONResponse:

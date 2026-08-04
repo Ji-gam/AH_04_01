@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db.databases import get_db
-from app.dependencies.security import get_current_profile
+from app.dependencies.security import get_current_profile, require_full_consent
 from app.dtos.chat import (
     ChatMessageRequest,
     ChatMessageResponse,
@@ -17,7 +17,11 @@ from app.models.profiles import Profile
 from app.repositories.chat_repository import ChatRepository
 from app.services.chat_service import ChatService
 
-chat_router = APIRouter(prefix="/chat", tags=["Chat"])
+# [2026-08-03] 이용약관/건강정보/AI챗봇 동의를 아직 안 마친 사용자는 이 라우터 전체(세션
+# 생성/메시지 전송/조회)에 접근할 수 없다 - 프론트(RequireAuth.tsx)가 같은 걸 라우팅으로
+# 막고 있지만, API 자체에도 동일한 확인을 둬서 프론트를 거치지 않은 직접 호출(Swagger 등)도
+# 막는다.
+chat_router = APIRouter(prefix="/chat", tags=["Chat"], dependencies=[Depends(require_full_consent)])
 
 
 @chat_router.post(

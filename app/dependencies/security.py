@@ -63,7 +63,27 @@ async def get_current_admin_user(
     """[2026-07-27] 공지사항 발송(POST /notices) 등 관리자 전용이어야 할 엔드포인트에
     로그인 여부만 확인하고 관리자 여부는 확인 안 하던 문제(누구나 전체 사용자에게 푸시
     발송 가능)를 막기 위해 추가. User.is_admin은 원래 모델에 있었지만 이 의존성이
-    생기기 전까진 앱 어디에서도 실제로 검사되지 않았다."""
+    생기기 전까진 앱 어디에서도 실제로 검사되지 않았다.
+    """
     if not user.is_admin:
         raise HTTPException(detail="관리자만 접근할 수 있습니다.", status_code=status.HTTP_403_FORBIDDEN)
+    return user
+
+
+async def require_full_consent(
+    user: Annotated[User, Depends(get_request_user)],
+) -> User:
+    """[2026-08-03] 필수 3종 동의(이용약관/건강정보/AI챗봇)를 프론트(`RequireAuth.tsx`)
+    라우팅 가드로만 막고 있었고, API 자체는 이 상태를 전혀 확인하지 않았다 - 유효한
+    토큰만 있으면 (예: /api/docs Swagger UI로 직접) React 앱을 거치지 않고 동의 없이
+    호출이 가능한 상태였다. 관리자 권한 검증 누락 때와 같은 종류의 문제(제어가 API가
+    아니라 클라이언트에만 있음)라 API 레벨에도 동일하게 추가한다.
+
+    지금은 AI챗봇(`chat_router`)에만 적용 - 프론트 가드는 3종 전부를 한 화면에서
+    같이 받게 설계돼 있어 여기서도 3종을 함께 확인한다."""
+    if not (user.terms_of_service_consented_at and user.health_info_consented_at and user.ai_chat_consented_at):
+        raise HTTPException(
+            detail="이용약관/건강정보/AI챗봇 동의를 먼저 완료해주세요.",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
     return user

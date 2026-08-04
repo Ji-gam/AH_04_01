@@ -109,14 +109,35 @@ class FamilyService:
         )
 
     async def delete_link(self, session: AsyncSession, requester_profile_id: int, link_id: int) -> None:
-        """연결 해제 - 요청을 보낸 사람(보호자)만 할 수 있다 (PENDING 요청 취소도 이걸로 처리)."""
+        """연결 해제.
+
+        [2026-08-03] 원래는 보호자만 해제할 수 있었다 - 한 번 수락된 관계는 피보호자
+        본인이 스스로 끊을 방법이 없어, "본인 건강정보를 보는 보호자를 본인이 통제할
+        수 없는" 상태였다(정보주체 자기결정권 문제). ACCEPTED 상태는 양쪽 다 해제
+        가능하도록 변경.
+
+        PENDING(보호자가 보낸 요청이 아직 대기 중)은 기존대로 보호자만 취소 가능 -
+        피보호자 쪽은 이 시점엔 `reject_request`로 거절하는 것이 맞는 경로라 여기서는
+        건드리지 않는다.
+        """
         link = await self._family_repo.get_link_by_id(session, link_id)
         if link is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="연결 정보를 찾을 수 없습니다.")
-        if link.guardian_profile_id != requester_profile_id:
+
+        is_guardian = link.guardian_profile_id == requester_profile_id
+        is_member = link.member_profile_id == requester_profile_id
+
+        if link.status == FamilyLinkStatus.PENDING:
+            if not is_guardian:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="대기중인 요청은 보낸 사람만 취소할 수 있습니다.",
+                )
+        elif not (is_guardian or is_member):
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="본인이 보낸 요청/연결만 해제할 수 있습니다."
+                status_code=status.HTTP_403_FORBIDDEN, detail="본인이 속한 연결만 해제할 수 있습니다."
             )
+
         await self._family_repo.delete_link(session, link)
 
     async def create_invite_code(
