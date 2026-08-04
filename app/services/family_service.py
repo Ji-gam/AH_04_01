@@ -134,9 +134,7 @@ class FamilyService:
                     detail="대기중인 요청은 보낸 사람만 취소할 수 있습니다.",
                 )
         elif not (is_guardian or is_member):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="본인이 속한 연결만 해제할 수 있습니다."
-            )
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="본인이 속한 연결만 해제할 수 있습니다.")
 
         await self._family_repo.delete_link(session, link)
 
