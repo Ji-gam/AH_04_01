@@ -16,10 +16,22 @@ from app.dtos.diet_dto import (
 from app.dtos.feedback import ReasonFeedbackRequest, ReasonFeedbackResponse
 from app.models.profiles import Profile
 from app.repositories.diet_repository import DietRepository
+from app.services import food_nutrition_open_api_client
 from app.services.diet_service import DietService
 from app.services.reason_feedback_service import ReasonFeedbackService
 
 diet_router = APIRouter(prefix="/diet", tags=["diet"])
+
+
+# TEMP(2026-08-04): 운영 서버 SSH 접근 없이 라이브 API 연결 상태를 확인하려는 임시 진단
+# 엔드포인트. 확인 끝나면 이 라우트와 food_nutrition_open_api_client.debug_probe_live_api를
+# 함께 제거할 것.
+@diet_router.get("/_debug/food-api-probe", include_in_schema=False)
+async def debug_food_api_probe(
+    profile: Annotated[Profile, Depends(get_current_profile)],
+    query: str = "떡볶이",
+) -> dict:
+    return await food_nutrition_open_api_client.debug_probe_live_api(query)
 
 
 @diet_router.get(
