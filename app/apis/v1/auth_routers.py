@@ -10,6 +10,7 @@ from app.core import config
 from app.core.config import Env
 from app.core.db.databases import get_db
 from app.core.jwt.tokens import AccessToken, RefreshToken
+from app.core.rate_limit import limiter
 from app.dependencies.security import get_request_user
 from app.dtos.auth import LoginRequest, LoginResponse, SignUpRequest, TokenRefreshResponse, WithdrawRequest
 from app.models.users import User
@@ -46,12 +47,14 @@ def _login_response(tokens: dict[str, AccessToken | RefreshToken], status_code: 
         status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "비밀번호/생년월일/휴대폰번호 형식이 유효하지 않음"},
     },
 )
+@limiter.limit("5/minute")  # [T-AUTH-6] 가입 어뷰징 방지 - IP당 분당 5회
 async def signup(
-    request: SignUpRequest,
+    request: Request,
+    body: SignUpRequest,
     session: Annotated[AsyncSession, Depends(get_db)],
     auth_service: Annotated[AuthService, Depends(AuthService)],
 ) -> Response:
-    await auth_service.signup(session, request)
+    await auth_service.signup(session, body)
     return Response(content={"detail": "회원가입이 성공적으로 완료되었습니다."}, status_code=status.HTTP_201_CREATED)
 
 
@@ -69,12 +72,17 @@ async def signup(
         status.HTTP_423_LOCKED: {"description": "비활성화된 계정"},
     },
 )
+@limiter.limit("20/minute")  # [T-AUTH-6] 무차별 대입 공격 방지 - IP당 분당 20회. 계정 단위 잠금
+# (app/services/auth.py의 5회 실패 잠금, 더 엄격함)과 별개로, IP 단위로 여러 계정을 훑는
+# 공격까지 막는다. 5로 두면 기존 계정잠금 테스트(연속 6~7회 로그인 호출)가 이 제한에 먼저
+# 걸려 깨지므로, 계정잠금 임계값(5)보다 넉넉히 위로 잡았다.
 async def login(
-    request: LoginRequest,
+    request: Request,
+    body: LoginRequest,
     session: Annotated[AsyncSession, Depends(get_db)],
     auth_service: Annotated[AuthService, Depends(AuthService)],
 ) -> Response:
-    user = await auth_service.authenticate(session, request)
+    user = await auth_service.authenticate(session, body)
     tokens = await auth_service.login(session, user)
     return _login_response(tokens)
 

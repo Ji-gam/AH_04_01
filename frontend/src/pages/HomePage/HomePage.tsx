@@ -21,6 +21,7 @@ import type {
 import DietLogContent from "../../components/diet/DietLogContent";
 import ExerciseLogContent from "../../components/exercise/ExerciseLogContent";
 import HabitRecommendationFlow from "../../components/habit/HabitRecommendationFlow";
+import HabitSelectionContent from "../../components/habit/HabitSelectionContent";
 import SelectedHabitsModal from "../../components/habit/SelectedHabitsModal";
 import SleepLogContent from "../../components/sleep/SleepLogContent";
 import { useAuth } from "../../hooks/useAuth";
@@ -94,6 +95,10 @@ export default function HomePage() {
   const [showLifestyleModal, setShowLifestyleModal] = useState(false);
   // 아직 하나도 선택 안 했을 때 누르면(예전엔 /habit-selection으로 이동) 모달로 바로 고를 수 있게 한다.
   const [showHabitSelectionModal, setShowHabitSelectionModal] = useState(false);
+  // 상단 "마이다이어리" 버튼 - 더보기 > 마이다이어리와 같은 허브 화면(습관/식단/운동/수면/일기/목표
+  // 메뉴)을 모달로 띄운다. 예전엔 이 버튼이 습관 추천 목록(showHabitSelectionModal)을 열어서
+  // "추천 라이프스타일" 카드와 똑같은 화면이 떴다(2026-08-03 시연 중 발견).
+  const [showMyDiaryModal, setShowMyDiaryModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
 
   const [chatInput, setChatInput] = useState("");
@@ -430,7 +435,7 @@ export default function HomePage() {
             </button>
             <button
               type="button"
-              onClick={() => setShowHabitSelectionModal(true)}
+              onClick={() => setShowMyDiaryModal(true)}
               style={{
                 border: `1px solid ${pinkTheme.border}`,
                 background: pinkTheme.cardBg,
@@ -794,6 +799,25 @@ export default function HomePage() {
             }}
             onSaved={setHabitsToday}
           />
+        )}
+
+        {/* 상단 "마이다이어리" 버튼 - 더보기 > 마이다이어리(HabitSelectionPage)와 같은 허브
+            본문을 모달로 띄운다. 각 메뉴(식단/운동/수면/일기/목표)는 이 안에서 다시 모달로 열린다. */}
+        {showMyDiaryModal && (
+          <Modal
+            onClose={() => {
+              setShowMyDiaryModal(false);
+              // 허브 안에서 식단/운동/수면을 기록했을 수 있으니 "오늘의 건강 지표"를 다시 불러온다.
+              refreshTodayMetrics();
+            }}
+          >
+            {/* HabitSelectionContent는 페이지 배경(pageBg) 위에 놓이도록 만들어진 본문이라
+                배경을 직접 갖고 있지 않다 - 모달 안에서는 뒤 화면이 그대로 비쳐 보이므로
+                페이지와 같은 배경을 여기서 씌워준다. */}
+            <div style={{ background: pinkTheme.pageBg, borderRadius: 16, padding: 18 }}>
+              <HabitSelectionContent onSaved={setHabitsToday} />
+            </div>
+          </Modal>
         )}
 
         {/* 빠른 메뉴 2x2 + AI 건강 상담 질문창 + 건강 정보 미리보기 */}

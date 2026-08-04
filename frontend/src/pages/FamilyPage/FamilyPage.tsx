@@ -37,6 +37,85 @@ const primaryButtonStyle: React.CSSProperties = {
 
 const emptyRowStyle: React.CSSProperties = { margin: 0, fontSize: 13, color: pinkTheme.textMuted };
 
+// [관계 선택 목록] 자유 텍스트 입력 대신 드롭다운으로 통일 - 오탈자/표기 불일치("어머니" vs
+// "엄마" 등) 방지, 연로하신 분들도 타이핑 없이 고르기만 하면 되게. 목록에 없는 관계는
+// "기타"를 고르면 직접 입력할 수 있게 남겨둔다.
+const RELATION_OPTIONS = [
+  "할아버지",
+  "할머니",
+  "아버지",
+  "어머니",
+  "배우자",
+  "자녀",
+  "형/오빠",
+  "누나/언니",
+  "동생",
+  "기타",
+] as const;
+
+/** 관계 선택 드롭다운. "기타" 선택 시 아래 텍스트 입력이 나타난다 - 부모/이메일/QR 발급
+ * 3개 폼이 전부 이 컴포넌트 하나로 통일해서 쓴다(자유 텍스트 입력을 각자 따로 두지 않음). */
+function RelationSelect({
+  value,
+  onChange,
+  idPrefix,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  idPrefix: string;
+}) {
+  const isKnownOption = (RELATION_OPTIONS as readonly string[]).includes(value);
+  // [버그 수정] "기타"를 고르면 value를 빈 문자열로 비우는데, value===""만 보고 선택 상태를
+  // 판단하면 "기타 선택 후 아직 입력 전"과 "아무것도 선택 안 함"을 구분 못 해서 드롭다운이
+  // 다시 placeholder로 돌아가고 입력칸도 같이 사라졌었다 - "기타 모드"를 별도 상태로 갖는다.
+  const [isOtherMode, setIsOtherMode] = useState(value !== "" && !isKnownOption);
+  const selectValue = isOtherMode ? "기타" : isKnownOption ? value : "";
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <select
+        id={`${idPrefix}-relation-select`}
+        name={`${idPrefix}-relation-select`}
+        value={selectValue}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (next === "기타") {
+            setIsOtherMode(true);
+            onChange("");
+          } else {
+            setIsOtherMode(false);
+            onChange(next);
+          }
+        }}
+        style={inputStyle}
+        required
+      >
+        <option value="" disabled>
+          관계를 선택해주세요
+        </option>
+        {RELATION_OPTIONS.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+      {isOtherMode && (
+        <input
+          type="text"
+          name={`${idPrefix}-relation-custom`}
+          autoComplete="off"
+          placeholder="관계를 직접 입력해주세요 (예: 이모, 삼촌)"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          style={inputStyle}
+          maxLength={20}
+          required
+        />
+      )}
+    </div>
+  );
+}
+
 function LinkRow({ item, right }: { item: FamilyLinkItem; right?: React.ReactNode }) {
   return (
     <div
@@ -93,6 +172,15 @@ export default function FamilyPage() {
   const [redeemCode, setRedeemCode] = useState("");
   const [redeemError, setRedeemError] = useState<string | null>(null);
   const [isRedeeming, setIsRedeeming] = useState(false);
+
+  // [연결 해제 확인 모달] window.confirm(브라우저 기본 팝업) 대신 화면 안 모달로 확인받는다 -
+  // 어느 목록(내가 관리하는 가족/응답 대기중인 요청/나를 관리하는 가족)에서 눌렀든 이 모달
+  // 하나로 통일해서 처리한다.
+  const [pendingUnlink, setPendingUnlink] = useState<{
+    linkId: number;
+    viewpoint: "guardian" | "member";
+  } | null>(null);
+  const [isUnlinking, setIsUnlinking] = useState(false);
 
   // [QR 탭 전용] 발급된 코드를 QR 이미지(data URL)로 렌더링, 그리고 카메라로 QR 스캔.
   // 코드 발급/입력 자체(issuedCode/redeemCode/handleIssueCode/handleRedeemCode)는 "초대코드"
@@ -183,18 +271,22 @@ export default function FamilyPage() {
     }
   }
 
-  async function handleUnlink(linkId: number) {
-    if (
-      !window.confirm(
-        "이 가족 연결(또는 대기중인 요청)을 해제할까요? 이미 등록된 약 정보는 그대로 남고, 앞으로는 확인/등록만 못 하게 돼요.",
-      )
-    )
-      return;
+  async function handleUnlink(linkId: number, viewpoint: "guardian" | "member" = "guardian") {
+    setPendingUnlink({ linkId, viewpoint });
+  }
+
+  async function executeUnlink() {
+    if (!pendingUnlink) return;
+    const { linkId } = pendingUnlink;
+    setIsUnlinking(true);
     try {
       await familyApi.unlink(linkId);
+      setPendingUnlink(null);
       await load();
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "연결 해제에 실패했습니다.");
+    } finally {
+      setIsUnlinking(false);
     }
   }
 
@@ -340,17 +432,7 @@ export default function FamilyPage() {
               style={inputStyle}
               required
             />
-            <input
-              type="text"
-              name="relation-label"
-              autoComplete="off"
-              placeholder="관계 (예: 어머니, 아버지, 할머니)"
-              value={relationLabel}
-              onChange={(e) => setRelationLabel(e.target.value)}
-              style={inputStyle}
-              maxLength={20}
-              required
-            />
+            <RelationSelect value={relationLabel} onChange={setRelationLabel} idPrefix="email" />
             {linkError && (
               <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{linkError}</p>
             )}
@@ -371,16 +453,10 @@ export default function FamilyPage() {
                 이메일을 몰라도 돼요(카카오로 가입한 가족분께 추천). 코드를 발급해서 카톡/문자로
                 전달하면, 상대방이 입력하는 즉시 연결돼요(30분 안에 사용, 1회용).
               </p>
-              <input
-                type="text"
-                name="issue-relation-label"
-                autoComplete="off"
-                placeholder="관계 (예: 어머니, 아버지, 할머니)"
+              <RelationSelect
                 value={issueRelationLabel}
-                onChange={(e) => setIssueRelationLabel(e.target.value)}
-                style={inputStyle}
-                maxLength={20}
-                required
+                onChange={setIssueRelationLabel}
+                idPrefix="issue-code"
               />
               {issueError && (
                 <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{issueError}</p>
@@ -471,16 +547,10 @@ export default function FamilyPage() {
                   onSubmit={handleIssueCode}
                   style={{ display: "flex", flexDirection: "column", gap: 10 }}
                 >
-                  <input
-                    type="text"
-                    name="qr-issue-relation-label"
-                    autoComplete="off"
-                    placeholder="관계 (예: 어머니, 아버지, 할머니)"
+                  <RelationSelect
                     value={issueRelationLabel}
-                    onChange={(e) => setIssueRelationLabel(e.target.value)}
-                    style={inputStyle}
-                    maxLength={20}
-                    required
+                    onChange={setIssueRelationLabel}
+                    idPrefix="issue-qr"
                   />
                   {issueError && (
                     <p style={{ margin: 0, color: pinkTheme.danger, fontSize: 13 }}>{issueError}</p>
@@ -711,25 +781,115 @@ export default function FamilyPage() {
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {data.as_member_accepted.map((item) => (
-                    <div
+                    <LinkRow
                       key={item.link_id}
-                      style={{
-                        border: `1px solid ${pinkTheme.border}`,
-                        borderRadius: 10,
-                        padding: "10px 12px",
-                        fontSize: 14,
-                        color: pinkTheme.text,
-                      }}
-                    >
-                      {item.name}님이 나를 "{item.relation_label}"(으)로 등록해서 관리하고 있어요.
-                    </div>
+                      item={item}
+                      right={
+                        <button
+                          type="button"
+                          onClick={() => handleUnlink(item.link_id, "member")}
+                          style={{
+                            border: "none",
+                            background: "none",
+                            color: pinkTheme.textMuted,
+                            fontSize: 12,
+                            cursor: "pointer",
+                            padding: "4px 8px",
+                          }}
+                        >
+                          연결 해제
+                        </button>
+                      }
+                    />
                   ))}
                 </div>
+                <p style={{ margin: "10px 0 0", fontSize: 13, color: pinkTheme.textMuted }}>
+                  연결을 해제하면 이 분이 더 이상 회원님의 건강정보를 확인/관리할 수 없어요. 이미
+                  등록된 약 정보는 그대로 남아요.
+                </p>
               </div>
             )}
           </>
         )}
       </div>
+
+      {pendingUnlink && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.4)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 100,
+            padding: 20,
+          }}
+          onClick={() => !isUnlinking && setPendingUnlink(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              ...cardStyle,
+              width: "100%",
+              maxWidth: 340,
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: 700, color: pinkTheme.text, fontSize: 15 }}>
+              가족 연결을 해제할까요?
+            </p>
+            <p style={{ margin: 0, fontSize: 13, color: pinkTheme.textMuted, lineHeight: 1.5 }}>
+              {pendingUnlink.viewpoint === "member"
+                ? "해제하면 이 분은 더 이상 회원님의 건강정보를 확인/관리할 수 없어요. 이미 등록된 약 정보는 그대로 남아요."
+                : "이미 등록된 약 정보는 그대로 남고, 앞으로는 확인/등록만 못 하게 돼요."}
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setPendingUnlink(null)}
+                disabled={isUnlinking}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  border: `1px solid ${pinkTheme.border}`,
+                  borderRadius: 10,
+                  background: pinkTheme.cardBg,
+                  color: pinkTheme.text,
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: isUnlinking ? "not-allowed" : "pointer",
+                }}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={executeUnlink}
+                disabled={isUnlinking}
+                style={{
+                  flex: 1,
+                  padding: "12px",
+                  border: "none",
+                  borderRadius: 10,
+                  background: pinkTheme.danger,
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: 14,
+                  cursor: isUnlinking ? "not-allowed" : "pointer",
+                  opacity: isUnlinking ? 0.7 : 1,
+                }}
+              >
+                {isUnlinking ? "해제하는 중..." : "연결 해제"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

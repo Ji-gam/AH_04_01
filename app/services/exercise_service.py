@@ -1,14 +1,18 @@
 import json
+import logging
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 from fastapi import HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dtos.exercise_dto import (
     ExerciseLogCreateRequest,
     ExerciseLogItemResult,
+    ExerciseMetEstimateResult,
     ExerciseRecentDayResult,
     ExerciseRecentResult,
     ExerciseSearchResult,
@@ -17,6 +21,14 @@ from app.dtos.exercise_dto import (
 )
 from app.models.profiles import Profile
 from app.repositories.exercise_repository import ExerciseRepository
+from app.services.ai_worker_gateway import (
+    AIWorkerGateway,
+    AIWorkerInvalidRequestError,
+    AIWorkerProcessingError,
+    AIWorkerUnavailableError,
+)
+
+logger = logging.getLogger("app.exercise_service")
 
 # 프로필에 몸무게가 없을 때 소모 칼로리 계산에 쓰는 성인 평균 체중 폴백
 # (diet_service.py의 DIET_REFERENCE_KCAL과 같은 발상 - 개인화 데이터가 없어도 기능이 막히지 않게 함).
@@ -29,6 +41,28 @@ EXERCISE_REFERENCE_MINUTES = 30
 # 줄넘기(count 모드)의 분당 횟수 가정 - 실제 속도는 사람마다 다르지만, 시간 입력 없이 개수만으로
 # 소모 칼로리를 내려면 어떤 가정이든 필요하다. "보통 속도" 기준으로 통상 알려진 값을 썼다.
 JUMP_ROPE_REPS_PER_MINUTE = Decimal(100)
+
+# 고정 목록(23개)에 없는 운동을 "기타"로 자유 입력했을 때, AI 추정이 실패하면 쓰는 폴백
+# MET - 걷기/가벼운 운동 평균치 정도로 잡아 과대/과소 계산을 피한다.
+_FALLBACK_MET = 4.0
+# Compendium of Physical Activities 실측값 대부분이 이 범위 안이라, AI가 비정상적으로 크거나
+# 작은 값을 주면(환각) 폴백으로 대체한다.
+_MET_VALID_RANGE = (0.5, 25.0)
+
+_EXERCISE_MET_SYSTEM_PROMPT = (
+    "당신은 운동생리학 전문가입니다. 사용자가 입력한 운동 설명을 보고 Compendium of Physical "
+    "Activities 기준으로 가장 가까운 MET(대사당량) 값을 추정하세요. 일반 성인이 보통 강도로 "
+    "했을 때를 가정합니다. 숫자 하나만 답하세요."
+)
+
+
+class ExerciseMetEstimate(BaseModel):
+    """AIWorkerGateway.call_structured()에는 자유텍스트 전용 메서드가 없어(스키마 필수),
+    MET 값 하나만 담는 최소 스키마로 받는다 - diet_service.py의 DietKcalReasonSummary와
+    같은 발상."""
+
+    met_value: float
+
 
 _MET_SEED_PATH = Path(__file__).resolve().parent.parent / "database" / "exercise_met_seed.json"
 
@@ -67,8 +101,22 @@ def _met_from_speed(exercise_name: str, speed_kmh: Decimal) -> Decimal:
 
 
 class ExerciseService:
-    def __init__(self, repository: ExerciseRepository | None = None) -> None:
+    def __init__(self, repository: ExerciseRepository | None = None, gateway: AIWorkerGateway | None = None) -> None:
         self._repository = repository or ExerciseRepository()
+        self._gateway = gateway or AIWorkerGateway()
+
+    async def list_catalog(self) -> ExerciseSearchResult:
+        """운동 종류 전체 목록(23개 고정 시드) - 드롭다운용. 웨이트/근력운동처럼 세부 종목별
+        입력까지는 지원하지 않으므로(2026-08-03 피드백), 자유 검색 대신 정해진 목록에서
+        고르게 한다."""
+        return ExerciseSearchResult(
+            results=[
+                ExerciseSearchResultItem(
+                    exercise_name=item["exercise_name"], met_value=item["met_value"], input_mode=item["input_mode"]
+                )
+                for item in _load_met_seed()
+            ]
+        )
 
     async def search_exercise(self, query: str) -> ExerciseSearchResult:
         """운동은 MET 값이 안정적인 공개 표준값이라 외부 API 없이 정적 시드만 사용한다
@@ -77,6 +125,26 @@ class ExerciseService:
         if len(normalized) < 1:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="검색어를 입력해주세요.")
         return ExerciseSearchResult(results=_search_met_seed(normalized))
+
+    async def estimate_met(self, exercise_name: str) -> ExerciseMetEstimateResult:
+        """고정 목록(23개)에 없는 운동을 "기타"로 자유 입력했을 때, AI가 MET 값을 추정한다
+        (2026-08-03 피드백: 기타 → 입력칸 → AI 인식 → 칼로리 계산). AI 실패 시, 그리고 AI가
+        비정상적인 값을 줬을 때 모두 _FALLBACK_MET으로 대체해 항상 값을 돌려준다."""
+        normalized = exercise_name.strip()
+        try:
+            raw_result = await self._gateway.call_structured(
+                system_prompt=_EXERCISE_MET_SYSTEM_PROMPT,
+                user_input=normalized,
+                schema=ExerciseMetEstimate,
+            )
+            result = cast(ExerciseMetEstimate, raw_result)
+            met = result.met_value
+            if not (_MET_VALID_RANGE[0] <= met <= _MET_VALID_RANGE[1]):
+                met = _FALLBACK_MET
+        except (AIWorkerUnavailableError, AIWorkerInvalidRequestError, AIWorkerProcessingError) as e:
+            logger.warning("운동 '%s' MET 추정 실패, 폴백 값(%.1f) 사용: %s", normalized, _FALLBACK_MET, e)
+            met = _FALLBACK_MET
+        return ExerciseMetEstimateResult(exercise_name=normalized, met_value=met)
 
     async def log_exercise(
         self, session: AsyncSession, profile: Profile, request: ExerciseLogCreateRequest

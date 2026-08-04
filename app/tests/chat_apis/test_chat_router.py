@@ -18,7 +18,16 @@ async def _signup_and_login(client: AsyncClient, email: str) -> str:
     }
     await client.post("/api/v1/auth/signup", json=signup_data)
     login_response = await client.post("/api/v1/auth/login", json={"email": email, "password": "Password123!"})
-    return login_response.json()["access_token"]
+    token = login_response.json()["access_token"]
+    # [2026-08-03] chat_router가 필수 3종 동의를 서버에서도 확인하게 바뀌어서, 실제 가입
+    # 플로우(가입 직후 통합 동의 화면)와 마찬가지로 테스트에서도 로그인 직후 동의를 완료해야
+    # 챗봇 엔드포인트를 호출할 수 있다.
+    await client.patch(
+        "/api/v1/users/me/consent",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"terms_of_service": True, "health_info": True, "ai_chat": True},
+    )
+    return token
 
 
 async def test_create_session_then_send_message_success():
