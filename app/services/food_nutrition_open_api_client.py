@@ -203,51 +203,6 @@ async def fetch_live(query: str) -> list[RawFoodItem]:
     return []
 
 
-async def debug_probe_live_api(query: str) -> dict:
-    """TEMP(2026-08-04): 운영 서버에 SSH 없이 라이브 API 연결 상태를 원격으로 확인하려고
-    임시로 추가. 진단 끝나면 이 함수와 diet_routers.py의 디버그 엔드포인트를 함께 제거할 것."""
-    api_key = config.FOOD_NUTRITION_API_KEY or config.PUBLIC_DATA_API_KEY
-    result: dict = {
-        "food_nutrition_api_key_set": bool(config.FOOD_NUTRITION_API_KEY),
-        "public_data_api_key_set": bool(config.PUBLIC_DATA_API_KEY),
-        "key_used_len": len(api_key) if api_key else 0,
-        "key_used_last4": api_key[-4:] if api_key else None,
-    }
-    if not api_key:
-        result["outcome"] = "no_api_key"
-        return result
-
-    params: dict = {
-        "serviceKey": api_key,
-        "type": "json",
-        "numOfRows": 5,
-        "pageNo": 1,
-        "FOOD_NM_KR": query,
-    }
-    try:
-        http_client = _get_http_client()
-        response = await http_client.get(FOOD_NUTRITION_URL, params=params, timeout=_TIMEOUT)
-        result["http_status"] = response.status_code
-        response.raise_for_status()
-        payload = response.json()
-        envelope = payload.get("response", payload)
-        header = envelope.get("header", {})
-        result["resultCode"] = header.get("resultCode")
-        result["resultMsg"] = header.get("resultMsg")
-        body = envelope.get("body", {})
-        result["totalCount"] = body.get("totalCount")
-        result["outcome"] = "success" if header.get("resultCode") == "00" else "api_error"
-    except httpx.HTTPStatusError as e:
-        result["outcome"] = "http_error"
-        result["http_status"] = e.response.status_code
-        result["body_snippet"] = e.response.text[:300]
-    except Exception as e:
-        result["outcome"] = "exception"
-        result["error_type"] = type(e).__name__
-        result["error_message"] = str(e)[:300]
-    return result
-
-
 def search_seed(query: str) -> list[RawFoodItem]:
     with _SEED_PATH.open(encoding="utf-8") as f:
         data = json.load(f)
