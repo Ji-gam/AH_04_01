@@ -226,6 +226,7 @@ class PushService:
         body: str,
         intake_sources: list[tuple[str, int, str, str]] | None = None,
         link_url: str | None = None,
+        guardian_body_template: str | None = None,
     ) -> None:
         """`send_to_profile`은 그대로 두고, 여기에 "이 사람을 관리하는 보호자들에게도 같이
         보낸다"는 것만 추가한다. 보호자가 자기 기기에서 "🔔 알림 켜기"를 눌러 구독해두면
@@ -234,7 +235,12 @@ class PushService:
 
         보호자가 여러 명을 관리할 수 있어 "누구 약인지" 구분이 안 되면 헷갈리므로, 보호자
         쪽엔 대상자 이름을 붙여서 보낸다(본인 몫은 그대로 둠). intake_sources는 본인 몫에만
-        전달한다 - 가족 사본은 복용완료/빈도조정 액션 버튼 없이 정보 전달용으로만 보낸다."""
+        전달한다 - 가족 사본은 복용완료/빈도조정 액션 버튼 없이 정보 전달용으로만 보낸다.
+
+        [2026-08-06] 기본값(`[이름] {body}`)은 본인 문구를 그대로 괄호로 감싸는 방식이라
+        기계적인 느낌이 난다 - "복약 미확인 알림"처럼 보호자 입장에서 더 자연스러운 문장이
+        필요한 호출부는 `guardian_body_template`에 `{name}` 자리표시자가 있는 문자열을
+        넘기면 된다(예: `"{name}님이 아직 약을 안 드신 것 같아요."`)."""
         await self.send_to_profile(session, profile_id, title, body, intake_sources=intake_sources, link_url=link_url)
 
         guardian_links = await self._family_repo.list_as_member(session, profile_id, status=FamilyLinkStatus.ACCEPTED)
@@ -243,6 +249,9 @@ class PushService:
 
         member_profile = await self._profile_repo.get_profile(session, profile_id)
         member_name = member_profile.name if member_profile else "가족"
-        body_for_guardian = f"[{member_name}] {body}"
+        if guardian_body_template is not None:
+            body_for_guardian = guardian_body_template.format(name=member_name)
+        else:
+            body_for_guardian = f"[{member_name}] {body}"
         for link in guardian_links:
             await self.send_to_profile(session, link.guardian_profile_id, title, body_for_guardian, link_url=link_url)
