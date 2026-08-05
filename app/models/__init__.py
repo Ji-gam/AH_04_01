@@ -15,6 +15,7 @@ from app.models.food_drug_interaction import (
     FoodDrugPolarity,
     FoodDrugSource,
 )
+from app.models.habit_diagnosis_entry_suggestions import HabitDiagnosisEntrySuggestion
 from app.models.habit_logs import HabitLog
 from app.models.habit_selections import HabitSelection
 from app.models.habit_subtype_suggestions import HabitSubtypeSuggestion
@@ -48,6 +49,7 @@ __all__ = [
     "FoodDrugIngredient",
     "FoodDrugPolarity",
     "FoodDrugSource",
+    "HabitDiagnosisEntrySuggestion",
     "HabitLog",
     "HabitSelection",
     "HabitSubtypeSuggestion",

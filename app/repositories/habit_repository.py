@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.db.databases import AsyncSessionLocal
+from app.models.habit_diagnosis_entry_suggestions import HabitDiagnosisEntrySuggestion
 from app.models.habit_logs import HabitLog
 from app.models.habit_selections import HabitSelection
 from app.models.habit_subtype_suggestions import HabitSubtypeSuggestion
@@ -62,6 +63,42 @@ class HabitRepository:
             except IntegrityError:
                 await write_session.rollback()
                 existing = await self.list_subtype_suggestions(write_session, disease_subtype_id)
+                if existing:
+                    return existing
+                raise
+            for row in rows:
+                await write_session.refresh(row)
+            return rows
+
+    async def list_entry_suggestions(
+        self, session: AsyncSession, diagnosis_entry_id: int
+    ) -> list[HabitDiagnosisEntrySuggestion]:
+        result = await session.execute(
+            select(HabitDiagnosisEntrySuggestion)
+            .where(HabitDiagnosisEntrySuggestion.diagnosis_entry_id == diagnosis_entry_id)
+            .order_by(HabitDiagnosisEntrySuggestion.slot)
+        )
+        return list(result.scalars().all())
+
+    async def save_entry_suggestions(
+        self,
+        diagnosis_entry_id: int,
+        suggestions: list[dict],
+    ) -> list[HabitDiagnosisEntrySuggestion]:
+        """세부 진단명이 없는 진단 항목 하나에 대해 생성된 습관 여러 개(slot 0부터)를 한 번에
+        저장한다. save_subtype_suggestions와 동일한 이유로 독립된 세션을 열고 동시 요청의
+        IntegrityError를 재조회로 흡수한다(그 쪽 docstring 참고)."""
+        rows = [
+            HabitDiagnosisEntrySuggestion(diagnosis_entry_id=diagnosis_entry_id, slot=slot, **suggestion)
+            for slot, suggestion in enumerate(suggestions)
+        ]
+        async with self._session_factory() as write_session:
+            write_session.add_all(rows)
+            try:
+                await write_session.commit()
+            except IntegrityError:
+                await write_session.rollback()
+                existing = await self.list_entry_suggestions(write_session, diagnosis_entry_id)
                 if existing:
                     return existing
                 raise
