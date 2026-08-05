@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -23,6 +24,7 @@ class ChatSourceRef(BaseModel):
 
 
 class ChatMessageResponse(BaseModel):
+    id: int = Field(description="메시지 ID. 어시스턴트 답변에 피드백(👍/👎)을 붙일 때 이 값을 쓴다.", examples=[1])
     role: str = Field(description="발화자 (user 또는 assistant)", examples=["user"])
     content: str = Field(description="발화 내용", examples=["두통약 뭐가 좋아요?"])
     sources: list[ChatSourceRef] | None = Field(
@@ -30,3 +32,8 @@ class ChatMessageResponse(BaseModel):
     )
     disclaimer: str | None = Field(default=None, description="의료 관련 답변에만 붙는 면책 문구. 없으면 null")
     created_at: datetime = Field(description="메시지 생성 시각")
+
+
+class ChatFeedbackRequest(BaseModel):
+    value: Literal["up", "down"] = Field(description="피드백 값", examples=["up"])
+    comment: str | None = Field(default=None, description="자유 서술 코멘트(선택)")

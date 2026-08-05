@@ -19,12 +19,14 @@ from app.services.safety_service import DISCLAIMER_TEXT, EMERGENCY_FALLBACK_MESS
 class FakeChatMessage:
     role: MessageRole
     content: str
+    id: int = 0
 
 
 class FakeChatRepository:
     def __init__(self, history: list[FakeChatMessage] | None = None) -> None:
-        self.saved_messages: list[tuple[int, MessageRole, str, list[dict] | None, str | None]] = []
+        self.saved_messages: list[tuple[int, MessageRole, str, list[dict] | None, str | None, str | None]] = []
         self._history = history or []
+        self._next_id = 1
 
     async def save_message(
         self,
@@ -34,8 +36,12 @@ class FakeChatRepository:
         content: str,
         sources: list[dict] | None = None,
         disclaimer: str | None = None,
-    ) -> None:
-        self.saved_messages.append((session_id, role, content, sources, disclaimer))
+        trace_id: str | None = None,
+    ) -> FakeChatMessage:
+        self.saved_messages.append((session_id, role, content, sources, disclaimer, trace_id))
+        message = FakeChatMessage(role=role, content=content, id=self._next_id)
+        self._next_id += 1
+        return message
 
     async def list_messages(self, session, session_id: int, limit: int = 20) -> list[FakeChatMessage]:
         return self._history
@@ -211,18 +217,19 @@ async def test_normal_message_streams_sources_then_tokens_and_saves_conversation
     chunks = await _collect(service.stream_reply(profile_id=1, session_id=10, message="두통약 뭐가 좋아요?"))
 
     assert chunks[0] == stream_chunks[0]
-    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": DISCLAIMER_TEXT}
+    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": DISCLAIMER_TEXT, "message_id": 2}
     token_chunks = [c for c in chunks if c["type"] == "token"]
     full_reply = "".join(c["content"] for c in token_chunks)
     assert full_reply == "fake-llm-reply"
     assert repository.saved_messages == [
-        (10, MessageRole.USER, "두통약 뭐가 좋아요?", None, None),
+        (10, MessageRole.USER, "두통약 뭐가 좋아요?", None, None, None),
         (
             10,
             MessageRole.ASSISTANT,
             "fake-llm-reply",
             [{"name": "식약처 DUR 노인주의 정보", "url": None}],
             DISCLAIMER_TEXT,
+            None,
         ),
     ]
 
@@ -240,7 +247,7 @@ async def test_medical_response_saves_disclaimer_with_assistant_message():
 
     chunks = await _collect(service.stream_reply(profile_id=1, session_id=10, message="타이레놀 먹어도 되나요?"))
 
-    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": DISCLAIMER_TEXT}
+    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": DISCLAIMER_TEXT, "message_id": 2}
     saved_disclaimer = repository.saved_messages[-1][4]
     assert saved_disclaimer == DISCLAIMER_TEXT
 
@@ -255,7 +262,25 @@ async def test_normal_message_saves_none_sources_when_no_rag_matches():
 
     await _collect(service.stream_reply(profile_id=1, session_id=10, message="잡담"))
 
-    assert repository.saved_messages[-1] == (10, MessageRole.ASSISTANT, "fake-llm-reply", None, None)
+    assert repository.saved_messages[-1] == (10, MessageRole.ASSISTANT, "fake-llm-reply", None, None, None)
+
+
+async def test_trace_chunk_is_not_relayed_but_saved_as_message_trace_id():
+    """T-LLM-2-langfuse-user-feedback(설계 결정 1): trace_id는 Langfuse 내부 식별자라
+    프론트로 내보내지 않는다 - _generate가 소비해서 어시스턴트 메시지 저장에만 쓴다."""
+    repository = FakeChatRepository()
+    stream_chunks = [
+        {"type": "sources", "sources": []},
+        {"type": "trace", "trace_id": "langfuse-trace-abc"},
+        {"type": "token", "content": "답변"},
+    ]
+    retriever = FakeRetriever(stream_chunks=stream_chunks)
+    service = _build_service(repository, retriever=retriever)
+
+    chunks = await _collect(service.stream_reply(profile_id=1, session_id=10, message="질문"))
+
+    assert all(c["type"] != "trace" for c in chunks)
+    assert repository.saved_messages[-1][5] == "langfuse-trace-abc"
 
 
 async def test_stream_reply_lowercases_history_roles_for_openai_compatibility():
@@ -354,7 +379,7 @@ async def test_medical_relatedness_uses_llm_when_ai_worker_sources_present():
 
     assert retriever.structured_calls
     assert retriever.structured_calls[-1][2] is MedicalRelatednessClassification
-    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": DISCLAIMER_TEXT}
+    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": DISCLAIMER_TEXT, "message_id": 2}
 
 
 async def test_medical_relatedness_skips_llm_when_no_sources_at_all():
@@ -371,7 +396,7 @@ async def test_medical_relatedness_skips_llm_when_no_sources_at_all():
     chunks = await _collect(service.stream_reply(profile_id=1, session_id=10, message="오늘 날씨 어때?"))
 
     assert retriever.structured_calls == []
-    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": ""}
+    assert chunks[-1] == {"type": "done", "content": "", "disclaimer": "", "message_id": 2}
 
 
 async def test_medical_relatedness_uses_llm_when_injected_dur_warning_present_even_without_ai_worker_sources():

@@ -20,7 +20,7 @@ import os
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from ai_worker.core.config import settings
 from ai_worker.core.logger import setup_logger
@@ -110,6 +110,37 @@ def get_langfuse_client() -> Any:
         _client = None
 
     return _client
+
+
+def get_current_trace_id() -> str | None:
+    """활성 span 안에서 현재 trace id를 반환한다. 미설정/오류/활성 span 밖에서 호출 시
+    ``None``(no-op) — 반드시 ``observe_span()`` ``with`` 블록 안에서 호출해야 한다."""
+    client = get_langfuse_client()
+    if client is None:
+        return None
+    try:
+        return cast(str | None, client.get_current_trace_id())
+    except Exception:
+        logger.exception("Langfuse trace id 조회 실패 — None으로 계속 진행.")
+        return None
+
+
+def create_score(trace_id: str, name: str, value: float, comment: str | None = None) -> None:
+    """Langfuse trace에 점수를 붙인다. 미설정/오류 시 조용히 무시(no-op) — 결정 4
+    (`docs/tasks/T-LLM-2-langfuse-user-feedback.md`): 관측 실패가 호출부(피드백 API)의
+    응답을 절대 막지 않는다.
+
+    `ai_worker`는 장수 프로세스라 SDK 내부 배치 전송이 지연될 수 있는데, 이 함수는
+    사용자가 버튼을 누를 때만 드물게 호출되는 fire-and-forget 경로라 `flush()` 비용이
+    무시할 만하다 — 그래서 항상 명시적으로 flush해 Langfuse UI에 즉시 반영되게 한다."""
+    client = get_langfuse_client()
+    if client is None:
+        return
+    try:
+        client.create_score(name=name, value=value, trace_id=trace_id, data_type="NUMERIC", comment=comment)
+        client.flush()
+    except Exception:
+        logger.exception("Langfuse score('%s', trace_id=%s) 전송 실패 — 무시하고 계속 진행.", name, trace_id)
 
 
 ObservationType = Literal[

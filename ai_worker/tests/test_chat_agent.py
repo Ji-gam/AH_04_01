@@ -76,7 +76,7 @@ async def test_stream_chat_answer_merges_dur_and_paper_chunks_and_streams_tokens
     )
 
     fake_llm = FakeStreamingLLM(["안", "녕"])
-    monkeypatch.setattr(chat_agent_module, "_build_llm", lambda: fake_llm)
+    monkeypatch.setattr(chat_agent_module, "_build_llm", lambda **_: fake_llm)
 
     chunks = [
         c
@@ -108,7 +108,7 @@ async def test_stream_chat_answer_uses_no_reference_text_when_no_chunks_found(mo
     monkeypatch.setattr(chat_agent_module, "search_papers", lambda db, msg, limit: [])
 
     fake_llm = FakeStreamingLLM(["답변"])
-    monkeypatch.setattr(chat_agent_module, "_build_llm", lambda: fake_llm)
+    monkeypatch.setattr(chat_agent_module, "_build_llm", lambda **_: fake_llm)
 
     chunks = [
         c async for c in chat_agent_module.stream_chat_answer("잡담", context={}, history=[], injected_context=[])
@@ -129,7 +129,7 @@ async def test_stream_chat_answer_prompt_tells_llm_not_to_confuse_asker_with_que
     monkeypatch.setattr(chat_agent_module, "search_papers", lambda db, msg, limit: [])
 
     fake_llm = FakeStreamingLLM(["답변"])
-    monkeypatch.setattr(chat_agent_module, "_build_llm", lambda: fake_llm)
+    monkeypatch.setattr(chat_agent_module, "_build_llm", lambda **_: fake_llm)
 
     _ = [
         c
@@ -164,7 +164,23 @@ def test_build_llm_raises_when_no_api_key(monkeypatch):
     monkeypatch.setattr(chat_agent_module.settings, "OPENAI_API_KEY", None)
 
     try:
-        chat_agent_module._build_llm()
+        chat_agent_module._build_llm(grounded=True)
         raise AssertionError("GenerationUnavailableError가 발생해야 한다")
     except GenerationUnavailableError:
         pass
+
+
+def test_build_llm_fixes_temperature_only_when_grounded(monkeypatch):
+    """참고 문서가 있는 답변(의학 정보)만 temperature를 고정한다.
+
+    통합 경로(T-LLM-7-3-2)가 config의 OPENAI_TEMPERATURE를 적용하지 않아 같은 질문의
+    운동 처방 수량이 회차마다 갈렸던 회귀를 막는다.
+    """
+    monkeypatch.setattr(chat_agent_module.settings, "OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(chat_agent_module.settings, "OPENAI_TEMPERATURE", 0.0)
+
+    grounded = chat_agent_module._build_llm(grounded=True)
+    ungrounded = chat_agent_module._build_llm(grounded=False)
+
+    assert grounded.temperature == 0.0
+    assert ungrounded.temperature is None

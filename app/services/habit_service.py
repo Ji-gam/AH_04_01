@@ -1,4 +1,5 @@
 import logging
+import random
 from dataclasses import dataclass
 from datetime import date
 from typing import TypedDict, cast
@@ -101,33 +102,122 @@ DISEASE_BASE_HABITS: dict[Disease, list[HabitDef]] = {
     ],
 }
 
-# 진단병력(Disease)에 등록된 질환마다 하나씩 추가되는 기본 맞춤 습관 - 세부 진단명(subtype)이
-# 없거나, 있어도 LLM 생성이 실패했을 때의 폴백으로 쓰인다(2단계 이후에는 항상 이게 최종
-# 폴백이라, 이 6개는 계속 유지한다).
-DISEASE_HABITS: dict[Disease, HabitDef] = {
-    Disease.DIABETES: HabitDef(
-        key="diabetes_walk", label="식후 10분 걷기", icon="🍽️", unit="회", target=1, is_disease_related=True
-    ),
-    Disease.HEART_DISEASE: HabitDef(
-        key="heart_low_salt", label="저염식 식사하기", icon="🧂", unit="회", target=1, is_disease_related=True
-    ),
-    Disease.CEREBROVASCULAR_DISEASE: HabitDef(
-        key="cerebro_stretch", label="스트레칭 5분", icon="🧘", unit="회", target=1, is_disease_related=True
-    ),
-    Disease.LIVER_DISEASE: HabitDef(
-        key="liver_no_alcohol", label="금주 실천하기", icon="🚫", unit="회", target=1, is_disease_related=True
-    ),
-    Disease.CANCER: HabitDef(
-        key="cancer_rest", label="충분한 휴식 취하기", icon="😴", unit="회", target=1, is_disease_related=True
-    ),
-    Disease.OTHER: HabitDef(
-        key="other_condition_check",
-        label="오늘 컨디션 체크하기",
-        icon="📝",
-        unit="회",
-        target=1,
-        is_disease_related=True,
-    ),
+# 진단병력(Disease)에 등록된 질환마다 채워지는 기본 맞춤 습관/주의사항 - 세부 진단명(subtype)도
+# 없고 자유텍스트 기반 LLM 생성(_generate_habits_from_diagnosis_entry)도 실패했을 때의 최종
+# 폴백이다. 질병 1개 등록 시 "등록된 습관 중 3개 + 기본 습관 2개"를 채우려면 이 폴백만으로도
+# 최소 5개는 있어야 해서, 질병마다 5개씩 채워둔다(2026-08-05, 예전엔 1개뿐이라 AI가 실패하면
+# 추천이 1개만 뜨는 문제가 있었다).
+DISEASE_HABITS: dict[Disease, list[HabitDef]] = {
+    Disease.DIABETES: [
+        HabitDef(key="diabetes_walk", label="식후 10분 걷기", icon="🍽️", unit="회", target=1, is_disease_related=True),
+        HabitDef(key="diabetes_water", label="물 2L 마시기", icon="🥤", unit="잔", target=8, is_disease_related=True),
+        HabitDef(key="diabetes_sleep", label="일찍 자기", icon="🌙", unit="회", target=1, is_disease_related=True),
+        HabitDef(
+            key="diabetes_meal", label="규칙적으로 식사하기", icon="🍚", unit="회", target=3, is_disease_related=True
+        ),
+        HabitDef(
+            key="diabetes_glucose_check", label="혈당 체크하기", icon="🩸", unit="회", target=1, is_disease_related=True
+        ),
+    ],
+    Disease.HEART_DISEASE: [
+        HabitDef(
+            key="heart_low_salt", label="저염식 식사하기", icon="🧂", unit="회", target=1, is_disease_related=True
+        ),
+        HabitDef(key="heart_walk", label="가볍게 산책하기", icon="🚶", unit="분", target=20, is_disease_related=True),
+        HabitDef(key="heart_sleep", label="충분히 휴식하기", icon="🌙", unit="회", target=1, is_disease_related=True),
+        HabitDef(key="heart_stress", label="스트레스 줄이기", icon="🧘", unit="회", target=1, is_disease_related=True),
+        HabitDef(
+            key="heart_weight_check", label="체중 체크하기", icon="⚖️", unit="회", target=1, is_disease_related=True
+        ),
+    ],
+    Disease.CEREBROVASCULAR_DISEASE: [
+        HabitDef(key="cerebro_stretch", label="스트레칭 5분", icon="🧘", unit="회", target=1, is_disease_related=True),
+        HabitDef(key="cerebro_walk", label="가볍게 걷기", icon="🚶", unit="분", target=15, is_disease_related=True),
+        HabitDef(
+            key="cerebro_bp_check", label="혈압 체크하기", icon="🩺", unit="회", target=1, is_disease_related=True
+        ),
+        HabitDef(
+            key="cerebro_sleep", label="충분히 수면 취하기", icon="🌙", unit="회", target=1, is_disease_related=True
+        ),
+        HabitDef(
+            key="cerebro_low_salt", label="저염식 실천하기", icon="🧂", unit="회", target=1, is_disease_related=True
+        ),
+    ],
+    Disease.LIVER_DISEASE: [
+        HabitDef(
+            key="liver_no_alcohol", label="금주 실천하기", icon="🚫", unit="회", target=1, is_disease_related=True
+        ),
+        HabitDef(key="liver_water", label="물 2L 마시기", icon="🥤", unit="잔", target=8, is_disease_related=True),
+        HabitDef(key="liver_sleep", label="충분히 휴식하기", icon="🌙", unit="회", target=1, is_disease_related=True),
+        HabitDef(
+            key="liver_meal", label="규칙적으로 식사하기", icon="🍚", unit="회", target=1, is_disease_related=True
+        ),
+        HabitDef(
+            key="liver_light_exercise",
+            label="가벼운 운동하기",
+            icon="🚶",
+            unit="분",
+            target=15,
+            is_disease_related=True,
+        ),
+    ],
+    Disease.CANCER: [
+        HabitDef(
+            key="cancer_rest", label="충분한 휴식 취하기", icon="😴", unit="회", target=1, is_disease_related=True
+        ),
+        HabitDef(
+            key="cancer_nutrition",
+            label="영양가 있는 식사하기",
+            icon="🍎",
+            unit="회",
+            target=1,
+            is_disease_related=True,
+        ),
+        HabitDef(
+            key="cancer_stress", label="스트레스 관리하기", icon="🧘", unit="회", target=1, is_disease_related=True
+        ),
+        HabitDef(
+            key="cancer_light_stretch",
+            label="가볍게 스트레칭하기",
+            icon="🧘",
+            unit="회",
+            target=1,
+            is_disease_related=True,
+        ),
+        HabitDef(
+            key="cancer_condition_check",
+            label="컨디션 체크하기",
+            icon="📝",
+            unit="회",
+            target=1,
+            is_disease_related=True,
+        ),
+    ],
+    Disease.OTHER: [
+        HabitDef(
+            key="other_condition_check",
+            label="오늘 컨디션 체크하기",
+            icon="📝",
+            unit="회",
+            target=1,
+            is_disease_related=True,
+        ),
+        HabitDef(key="other_rest", label="충분히 휴식하기", icon="😴", unit="회", target=1, is_disease_related=True),
+        HabitDef(
+            key="other_hydration", label="물 충분히 마시기", icon="🥤", unit="잔", target=6, is_disease_related=True
+        ),
+        HabitDef(
+            key="other_light_stretch",
+            label="가볍게 스트레칭하기",
+            icon="🧘",
+            unit="회",
+            target=1,
+            is_disease_related=True,
+        ),
+        HabitDef(
+            key="other_nutrition", label="균형있는 식사하기", icon="🍎", unit="회", target=1, is_disease_related=True
+        ),
+    ],
 }
 
 
@@ -147,6 +237,20 @@ class SubtypeHabitSuggestionBatch(BaseModel):
     채워주면 좋겠다")."""
 
     habits: list[SubtypeHabitSuggestion]
+
+
+def _sanitize_habit_batch(result: "SubtypeHabitSuggestionBatch") -> list[SanitizedHabit]:
+    """LLM 출력은 형식/개수가 기대와 다를 수 있어 그대로 믿지 않고 방어적으로 다듬는다 -
+    _get_subtype_habits와 _generate_habits_from_diagnosis_entry가 공유한다."""
+    return [
+        {
+            "label": habit.label.strip()[:50] or "오늘 컨디션 체크하기",
+            "icon": (habit.icon.strip() or "📝")[:10],
+            "unit": (habit.unit.strip() or "회")[:20],
+            "target": max(1, habit.target),
+        }
+        for habit in result.habits[:_SUBTYPE_HABITS_PER_DIAGNOSIS]
+    ]
 
 
 _SUBTYPE_HABITS_PER_DIAGNOSIS = 5
@@ -226,10 +330,18 @@ def _rotate(items: list[HabitDef], profile_id: int, today: date, count: int) -> 
     return [items[(start + i) % len(items)] for i in range(count)]
 
 
-def _pick_with_single_disease(disease_habits: list[HabitDef], profile_id: int, today: date) -> list[HabitDef]:
-    if len(disease_habits) >= MAX_RECOMMENDATIONS:
-        return _rotate(disease_habits, profile_id, today, MAX_RECOMMENDATIONS)
-    return disease_habits[:MAX_RECOMMENDATIONS]
+def _seeded_sample(items: list[HabitDef], count: int, profile_id: int, today: date, salt: int) -> list[HabitDef]:
+    """무작위로 뽑되, 같은 (profile, 날짜)에는 항상 같은 결과가 나오게 시드를 고정한다 - 진짜
+    random.sample()을 그대로 쓰면 추천 조회(GET) → 선택 검증(POST) → 오늘 카탈로그 재계산이
+    한 요청 안에서도 서로 다른 집합을 볼 수 있어, 방금 고른 습관이 그 자리에서 무효 처리될 수
+    있다(_generate_habits_from_diagnosis_entry 캐싱 부재로 겪었던 것과 같은 종류의 문제,
+    2026-08-05). salt는 같은 (profile, 날짜)에서 서로 다른 풀(질병 습관 vs 기본 습관)을 뽑을 때
+    두 표본이 우연히 같은 순서로 나오는 걸 피하기 위한 값이다."""
+    if not items:
+        return []
+    count = min(count, len(items))
+    rng = random.Random(profile_id * 1_000_003 + today.toordinal() * 7 + salt)
+    return rng.sample(items, count)
 
 
 def _pick_with_multiple_diseases(
@@ -268,21 +380,19 @@ def _pick_with_multiple_diseases(
 def pick_recommendations(
     pool: list[HabitDef], profile_id: int, today: date, habit_to_disease: dict[str, Disease] | None = None
 ) -> list[HabitDef]:
-    """진단병력 기반 맞춤 습관(is_disease_related)을 일반 라이프스타일 습관보다 항상 먼저 채운다.
+    """등록된 질병 개수에 따라 매일 5개의 추천을 다르게 구성한다(팀 요청, 2026-08-05).
 
-    질병이 여러 개일 경우 각 질병에서 최소 1개씩 선택하도록 개선됨.
-    질병 관련 습관만으로 MAX_RECOMMENDATIONS를 못 채우면 남는 자리만 일반 습관으로 메운다.
+    - 질병 미등록: BASE_HABITS를 날짜 기준으로 매일 회전해서 5개.
+    - 질병 1개(같은 대분류 안에 세부진단이 여럿이어도 대분류 기준 1개로 센다): 그 질병의 습관
+      (AI 생성 또는 DISEASE_HABITS 폴백, 항상 5개 이상 보장됨) 중 3개(시드 랜덤) + BASE_HABITS
+      중 2개(시드 랜덤).
+    - 질병 2개 이상: BASE_HABITS는 섞지 않고, 등록된 질병들의 습관만으로 5개를 채운다(각 질병에서
+      최소 1개씩 우선 배정 후 나머지 채움 - _pick_with_multiple_diseases).
     """
     disease_habits = [h for h in pool if h.is_disease_related]
-    base_habits = [h for h in pool if not h.is_disease_related]
 
-    if habit_to_disease is None or not disease_habits:
-        if len(pool) <= MAX_RECOMMENDATIONS:
-            return disease_habits + base_habits
-        if len(disease_habits) >= MAX_RECOMMENDATIONS:
-            return _rotate(disease_habits, profile_id, today, MAX_RECOMMENDATIONS)
-        remaining = MAX_RECOMMENDATIONS - len(disease_habits)
-        return disease_habits + _rotate(base_habits, profile_id, today, remaining)
+    if not disease_habits or not habit_to_disease:
+        return _rotate(BASE_HABITS, profile_id, today, MAX_RECOMMENDATIONS)
 
     habits_by_disease: dict[Disease, list[HabitDef]] = {}
     for h in disease_habits:
@@ -292,9 +402,18 @@ def pick_recommendations(
                 habits_by_disease[disease] = []
             habits_by_disease[disease].append(h)
 
-    if len(habits_by_disease) > 1:
+    if len(habits_by_disease) >= 2:
         return _pick_with_multiple_diseases(habits_by_disease, profile_id, today)
-    return _pick_with_single_disease(disease_habits, profile_id, today)
+
+    # MAX_RECOMMENDATIONS(5) 기준 "3개+2개" 비율을 그대로 유지한다 - 하드코딩된 3/2가 아니라
+    # 비율로 두는 이유: 테스트가 회전에 가려지지 않게 monkeypatch로 MAX_RECOMMENDATIONS를
+    # 올려서 "전체 후보가 다 보이는지"를 확인하는 패턴을 이미 쓰고 있어서(다른 질병 개수
+    # 분기도 마찬가지), 여기만 3을 고정해두면 그 패턴이 깨진다.
+    disease_count = round(MAX_RECOMMENDATIONS * 3 / 5)
+    disease_pick = _seeded_sample(disease_habits, disease_count, profile_id, today, salt=1)
+    remaining = MAX_RECOMMENDATIONS - len(disease_pick)
+    base_pick = _seeded_sample(BASE_HABITS, remaining, profile_id, today, salt=2)
+    return disease_pick + base_pick
 
 
 class HabitService:
@@ -346,12 +465,11 @@ class HabitService:
 
             # 2단계: 세부 진단명이 없으면 상세 메모(detail)와 모든 정보를 함께 AI에 전송
             if not habit_defs:
-                habit_defs = await self._generate_habits_from_diagnosis_entry(entry)
+                habit_defs = await self._generate_habits_from_diagnosis_entry(session, entry)
 
-            # 3단계: 위 모두 실패하면 기본 카테고리 폴백 습관 사용
+            # 3단계: 위 모두 실패하면 기본 카테고리 폴백 습관 사용(질병당 5개 보장)
             if not habit_defs:
-                fallback = DISEASE_HABITS.get(entry.disease)
-                habit_defs = [fallback] if fallback else []
+                habit_defs = DISEASE_HABITS.get(entry.disease, [])
 
             # 각 습관과 질병의 관계를 기록
             for h in habit_defs:
@@ -361,43 +479,56 @@ class HabitService:
 
         return pool, habit_to_disease
 
-    async def _generate_habits_from_diagnosis_entry(self, entry) -> list[HabitDef]:
-        """진단 항목의 모든 정보(질환명, 상세메모, 경과, 조절상태, 약물치료)를 기반으로 AI 습관 생성."""
-        try:
-            # 진단 정보를 모두 포함한 프롬프트 작성
-            diagnosis_info = self._format_diagnosis_info(entry)
+    async def _generate_habits_from_diagnosis_entry(self, session: AsyncSession, entry) -> list[HabitDef]:
+        """진단 항목의 모든 정보(질환명, 상세메모, 경과, 조절상태, 약물치료)를 기반으로 AI 습관 생성.
 
+        세부 진단명(subtype)과 달리 이 진단 항목 하나에만 묶인 개인화된 내용이라, 여러 사용자가
+        공유할 수 있는 값이 아니다. 그래서 _get_subtype_habits와 같은 캐싱 전략을
+        diagnosis_entry_id 기준으로 적용한다 - 캐싱이 없으면 요청마다(오늘의 추천 조회/습관
+        선택/체크 등) AI를 다시 부르고, LLM 응답이 매번 조금씩 달라져 방금 선택한 습관이 다음
+        조회에서 사라지거나 키가 바뀌는 문제가 있었다(2026-08-05 발견)."""
+        cached = await self._repository.list_entry_suggestions(session, entry.id)
+        if cached:
+            return [
+                HabitDef(
+                    key=f"detail_{row.diagnosis_entry_id}_{row.slot}",
+                    label=row.label,
+                    icon=row.icon,
+                    unit=row.unit,
+                    target=row.target,
+                    is_disease_related=True,
+                )
+                for row in cached
+            ]
+
+        try:
+            diagnosis_info = self._format_diagnosis_info(entry)
             raw_result = await self._gateway.call_structured(
                 system_prompt=_SUBTYPE_HABIT_SYSTEM_PROMPT,
                 user_input=diagnosis_info,
                 schema=SubtypeHabitSuggestionBatch,
             )
-            result = cast(SubtypeHabitSuggestionBatch, raw_result)
-            sanitized: list[SanitizedHabit] = [
-                {
-                    "label": str(habit.label.strip()[:50] or "오늘 컨디션 체크하기"),
-                    "icon": str((habit.icon.strip() or "📝")[:10]),
-                    "unit": str((habit.unit.strip() or "회")[:20]),
-                    "target": int(max(1, habit.target)),
-                }
-                for habit in result.habits[:_SUBTYPE_HABITS_PER_DIAGNOSIS]
-            ]
-            if sanitized:
-                return [
-                    HabitDef(
-                        key=f"detail_{entry.id}_{idx}",
-                        label=h_dict["label"],
-                        icon=h_dict["icon"],
-                        unit=h_dict["unit"],
-                        target=h_dict["target"],
-                        is_disease_related=True,
-                    )
-                    for idx, h_dict in enumerate(sanitized)
-                ]
-        except (AIWorkerUnavailableError, AIWorkerInvalidRequestError, AIWorkerProcessingError):
-            pass
+        except (AIWorkerUnavailableError, AIWorkerInvalidRequestError, AIWorkerProcessingError) as e:
+            logger.warning("진단 항목 %s AI 습관 생성 실패, 카테고리 폴백으로 대체합니다: %s", entry.id, e)
+            return []
 
-        return []
+        result = cast(SubtypeHabitSuggestionBatch, raw_result)
+        sanitized = _sanitize_habit_batch(result)
+        if not sanitized:
+            return []
+
+        saved = await self._repository.save_entry_suggestions(entry.id, cast(list[dict], sanitized))
+        return [
+            HabitDef(
+                key=f"detail_{row.diagnosis_entry_id}_{row.slot}",
+                label=row.label,
+                icon=row.icon,
+                unit=row.unit,
+                target=row.target,
+                is_disease_related=True,
+            )
+            for row in saved
+        ]
 
     def _format_diagnosis_info(self, entry) -> str:
         """진단 정보를 AI가 이해하기 쉬운 형식으로 포맷."""
@@ -460,20 +591,11 @@ class HabitService:
             return []
 
         result = cast(SubtypeHabitSuggestionBatch, raw_result)
-        # LLM 출력은 형식/개수가 기대와 다를 수 있어 그대로 믿지 않고 방어적으로 다듬는다.
-        sanitized = [
-            {
-                "label": habit.label.strip()[:50] or "오늘 컨디션 체크하기",
-                "icon": (habit.icon.strip() or "📝")[:10],
-                "unit": (habit.unit.strip() or "회")[:20],
-                "target": max(1, habit.target),
-            }
-            for habit in result.habits[:_SUBTYPE_HABITS_PER_DIAGNOSIS]
-        ]
+        sanitized = _sanitize_habit_batch(result)
         if not sanitized:
             return []
 
-        saved = await self._repository.save_subtype_suggestions(subtype.id, sanitized)
+        saved = await self._repository.save_subtype_suggestions(subtype.id, cast(list[dict], sanitized))
         return [
             HabitDef(
                 key=f"subtype_{row.disease_subtype_id}_{row.slot}",
@@ -489,26 +611,10 @@ class HabitService:
     async def get_recommendations(self, session: AsyncSession, profile: Profile) -> HabitRecommendationsResponse:
         today = date.today()
 
-        # DEBUG: 진단 정보 로깅
-        if profile.diagnosis_entries:
-            print(f"\n=== 진단 정보 (프로필 {profile.id}) ===")
-            for entry in profile.diagnosis_entries:
-                print(
-                    f"- 질병: {entry.disease.value}, 세부: {entry.disease_subtype.name if entry.disease_subtype else 'None'}, 상세: {entry.detail}"
-                )
-            print(f"총 {len(profile.diagnosis_entries)}개 진단\n")
-
         full_pool, habit_to_disease = await self.build_full_pool(session, profile)
         pool = pick_recommendations(full_pool, profile.id, today, habit_to_disease)
         valid_keys = {h.key for h in pool}
         selected_keys = await self._repository.list_selected_keys(session, profile.id, today)
-
-        # DEBUG: 추천 습관 로깅
-        print(f"\n=== 추천 습관 ({len(pool)}개) ===")
-        for i, h in enumerate(pool, 1):
-            disease = habit_to_disease.get(h.key, "None")
-            print(f"{i}. {h.label} (키: {h.key}, 질병: {disease}, is_disease_related: {h.is_disease_related})")
-        print()
 
         # 사용자의 진단 정보 수집
         user_diseases = {entry.disease for entry in (profile.diagnosis_entries or [])}

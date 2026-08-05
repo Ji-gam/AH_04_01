@@ -121,6 +121,9 @@ export interface ChatMessageChunk {
   content: string;
   disclaimer?: string;
   sources?: ChatSourceRef[];
+  // "done" 청크에만 실려온다. T-LLM-2-langfuse-user-feedback: 이 답변에 피드백(👍/👎)을
+  // 붙일 때 필요 - Langfuse trace_id는 서버 내부 식별자라 여기 노출되지 않는다.
+  message_id?: number;
 }
 
 export interface ChatSessionResponse {
@@ -131,6 +134,7 @@ export interface ChatSessionResponse {
 }
 
 export interface ChatMessageResponse {
+  id: number;
   role: "user" | "assistant";
   content: string;
   sources?: ChatSourceRef[] | null;

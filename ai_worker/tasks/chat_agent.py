@@ -40,6 +40,10 @@ _SYSTEM_PROMPT_TEMPLATE = (
     "대상 전반에 대한 일반적인 질문(예: '이 약 노인이 먹어도 되나요?')이면, 질문자 본인 "
     "정보와는 무관하게 질문이 실제로 묻는 대상 기준으로만 답하세요 — 질문자 본인의 나이나 "
     "임신 여부를 질문 속 대상과 혼동하지 마세요.\n"
+    "참고 문서 중 임산부·노인·소아 등 특정 대상에게만 해당하는 경고(예: 임부금기, "
+    "특정연령금기 문서)가 있다면, 그 경고가 어떤 대상에 한정되는지 먼저 밝히고 질문자가 "
+    "실제로 묻는 대상에 적용되는 내용인지 구분해서 설명하세요 — 대상이 다르면 그 경고를 "
+    "구분 없이 일반화해서 전달하지 마세요.\n"
     "이 시스템은 답변 하단 UI 영역에 면책 조항을 별도로 노출하므로, 답변 본문에 "
     "'의사와 상담하세요' 같은 자가 경고/면책 문구는 적지 마세요.\n"
     "참고 문서가 있다면 그 안의 구체적 내용을 우선 활용하고, 없다면 일반적인 지식으로 답하세요.\n"
@@ -48,11 +52,29 @@ _SYSTEM_PROMPT_TEMPLATE = (
 )
 
 
-def _build_llm() -> ChatOpenAI:
+def _build_llm(*, grounded: bool) -> ChatOpenAI:
+    """참고 문서가 있는 답변만 temperature를 고정한다.
+
+    `grounded`는 이 턴에 RAG 출처나 `injected_context`(app/이 계산한 개인 DUR 경고)가
+    있었는지다. 있으면 답변이 의학 정보를 전달하므로 결정성을 우선해
+    `settings.OPENAI_TEMPERATURE`(기본 0.0)를 적용하고, 없으면(일반 대화) 표현 변주가
+    자연스러운 편이라 temperature를 강제하지 않는다.
+
+    이 구분은 config의 `OPENAI_TEMPERATURE` 주석("분류·구조화 추출·논문 답변은 결정적이어야
+    하므로 기본 0")이 원래 의도한 것인데, T-LLM-7-3-2에서 DUR/논문 답변이 이 통합 경로로
+    합쳐질 때 누락됐다 — 이 모듈만 해당 설정을 쓰지 않는 유일한 LLM 호출부였다.
+    실측으로 확인된 증상(`scripts/measure_response_consistency`, 2026-08-04): "당뇨에 좋은
+    운동이 있을까요?"를 5회 반복하면 운동 처방 수량이 6종(주 150분 / 주 3회 / 30분 / 12주 /
+    주 2회 / 5일)으로 갈리고, 5회 모두에 등장한 수량이 하나도 없었다.
+    """
     if settings.OPENAI_API_KEY is None:
         raise GenerationUnavailableError("OPENAI_API_KEY가 설정되지 않았습니다.")
-    # temperature를 강제하지 않는다 — 분류/논문답변(결정성 우선)과 달리, 일반 대화
-    # 답변은 자연스러운 표현 변주가 있는 편이 낫다(기존 app/의 llm_stub.py도 고정하지 않았음).
+    if grounded:
+        return ChatOpenAI(
+            model=settings.OPENAI_MODEL,
+            api_key=SecretStr(settings.OPENAI_API_KEY),
+            temperature=settings.OPENAI_TEMPERATURE,
+        )
     return ChatOpenAI(model=settings.OPENAI_MODEL, api_key=SecretStr(settings.OPENAI_API_KEY))
 
 
@@ -126,10 +148,18 @@ async def stream_chat_answer(
         rag_chunks, sources = _search_all(message)
         yield {"type": "sources", "sources": [s.model_dump() for s in sources]}
 
+        # T-LLM-2-langfuse-user-feedback: 사용자가 나중에 👍/👎를 누르면 이 trace에 점수를
+        # 붙여야 하는데, trace_id를 아는 곳은 ai_worker뿐이다(observe_span 블록 밖에서
+        # 부르면 None). app이 이 청크를 chat_messages.trace_id로 저장해두고, 프론트로는
+        # relay하지 않는다(chat_service._generate 참고) — 프론트는 message_id만 안다.
+        trace_id = observability.get_current_trace_id()
+        if trace_id:
+            yield {"type": "trace", "trace_id": trace_id}
+
         reference_text = "\n".join(injected_context + [c.content for c in rag_chunks]) or "없음"
         system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(reference_text=reference_text, context=context)
 
-        llm = _build_llm()
+        llm = _build_llm(grounded=bool(rag_chunks or injected_context))
         messages = [{"role": "system", "content": system_prompt}, *history, {"role": "user", "content": message}]
 
         # 관측(Langfuse)이 설정돼 있으면 콜백으로 프롬프트/응답/토큰/지연을 trace로 남긴다.
