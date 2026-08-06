@@ -14,6 +14,8 @@ from app.models.notification_settings import NotificationSetting
 from app.repositories.dur_drug_repository import DurDrugRepository
 from app.repositories.goal_repository import GoalRepository
 from app.repositories.habit_repository import HabitRepository
+from app.repositories.medication_intake_repository import MedicationIntakeRepository
+from app.repositories.missed_dose_escalation_repository import MissedDoseEscalationRepository
 from app.repositories.push_send_log_repository import PushSendLogRepository
 from app.repositories.snooze_reminder_repository import SnoozeReminderRepository
 from app.services.notification_settings_service import NotificationSettingsService
@@ -25,6 +27,12 @@ from app.services.weekly_report_service import WeeklyReportService
 # 시각의 틱에서만 요일/월말 여부를 확인한다(다른 복약 알림처럼 "정확히 이 분"에만 발송해야
 # 하는 건 아니지만, 하루 한 번이면 충분해 굳이 매분 반복 조회할 필요가 없다).
 _REPORT_SEND_HHMM = "09:00"
+
+# F-NTFY-4(미확인시 가족알림) - 알람이 울리고 이 시간(분) 뒤에도 복용 체크가 안 돼 있으면
+# 본인+보호자에게 한 번 더 알린다. 너무 짧으면 그냥 조금 늦게 챙겨 먹는 사람한테도 매번
+# 울려서 피로도가 높고, 너무 길면 "미확인 알림"의 의미가 옅어져 스누즈(30/60분)와 겹치는
+# 30분을 기본값으로 잡았다.
+_ESCALATION_DELAY_MINUTES = 30
 
 logger = logging.getLogger("app.push_scheduler")
 
@@ -146,6 +154,7 @@ async def _send_due_items(
     push_service: PushService,
     settings: _SettingsCache,
     send_log_repo: PushSendLogRepository,
+    escalation_repo: MissedDoseEscalationRepository,
     now: datetime,
     current_hhmm: str,
     items: list[_DueItem],
@@ -189,6 +198,32 @@ async def _send_due_items(
         except Exception:
             logger.exception("알림 발송 중 오류 (profile_id=%s)", profile_id)
 
+        # F-NTFY-4 - 지금 보낸 알림이 이후에도 안 확인되면(미복용) 한 번 더 알리기 위해,
+        # 항목별로 미확인 체크를 걸어둔다. 알림 발송 자체가 실패했어도(위 except) 체크는
+        # 걸어둔다 - 어차피 확인 시점엔 MedicationIntakeLog로 실제 복용 여부만 보므로,
+        # "알림을 못 받았다"와 "받고도 안 먹었다"를 구분할 필요가 없다(둘 다 결과적으로
+        # 미복용이라 똑같이 다시 알리는 게 맞다).
+        check_at = now + timedelta(minutes=_ESCALATION_DELAY_MINUTES)
+        for item in claimed:
+            try:
+                await escalation_repo.create(
+                    session,
+                    profile_id,
+                    item.source_type,
+                    item.source_id,
+                    item.name,
+                    item.alarm_time,
+                    now.date(),
+                    check_at,
+                )
+            except Exception:
+                logger.exception(
+                    "미확인 알림 예약 중 오류 (profile_id=%s, source_type=%s, source_id=%s)",
+                    profile_id,
+                    item.source_type,
+                    item.source_id,
+                )
+
 
 async def _send_due_snoozes(session: AsyncSession, push_service: PushService, now: datetime) -> None:
     """F-NTFY-3 - 인앱 바텀시트에서 "30분/1시간 후에"로 예약해둔 재알림(remind_at이 지난 것)을
@@ -215,6 +250,52 @@ async def _send_due_snoozes(session: AsyncSession, push_service: PushService, no
             )
         finally:
             await reminder_repo.delete(session, reminder.id)
+
+
+async def _send_due_escalations(
+    session: AsyncSession,
+    push_service: PushService,
+    now: datetime,
+) -> None:
+    """F-NTFY-4 - 알람이 울리고 _ESCALATION_DELAY_MINUTES가 지난 항목 중, 그 시각까지도
+    MedicationIntakeLog에 체크가 안 된(=미복용) 것만 골라 본인+보호자에게 한 번 더 알린다.
+    체크 결과와 무관하게(복용했든 안 했든) 이 예약은 1회성이라 처리 후 바로 지운다 -
+    반복해서 다시 확인할 이유가 없다(이미 그 시각은 지나갔고, 다음 복용은 다음 알람이
+    새로 예약한다).
+
+    [알려진 한계] 스누즈(_send_due_snoozes)와 동일하게, 멀티워커 환경에서 두 워커가 같은
+    예약을 동시에 집어 중복 발송할 가능성이 이론상 있다(트래픽 규모상 감내 - 별도
+    선착순 클레임 없이 삭제 시점으로만 방지).
+    """
+    escalation_repo = MissedDoseEscalationRepository()
+    intake_repo = MedicationIntakeRepository()
+    for escalation in await escalation_repo.list_due(session, now):
+        try:
+            taken = await intake_repo.get_one(
+                session,
+                escalation.profile_id,
+                escalation.source_type,
+                escalation.source_id,
+                escalation.alarm_time,
+                escalation.intake_date,
+            )
+            if taken is None:
+                await push_service.send_to_profile_and_guardians(
+                    session,
+                    escalation.profile_id,
+                    title="복약 미확인 알림",
+                    body=f"{escalation.medication_name} 복용 여부가 아직 확인되지 않았어요. 확인해주세요!",
+                    guardian_body_template=f"{{name}}님이 아직 {escalation.medication_name}을 안 드신 것 같아요. 확인해주세요!",
+                    link_url="/alarms",
+                )
+        except Exception:
+            logger.exception(
+                "미확인 알림 발송 중 오류 (profile_id=%s, escalation_id=%s)",
+                escalation.profile_id,
+                escalation.id,
+            )
+        finally:
+            await escalation_repo.delete(session, escalation.id)
 
 
 async def _send_weekly_adherence_feedback_if_due(
@@ -368,13 +449,17 @@ async def _check_and_send_due_notifications() -> None:
         push_service = PushService()
         settings = _SettingsCache(session)
         send_log_repo = PushSendLogRepository()
+        escalation_repo = MissedDoseEscalationRepository()
         report_service = PeriodicReportService()
         weekly_report_service = WeeklyReportService()
 
         due_items = await _collect_due_notification_schedules(session, js_weekday, current_hhmm)
         due_items += await _collect_due_medication_schedules(session, current_hhmm)
-        await _send_due_items(session, push_service, settings, send_log_repo, now, current_hhmm, due_items)
+        await _send_due_items(
+            session, push_service, settings, send_log_repo, escalation_repo, now, current_hhmm, due_items
+        )
         await _send_due_snoozes(session, push_service, now)
+        await _send_due_escalations(session, push_service, now)
 
         await _send_weekly_adherence_feedback_if_due(
             session, settings, send_log_repo, report_service, now, current_hhmm
