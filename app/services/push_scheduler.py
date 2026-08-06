@@ -227,12 +227,21 @@ async def _send_due_items(
 
 async def _send_due_snoozes(session: AsyncSession, push_service: PushService, now: datetime) -> None:
     """F-NTFY-3 - 인앱 바텀시트에서 "30분/1시간 후에"로 예약해둔 재알림(remind_at이 지난 것)을
-    한 번 더 보내고 바로 삭제한다(반복 스케줄이 아니라 1회성이라 발송 후엔 남아있을 이유가
+    한 번 더 보내고 바로 지운다(반복 스케줄이 아니라 1회성이라 발송 후엔 남아있을 이유가
     없음). 매분 틱마다 remind_at을 "지난 것"만 확인하면 되므로 정확히 그 분에 맞힐 필요가
-    없다. [알려진 한계] start_push_scheduler의 멀티워커 중복발송 한계와 동일하게, 여기도
-    같은 예약을 두 워커가 동시에 집어 중복 발송할 가능성이 이론상 있다(트래픽 규모상 감내)."""
+    없다.
+
+    [2026-08-06 버그 수정] uvicorn 워커 3개(Dockerfile --workers 3)가 매분 각자 스케줄러를
+    돌리는데, 원래 "조회 → 처리 → 삭제" 순서라 여러 워커가 같은 예약을 동시에 읽어가 재알림이
+    최대 3번 중복 발송됐다(missed_dose_escalation과 같은 유형의 문제, 실제 발생 확인됨 -
+    "이론상 감내"였던 이전 주석은 틀렸다). `_send_due_escalations`와 동일하게 삭제(클레임)를
+    먼저 시도해서, 성공한 워커만 처리하도록 순서를 뒤집었다."""
     reminder_repo = SnoozeReminderRepository()
     for reminder in await reminder_repo.list_due(session, now):
+        claimed = await reminder_repo.delete(session, reminder.id)
+        if not claimed:
+            # 다른 워커가 이 예약을 먼저 지워서(=먼저 처리) 이미 처리했다는 뜻 - 건너뛴다.
+            continue
         try:
             await push_service.send_to_profile_and_guardians(
                 session,
@@ -248,8 +257,6 @@ async def _send_due_snoozes(session: AsyncSession, push_service: PushService, no
             logger.exception(
                 "스누즈 재알림 발송 중 오류 (profile_id=%s, reminder_id=%s)", reminder.profile_id, reminder.id
             )
-        finally:
-            await reminder_repo.delete(session, reminder.id)
 
 
 async def _send_due_escalations(
@@ -259,17 +266,28 @@ async def _send_due_escalations(
 ) -> None:
     """F-NTFY-4 - 알람이 울리고 _ESCALATION_DELAY_MINUTES가 지난 항목 중, 그 시각까지도
     MedicationIntakeLog에 체크가 안 된(=미복용) 것만 골라 본인+보호자에게 한 번 더 알린다.
-    체크 결과와 무관하게(복용했든 안 했든) 이 예약은 1회성이라 처리 후 바로 지운다 -
+    체크 결과와 무관하게(복용했든 안 했든) 이 예약은 1회성이라 처리 전에 바로 지운다 -
     반복해서 다시 확인할 이유가 없다(이미 그 시각은 지나갔고, 다음 복용은 다음 알람이
     새로 예약한다).
 
-    [알려진 한계] 스누즈(_send_due_snoozes)와 동일하게, 멀티워커 환경에서 두 워커가 같은
-    예약을 동시에 집어 중복 발송할 가능성이 이론상 있다(트래픽 규모상 감내 - 별도
-    선착순 클레임 없이 삭제 시점으로만 방지).
+    [2026-08-06 버그 수정] uvicorn이 워커 3개(Dockerfile --workers 3)로 뜨고, 각 워커가
+    자기 프로세스 안에서 매분 스케줄러를 따로 돌린다. "list_due로 조회 → 처리 → 삭제"
+    순서였을 때는, 그 사이 시간차에 여러 워커가 같은 예약 행을 동시에 읽어가서 같은
+    미확인 알림이 워커 수만큼(최대 3번) 중복 발송됐다("알람이 여러 개 주르륵 온다").
+
+    지금은 순서를 뒤집어 `escalation_repo.delete()`를 먼저 호출해서 "이 워커가 처리를
+    맡아도 되는지"부터 확인한다(선착순 클레임) - `_send_due_items`가
+    `PushSendLogRepository.try_claim()`으로 하는 것과 같은 패턴. DELETE는 행 단위로
+    원자적이라, 여러 워커가 동시에 같은 id를 지우려 해도 실제로 지워지는(반환값 True)
+    건 정확히 하나뿐이다.
     """
     escalation_repo = MissedDoseEscalationRepository()
     intake_repo = MedicationIntakeRepository()
     for escalation in await escalation_repo.list_due(session, now):
+        claimed = await escalation_repo.delete(session, escalation.id)
+        if not claimed:
+            # 다른 워커가 이 예약을 먼저 지워서(=먼저 처리) 이미 처리했다는 뜻 - 건너뛴다.
+            continue
         try:
             taken = await intake_repo.get_one(
                 session,
@@ -294,8 +312,6 @@ async def _send_due_escalations(
                 escalation.profile_id,
                 escalation.id,
             )
-        finally:
-            await escalation_repo.delete(session, escalation.id)
 
 
 async def _send_weekly_adherence_feedback_if_due(
