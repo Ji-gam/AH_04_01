@@ -11,6 +11,7 @@ import FamilySwitcher from "../../components/family/FamilySwitcher";
 import ConfirmModal from "../../components/ui/ConfirmModal";
 import type { MedicationSchedule } from "../../hooks/useMedication";
 import { pinkTheme as t } from "../../theme/pinkTheme";
+import { pushApi } from "../../api/pushApi";
 import { disableFcmWeb, enableFcmWeb } from "../../utils/fcmWeb";
 import { disableWebPush, enableWebPush, type PushSubscribeStatus } from "../../utils/webPush";
 import SchedulePage from "../SchedulePage/SchedulePage";
@@ -151,7 +152,17 @@ export default function AlarmPage() {
       .getRegistration("/service-worker.js")
       .then((reg) => reg?.pushManager.getSubscription())
       .then((sub) => {
-        if (sub) setPushStatus("subscribed");
+        if (!sub) return;
+        setPushStatus("subscribed");
+        // [2026-08-06 버그 수정] 구독이 "이미 있다"는 건 이 브라우저가 예전에 누군가의
+        // 계정으로 알림을 켰었다는 뜻일 뿐, 그게 지금 로그인한 사람이라는 보장은 없다.
+        // 같은 기기를 다른 계정으로 로그인해 쓰는 경우(가족 등) 여기서 재등록을 안 하면,
+        // 서버 DB엔 이 기기가 예전 계정 소유로 그대로 남아서 그 계정 알림(가족 몫 포함)이
+        // 계속 이 기기로 온다. subscribe()는 같은 endpoint를 다시 보내면 소유자만
+        // 갱신하도록 이미 되어 있으니, 마운트 시점에 매번 다시 보내 항상 "지금 로그인한
+        // 사람" 걸로 맞춰준다.
+        void pushApi.subscribe(sub.toJSON() as PushSubscriptionJSON);
+        void enableFcmWeb();
       })
       .catch(() => {
         // 조회 실패는 조용히 무시 - "알림 켜기" 버튼이 그대로 남아있으니 다시 시도 가능.
